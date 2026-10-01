@@ -42,9 +42,19 @@ The test suite emits one upstream Starlette/httpx deprecation warning; it does n
 - Additional local PostgreSQL/migration and HTTP reruns were not completed: Docker became unavailable after Compose startup. The waiting native migration check was interrupted. Use the successful cloud backend run above as this freeze's fresh PostgreSQL evidence; earlier local results remain historical evidence.
 - Solo self-review: this follow-up changes documentation only; runtime contracts and shared migrations are untouched, related English/Chinese records agree, documentation checks pass, and no private data was added.
 - Baseline label: v0.2.0. The annotation identifies the tested implementation commit; later documentation-only freeze records do not change its runtime scope. Tags are immutable team references; fixes receive new commits and subsequent version labels.
-- Next collaboration gates: independently verify a teammate's fresh checkout, configure host branch protection/required checks, assign actual module owners and prepare scoped starter issues. These are not completed by passing CI or creating a tag.
+- Next collaboration gates: independently verify a teammate's fresh checkout, configure host branch protection/required checks, agree rotating module contacts and prepare scoped starter issues. These are not completed by passing CI or creating a tag.
 
 This freeze covers synthetic replay only. It is not a production release, live connector validation or proof of general AI extraction quality.
+
+## Onboarding and equal-collaboration preparation — 2026-10-01
+
+COLLAB-02 materials are prepared: internal step-by-step onboarding/report, [matching public policy and acceptance](team-governance.md), ADR 0004 and an Onboarding verification issue template. Contribution/PR rules now use equal peer review and rotating coordination contacts; the baseline checker requires the new materials.
+
+ONB-01 through ONB-08 cover clone/start/login, conflict rejection, proposal-only behavior, explicit confirmation, deduplication, restart persistence, account isolation and a real first peer-reviewed PR. Setup instructions reflect the actual fixed Compose project/volume behavior, scripts/docs absent from the API image and idempotent seed passwords.
+
+This change affects documents, templates and the documentation check's required-file list only. Documentation/link/positive-negative fixture checks passed; solo self-review checked English/internal consistency, configuration facts and explicit pending status. No runtime/migration changes or new full application retest are claimed. No independent teammate report or peer-approved starter PR exists yet.
+
+COLLAB-03 protection settings are specified but not applied. Equal repository Admin access requires an agreed organization because the current owner is a personal account. Actual member usernames, target organization and permission scope are pending; no transfer, invitations or authorization changes were made. Organization Owner is a separate decision. All members follow the same review/check targets; no creator-only approval or bypass is intended.
 
 ## Remaining
 

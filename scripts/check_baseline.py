@@ -66,6 +66,10 @@ required_files = [
     'apps/web/package.json', 'apps/web/package-lock.json', 'apps/web/src/generated/api.d.ts',
     'infra/compose.yaml', 'scripts/export_contracts.py', 'scripts/check_web_contracts.mjs',
     'scripts/smoke_replay.py', '.github/workflows/skeleton.yml',
+    'docs/zh/onboarding.md', 'docs/zh/onboarding-report-template.md',
+    'docs/zh/team-governance.md', 'docs/en/team-governance.md',
+    '.github/ISSUE_TEMPLATE/onboarding.md',
+    'docs/en/adr/0004-equal-collaboration.md',
 ]
 for item in required_files:
     require((ROOT / item).is_file(), f'Missing baseline file: {item}')
