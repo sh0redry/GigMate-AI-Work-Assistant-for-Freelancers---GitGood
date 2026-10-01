@@ -1,49 +1,71 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "GigMate domain baseline",
-  "description": "Initial wire models, not database definitions",
-  "x-version": "0.1.0",
   "$defs": {
-    "Id": {
-      "type": "string",
-      "format": "uuid"
-    },
-    "UtcTimestamp": {
-      "type": "string",
-      "format": "date-time",
-      "pattern": "Z$"
-    },
-    "Timezone": {
-      "type": "string",
-      "minLength": 1,
-      "description": "IANA timezone; semantic validation required"
-    },
-    "WorkOrderStatus": {
-      "enum": [
-        "unclassified",
-        "pending_confirmation",
-        "confirmed",
-        "in_progress",
-        "waiting_customer",
-        "completed",
-        "cancelled"
-      ]
-    },
-    "FieldStatus": {
-      "enum": [
-        "missing",
-        "proposed",
-        "confirmed",
-        "needs_review"
-      ]
-    },
-    "CustomerConfirmation": {
-      "enum": [
-        "not_requested",
-        "pending",
-        "confirmed",
-        "ambiguous"
-      ]
+    "AccountConsent": {
+      "additionalProperties": false,
+      "properties": {
+        "account_id": {
+          "format": "uuid",
+          "title": "Account Id",
+          "type": "string"
+        },
+        "allowed_conversation_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Allowed Conversation Ids",
+          "type": "array"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expires At"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "scopes": {
+          "items": {
+            "enum": [
+              "process_text",
+              "prepare_drafts",
+              "approved_send"
+            ],
+            "type": "string"
+          },
+          "title": "Scopes",
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "paused",
+            "revoked"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "account_id",
+        "allowed_conversation_ids",
+        "scopes",
+        "status",
+        "expires_at"
+      ],
+      "title": "AccountConsent",
+      "type": "object"
     },
     "ActionState": {
       "enum": [
@@ -56,126 +78,652 @@
         "result_unknown",
         "cancelled",
         "expired"
-      ]
-    },
-    "SourceRef": {
-      "type": "object",
-      "properties": {
-        "message_id": {
-          "$ref": "#/$defs/Id"
-        },
-        "message_revision": {
-          "type": "integer",
-          "minimum": 1
-        }
-      },
-      "required": [
-        "message_id",
-        "message_revision"
       ],
-      "additionalProperties": false
+      "title": "ActionState",
+      "type": "string"
     },
-    "ScheduleValue": {
-      "oneOf": [
+    "ApprovalAction": {
+      "additionalProperties": false,
+      "allOf": [
         {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "const": "timed"
-            },
-            "start_at": {
-              "$ref": "#/$defs/UtcTimestamp"
-            },
-            "end_at": {
-              "$ref": "#/$defs/UtcTimestamp"
-            },
-            "timezone": {
-              "$ref": "#/$defs/Timezone"
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "approved",
+                  "executing",
+                  "succeeded",
+                  "failed",
+                  "result_unknown"
+                ]
+              }
             }
           },
-          "required": [
-            "kind",
-            "start_at",
-            "end_at",
-            "timezone"
-          ],
-          "additionalProperties": false
+          "then": {
+            "properties": {
+              "approved_at": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "approved_by": {
+                "format": "uuid",
+                "type": "string"
+              }
+            }
+          }
         },
         {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "const": "date_only"
-            },
-            "date": {
-              "type": "string",
-              "format": "date"
-            },
-            "timezone": {
-              "$ref": "#/$defs/Timezone"
+          "if": {
+            "properties": {
+              "state": {
+                "const": "result_unknown"
+              }
             }
           },
-          "required": [
-            "kind",
-            "date",
-            "timezone"
-          ],
-          "additionalProperties": false
+          "then": {
+            "properties": {
+              "delivery_status": {
+                "const": "unknown"
+              }
+            }
+          }
         }
-      ]
-    },
-    "FieldValue": {
-      "anyOf": [
-        {
-          "type": [
-            "string",
-            "number",
-            "boolean",
-            "null"
-          ]
-        },
-        {
-          "$ref": "#/$defs/ScheduleValue"
-        },
-        {
-          "$ref": "#/$defs/DeadlineValue"
-        }
-      ]
-    },
-    "ProvenancedField": {
-      "type": "object",
+      ],
       "properties": {
-        "value": {
-          "$ref": "#/$defs/FieldValue"
+        "account_id": {
+          "format": "uuid",
+          "title": "Account Id",
+          "type": "string"
         },
-        "status": {
-          "$ref": "#/$defs/FieldStatus"
-        },
-        "sources": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/SourceRef"
-          },
-          "minItems": 0
-        },
-        "interpretation": {
+        "approved_at": {
           "anyOf": [
             {
-              "type": "string",
-              "minLength": 1
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
             },
             {
               "type": "null"
             }
-          ]
+          ],
+          "title": "Approved At"
+        },
+        "approved_by": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Approved By"
+        },
+        "body": {
+          "minLength": 1,
+          "title": "Body",
+          "type": "string"
+        },
+        "bound_context_version": {
+          "minimum": 1,
+          "title": "Bound Context Version",
+          "type": "integer"
+        },
+        "bound_work_order_version": {
+          "minimum": 1,
+          "title": "Bound Work Order Version",
+          "type": "integer"
+        },
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "delivery_status": {
+          "enum": [
+            "not_submitted",
+            "accepted",
+            "sent",
+            "delivered",
+            "read",
+            "unknown"
+          ],
+          "title": "Delivery Status",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "minLength": 1,
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "kind": {
+          "const": "send_text",
+          "title": "Kind",
+          "type": "string"
+        },
+        "provider_message_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Provider Message Id"
+        },
+        "recipient": {
+          "minLength": 1,
+          "title": "Recipient",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "snapshot_hash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Snapshot Hash",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
+        },
+        "state": {
+          "$ref": "#/$defs/ActionState"
+        },
+        "work_order_id": {
+          "format": "uuid",
+          "title": "Work Order Id",
+          "type": "string"
         }
       },
       "required": [
-        "value",
-        "status",
-        "sources",
-        "interpretation"
+        "id",
+        "account_id",
+        "work_order_id",
+        "conversation_id",
+        "kind",
+        "revision",
+        "state",
+        "recipient",
+        "body",
+        "bound_work_order_version",
+        "bound_context_version",
+        "snapshot_hash",
+        "expires_at",
+        "approved_by",
+        "approved_at",
+        "idempotency_key",
+        "provider_message_id",
+        "delivery_status",
+        "sources"
       ],
+      "title": "ApprovalAction",
+      "type": "object"
+    },
+    "ApproveActionCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_action_revision": {
+          "minimum": 1,
+          "title": "Expected Action Revision",
+          "type": "integer"
+        },
+        "expected_context_version": {
+          "minimum": 1,
+          "title": "Expected Context Version",
+          "type": "integer"
+        },
+        "expected_version": {
+          "minimum": 1,
+          "title": "Expected Version",
+          "type": "integer"
+        },
+        "snapshot_hash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Snapshot Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_version",
+        "expected_context_version",
+        "expected_action_revision",
+        "snapshot_hash"
+      ],
+      "title": "ApproveActionCommand",
+      "type": "object"
+    },
+    "AuditLog": {
+      "additionalProperties": false,
+      "properties": {
+        "account_id": {
+          "format": "uuid",
+          "title": "Account Id",
+          "type": "string"
+        },
+        "action_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Action Id"
+        },
+        "actor_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Actor Id"
+        },
+        "entity_id": {
+          "format": "uuid",
+          "title": "Entity Id",
+          "type": "string"
+        },
+        "entity_type": {
+          "minLength": 1,
+          "title": "Entity Type",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "occurred_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "operation": {
+          "minLength": 1,
+          "title": "Operation",
+          "type": "string"
+        },
+        "request_id": {
+          "format": "uuid",
+          "title": "Request Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "account_id",
+        "actor_id",
+        "entity_type",
+        "entity_id",
+        "action_id",
+        "operation",
+        "occurred_at",
+        "request_id"
+      ],
+      "title": "AuditLog",
+      "type": "object"
+    },
+    "CalendarEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "account_id": {
+          "format": "uuid",
+          "title": "Account Id",
+          "type": "string"
+        },
+        "buffer_minutes": {
+          "minimum": 0,
+          "title": "Buffer Minutes",
+          "type": "integer"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "schedule": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimedSchedule"
+            },
+            {
+              "$ref": "#/$defs/DateOnly"
+            }
+          ],
+          "title": "Schedule"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
+        },
+        "tentative": {
+          "title": "Tentative",
+          "type": "boolean"
+        },
+        "work_order_id": {
+          "format": "uuid",
+          "title": "Work Order Id",
+          "type": "string"
+        },
+        "work_order_version": {
+          "minimum": 1,
+          "title": "Work Order Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "account_id",
+        "work_order_id",
+        "work_order_version",
+        "schedule",
+        "tentative",
+        "buffer_minutes",
+        "sources"
+      ],
+      "title": "CalendarEvent",
+      "type": "object"
+    },
+    "ConfirmChangeCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "apply_calendar_update": {
+          "title": "Apply Calendar Update",
+          "type": "boolean"
+        },
+        "expected_context_version": {
+          "minimum": 1,
+          "title": "Expected Context Version",
+          "type": "integer"
+        },
+        "expected_version": {
+          "minimum": 1,
+          "title": "Expected Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "expected_version",
+        "expected_context_version",
+        "apply_calendar_update"
+      ],
+      "title": "ConfirmChangeCommand",
+      "type": "object"
+    },
+    "Conversation": {
+      "additionalProperties": false,
+      "properties": {
+        "account_id": {
+          "format": "uuid",
+          "title": "Account Id",
+          "type": "string"
+        },
+        "context_version": {
+          "minimum": 1,
+          "title": "Context Version",
+          "type": "integer"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "provider_conversation_id": {
+          "minLength": 1,
+          "title": "Provider Conversation Id",
+          "type": "string"
+        },
+        "work_order_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Work Order Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "account_id",
+        "provider_conversation_id",
+        "context_version",
+        "work_order_ids"
+      ],
+      "title": "Conversation",
+      "type": "object"
+    },
+    "ConversationMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "account_id": {
+          "format": "uuid",
+          "title": "Account Id",
+          "type": "string"
+        },
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "direction": {
+          "enum": [
+            "incoming",
+            "outgoing"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "occurred_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "provider_message_id": {
+          "minLength": 1,
+          "title": "Provider Message Id",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "revoked": {
+          "title": "Revoked",
+          "type": "boolean"
+        },
+        "source": {
+          "enum": [
+            "app",
+            "api",
+            "replay"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Text"
+        }
+      },
+      "required": [
+        "id",
+        "account_id",
+        "conversation_id",
+        "provider_message_id",
+        "revision",
+        "direction",
+        "source",
+        "occurred_at",
+        "text",
+        "revoked"
+      ],
+      "title": "ConversationMessage",
+      "type": "object"
+    },
+    "CustomerConfirmation": {
+      "enum": [
+        "not_requested",
+        "pending",
+        "confirmed",
+        "ambiguous"
+      ],
+      "title": "CustomerConfirmation",
+      "type": "string"
+    },
+    "DateOnly": {
+      "additionalProperties": false,
+      "properties": {
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "kind": {
+          "const": "date_only",
+          "title": "Kind",
+          "type": "string"
+        },
+        "timezone": {
+          "minLength": 1,
+          "title": "Timezone",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "date",
+        "timezone"
+      ],
+      "title": "DateOnly",
+      "type": "object"
+    },
+    "DeadlineValue": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/InstantDeadline"
+        },
+        {
+          "$ref": "#/$defs/DateOnly"
+        }
+      ]
+    },
+    "FieldStatus": {
+      "enum": [
+        "missing",
+        "proposed",
+        "confirmed",
+        "needs_review"
+      ],
+      "title": "FieldStatus",
+      "type": "string"
+    },
+    "FieldValue": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/$defs/TimedSchedule"
+        },
+        {
+          "$ref": "#/$defs/DateOnly"
+        },
+        {
+          "$ref": "#/$defs/InstantDeadline"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "Id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "InstantDeadline": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "At",
+          "type": "string"
+        },
+        "kind": {
+          "const": "instant",
+          "title": "Kind",
+          "type": "string"
+        },
+        "timezone": {
+          "minLength": 1,
+          "title": "Timezone",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "at",
+        "timezone"
+      ],
+      "title": "InstantDeadline",
+      "type": "object"
+    },
+    "ProvenancedField": {
       "additionalProperties": false,
       "allOf": [
         {
@@ -204,251 +752,154 @@
           },
           "then": {
             "properties": {
+              "sources": {
+                "minItems": 1
+              },
               "value": {
                 "not": {
                   "type": "null"
                 }
-              },
-              "sources": {
-                "minItems": 1
               }
             }
           }
         }
-      ]
-    },
-    "WorkOrder": {
-      "type": "object",
+      ],
       "properties": {
-        "id": {
-          "$ref": "#/$defs/Id"
-        },
-        "account_id": {
-          "$ref": "#/$defs/Id"
-        },
-        "conversation_ids": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Id"
-          },
-          "minItems": 1
-        },
-        "summary": {
-          "type": "string",
-          "minLength": 1
-        },
-        "status": {
-          "$ref": "#/$defs/WorkOrderStatus"
-        },
-        "version": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "fields": {
-          "type": "object",
-          "properties": {
-            "schedule": {
-              "$ref": "#/$defs/ProvenancedField"
+        "interpretation": {
+          "anyOf": [
+            {
+              "type": "string"
             },
-            "address": {
-              "$ref": "#/$defs/ProvenancedField"
+            {
+              "type": "null"
             }
-          },
-          "required": [
-            "schedule",
-            "address"
           ],
-          "additionalProperties": false
+          "title": "Interpretation"
         },
-        "pending_change_ids": {
-          "type": "array",
+        "sources": {
           "items": {
-            "$ref": "#/$defs/Id"
+            "$ref": "#/$defs/SourceRef"
           },
-          "minItems": 0
-        },
-        "updated_at": {
-          "$ref": "#/$defs/UtcTimestamp"
-        }
-      },
-      "required": [
-        "id",
-        "account_id",
-        "conversation_ids",
-        "summary",
-        "status",
-        "version",
-        "fields",
-        "pending_change_ids",
-        "updated_at"
-      ],
-      "additionalProperties": false
-    },
-    "AccountConsent": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "$ref": "#/$defs/Id"
-        },
-        "account_id": {
-          "$ref": "#/$defs/Id"
-        },
-        "allowed_conversation_ids": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Id"
-          },
-          "minItems": 0
-        },
-        "scopes": {
-          "type": "array",
-          "items": {
-            "enum": [
-              "process_text",
-              "prepare_drafts",
-              "approved_send"
-            ]
-          },
-          "uniqueItems": true
+          "title": "Sources",
+          "type": "array"
         },
         "status": {
-          "enum": [
-            "active",
-            "paused",
-            "revoked"
-          ]
+          "$ref": "#/$defs/FieldStatus"
         },
-        "expires_at": {
+        "value": {
           "anyOf": [
             {
-              "$ref": "#/$defs/UtcTimestamp"
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/TimedSchedule"
+            },
+            {
+              "$ref": "#/$defs/DateOnly"
+            },
+            {
+              "$ref": "#/$defs/InstantDeadline"
             },
             {
               "type": "null"
             }
-          ]
+          ],
+          "title": "Value"
         }
       },
       "required": [
-        "id",
-        "account_id",
-        "allowed_conversation_ids",
-        "scopes",
+        "value",
         "status",
-        "expires_at"
+        "sources",
+        "interpretation"
       ],
-      "additionalProperties": false
+      "title": "ProvenancedField",
+      "type": "object"
     },
-    "Conversation": {
-      "type": "object",
+    "RejectActionCommand": {
+      "additionalProperties": false,
       "properties": {
-        "id": {
-          "$ref": "#/$defs/Id"
+        "expected_action_revision": {
+          "minimum": 1,
+          "title": "Expected Action Revision",
+          "type": "integer"
         },
-        "account_id": {
-          "$ref": "#/$defs/Id"
+        "expected_context_version": {
+          "minimum": 1,
+          "title": "Expected Context Version",
+          "type": "integer"
         },
-        "provider_conversation_id": {
-          "type": "string",
-          "minLength": 1
+        "expected_version": {
+          "minimum": 1,
+          "title": "Expected Version",
+          "type": "integer"
         },
-        "context_version": {
-          "type": "integer",
-          "minimum": 1
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
         },
-        "work_order_ids": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Id"
-          },
-          "minItems": 0
+        "snapshot_hash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Snapshot Hash",
+          "type": "string"
         }
       },
       "required": [
-        "id",
-        "account_id",
-        "provider_conversation_id",
-        "context_version",
-        "work_order_ids"
+        "expected_version",
+        "expected_context_version",
+        "expected_action_revision",
+        "snapshot_hash",
+        "reason"
       ],
-      "additionalProperties": false
+      "title": "RejectActionCommand",
+      "type": "object"
     },
-    "ConversationMessage": {
-      "type": "object",
+    "RejectCommand": {
+      "additionalProperties": false,
       "properties": {
-        "id": {
-          "$ref": "#/$defs/Id"
+        "expected_version": {
+          "minimum": 1,
+          "title": "Expected Version",
+          "type": "integer"
         },
-        "account_id": {
-          "$ref": "#/$defs/Id"
-        },
-        "conversation_id": {
-          "$ref": "#/$defs/Id"
-        },
-        "provider_message_id": {
-          "type": "string",
-          "minLength": 1
-        },
-        "revision": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "direction": {
-          "enum": [
-            "incoming",
-            "outgoing"
-          ]
-        },
-        "source": {
-          "enum": [
-            "app",
-            "api",
-            "replay"
-          ]
-        },
-        "occurred_at": {
-          "$ref": "#/$defs/UtcTimestamp"
-        },
-        "text": {
-          "anyOf": [
-            {
-              "type": "string",
-              "minLength": 1
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "revoked": {
-          "type": "boolean"
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
         }
       },
       "required": [
-        "id",
-        "account_id",
-        "conversation_id",
-        "provider_message_id",
-        "revision",
-        "direction",
-        "source",
-        "occurred_at",
-        "text",
-        "revoked"
+        "expected_version",
+        "reason"
       ],
-      "additionalProperties": false
+      "title": "RejectCommand",
+      "type": "object"
     },
     "RequirementChange": {
-      "type": "object",
+      "additionalProperties": false,
       "properties": {
-        "id": {
-          "$ref": "#/$defs/Id"
-        },
         "account_id": {
-          "$ref": "#/$defs/Id"
+          "format": "uuid",
+          "title": "Account Id",
+          "type": "string"
         },
-        "work_order_id": {
-          "$ref": "#/$defs/Id"
+        "base_work_order_version": {
+          "minimum": 1,
+          "title": "Base Work Order Version",
+          "type": "integer"
+        },
+        "customer_confirmation": {
+          "$ref": "#/$defs/CustomerConfirmation"
         },
         "field": {
           "enum": [
@@ -458,36 +909,96 @@
             "quantity",
             "specification",
             "deadline"
-          ]
+          ],
+          "title": "Field",
+          "type": "string"
         },
-        "old_value": {
-          "$ref": "#/$defs/FieldValue"
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
         },
         "new_value": {
-          "$ref": "#/$defs/FieldValue"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/TimedSchedule"
+            },
+            {
+              "$ref": "#/$defs/DateOnly"
+            },
+            {
+              "$ref": "#/$defs/InstantDeadline"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "New Value"
         },
-        "status": {
-          "$ref": "#/$defs/FieldStatus"
-        },
-        "customer_confirmation": {
-          "$ref": "#/$defs/CustomerConfirmation"
+        "old_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/TimedSchedule"
+            },
+            {
+              "$ref": "#/$defs/DateOnly"
+            },
+            {
+              "$ref": "#/$defs/InstantDeadline"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Old Value"
         },
         "proposer": {
           "enum": [
             "customer",
             "merchant"
-          ]
+          ],
+          "title": "Proposer",
+          "type": "string"
         },
         "sources": {
-          "type": "array",
           "items": {
             "$ref": "#/$defs/SourceRef"
           },
-          "minItems": 1
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
         },
-        "base_work_order_version": {
-          "type": "integer",
-          "minimum": 1
+        "status": {
+          "$ref": "#/$defs/FieldStatus"
+        },
+        "work_order_id": {
+          "format": "uuid",
+          "title": "Work Order Id",
+          "type": "string"
         }
       },
       "required": [
@@ -503,47 +1014,87 @@
         "sources",
         "base_work_order_version"
       ],
-      "additionalProperties": false
+      "title": "RequirementChange",
+      "type": "object"
+    },
+    "ScheduleValue": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TimedSchedule"
+        },
+        {
+          "$ref": "#/$defs/DateOnly"
+        }
+      ]
+    },
+    "SourceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "message_id": {
+          "format": "uuid",
+          "title": "Message Id",
+          "type": "string"
+        },
+        "message_revision": {
+          "minimum": 1,
+          "title": "Message Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "message_id",
+        "message_revision"
+      ],
+      "title": "SourceRef",
+      "type": "object"
     },
     "Task": {
-      "type": "object",
+      "additionalProperties": false,
       "properties": {
-        "id": {
-          "$ref": "#/$defs/Id"
-        },
         "account_id": {
-          "$ref": "#/$defs/Id"
+          "format": "uuid",
+          "title": "Account Id",
+          "type": "string"
         },
-        "work_order_id": {
-          "$ref": "#/$defs/Id"
-        },
-        "work_order_version": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "title": {
-          "type": "string",
-          "minLength": 1
-        },
-        "owner_id": {
-          "$ref": "#/$defs/Id"
+        "depends_on": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
         },
         "due": {
           "anyOf": [
             {
-              "$ref": "#/$defs/DeadlineValue"
+              "$ref": "#/$defs/InstantDeadline"
+            },
+            {
+              "$ref": "#/$defs/DateOnly"
             },
             {
               "type": "null"
             }
-          ]
+          ],
+          "title": "Due"
         },
-        "depends_on": {
-          "type": "array",
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "owner_id": {
+          "format": "uuid",
+          "title": "Owner Id",
+          "type": "string"
+        },
+        "sources": {
           "items": {
-            "$ref": "#/$defs/Id"
+            "$ref": "#/$defs/SourceRef"
           },
-          "minItems": 0
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
         },
         "state": {
           "enum": [
@@ -551,14 +1102,24 @@
             "blocked",
             "completed",
             "cancelled"
-          ]
+          ],
+          "title": "State",
+          "type": "string"
         },
-        "sources": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/SourceRef"
-          },
-          "minItems": 1
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "work_order_id": {
+          "format": "uuid",
+          "title": "Work Order Id",
+          "type": "string"
+        },
+        "work_order_version": {
+          "minimum": 1,
+          "title": "Work Order Version",
+          "type": "integer"
         }
       },
       "required": [
@@ -573,426 +1134,153 @@
         "state",
         "sources"
       ],
-      "additionalProperties": false
+      "title": "Task",
+      "type": "object"
     },
-    "CalendarEvent": {
-      "type": "object",
+    "TimedSchedule": {
+      "additionalProperties": false,
       "properties": {
-        "id": {
-          "$ref": "#/$defs/Id"
-        },
-        "account_id": {
-          "$ref": "#/$defs/Id"
-        },
-        "work_order_id": {
-          "$ref": "#/$defs/Id"
-        },
-        "work_order_version": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "schedule": {
-          "$ref": "#/$defs/ScheduleValue"
-        },
-        "tentative": {
-          "type": "boolean"
-        },
-        "buffer_minutes": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "sources": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/SourceRef"
-          },
-          "minItems": 1
-        }
-      },
-      "required": [
-        "id",
-        "account_id",
-        "work_order_id",
-        "work_order_version",
-        "schedule",
-        "tentative",
-        "buffer_minutes",
-        "sources"
-      ],
-      "additionalProperties": false
-    },
-    "ApprovalAction": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "$ref": "#/$defs/Id"
-        },
-        "account_id": {
-          "$ref": "#/$defs/Id"
-        },
-        "work_order_id": {
-          "$ref": "#/$defs/Id"
-        },
-        "conversation_id": {
-          "$ref": "#/$defs/Id"
+        "end_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "End At",
+          "type": "string"
         },
         "kind": {
-          "const": "send_text"
+          "const": "timed",
+          "title": "Kind",
+          "type": "string"
         },
-        "revision": {
-          "type": "integer",
-          "minimum": 1
+        "start_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Start At",
+          "type": "string"
         },
-        "state": {
-          "$ref": "#/$defs/ActionState"
-        },
-        "recipient": {
-          "type": "string",
-          "minLength": 1
-        },
-        "body": {
-          "type": "string",
-          "minLength": 1
-        },
-        "bound_work_order_version": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "bound_context_version": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "snapshot_hash": {
-          "type": "string",
-          "pattern": "^sha256:[a-f0-9]{64}$"
-        },
-        "expires_at": {
-          "$ref": "#/$defs/UtcTimestamp"
-        },
-        "approved_by": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Id"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "approved_at": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/UtcTimestamp"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "idempotency_key": {
-          "type": "string",
-          "minLength": 1
-        },
-        "provider_message_id": {
-          "anyOf": [
-            {
-              "type": "string",
-              "minLength": 1
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "delivery_status": {
-          "enum": [
-            "not_submitted",
-            "accepted",
-            "sent",
-            "delivered",
-            "read",
-            "unknown"
-          ]
-        },
-        "sources": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/SourceRef"
-          },
-          "minItems": 1
+        "timezone": {
+          "minLength": 1,
+          "title": "Timezone",
+          "type": "string"
         }
       },
       "required": [
-        "id",
-        "account_id",
-        "work_order_id",
-        "conversation_id",
         "kind",
-        "revision",
-        "state",
-        "recipient",
-        "body",
-        "bound_work_order_version",
-        "bound_context_version",
-        "snapshot_hash",
-        "expires_at",
-        "approved_by",
-        "approved_at",
-        "idempotency_key",
-        "provider_message_id",
-        "delivery_status",
-        "sources"
+        "start_at",
+        "end_at",
+        "timezone"
       ],
-      "additionalProperties": false,
-      "allOf": [
-        {
-          "if": {
-            "properties": {
-              "state": {
-                "enum": [
-                  "approved",
-                  "executing",
-                  "succeeded",
-                  "failed",
-                  "result_unknown"
-                ]
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "approved_by": {
-                "$ref": "#/$defs/Id"
-              },
-              "approved_at": {
-                "$ref": "#/$defs/UtcTimestamp"
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "state": {
-                "const": "result_unknown"
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "delivery_status": {
-                "const": "unknown"
-              }
-            }
-          }
-        }
-      ]
+      "title": "TimedSchedule",
+      "type": "object"
     },
-    "AuditLog": {
-      "type": "object",
+    "Timezone": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "UtcTimestamp": {
+      "format": "date-time",
+      "pattern": "Z$",
+      "type": "string"
+    },
+    "WorkOrder": {
+      "additionalProperties": false,
       "properties": {
-        "id": {
-          "$ref": "#/$defs/Id"
-        },
         "account_id": {
-          "$ref": "#/$defs/Id"
+          "format": "uuid",
+          "title": "Account Id",
+          "type": "string"
         },
-        "actor_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Id"
-            },
-            {
-              "type": "null"
-            }
-          ]
+        "conversation_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Conversation Ids",
+          "type": "array"
         },
-        "entity_type": {
-          "type": "string",
-          "minLength": 1
+        "fields": {
+          "$ref": "#/$defs/WorkOrderFields"
         },
-        "entity_id": {
-          "$ref": "#/$defs/Id"
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
         },
-        "action_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Id"
-            },
-            {
-              "type": "null"
-            }
-          ]
+        "pending_change_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Pending Change Ids",
+          "type": "array"
         },
-        "operation": {
-          "type": "string",
-          "minLength": 1
+        "status": {
+          "$ref": "#/$defs/WorkOrderStatus"
         },
-        "occurred_at": {
-          "$ref": "#/$defs/UtcTimestamp"
+        "summary": {
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
         },
-        "request_id": {
-          "$ref": "#/$defs/Id"
+        "updated_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
         }
       },
       "required": [
         "id",
         "account_id",
-        "actor_id",
-        "entity_type",
-        "entity_id",
-        "action_id",
-        "operation",
-        "occurred_at",
-        "request_id"
+        "conversation_ids",
+        "summary",
+        "status",
+        "version",
+        "fields",
+        "pending_change_ids",
+        "updated_at"
       ],
-      "additionalProperties": false
+      "title": "WorkOrder",
+      "type": "object"
     },
-    "ConfirmChangeCommand": {
-      "type": "object",
+    "WorkOrderFields": {
+      "additionalProperties": false,
       "properties": {
-        "expected_version": {
-          "type": "integer",
-          "minimum": 1
+        "address": {
+          "$ref": "#/$defs/ProvenancedField"
         },
-        "expected_context_version": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "apply_calendar_update": {
-          "type": "boolean"
+        "schedule": {
+          "$ref": "#/$defs/ProvenancedField"
         }
       },
       "required": [
-        "expected_version",
-        "expected_context_version",
-        "apply_calendar_update"
+        "schedule",
+        "address"
       ],
-      "additionalProperties": false
+      "title": "WorkOrderFields",
+      "type": "object"
     },
-    "RejectCommand": {
-      "type": "object",
-      "properties": {
-        "expected_version": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "reason": {
-          "type": "string",
-          "minLength": 1
-        }
-      },
-      "required": [
-        "expected_version",
-        "reason"
+    "WorkOrderStatus": {
+      "enum": [
+        "unclassified",
+        "pending_confirmation",
+        "confirmed",
+        "in_progress",
+        "waiting_customer",
+        "completed",
+        "cancelled"
       ],
-      "additionalProperties": false
-    },
-    "ApproveActionCommand": {
-      "type": "object",
-      "properties": {
-        "expected_version": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "expected_context_version": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "expected_action_revision": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "snapshot_hash": {
-          "type": "string",
-          "pattern": "^sha256:[a-f0-9]{64}$"
-        }
-      },
-      "required": [
-        "expected_version",
-        "expected_context_version",
-        "expected_action_revision",
-        "snapshot_hash"
-      ],
-      "additionalProperties": false
-    },
-    "RejectActionCommand": {
-      "type": "object",
-      "properties": {
-        "expected_version": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "expected_context_version": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "expected_action_revision": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "snapshot_hash": {
-          "type": "string",
-          "pattern": "^sha256:[a-f0-9]{64}$"
-        },
-        "reason": {
-          "type": "string",
-          "minLength": 1
-        }
-      },
-      "required": [
-        "expected_version",
-        "expected_context_version",
-        "expected_action_revision",
-        "snapshot_hash",
-        "reason"
-      ],
-      "additionalProperties": false
-    },
-    "DeadlineValue": {
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "const": "instant"
-            },
-            "at": {
-              "$ref": "#/$defs/UtcTimestamp"
-            },
-            "timezone": {
-              "$ref": "#/$defs/Timezone"
-            }
-          },
-          "required": [
-            "kind",
-            "at",
-            "timezone"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "const": "date_only"
-            },
-            "date": {
-              "type": "string",
-              "format": "date"
-            },
-            "timezone": {
-              "$ref": "#/$defs/Timezone"
-            }
-          },
-          "required": [
-            "kind",
-            "date",
-            "timezone"
-          ],
-          "additionalProperties": false
-        }
-      ]
+      "title": "WorkOrderStatus",
+      "type": "string"
     }
-  }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Generated from apps/backend/src/gigmate/contracts.py; do not edit manually",
+  "title": "GigMate domain models",
+  "x-version": "0.1.0"
 }

@@ -24,6 +24,6 @@ With one maintainer, record self-review against the checklist before merging. On
 
 Wire fields use snake_case and canonical enums. Required-field additions, removals, renames, enum changes and reinterpreted states are breaking: bump the major schema/API version and describe migration. Compatible optional additions may bump minor versions, but strict clients still require coordination.
 
-Before backend implementation, handwritten schemas and API agreements are canonical. Execute the schema-source transition in [ADR 0002](adr/0002-contract-authority.md) as one reviewed change; do not keep manual and generated competing definitions. Never edit a shared migration to hide a schema change.
+The transition in [ADR 0002](adr/0002-contract-authority.md) is implemented. Update Pydantic models, run scripts/export_contracts.py and frontend generate:api, then verify drift and fixture compatibility. Event/AI schemas remain independently maintained. Never edit generated files or shared migrations to hide a change. Update both implementation-status records with actual evidence.
 
 Record architectural decisions in ADRs. Use issues for current work and blockers; when contributors join, assign module owners and check the main flow daily.

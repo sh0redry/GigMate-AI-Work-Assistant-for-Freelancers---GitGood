@@ -1,8 +1,8 @@
 # Engineering documentation
 
-Baseline: **0.1**. Updated: **2026-10-01**.
+Milestone: **0.2 replay skeleton**. Updated: **2026-10-01**.
 
-These agreements prepare a single-maintainer repository for later contributors. The documentation and contracts are established; application implementation and live connector verification remain pending.
+These agreements prepare the repository for later contributors. A runnable synthetic replay skeleton is implemented. Live connector verification, general extraction and external sending remain pending.
 
 | Document | Purpose |
 | --- | --- |
@@ -12,7 +12,8 @@ These agreements prepare a single-maintainer repository for later contributors. 
 | [Contributing](contributing.md) | Task, branch, review and completion rules |
 | [Decisions](adr/README.md) | Accepted choices and change conditions |
 | [Contracts](../../contracts/README.md) | Canonical schemas, API agreement and synthetic fixtures |
+| [Implementation status](implementation-status.md) | Completed work, evidence and outstanding capability |
 
-Accepted ADRs govern architecture; schemas govern shapes and enums; the API agreement governs endpoint behavior. A schema-valid object is not proof of authorization or business correctness. Update related contracts, examples, tests and documentation together. The current repository maintainer owns the baseline until module owners are assigned.
+Accepted ADRs govern architecture; Pydantic models generate domain shapes and implemented OpenAPI; event/AI schemas remain independently maintained. A schema-valid object is not proof of authorization. Update source models, generated contracts/types, samples, tests and bilingual rules together. The current maintainer owns modules until contributors join.
 
 The earlier kickoff proposal is retained as planning history and superseded by this baseline for engineering requirements. The supplied v2 product plan remains source context, not proof of implemented features or user results.

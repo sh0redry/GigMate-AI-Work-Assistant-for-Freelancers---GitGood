@@ -61,6 +61,11 @@ required_files = [
     '.github/ISSUE_TEMPLATE/task.md', '.github/ISSUE_TEMPLATE/bug.md',
     '.github/pull_request_template.md', '.github/workflows/baseline.yml',
     'scripts/requirements-baseline.txt',
+    'docs/en/implementation-status.md', 'docs/zh/progress.md', 'contracts/openapi.json',
+    'apps/backend/pyproject.toml', 'apps/backend/requirements.lock', 'apps/backend/alembic.ini',
+    'apps/web/package.json', 'apps/web/package-lock.json', 'apps/web/src/generated/api.d.ts',
+    'infra/compose.yaml', 'scripts/export_contracts.py', 'scripts/check_web_contracts.mjs',
+    'scripts/smoke_replay.py', '.github/workflows/skeleton.yml',
 ]
 for item in required_files:
     require((ROOT / item).is_file(), f'Missing baseline file: {item}')

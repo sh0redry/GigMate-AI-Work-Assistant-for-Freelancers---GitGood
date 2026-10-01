@@ -1,6 +1,6 @@
 # ADR 0001 Foundation architecture
 
-- Status: Accepted baseline; implementation pending
+- Status: Accepted; replay foundation implemented in v0.2
 - Date: 2026-10-01
 - Owner: Repository maintainer
 
@@ -15,3 +15,7 @@ WAHA and replay are adapters. Replay is the default synthetic development path; 
 One developer can prepare module boundaries without multiple deployments. Coupled business updates use database transactions. Jobs need leases, recovery and reconciliation tests. Add Redis/queues only for measured needs. A TypeScript backend remains an alternative if team expertise changes; replacing this choice requires an ADR and contract continuity.
 
 Review when contributors' expertise, sustained workload or official connector requirements materially change. FastAPI supports OpenAPI and Pydantic-based data handling; see [official features](https://fastapi.tiangolo.com/features/).
+
+## Implementation record 2026-10-01
+
+Python 3.12.10, Node 24.15.0 and PostgreSQL 17.9 are pinned. Native npm 11.12.1 and Linux containers were verified. Locks, migration 0001, Compose and separate worker are implemented. JSON-backed projections keep the initial schema compact; future query scale may require normalized tables. PostgreSQL account locks serialize mutations; jobs use SKIP LOCKED, leases and bounded retries. SQLite is test-only. Authentication is a seeded development session flow; production authentication is pending.

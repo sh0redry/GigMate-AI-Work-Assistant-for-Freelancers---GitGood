@@ -2,9 +2,9 @@
 
 ## Scope and authority
 
-This repository is at engineering baseline v0.1. Build only the requested milestone. Do not describe planned services as implemented. Use a single repository with a modular backend and a separate worker.
+This repository is at engineering skeleton v0.2, supporting synthetic replay. Build only the requested milestone. Live integration, general extraction and sending remain pending. Use a single repository with a modular backend and separate worker.
 
-Read `docs/en/architecture.md`, relevant accepted ADRs, and `contracts/README.md` before changing shared behavior. Schemas govern field names and enums; accepted ADRs govern architecture; the API contract governs endpoint behavior. English documentation explains the baseline; Chinese documentation provides internal checks. Update affected documents together and resolve contradictions. `docs/project-kickoff-plan.md` is historical planning, not the active standard.
+Read docs/en/architecture.md, relevant ADRs and contracts/README.md. Pydantic models in apps/backend/src/gigmate/contracts.py govern domain shapes; scripts/export_contracts.py generates the domain schema and implemented OpenAPI. Never edit generated files manually. Event/AI schemas remain independently versioned. API documentation distinguishes implementation from targets. Update related English/Chinese documentation together. docs/project-kickoff-plan.md is planning history.
 
 ## Required rules
 
@@ -28,6 +28,6 @@ Current check from the repository root:
 python scripts/check_baseline.py
 ```
 
-Install the pinned validator first as documented in `docs/en/getting-started.md`. Missing schema dependencies must fail clearly, not silently skip validation. Application tests and lint do not exist yet; add actual verified commands at the skeleton milestone. Future behavior changes need relevant normal and failure-path tests, especially ownership, stale approval, duplicates and unknown outcomes.
+Use the project .venv and backend lock. Verified commands and PostgreSQL test setup are in docs/en/getting-started.md. Run applicable Ruff check/format, export_contracts.py --check, check_baseline.py, pytest and frontend check:api/format:check/build. SQLite tests do not prove PostgreSQL locking. Record completed work and actual evidence in docs/en/implementation-status.md and docs/zh/progress.md. Missing dependencies must fail clearly; test meaningful normal/failure paths.
 
 Do not commit or push unless requested. Do not add links to `docs/zh/` in root README. Never include real conversations, credentials, QR codes or session files in tracked files. Report exactly what was verified and any limits.

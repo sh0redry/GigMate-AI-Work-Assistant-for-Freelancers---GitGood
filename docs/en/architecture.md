@@ -26,7 +26,7 @@ flowchart TD
   Q --> DB
 ```
 
-This is a target architecture, not a deployed system.
+Replay ingestion, durable worker, fixed extraction stub, internal confirmation, calendar/task updates and audit are implemented. The external connector/model/outbox/send branch remains target architecture. PostgreSQL is the Compose runtime; SQLite is only a test fallback.
 
 ## Modules
 
@@ -40,7 +40,7 @@ This is a target architecture, not a deployed system.
 | actions | Approval snapshots, invalidation, outbox, reconciliation | Only external-write gateway |
 | audit | Actors, traces, deletion coverage | Traceability without full content in logs |
 
-Modules use application services rather than writing another module's tables directly. HTTP handlers and adapters map data, not independent business rules. The current sole maintainer owns all modules; assign named owners when contributors join.
+Initial services are responsibility-named Python files under apps/backend/src/gigmate; split into packages when they grow. Do not create unused module packages. Services share deterministic rules. Schedule confirmation is implemented; other domain commands and external actions remain pending. The sole maintainer owns all modules until contributors join.
 
 ## Data and reliability
 

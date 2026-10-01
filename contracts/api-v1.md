@@ -1,6 +1,10 @@
 # Business API agreement
 
-Status: **baseline 0.1.0, endpoints not implemented**. Prefix: `/api/v1`. JSON requests and responses. Server-session authentication using HttpOnly cookies; same-site deployment with CSRF tokens for mutations. Establish exact cookie and CSRF settings during the skeleton milestone. All resources are scoped by authenticated account context; a client-supplied account ID cannot authorize access.
+Status: **wire baseline 0.1.0, v0.2 subset implemented**. Prefix: `/api/v1`. JSON and server-session HttpOnly/SameSite=strict cookies; CSRF tokens and trusted-origin checks protect mutations. COOKIE_SECURE defaults false for loopback HTTP development; this is not production authentication. Resources are scoped by trusted account context, never client account IDs. Implemented routes are listed in generated [OpenAPI](openapi.json).
+
+Implemented: login/logout; order list/detail/change list/schedule confirmation; conversation detail/latest-revision message list; task/calendar list; replay connection status; synthetic replay and custom-event ingestion. Changes include context_version and computed conflict_ids in the response view. Not implemented: rejection/edit commands, actions/approvals/cancellation/outbox/sending, and calendar start/end filters or task work_order filters. The inventory below is a target; OpenAPI is the implemented subset. All skeleton lists use stable ID order, with the UI sorting displayed messages by occurred_at. Larger-volume database-side pagination is future work.
+
+POST /auth/login is a pre-auth development credential flow with origin checking; logout requires session/CSRF. These auth endpoints do not use business idempotency keys. POST /replay accepts scenario=reschedule or available; POST /replay/events accepts a normalized replay event; both require session, CSRF and Idempotency-Key. No public provider webhook exists yet.
 
 ## Responses and errors
 
@@ -13,7 +17,7 @@ Errors: `{"error": {"code": "VERSION_CONFLICT", "message": "Refresh and review t
 | 401 | UNAUTHENTICATED | No valid session |
 | 403 | FORBIDDEN, CONSENT_REVOKED, CSRF_REJECTED | Denied mutation; no permission bypass retry |
 | 404 | NOT_FOUND | Missing or another account's resource |
-| 409 | VERSION_CONFLICT, APPROVAL_STALE, IDEMPOTENCY_CONFLICT | Refresh and review; never overwrite |
+| 409 | VERSION_CONFLICT, APPROVAL_STALE, IDEMPOTENCY_CONFLICT, SCHEDULE_CONFLICT | Refresh and review; never overwrite or accept overlap |
 | 422 | VALIDATION_FAILED | Invalid shape or domain input |
 | 429 | RATE_LIMITED | Respect retry instruction |
 | 503 | CONNECTOR_UNAVAILABLE | No claim of send success |
@@ -51,4 +55,4 @@ There is no browser `send arbitrary text` endpoint. An approved action is queued
 
 ## Skeleton transition
 
-Implement the inventory with Pydantic models, ownership/CSRF/version tests and generated OpenAPI. Generate frontend types and assert drift in CI. This document is behavior guidance; it is not a substitute for a validated OpenAPI implementation.
+Pydantic domain generation, implemented OpenAPI, frontend type generation, ownership/CSRF/version tests and drift checks are present. Extend the remaining inventory through source models/routes and regenerate contracts. This document records behavior and planned scope; OpenAPI reflects actual implementation.

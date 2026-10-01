@@ -6,9 +6,19 @@ Customers keep using their existing chat. The merchant uses a mobile-friendly wo
 
 ## Repository status
 
-**Engineering baseline v0.1 — documentation and contracts.** Application services, database migrations, live WhatsApp integration, and business tests have not been implemented yet. This repository does not currently provide a running product. The next milestone is a reproducible environment and a minimal replay-driven workflow.
+**Engineering skeleton v0.2 — runnable synthetic replay.** The workspace, API, PostgreSQL migration, independent worker, development authentication, proposal confirmation and persistence are implemented. Live WhatsApp integration, general AI extraction and external sending have not been implemented. This is a development skeleton, not a production deployment.
 
-## First workflow
+## Run locally
+
+With Docker Engine / Docker Desktop and Compose running, execute from the repository root:
+
+```text
+docker compose --env-file .env.example -f infra/compose.yaml up --build -d --wait
+```
+
+Open [the replay workspace](http://127.0.0.1:18080). Development accounts: merchant and other. Sample password: demo-only-change-me. Replay the conflicting 15:00 request, then the available 16:30 request; confirm the latter to persist order/calendar/task changes. No real account credentials are needed. See onboarding for overrides and checks.
+
+## Target P0 workflow
 
 1. Receive a customer's rescheduling request and retain the source message.
 2. Associate it with a work order; show the proposed time, missing address, and conflict.
@@ -26,11 +36,12 @@ A proposal is not a confirmed commitment. AI produces suggestions; server-side r
 - [Developer onboarding](docs/en/getting-started.md)
 - [Contribution and review process](docs/en/contributing.md)
 - [Architecture decisions](docs/en/adr/README.md)
+- [Implementation status and validation](docs/en/implementation-status.md)
 - [Shared contracts and synthetic examples](contracts/README.md)
 
 ## Planned foundation
 
-React and TypeScript for the workspace; FastAPI and Pydantic for the API; PostgreSQL for durable business state and jobs; SQLAlchemy and Alembic for migrations; an independent worker sharing backend code; Docker Compose for local development. Exact runtime and dependency versions will be pinned during the skeleton milestone.
+React and TypeScript for the workspace; FastAPI/Pydantic for the API; PostgreSQL for state and jobs; SQLAlchemy/Alembic for migrations; an independent worker; Docker Compose. Python 3.12.10, Node 24.15.0 and PostgreSQL 17.9 are pinned, with backend and frontend dependency locks.
 
 The prototype connector is planned as a WAHA adapter alongside a replay adapter. WAHA is unofficial and does not guarantee protection from account blocking. Live integration must be verified separately from replay; commercial integration is a separate decision. See the [WAHA disclaimer](https://waha.devlike.pro/docs/overview/introduction/).
 

@@ -1,0 +1,31 @@
+{
+  "name": "gigmate-web",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "engines": {
+    "node": "24.15.x",
+    "npm": "11.12.x"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && vite build",
+    "generate:api": "openapi-typescript ../../contracts/openapi.json -o src/generated/api.d.ts && prettier --write src/generated/api.d.ts",
+    "check:api": "node ../../scripts/check_web_contracts.mjs",
+    "format": "prettier --write src index.html package.json tsconfig.json vite.config.ts",
+    "format:check": "prettier --check src index.html package.json tsconfig.json vite.config.ts"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "vite": "8.3.1",
+    "typescript": "5.9.3",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "openapi-typescript": "7.13.0",
+    "prettier": "3.8.1"
+  }
+}

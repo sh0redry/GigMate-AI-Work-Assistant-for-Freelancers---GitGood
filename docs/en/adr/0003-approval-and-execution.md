@@ -1,6 +1,6 @@
 # ADR 0003 Approval and durable execution
 
-- Status: Accepted baseline; implementation pending
+- Status: Accepted; internal confirmation implemented, external execution pending
 - Date: 2026-10-01
 - Owner: Repository maintainer
 
@@ -17,3 +17,7 @@ Persist approved work and outbox together. Workers use leases, stable idempotenc
 ## Validation requirements
 
 Cover stale work-order/context/action versions, edited content, revoked consent, disconnect, forged approval, unknown outcomes, duplicate events, API echoes and inbound/dispatch races. Fixtures are preparatory; application tests must later exercise services and persistence. Externally sent messages cannot be rolled back as database mutations.
+
+## v0.2 boundary
+
+Internal schedule confirmation has account/context/version/source checks, conflict rejection, idempotent results and one transaction for order/calendar/generated tasks/audit. Accepted input invalidates pending internal proposals before extraction. No send adapter, action approval endpoint or external outbox exists yet; those requirements remain acceptance targets.

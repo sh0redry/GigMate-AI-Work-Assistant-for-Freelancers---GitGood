@@ -1,0 +1,58 @@
+name: Replay skeleton
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.9
+        env:
+          POSTGRES_USER: gigmate
+          POSTGRES_PASSWORD: local-replay-only
+          POSTGRES_DB: gigmate
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U gigmate -d gigmate"
+          --health-interval 3s --health-timeout 3s --health-retries 20
+    env:
+      PYTHONPATH: apps/backend/src
+      DATABASE_URL: postgresql+psycopg://gigmate:local-replay-only@127.0.0.1:5432/gigmate
+      TEST_DATABASE_URL: postgresql+psycopg://gigmate:local-replay-only@127.0.0.1:5432/gigmate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+      - run: pip install -r apps/backend/requirements.lock
+      - run: ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py
+      - run: ruff format --check apps/backend scripts/export_contracts.py scripts/smoke_replay.py
+      - run: python scripts/export_contracts.py --check
+      - run: python scripts/check_baseline.py
+      - run: alembic -c apps/backend/alembic.ini upgrade head
+      - run: alembic -c apps/backend/alembic.ini check
+      - run: pytest apps/backend/tests -q
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+        working-directory: apps/web
+      - run: npm run check:api
+        working-directory: apps/web
+      - run: npm run format:check
+        working-directory: apps/web
+      - run: npm run build
+        working-directory: apps/web

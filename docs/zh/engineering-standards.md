@@ -2,7 +2,7 @@
 
 ## 架构与目录
 
-采用单仓库、模块化单体后端、独立 worker，同一业务代码及数据库迁移。前端 React/TypeScript/Vite；后端 FastAPI/Pydantic；数据库 PostgreSQL；迁移 SQLAlchemy/Alembic；开发环境 Docker Compose。具体运行时和依赖版本在搭骨架时锁定，不把校验脚本运行机器的版本当作应用版本。
+采用单仓库、模块化单体后端、独立 worker。React/TypeScript/Vite、FastAPI/Pydantic、PostgreSQL、SQLAlchemy/Alembic 和 Compose 已落地。Python 3.12.10、Node 24.15.0、PostgreSQL 17.9 及依赖锁固定，实际命令见开发入口。
 
 后续应用放 apps/web、apps/backend，基础部署放 infra，校验与工具放 scripts。当前阶段不创建无实现的应用空目录。模块职责见[英文架构](../en/architecture.md)：identity、messaging、understanding、workorders、planning、actions、audit。
 
@@ -56,6 +56,6 @@ Task.due 使用 DeadlineValue 表示单个截止时刻或日期；CalendarEvent.
 
 ## 契约演进
 
-当前 schema 和 API 文档是唯一契约来源。实现 Pydantic 后按 ADR 0002 一次性转为生成流程，增加兼容性和漂移检查，不维护两套手写/生成定义。破坏性变化升级主版本并提供迁移说明；严格 schema 拒绝未知字段，所谓可选字段添加也要协调消费者升级。
+当前 domain schema 和已实现 OpenAPI 由 Pydantic/路由生成，前端类型再由 OpenAPI 生成；使用 export_contracts.py --check 和前端 check:api 检查漂移，禁止手改生成文件。事件与 AI schema 独立维护。破坏性变化升级主版本并提供迁移说明；可选字段也要协调严格消费者升级。
 
-提交依赖锁文件；迁移在 PR 中复核；已共享迁移用新迁移修正。应用格式化、lint、类型和测试具体工具/版本在骨架阶段锁定并提供真实命令。
+提交依赖锁文件；迁移在 PR 中复核；已共享迁移用新迁移修正。当前使用固定版本 Ruff、Prettier、TypeScript 和 pytest，CI 与开发入口包含实际命令。每次完成工作须更新中英文完成记录。

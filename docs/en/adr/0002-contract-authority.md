@@ -1,6 +1,6 @@
 # ADR 0002 Documentation and contract authority
 
-- Status: Accepted baseline; schema generation pending
+- Status: Accepted; domain/OpenAPI/type generation implemented in v0.2
 - Date: 2026-10-01
 - Owner: Repository maintainer
 
@@ -12,6 +12,6 @@ ADRs govern architecture, schemas govern fields/enums, and the API agreement gov
 
 ## Schema authority transition
 
-Baseline v0.1 uses handwritten schemas and API agreements because no backend exists. The skeleton must implement matching Pydantic models, demonstrate fixture compatibility, then switch domain/API schema generation to those models in one reviewed change. Add generated OpenAPI/frontend types, generated-file labels and CI drift checks. Keep independently versioned event and AI schemas explicit. Remove competing handwritten copies.
+Baseline v0.1 used handwritten domain schemas. In v0.2, apps/backend/src/gigmate/contracts.py is canonical; scripts/export_contracts.py generates contracts/domain/models.schema.json and contracts/openapi.json. Frontend generate:api creates src/generated/api.d.ts. Backend --check and frontend check:api detect drift; original positive/negative fixtures remain compatible. Event/AI schemas remain independently versioned. OpenAPI describes implemented routes only; model definitions do not establish implemented action services.
 
 Update affected documents and samples in the same PR. Negative fixtures are intentionally invalid and marked in the manifest. Scenario expectations describe intended behavior, not executed test results.
