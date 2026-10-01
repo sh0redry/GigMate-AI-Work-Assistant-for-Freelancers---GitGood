@@ -1,0 +1,19 @@
+{
+  "schema_version": "0.1.0",
+  "event_id": "00000000-0000-4000-8000-000000000014",
+  "event_type": "message.created",
+  "account_id": "00000000-0000-4000-8000-000000000001",
+  "connector": "replay",
+  "session_id": "synthetic:session-1",
+  "conversation_id": "00000000-0000-4000-8000-000000000002",
+  "provider_message_id": "synthetic:original-confirmation",
+  "occurred_at": "2026-10-01T00:30:00Z",
+  "received_at": "2026-10-01T00:30:01Z",
+  "direction": "incoming",
+  "source": "replay",
+  "message_revision": 1,
+  "payload": {
+    "message_id": "00000000-0000-4000-8000-000000000005",
+    "text": "确认十月七日下午三点到四点见面"
+  }
+}

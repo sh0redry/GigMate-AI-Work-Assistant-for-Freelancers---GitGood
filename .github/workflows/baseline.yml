@@ -1,0 +1,22 @@
+name: Engineering baseline
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  documentation-and-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install baseline validator
+        run: python -m pip install -r scripts/requirements-baseline.txt
+      - name: Check documentation and synthetic contracts
+        run: python scripts/check_baseline.py

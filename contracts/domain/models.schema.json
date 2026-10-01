@@ -1,0 +1,998 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GigMate domain baseline",
+  "description": "Initial wire models, not database definitions",
+  "x-version": "0.1.0",
+  "$defs": {
+    "Id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "UtcTimestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "Timezone": {
+      "type": "string",
+      "minLength": 1,
+      "description": "IANA timezone; semantic validation required"
+    },
+    "WorkOrderStatus": {
+      "enum": [
+        "unclassified",
+        "pending_confirmation",
+        "confirmed",
+        "in_progress",
+        "waiting_customer",
+        "completed",
+        "cancelled"
+      ]
+    },
+    "FieldStatus": {
+      "enum": [
+        "missing",
+        "proposed",
+        "confirmed",
+        "needs_review"
+      ]
+    },
+    "CustomerConfirmation": {
+      "enum": [
+        "not_requested",
+        "pending",
+        "confirmed",
+        "ambiguous"
+      ]
+    },
+    "ActionState": {
+      "enum": [
+        "draft",
+        "pending_approval",
+        "approved",
+        "executing",
+        "succeeded",
+        "failed",
+        "result_unknown",
+        "cancelled",
+        "expired"
+      ]
+    },
+    "SourceRef": {
+      "type": "object",
+      "properties": {
+        "message_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "message_revision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "message_id",
+        "message_revision"
+      ],
+      "additionalProperties": false
+    },
+    "ScheduleValue": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "timed"
+            },
+            "start_at": {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            "end_at": {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            "timezone": {
+              "$ref": "#/$defs/Timezone"
+            }
+          },
+          "required": [
+            "kind",
+            "start_at",
+            "end_at",
+            "timezone"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "date_only"
+            },
+            "date": {
+              "type": "string",
+              "format": "date"
+            },
+            "timezone": {
+              "$ref": "#/$defs/Timezone"
+            }
+          },
+          "required": [
+            "kind",
+            "date",
+            "timezone"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "FieldValue": {
+      "anyOf": [
+        {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ]
+        },
+        {
+          "$ref": "#/$defs/ScheduleValue"
+        },
+        {
+          "$ref": "#/$defs/DeadlineValue"
+        }
+      ]
+    },
+    "ProvenancedField": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/FieldValue"
+        },
+        "status": {
+          "$ref": "#/$defs/FieldStatus"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "minItems": 0
+        },
+        "interpretation": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "value",
+        "status",
+        "sources",
+        "interpretation"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "missing"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "confirmed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "not": {
+                  "type": "null"
+                }
+              },
+              "sources": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "WorkOrder": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "account_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "conversation_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Id"
+          },
+          "minItems": 1
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "$ref": "#/$defs/WorkOrderStatus"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "fields": {
+          "type": "object",
+          "properties": {
+            "schedule": {
+              "$ref": "#/$defs/ProvenancedField"
+            },
+            "address": {
+              "$ref": "#/$defs/ProvenancedField"
+            }
+          },
+          "required": [
+            "schedule",
+            "address"
+          ],
+          "additionalProperties": false
+        },
+        "pending_change_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Id"
+          },
+          "minItems": 0
+        },
+        "updated_at": {
+          "$ref": "#/$defs/UtcTimestamp"
+        }
+      },
+      "required": [
+        "id",
+        "account_id",
+        "conversation_ids",
+        "summary",
+        "status",
+        "version",
+        "fields",
+        "pending_change_ids",
+        "updated_at"
+      ],
+      "additionalProperties": false
+    },
+    "AccountConsent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "account_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "allowed_conversation_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Id"
+          },
+          "minItems": 0
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "process_text",
+              "prepare_drafts",
+              "approved_send"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "status": {
+          "enum": [
+            "active",
+            "paused",
+            "revoked"
+          ]
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "account_id",
+        "allowed_conversation_ids",
+        "scopes",
+        "status",
+        "expires_at"
+      ],
+      "additionalProperties": false
+    },
+    "Conversation": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "account_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "provider_conversation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "context_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "work_order_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Id"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "id",
+        "account_id",
+        "provider_conversation_id",
+        "context_version",
+        "work_order_ids"
+      ],
+      "additionalProperties": false
+    },
+    "ConversationMessage": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "account_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "conversation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "provider_message_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "direction": {
+          "enum": [
+            "incoming",
+            "outgoing"
+          ]
+        },
+        "source": {
+          "enum": [
+            "app",
+            "api",
+            "replay"
+          ]
+        },
+        "occurred_at": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revoked": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "account_id",
+        "conversation_id",
+        "provider_message_id",
+        "revision",
+        "direction",
+        "source",
+        "occurred_at",
+        "text",
+        "revoked"
+      ],
+      "additionalProperties": false
+    },
+    "RequirementChange": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "account_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "work_order_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "field": {
+          "enum": [
+            "schedule",
+            "address",
+            "summary",
+            "quantity",
+            "specification",
+            "deadline"
+          ]
+        },
+        "old_value": {
+          "$ref": "#/$defs/FieldValue"
+        },
+        "new_value": {
+          "$ref": "#/$defs/FieldValue"
+        },
+        "status": {
+          "$ref": "#/$defs/FieldStatus"
+        },
+        "customer_confirmation": {
+          "$ref": "#/$defs/CustomerConfirmation"
+        },
+        "proposer": {
+          "enum": [
+            "customer",
+            "merchant"
+          ]
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "minItems": 1
+        },
+        "base_work_order_version": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "id",
+        "account_id",
+        "work_order_id",
+        "field",
+        "old_value",
+        "new_value",
+        "status",
+        "customer_confirmation",
+        "proposer",
+        "sources",
+        "base_work_order_version"
+      ],
+      "additionalProperties": false
+    },
+    "Task": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "account_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "work_order_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "work_order_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "due": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeadlineValue"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "depends_on": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Id"
+          },
+          "minItems": 0
+        },
+        "state": {
+          "enum": [
+            "pending",
+            "blocked",
+            "completed",
+            "cancelled"
+          ]
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "id",
+        "account_id",
+        "work_order_id",
+        "work_order_version",
+        "title",
+        "owner_id",
+        "due",
+        "depends_on",
+        "state",
+        "sources"
+      ],
+      "additionalProperties": false
+    },
+    "CalendarEvent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "account_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "work_order_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "work_order_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "schedule": {
+          "$ref": "#/$defs/ScheduleValue"
+        },
+        "tentative": {
+          "type": "boolean"
+        },
+        "buffer_minutes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "id",
+        "account_id",
+        "work_order_id",
+        "work_order_version",
+        "schedule",
+        "tentative",
+        "buffer_minutes",
+        "sources"
+      ],
+      "additionalProperties": false
+    },
+    "ApprovalAction": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "account_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "work_order_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "conversation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "kind": {
+          "const": "send_text"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "state": {
+          "$ref": "#/$defs/ActionState"
+        },
+        "recipient": {
+          "type": "string",
+          "minLength": 1
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bound_work_order_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "bound_context_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "snapshot_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "approved_by": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approved_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provider_message_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "delivery_status": {
+          "enum": [
+            "not_submitted",
+            "accepted",
+            "sent",
+            "delivered",
+            "read",
+            "unknown"
+          ]
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "id",
+        "account_id",
+        "work_order_id",
+        "conversation_id",
+        "kind",
+        "revision",
+        "state",
+        "recipient",
+        "body",
+        "bound_work_order_version",
+        "bound_context_version",
+        "snapshot_hash",
+        "expires_at",
+        "approved_by",
+        "approved_at",
+        "idempotency_key",
+        "provider_message_id",
+        "delivery_status",
+        "sources"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "approved",
+                  "executing",
+                  "succeeded",
+                  "failed",
+                  "result_unknown"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "approved_by": {
+                "$ref": "#/$defs/Id"
+              },
+              "approved_at": {
+                "$ref": "#/$defs/UtcTimestamp"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "result_unknown"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "delivery_status": {
+                "const": "unknown"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "AuditLog": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "account_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "actor_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "entity_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "entity_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "action_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "occurred_at": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": [
+        "id",
+        "account_id",
+        "actor_id",
+        "entity_type",
+        "entity_id",
+        "action_id",
+        "operation",
+        "occurred_at",
+        "request_id"
+      ],
+      "additionalProperties": false
+    },
+    "ConfirmChangeCommand": {
+      "type": "object",
+      "properties": {
+        "expected_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "expected_context_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "apply_calendar_update": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "expected_version",
+        "expected_context_version",
+        "apply_calendar_update"
+      ],
+      "additionalProperties": false
+    },
+    "RejectCommand": {
+      "type": "object",
+      "properties": {
+        "expected_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "expected_version",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "ApproveActionCommand": {
+      "type": "object",
+      "properties": {
+        "expected_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "expected_context_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "expected_action_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "snapshot_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "expected_version",
+        "expected_context_version",
+        "expected_action_revision",
+        "snapshot_hash"
+      ],
+      "additionalProperties": false
+    },
+    "RejectActionCommand": {
+      "type": "object",
+      "properties": {
+        "expected_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "expected_context_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "expected_action_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "snapshot_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "expected_version",
+        "expected_context_version",
+        "expected_action_revision",
+        "snapshot_hash",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "DeadlineValue": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "instant"
+            },
+            "at": {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            "timezone": {
+              "$ref": "#/$defs/Timezone"
+            }
+          },
+          "required": [
+            "kind",
+            "at",
+            "timezone"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "date_only"
+            },
+            "date": {
+              "type": "string",
+              "format": "date"
+            },
+            "timezone": {
+              "$ref": "#/$defs/Timezone"
+            }
+          },
+          "required": [
+            "kind",
+            "date",
+            "timezone"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

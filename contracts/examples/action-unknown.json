@@ -1,0 +1,26 @@
+{
+  "id": "00000000-0000-4000-8000-000000000006",
+  "account_id": "00000000-0000-4000-8000-000000000001",
+  "work_order_id": "00000000-0000-4000-8000-000000000003",
+  "conversation_id": "00000000-0000-4000-8000-000000000002",
+  "kind": "send_text",
+  "revision": 1,
+  "state": "result_unknown",
+  "recipient": "synthetic:customer-1",
+  "body": "收到，你想改到下星期四下午三点。我这个时间已有预约，请把地址发给我，我再核对其他时间。",
+  "bound_work_order_version": 3,
+  "bound_context_version": 5,
+  "snapshot_hash": "sha256:3f2ba7b2f375a6cf3df304ac074f676734279b4b0c1e5f731ac826ddf4d6b88f",
+  "expires_at": "2026-10-01T03:00:00Z",
+  "approved_by": "00000000-0000-4000-8000-000000000007",
+  "approved_at": "2026-10-01T02:05:00Z",
+  "idempotency_key": "synthetic:action-6-revision-1",
+  "provider_message_id": null,
+  "delivery_status": "unknown",
+  "sources": [
+    {
+      "message_id": "00000000-0000-4000-8000-000000000004",
+      "message_revision": 1
+    }
+  ]
+}

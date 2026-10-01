@@ -1,0 +1,282 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Normalized connector event",
+  "x-version": "0.1.0",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "0.1.0"
+    },
+    "event_id": {
+      "$ref": "../domain/models.schema.json#/$defs/Id"
+    },
+    "event_type": {
+      "enum": [
+        "message.created",
+        "message.edited",
+        "message.revoked",
+        "message.ack",
+        "session.status"
+      ]
+    },
+    "account_id": {
+      "$ref": "../domain/models.schema.json#/$defs/Id"
+    },
+    "connector": {
+      "enum": [
+        "waha",
+        "replay"
+      ]
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "conversation_id": {
+      "anyOf": [
+        {
+          "$ref": "../domain/models.schema.json#/$defs/Id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "provider_message_id": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "occurred_at": {
+      "$ref": "../domain/models.schema.json#/$defs/UtcTimestamp"
+    },
+    "received_at": {
+      "$ref": "../domain/models.schema.json#/$defs/UtcTimestamp"
+    },
+    "direction": {
+      "anyOf": [
+        {
+          "enum": [
+            "incoming",
+            "outgoing"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "source": {
+      "enum": [
+        "app",
+        "api",
+        "replay"
+      ]
+    },
+    "message_revision": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "payload": {}
+  },
+  "required": [
+    "schema_version",
+    "event_id",
+    "event_type",
+    "account_id",
+    "connector",
+    "session_id",
+    "conversation_id",
+    "provider_message_id",
+    "occurred_at",
+    "received_at",
+    "direction",
+    "source",
+    "message_revision",
+    "payload"
+  ],
+  "additionalProperties": false,
+  "oneOf": [
+    {
+      "properties": {
+        "event_type": {
+          "enum": [
+            "message.created",
+            "message.edited"
+          ]
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "message_id": {
+              "$ref": "../domain/models.schema.json#/$defs/Id"
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "message_id",
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        "conversation_id": {
+          "$ref": "../domain/models.schema.json#/$defs/Id"
+        },
+        "provider_message_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "direction": {
+          "enum": [
+            "incoming",
+            "outgoing"
+          ]
+        },
+        "message_revision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "event_type": {
+          "enum": [
+            "message.revoked"
+          ]
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "message_id": {
+              "$ref": "../domain/models.schema.json#/$defs/Id"
+            }
+          },
+          "required": [
+            "message_id"
+          ],
+          "additionalProperties": false
+        },
+        "conversation_id": {
+          "$ref": "../domain/models.schema.json#/$defs/Id"
+        },
+        "provider_message_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "direction": {
+          "enum": [
+            "incoming",
+            "outgoing"
+          ]
+        },
+        "message_revision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "event_type": {
+          "enum": [
+            "message.ack"
+          ]
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "message_id": {
+              "$ref": "../domain/models.schema.json#/$defs/Id"
+            },
+            "delivery_status": {
+              "enum": [
+                "accepted",
+                "sent",
+                "delivered",
+                "read",
+                "unknown"
+              ]
+            }
+          },
+          "required": [
+            "message_id",
+            "delivery_status"
+          ],
+          "additionalProperties": false
+        },
+        "conversation_id": {
+          "$ref": "../domain/models.schema.json#/$defs/Id"
+        },
+        "provider_message_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "direction": {
+          "enum": [
+            "incoming",
+            "outgoing"
+          ]
+        },
+        "message_revision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "event_type": {
+          "enum": [
+            "session.status"
+          ]
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "enum": [
+                "connected",
+                "disconnected",
+                "connecting",
+                "failed"
+              ]
+            }
+          },
+          "required": [
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        "conversation_id": {
+          "type": "null"
+        },
+        "provider_message_id": {
+          "type": "null"
+        },
+        "direction": {
+          "type": "null"
+        },
+        "message_revision": {
+          "type": "null"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "schema_version": "0.1.0",
+  "proposal_id": "00000000-0000-4000-8000-000000000009",
+  "conversation_id": "00000000-0000-4000-8000-000000000002",
+  "work_order_id": "00000000-0000-4000-8000-000000000003",
+  "base_work_order_version": 3,
+  "base_context_version": 5,
+  "assignment": "matched",
+  "candidates": [
+    {
+      "work_order_id": "00000000-0000-4000-8000-000000000003",
+      "confidence": 0.9
+    }
+  ],
+  "changes": [
+    {
+      "field": "schedule",
+      "old_value": {
+        "kind": "timed",
+        "start_at": "2026-10-07T07:00:00Z",
+        "end_at": "2026-10-07T08:00:00Z",
+        "timezone": "Asia/Hong_Kong"
+      },
+      "new_value": {
+        "kind": "timed",
+        "start_at": "2026-10-08T07:00:00Z",
+        "end_at": "2026-10-08T08:00:00Z",
+        "timezone": "Asia/Hong_Kong"
+      },
+      "field_status": "proposed",
+      "customer_confirmation": "pending",
+      "sources": [
+        {
+          "message_id": "00000000-0000-4000-8000-000000000004",
+          "message_revision": 1
+        }
+      ],
+      "reason": "Customer proposes next Thursday; the merchant has not accepted"
+    }
+  ],
+  "unresolved_questions": [
+    "见面地址尚未提供",
+    "拟议时段与已确认预约重叠"
+  ],
+  "draft_text": "收到，你想改到下星期四下午三点。我这个时间已有预约，请把地址发给我，我再核对其他时间。",
+  "model_version": "synthetic:fixed-stub-v1",
+  "prompt_version": "0.1.0",
+  "send_now": true
+}

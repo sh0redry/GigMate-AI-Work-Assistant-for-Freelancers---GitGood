@@ -216,3 +216,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local application credentials and connector state
+.env.*
+!.env.example
+.secrets/
+.waha/
+local-data/
+
+# Frontend dependencies
+node_modules/

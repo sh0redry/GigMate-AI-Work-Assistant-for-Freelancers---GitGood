@@ -1,0 +1,36 @@
+{
+  "id": "00000000-0000-4000-8000-000000000003",
+  "account_id": "00000000-0000-4000-8000-000000000001",
+  "conversation_ids": [
+    "00000000-0000-4000-8000-000000000002"
+  ],
+  "summary": "虚构业务预约",
+  "status": "confirmed",
+  "version": 3,
+  "fields": {
+    "schedule": {
+      "value": {
+        "kind": "timed",
+        "start_at": "2026-10-07T07:00:00Z",
+        "end_at": "2026-10-07T08:00:00Z",
+        "timezone": "Asia/Hong_Kong"
+      },
+      "status": "confirmed",
+      "sources": [
+        {
+          "message_id": "00000000-0000-4000-8000-000000000005",
+          "message_revision": 1
+        }
+      ],
+      "interpretation": "Original confirmed appointment"
+    },
+    "address": {
+      "value": null,
+      "status": "missing",
+      "sources": [],
+      "interpretation": null
+    }
+  },
+  "pending_change_ids": [],
+  "updated_at": "2026-10-01T01:00:00Z"
+}

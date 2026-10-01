@@ -1,0 +1,108 @@
+{
+  "schema_version": "0.1.0",
+  "data_classification": "synthetic",
+  "fixtures": [
+    {
+      "file": "message-reschedule.json",
+      "schema": "../events/message-event.schema.json",
+      "valid": true,
+      "reason": "Positive structural example"
+    },
+    {
+      "file": "message-original.json",
+      "schema": "../events/message-event.schema.json",
+      "valid": true,
+      "reason": "Positive structural example"
+    },
+    {
+      "file": "work-order.json",
+      "schema": "../domain/models.schema.json#/$defs/WorkOrder",
+      "valid": true,
+      "reason": "Positive structural example"
+    },
+    {
+      "file": "proposal-reschedule.json",
+      "schema": "../ai/change-proposal.schema.json",
+      "valid": true,
+      "reason": "Positive structural example"
+    },
+    {
+      "file": "action-pending.json",
+      "schema": "../domain/models.schema.json#/$defs/ApprovalAction",
+      "valid": true,
+      "reason": "Positive structural example"
+    },
+    {
+      "file": "approve-command.json",
+      "schema": "../domain/models.schema.json#/$defs/ApproveActionCommand",
+      "valid": true,
+      "reason": "Positive structural example"
+    },
+    {
+      "file": "action-unknown.json",
+      "schema": "../domain/models.schema.json#/$defs/ApprovalAction",
+      "valid": true,
+      "reason": "Positive structural example"
+    },
+    {
+      "file": "date-only.json",
+      "schema": "../domain/models.schema.json#/$defs/ScheduleValue",
+      "valid": true,
+      "reason": "Positive structural example"
+    },
+    {
+      "file": "message-edited.json",
+      "schema": "../events/message-event.schema.json",
+      "valid": true,
+      "reason": "Positive structural example"
+    },
+    {
+      "file": "message-revoked.json",
+      "schema": "../events/message-event.schema.json",
+      "valid": true,
+      "reason": "Positive structural example"
+    },
+    {
+      "file": "session-disconnected.json",
+      "schema": "../events/message-event.schema.json",
+      "valid": true,
+      "reason": "Positive structural example"
+    },
+    {
+      "file": "invalid-event-no-account.json",
+      "schema": "../events/message-event.schema.json",
+      "valid": false,
+      "reason": "Missing required account_id"
+    },
+    {
+      "file": "invalid-ai-execution.json",
+      "schema": "../ai/change-proposal.schema.json",
+      "valid": false,
+      "reason": "AI output cannot grant execution"
+    },
+    {
+      "file": "invalid-ai-confirmed-field.json",
+      "schema": "../ai/change-proposal.schema.json",
+      "valid": false,
+      "reason": "AI cannot mark formal confirmation"
+    },
+    {
+      "file": "invalid-approval-no-merchant.json",
+      "schema": "../domain/models.schema.json#/$defs/ApprovalAction",
+      "valid": false,
+      "reason": "Approved action needs approver and timestamp"
+    },
+    {
+      "file": "invalid-missing-value.json",
+      "schema": "../domain/models.schema.json#/$defs/WorkOrder",
+      "valid": false,
+      "reason": "Missing field must have null value"
+    },
+    {
+      "file": "invalid-date.json",
+      "schema": "../domain/models.schema.json#/$defs/ScheduleValue",
+      "valid": false,
+      "reason": "Impossible calendar date"
+    }
+  ]
+}

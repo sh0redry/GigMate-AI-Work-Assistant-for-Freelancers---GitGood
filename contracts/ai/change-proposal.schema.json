@@ -1,0 +1,228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AI change proposal, never execution authority",
+  "x-version": "0.1.0",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "0.1.0"
+    },
+    "proposal_id": {
+      "$ref": "../domain/models.schema.json#/$defs/Id"
+    },
+    "conversation_id": {
+      "$ref": "../domain/models.schema.json#/$defs/Id"
+    },
+    "work_order_id": {
+      "anyOf": [
+        {
+          "$ref": "../domain/models.schema.json#/$defs/Id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "base_work_order_version": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "base_context_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "assignment": {
+      "enum": [
+        "matched",
+        "needs_review"
+      ]
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "work_order_id": {
+            "$ref": "../domain/models.schema.json#/$defs/Id"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "required": [
+          "work_order_id",
+          "confidence"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "enum": [
+              "schedule",
+              "address",
+              "summary",
+              "quantity",
+              "specification",
+              "deadline"
+            ]
+          },
+          "old_value": {
+            "$ref": "../domain/models.schema.json#/$defs/FieldValue"
+          },
+          "new_value": {
+            "$ref": "../domain/models.schema.json#/$defs/FieldValue"
+          },
+          "field_status": {
+            "enum": [
+              "missing",
+              "proposed",
+              "needs_review"
+            ]
+          },
+          "customer_confirmation": {
+            "$ref": "../domain/models.schema.json#/$defs/CustomerConfirmation"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "../domain/models.schema.json#/$defs/SourceRef"
+            },
+            "minItems": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "field",
+          "old_value",
+          "new_value",
+          "field_status",
+          "customer_confirmation",
+          "sources",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "field_status": {
+                  "const": "missing"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "new_value": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "minItems": 0
+    },
+    "unresolved_questions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 0
+    },
+    "draft_text": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "model_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "prompt_version": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "schema_version",
+    "proposal_id",
+    "conversation_id",
+    "work_order_id",
+    "base_work_order_version",
+    "base_context_version",
+    "assignment",
+    "candidates",
+    "changes",
+    "unresolved_questions",
+    "draft_text",
+    "model_version",
+    "prompt_version"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "assignment": {
+            "const": "matched"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "work_order_id": {
+            "$ref": "../domain/models.schema.json#/$defs/Id"
+          },
+          "base_work_order_version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "assignment": {
+            "const": "needs_review"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "work_order_id": {
+            "type": "null"
+          },
+          "base_work_order_version": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}
