@@ -31,7 +31,20 @@ Only generated pending tasks are cancelled by rescheduling; unrelated manual and
 - Restart verification: database/API/worker restarted; the same confirmed schedule and dependent records remained and repeat smoke passed.
 - Resume verification: Docker Desktop was initially stopped; after starting it and running Compose up --wait, services recovered and the persisted-state HTTP smoke passed again. Baseline and generated-contract checks also passed again.
 
-The test suite emits one upstream Starlette/httpx deprecation warning; it does not fail checks. CI workflows are configured but have not run on GitHub because these changes have not been pushed. No independently timed new-contributor onboarding study was performed.
+The test suite emits one upstream Starlette/httpx deprecation warning; it does not fail checks. No independently timed new-contributor onboarding study was performed.
+
+## Shared baseline freeze — 2026-10-01
+
+- Collaboration task COLLAB-01: the published engineering skeleton is commit [3231810](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/commit/3231810b7e17f7f3dd052eb8084fdd7b87d3c827). The local checkout and origin/main matched before preparing this record.
+- [Engineering baseline CI](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/actions/runs/36853663964) passed for that commit.
+- [Replay skeleton CI](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/actions/runs/36853664016) passed: backend PostgreSQL tests/migrations and contract/lint checks, plus frontend dependency installation, generated types, formatting and production build.
+- Local Ruff, formatting, contract generation/drift, documentation/fixtures and frontend checks were repeated successfully during baseline preparation.
+- Additional local PostgreSQL/migration and HTTP reruns were not completed: Docker became unavailable after Compose startup. The waiting native migration check was interrupted. Use the successful cloud backend run above as this freeze's fresh PostgreSQL evidence; earlier local results remain historical evidence.
+- Solo self-review: this follow-up changes documentation only; runtime contracts and shared migrations are untouched, related English/Chinese records agree, documentation checks pass, and no private data was added.
+- Baseline label: v0.2.0. The annotation identifies the tested implementation commit; later documentation-only freeze records do not change its runtime scope. Tags are immutable team references; fixes receive new commits and subsequent version labels.
+- Next collaboration gates: independently verify a teammate's fresh checkout, configure host branch protection/required checks, assign actual module owners and prepare scoped starter issues. These are not completed by passing CI or creating a tag.
+
+This freeze covers synthetic replay only. It is not a production release, live connector validation or proof of general AI extraction quality.
 
 ## Remaining
 

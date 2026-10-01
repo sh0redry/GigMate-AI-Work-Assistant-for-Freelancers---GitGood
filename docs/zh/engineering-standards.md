@@ -26,7 +26,7 @@ Task.due 使用 DeadlineValue 表示单个截止时刻或日期；CalendarEvent.
 
 ## API 约定
 
-业务前缀 /api/v1；请求/响应 application/json。登录采用服务端会话、HttpOnly Cookie，同站部署；写请求必须有 CSRF 保护。具体认证实现仍需骨架阶段完成，不允许以请求体 account_id 作为授权。连接器 Webhook 使用独立密钥/签名认证，不复用浏览器会话。
+业务前缀 /api/v1；请求/响应 application/json。登录采用服务端会话、HttpOnly Cookie，同站部署；写请求必须有 CSRF 保护。v0.2 已实现开发账号的会话认证、CSRF 与账号隔离，生产认证仍待完成；不允许以请求体 account_id 作为授权。连接器 Webhook 使用独立密钥/签名认证，不复用浏览器会话。
 
 客户端读取含 request_id 的响应，列表使用 items、next_cursor 和 limit（默认20、最大100），详情使用 data。错误使用 error.code、error.message、error.details、request_id；details 不包含私密内容。具体端点及请求形状见[API 契约](../../contracts/api-v1.md)。
 
