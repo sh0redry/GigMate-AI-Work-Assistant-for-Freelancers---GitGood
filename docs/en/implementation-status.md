@@ -56,6 +56,8 @@ This change affects documents, templates and the documentation check's required-
 
 COLLAB-03 protection settings are specified but not applied. Equal repository Admin access requires an agreed organization because the current owner is a personal account. Actual member usernames, target organization and permission scope are pending; no transfer, invitations or authorization changes were made. Organization Owner is a separate decision. All members follow the same review/check targets; no creator-only approval or bypass is intended.
 
+Materials are published on docs/equal-team-onboarding (initial commit 6f84983), with unassigned [teammate verification issue #1](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/issues/1) and [documentation draft PR #2](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/pull/2), not merged into main. This materials PR is not the teammate's first acceptance PR. An authenticated GitHub API read confirmed main protected=false and current repository admin access; no permission or protection settings were changed.
+
 ## Remaining
 
 Live WAHA capabilities and engine/version pinning; general model extraction and evaluation; multi-order classification UI; other requirement fields and rejection/edit commands; action approval/outbox/sending/reconciliation; full calendar buffers/work hours; production authentication; retention/deletion automation; media and external calendars.
