@@ -1,5 +1,7 @@
 # Developer onboarding
 
+For equal permissions, independent teammate acceptance and the first peer-reviewed PR, see [team collaboration](team-governance.md). Use your own GitHub account, fresh clone and recorded commit SHA; do not copy another person's environment or database.
+
 ## Start the replay workspace
 
 Prerequisites: Docker Engine / Docker Desktop with Compose. From the repository root:
@@ -20,6 +22,10 @@ docker compose --env-file .env.example -f infra/compose.yaml down
 ```
 
 down preserves the named database volume. Do not add -v unless intentionally removing development data. API_PORT and WEB_PORT are configurable; adjust TRUSTED_ORIGINS and the Vite proxy when changing ports. The selected 18000/18080 avoid existing services on the validation host.
+
+Compose fixes the project name to gigmate-replay, so another clone on the same machine may reuse an existing volume. Record reused state rather than claiming a fresh seed. The database host port 54329 is currently fixed in Compose. If Docker's daemon/pipe is unavailable, start the Linux engine and verify docker version before retrying; daemon failure is not a passed application check. Inspect logs with the command above, sanitizing them before sharing.
+
+Container-only contributors can perform browser acceptance and record local scripts as not run, then provide actual PR CI results. Repository scripts/docs are not copied into the API image; host script checks require the native Python environment below. The first smoke run confirms a synthetic proposal; it checks existing results on later runs. Run manual acceptance first. Password changes after seed do not reset accounts. Custom browser origins must match TRUSTED_ORIGINS; do not disable CSRF to work around a configuration error.
 
 ## Native Windows development
 
