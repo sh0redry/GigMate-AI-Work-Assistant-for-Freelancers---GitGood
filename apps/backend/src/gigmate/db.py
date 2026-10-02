@@ -2,9 +2,11 @@ from datetime import datetime
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     UniqueConstraint,
@@ -64,6 +66,49 @@ class Inbox(Base):
     digest: Mapped[str] = mapped_column(String(64))
     context_version: Mapped[int] = mapped_column(Integer)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    connection_id: Mapped[str | None] = mapped_column(ForeignKey("waha_connections.id"), index=True)
+
+
+class WahaConnection(Base):
+    __tablename__ = "waha_connections"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"), index=True)
+    instance_id: Mapped[str] = mapped_column(String(128))
+    session_id: Mapped[str] = mapped_column(String(128))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    state: Mapped[str] = mapped_column(String(24), default="unknown")
+    state_timestamp: Mapped[int | None] = mapped_column(BigInteger)
+    state_received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    accepted: Mapped[int] = mapped_column(Integer, default=0)
+    duplicates: Mapped[int] = mapped_column(Integer, default=0)
+    stale_events: Mapped[int] = mapped_column(Integer, default=0)
+    __table_args__ = (UniqueConstraint("instance_id", "session_id", name="uq_waha_session"),)
+
+
+class WahaChat(Base):
+    __tablename__ = "waha_chats"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    connection_id: Mapped[str] = mapped_column(ForeignKey("waha_connections.id"), index=True)
+    provider_chat_id: Mapped[str] = mapped_column(String(256))
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"), unique=True)
+    __table_args__ = (UniqueConstraint("connection_id", "provider_chat_id", name="uq_waha_chat"),)
+
+
+class WahaMessage(Base):
+    __tablename__ = "waha_messages"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(ForeignKey("waha_chats.id"), index=True)
+    provider_message_id: Mapped[str] = mapped_column(String(256))
+    stanza_id: Mapped[str | None] = mapped_column(String(256))
+    message_id: Mapped[str] = mapped_column(String(36), unique=True)
+    revision: Mapped[int] = mapped_column(Integer)
+    occurred_timestamp: Mapped[int] = mapped_column(BigInteger)
+    delivery_rank: Mapped[int] = mapped_column(Integer, default=0)
+    __table_args__ = (
+        UniqueConstraint("chat_id", "provider_message_id", name="uq_waha_message"),
+        Index("ix_waha_message_stanza", "chat_id", "stanza_id"),
+    )
 
 
 class MessageRow(Base):

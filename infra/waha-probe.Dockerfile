@@ -5,4 +5,5 @@ COPY apps/backend/requirements.lock /app/requirements.lock
 RUN python -m pip install --no-cache-dir -r requirements.lock
 COPY apps/backend/src /app/apps/backend/src
 COPY scripts/waha_local.py /app/scripts/waha_local.py
+COPY scripts/waha_ingress.py /app/scripts/waha_ingress.py
 CMD ["python", "scripts/waha_local.py", "probe", "--container"]

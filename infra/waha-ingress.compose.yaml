@@ -1,0 +1,46 @@
+# Add to waha.compose.yaml only after migrating/provisioning the selected chats.
+x-ingress-backend: &ingress-backend
+  build:
+    context: ..
+    dockerfile: infra/backend.Dockerfile
+  environment:
+    DATABASE_URL: postgresql+psycopg://gigmate:local-replay-only@host.docker.internal:54329/gigmate_waha_a03
+    COOKIE_SECURE: "false"
+  restart: "no"
+
+services:
+  ingress:
+    <<: *ingress-backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://gigmate:local-replay-only@host.docker.internal:54329/gigmate_waha_a03
+      WAHA_CONNECTOR_CONFIG: /run/gigmate/ingress.json
+      COOKIE_SECURE: "false"
+    volumes:
+      - ../local-data/waha-a02/ingress.json:/run/gigmate/ingress.json:ro
+    ports: ["127.0.0.1:18702:8000"]
+    command: ["uvicorn", "gigmate.api:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--log-level", "error"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+  ingress-worker:
+    <<: *ingress-backend
+    command: ["python", "-m", "gigmate.worker"]
+    depends_on:
+      ingress: {condition: service_healthy}
+  ingress-monitor:
+    build:
+      context: ..
+      dockerfile: infra/waha-probe.Dockerfile
+    restart: "no"
+    network_mode: "service:waha"
+    environment:
+      DATABASE_URL: postgresql+psycopg://gigmate:local-replay-only@host.docker.internal:54329/gigmate_waha_a03
+    command: ["python", "scripts/waha_ingress.py", "watch", "--container"]
+    volumes:
+      - ../local-data/waha-a02/config.json:/app/local-data/waha-a02/config.json:ro
+      - ../local-data/waha-a02/ingress.json:/app/local-data/waha-a02/ingress.json:ro
+    depends_on:
+      ingress: {condition: service_healthy}
+      waha: {condition: service_started}

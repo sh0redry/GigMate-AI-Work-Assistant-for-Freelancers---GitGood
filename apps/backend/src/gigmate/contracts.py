@@ -51,6 +51,30 @@ class Model(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
+class ConnectorStatus(Model):
+    id: Id
+    connector: Literal["waha"]
+    state: Literal["unknown", "connected", "connecting", "disconnected", "failed"]
+    enabled: bool
+    live_connected: bool
+    stale: bool
+    observed_at: UtcTimestamp | None
+    last_sync_at: UtcTimestamp | None
+    accepted: Annotated[int, Field(ge=0)]
+    duplicates: Annotated[int, Field(ge=0)]
+    stale_events: Annotated[int, Field(ge=0)]
+    pending_jobs: Annotated[int, Field(ge=0)]
+    processing_jobs: Annotated[int, Field(ge=0)]
+    failed_jobs: Annotated[int, Field(ge=0)]
+
+
+class ConnectorReceipt(Model):
+    event_id: Id
+    duplicate: bool
+    context_version: Annotated[int, Field(ge=0)]
+    durable_acceptance: Literal[True]
+
+
 class WorkOrderStatus(StrEnum):
     unclassified = "unclassified"
     pending_confirmation = "pending_confirmation"

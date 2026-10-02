@@ -1,6 +1,18 @@
 # Implementation status and validation
 
-Milestone: **v0.2 replay skeleton**. Recorded: **2026-10-01**. Maintainer: current repository owner. This is a completed-work record; future updates must add actual commands/results and revise remaining work.
+## A-03 live text mutation verification — 2026-10-02
+
+User-operated fresh creation/edit/revoke at 09:18 UTC advanced accepted receipts **6 → 7 → 8**. Safe metadata verifies the same internal/canonical provider identity across creation, revision-2 edit and revision-3 revocation, with latest revision revoked. Queues are empty, failed jobs zero, database lock waiters zero, and six HTTP smoke checks pass. Added bilingual evidence; baseline and diff checks pass. This closes the previously pending local text mutation check, without claiming E review, production readiness or network outage recovery. No commit/push. [Detailed evidence](role-a-stage3-acceptance.md#successful-live-createeditrevoke-verification).
+
+## A-03 webhook event-loop correction — 2026-10-02
+
+After the user confirmed all three live actions, diagnosis found the API unhealthy with blocking synchronous reception on its async event loop and PostgreSQL lock waiters. Moved reception to the thread pool, retaining commit-before-success. New same-event-loop health responsiveness regression passes. PostgreSQL full suite **204 passed** (`local-data/pytest-loop-full-pg`); SQLite ingress subset **33 passed, 1 skipped** (`local-data/pytest-ingress-loop-sqlite`); existing Starlette/httpx warning remains. Ruff check/format and export check pass. Rebuilt services are healthy; six HTTP smoke checks pass; lock waiters are zero and monitor freshness resumes. Live accepted count remains five; fresh edit/revoke verification is pending. No commit/push. [Details](role-a-stage3-acceptance.md#follow-up-api-stall-correction).
+
+## A-03 short target correction — 2026-10-02
+
+Live creation persisted; edit/revoke failed because WAHA uses short mutation targets while creation stores serialized IDs. Added scoped, direction-checked short-ID resolution and ambiguity rejection, plus versioned `0003_waha_stanza_identity` with existing mapping backfill. Both local PostgreSQL databases upgraded to head; migration check passes. Rebuilt API/worker/monitor and six HTTP smoke checks pass. Latest full suites: PostgreSQL **203 passed** (`local-data/pytest-stanza-full-pg`), SQLite **201 passed, 2 skipped** (`local-data/pytest-stanza-full-sqlite`), with the existing Starlette/httpx warning. Ruff check/format passes for backend and changed scripts; export check passes. A broader scripts scan found pre-existing unused-import/format issues in unchanged `scripts/check_baseline.py`, which was preserved. Live edit/revoke still needs a fresh user test; three accepted receipts and empty job backlog only prove current ingestion/processing status. No commit/push. [Details](role-a-stage3-acceptance.md#live-target-format-correction).
+
+Baseline: **v0.2 replay skeleton**; latest authorized extension: **A-03 durable WAHA ingress/monitoring**, recorded **2026-10-02**. Earlier evidence below remains historical. This is a completed-work record; future updates must add actual commands/results and revise remaining work.
 
 ## Completed
 
@@ -80,6 +92,17 @@ Materials are published on docs/equal-team-onboarding (initial commit 6f84983), 
 
 ## Outstanding capabilities
 
-Live WAHA capabilities and engine/version pinning; general model extraction and evaluation; multi-order classification UI; other requirement fields and rejection/edit commands; action approval/outbox/sending/reconciliation; full calendar buffers/work hours; production authentication; retention/deletion automation; media and external calendars.
+Complete durable live text/edit/revoke/ACK and outage acceptance; provider gaps/history recovery; general model extraction and evaluation; multi-order classification/live-status UI; other requirement fields and rejection/edit commands; action approval/outbox/sending/reconciliation; full calendar buffers/work hours; production authentication/secrets management; full account/backup deletion; media and external calendars. Pinning, local pairing and WAHA content-retention maintenance are implemented.
 
-The original 12 acceptance scenarios remain targets. Some internal cases now have service tests; external unknown-send/API-echo/send-race cases do not. Do not use this skeleton to process real accounts or claim full P0 completion.
+The original 12 acceptance scenarios remain targets. Some internal cases now have service tests; external unknown-send/API-echo/send-race cases do not. Real use is limited to the explicitly authorized local test account/conversations, not production or full P0 completion.
+
+## A-03 durable ingress/monitoring — 2026-10-02
+
+The user authorized shared changes after commits `908855f` (offline adapter) and `016a679` (local capability tools). Added private-bound signed transactional reception, three mapping/state tables and Inbox connection FK via versioned `0002_waha_ingress`, local accepted revision ordering, persistent dedup/ACK/state, scoped status/queue metrics, operator provision/pause/reconcile/purge, 30-second monitoring, hourly 30-day content cleanup, and worker lease/authorization checks. Real content never runs through fictional extraction. No model, external send, approval/outbox or history import was added. Generated domain/OpenAPI/frontend types were refreshed from source. [Full scope, commands and limits](role-a-stage3-acceptance.md).
+
+- PostgreSQL 17.9: migration upgrade/check passed on the Replay development database and dedicated `gigmate_waha_a03`; `0001` was preserved. Disposable SQLite upgrade/downgrade/re-upgrade test preserves existing Replay Inbox rows.
+- `.venv/Scripts/python.exe -m pytest apps/backend/tests -q --basetemp=local-data/pytest-ingress-delivery-pg` with documented TEST_DATABASE_URL: **200 passed**, no skips, one existing Starlette/httpx warning. Includes concurrent reception/claim, commit-failure/rollback/lost-response, source ordering/direction, authorization, leases, poll races, retention and provisioning checks.
+- SQLite full suite: **198 passed, 2 skipped** (PostgreSQL reception and worker concurrency); it is compatibility evidence, not locking proof.
+- Ruff check/format, export_contracts.py --check, baseline, frontend generate:api/check:api/format:check/build passed. Native Vite first encountered sandbox spawn EPERM; the authorized build outside that process restriction succeeded.
+- Independent local ingress/API, worker and monitor built and ran. Provider callback configuration changed, session recovered WORKING without rescan, and two real HMAC-authenticated status callbacks committed without jobs. `scripts/smoke_waha_ingress.py`: **six HTTP checks passed**, no real message content read. API/worker/monitor restart retained connection/mapping/receipt state and repeated smoke passed; monitor refreshed freshness.
+- Private ingress configuration, secrets, QR and session profiles remain ignored/untracked. Current callbacks use durable ingress rather than the volatile probe. Actual durable fresh text/edit/revoke/ACK and broader network recovery still require the user's consenting test chat and E's independent unified review. No commit/push this batch.

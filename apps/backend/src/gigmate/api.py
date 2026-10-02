@@ -1,4 +1,5 @@
 import base64
+import json
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
@@ -7,12 +8,16 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import Field
 from sqlalchemy import select, text
+from sqlalchemy.exc import SQLAlchemyError
+from starlette.concurrency import run_in_threadpool
 
 from gigmate import identity
 from gigmate.config import COOKIE_SECURE, TRUSTED_ORIGINS
 from gigmate.contracts import (
     CalendarEvent,
     ConfirmChangeCommand,
+    ConnectorReceipt,
+    ConnectorStatus,
     Conversation,
     ConversationMessage,
     Detail,
@@ -31,11 +36,16 @@ from gigmate.db import (
     MessageRow,
     Session,
     TaskRow,
+    WahaChat,
+    WahaConnection,
     WorkOrderRow,
 )
 from gigmate.errors import BusinessError
 from gigmate.messaging import ingest, replay_event
 from gigmate.planning import conflicts
+from gigmate.waha_adapter import AdapterError
+from gigmate.waha_ingress import binding_for, receive, status_view
+from gigmate.waha_probe import MAX_BODY, _non_json_constant, _pairs, verify_hmac
 from gigmate.workorders import command_cache, confirm, owned, save_result
 
 app = FastAPI(title="GigMate replay skeleton", version="0.2.0")
@@ -102,6 +112,21 @@ async def validation_error(request: Request, _exc):
             "error": {
                 "code": "VALIDATION_FAILED",
                 "message": "Invalid request shape",
+                "details": {},
+            },
+            "request_id": request.state.request_id,
+        },
+    )
+
+
+@app.exception_handler(SQLAlchemyError)
+async def database_error(request: Request, _exc):
+    return JSONResponse(
+        status_code=503,
+        content={
+            "error": {
+                "code": "DATABASE_UNAVAILABLE",
+                "message": "Retry after checking connector delivery",
                 "details": {},
             },
             "request_id": request.state.request_id,
@@ -278,12 +303,17 @@ def conversation_info(
             )
         )
     )
+    chat = db.scalar(
+        select(WahaChat)
+        .join(WahaConnection)
+        .where(WahaChat.conversation_id == row.id, WahaConnection.account_id == account.id)
+    )
     return detail(
         request,
         {
             "id": row.id,
             "account_id": account.id,
-            "provider_conversation_id": f"synthetic:{row.id}",
+            "provider_conversation_id": chat.provider_chat_id if chat else f"synthetic:{row.id}",
             "context_version": row.context_version,
             "work_order_ids": ids,
         },
@@ -350,6 +380,56 @@ def connection(request: Request, account=Depends(actor)):
     return detail(
         request, {"mode": "synthetic_replay", "connector": "replay", "live_connected": False}
     )
+
+
+@app.get("/api/v1/connectors", response_model=Page[ConnectorStatus])
+def connector_statuses(
+    request: Request,
+    cursor: str | None = None,
+    limit: int = Query(20, ge=1, le=100),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    return page(
+        request,
+        db.scalars(select(WahaConnection).where(WahaConnection.account_id == account.id)),
+        cursor,
+        limit,
+        lambda row: status_view(db, row),
+    )
+
+
+@app.post("/api/v1/connectors/waha/{connection_id}/events", response_model=Detail[ConnectorReceipt])
+async def waha_events(
+    connection_id: UUID, request: Request, db=Depends(database, scope="function")
+):
+    binding = binding_for(str(connection_id))
+    if request.headers.get("content-type", "").split(";")[0].strip() != "application/json":
+        raise BusinessError(422, "INVALID_WEBHOOK_JSON", "Expected JSON")
+    for name in ("x-webhook-hmac", "x-webhook-hmac-algorithm"):
+        if len(request.headers.getlist(name)) != 1:
+            raise BusinessError(401, "WEBHOOK_AUTH_REJECTED", "Webhook authentication failed")
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(body) + len(chunk) > MAX_BODY:
+            raise BusinessError(413, "WEBHOOK_TOO_LARGE", "Webhook exceeds limit")
+        body.extend(chunk)
+    try:
+        verify_hmac(
+            bytes(body),
+            request.headers.get("X-Webhook-Hmac"),
+            request.headers.get("X-Webhook-Hmac-Algorithm"),
+            binding.secret,
+        )
+    except AdapterError:
+        raise BusinessError(401, "WEBHOOK_AUTH_REJECTED", "Webhook authentication failed") from None
+    try:
+        raw = json.loads(body, object_pairs_hook=_pairs, parse_constant=_non_json_constant)
+    except (ValueError, UnicodeDecodeError, RecursionError):
+        raise BusinessError(422, "INVALID_WEBHOOK_JSON", "Invalid webhook JSON") from None
+    # Row-lock waits must not block the event loop that schedules transaction exit.
+    result = await run_in_threadpool(receive, db, binding, raw)
+    return detail(request, result)
 
 
 @app.post("/api/v1/replay", status_code=202, response_model=Detail[ReplayResult])

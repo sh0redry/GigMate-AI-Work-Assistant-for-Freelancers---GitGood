@@ -17,6 +17,7 @@ from gigmate.db import (
     Job,
     MessageRow,
     Session,
+    WahaConnection,
     WorkOrderRow,
 )
 from gigmate.understanding import extract
@@ -53,7 +54,12 @@ def run_once(factory=Session):
         with factory.begin() as db:
             account = db.scalar(select(Account).where(Account.id == account_id).with_for_update())
             job = db.scalar(select(Job).where(Job.id == job_id).with_for_update())
-            if job.state != "processing" or job.lease_owner != owner:
+            if (
+                job.state != "processing"
+                or job.lease_owner != owner
+                or job.lease_until is None
+                or job.lease_until.replace(tzinfo=UTC) <= datetime.now(UTC)
+            ):
                 return True
             inbox = db.get(Inbox, job.event_id)
             event = inbox.payload
@@ -66,7 +72,14 @@ def run_once(factory=Session):
                 )
                 .order_by(MessageRow.revision.desc())
             )
-            if not account.active or not conversation.allowlisted:
+            connection = (
+                db.get(WahaConnection, inbox.connection_id) if inbox.connection_id else None
+            )
+            if (
+                not account.active
+                or not conversation.allowlisted
+                or (connection and not connection.enabled)
+            ):
                 job.state, job.error_code = "cancelled", "CONSENT_REVOKED"
             elif (
                 inbox.context_version != conversation.context_version
@@ -74,6 +87,9 @@ def run_once(factory=Session):
                 or latest.data["revoked"]
             ):
                 job.state, job.error_code = "completed", "SOURCE_SUPERSEDED"
+            elif event["connector"] == "waha":
+                # Real content must never run through fictional fixed extraction templates.
+                job.state, job.error_code = "completed", "LIVE_EXTRACTION_PENDING"
             else:
                 linked = list(
                     db.scalars(
@@ -125,6 +141,8 @@ def run_once(factory=Session):
                         "completed",
                         None if proposal else "STUB_UNSUPPORTED_INPUT",
                     )
+            if job.lease_until.replace(tzinfo=UTC) <= datetime.now(UTC):
+                raise RuntimeError("LEASE_EXPIRED")
             job.lease_owner, job.lease_until = None, None
     except Exception:
         # No raw message text or exception values enter logs.
@@ -149,9 +167,28 @@ def poll(factory=Session):
 
 def main():
     logging.basicConfig(level=logging.INFO)
+    maintenance_at = 0
     while True:
+        if time.monotonic() >= maintenance_at:
+            maintain()
+            maintenance_at = time.monotonic() + 3600
         if not poll():
             time.sleep(0.5)
+
+
+def maintain(factory=Session):
+    from gigmate.waha_ingress import purge_expired
+
+    try:
+        with factory() as db:
+            identifiers = list(db.scalars(select(WahaConnection.id)))
+        for identifier in identifiers:
+            with factory.begin() as db:
+                purge_expired(db, identifier)
+        return True
+    except SQLAlchemyError:
+        log.error("worker_maintenance_failed code=DATABASE_UNAVAILABLE")
+        return False
 
 
 if __name__ == "__main__":

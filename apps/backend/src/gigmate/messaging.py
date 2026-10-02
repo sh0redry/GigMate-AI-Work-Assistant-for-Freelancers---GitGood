@@ -46,14 +46,14 @@ def replay_event(scenario):
     return event
 
 
-def ingest(db, account, event):
+def ingest(db, account, event, *, trusted_waha=False):
     if list(VALIDATOR.iter_errors(event)):
         raise BusinessError(422, "VALIDATION_FAILED", "Invalid normalized replay event")
     if event["account_id"] != account.id:
         raise BusinessError(404, "NOT_FOUND", "Conversation not found")
     if (
-        event["connector"] != "replay"
-        or event["source"] != "replay"
+        (event["connector"] != ("waha" if trusted_waha else "replay"))
+        or event["source"] not in ({"app", "api"} if trusted_waha else {"replay"})
         or event["event_type"] not in {"message.created", "message.edited", "message.revoked"}
     ):
         raise BusinessError(
@@ -70,7 +70,12 @@ def ingest(db, account, event):
     )
     if not conversation or not conversation.allowlisted:
         raise BusinessError(404, "NOT_FOUND", "Conversation not found")
-    encoded = json.dumps(event, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    projection = (
+        {key: value for key, value in event.items() if key != "received_at"}
+        if trusted_waha
+        else event
+    )
+    encoded = json.dumps(projection, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     digest = hashlib.sha256(encoded.encode()).hexdigest()
     previous = db.get(Inbox, event["event_id"])
     if previous:
@@ -109,6 +114,13 @@ def ingest(db, account, event):
             same_identity.id != message_id
             or same_identity.data["text"] != event["payload"].get("text")
             or same_identity.data["revoked"] != (event["event_type"] == "message.revoked")
+            or (
+                trusted_waha
+                and (
+                    same_identity.data["direction"] != event["direction"]
+                    or same_identity.data["source"] != event["source"]
+                )
+            )
         ):
             raise BusinessError(409, "IDEMPOTENCY_CONFLICT", "Message revision identity conflicts")
         return {

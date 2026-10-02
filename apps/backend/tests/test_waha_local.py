@@ -551,3 +551,42 @@ def test_selected_chats_merge_atomically_preserving_secrets(tmp_path, monkeypatc
         waha_local.save_selected_chats(["789@c.us"], original)
     assert target.read_bytes() == snapshot
     assert not list(target.parent.glob("*.tmp"))
+
+
+def test_business_callback_configuration_preserves_other_settings(config):
+    requests = []
+
+    def handler(request):
+        requests.append(request.method)
+        if request.method == "PUT":
+            body = json.loads(request.content)
+            assert body["config"]["debug"] is False
+            assert body["config"]["webjs"]["custom"] == "synthetic-setting"
+            webhook = body["config"]["webhooks"][0]
+            assert (
+                webhook["url"]
+                == "http://ingress:8000/api/v1/connectors/waha/00000000-0000-4000-8000-000000000008/events"
+            )
+            assert webhook["hmac"]["key"] == config.webhook_secret
+            assert "message" not in webhook["events"]
+            return httpx.Response(200, json={"name": "default"})
+        return httpx.Response(
+            200,
+            json={
+                **status_response(),
+                "config": {
+                    "debug": False,
+                    "webjs": {"custom": "synthetic-setting"},
+                    "webhooks": [{"url": "http://probe:18701/probe/webhook"}],
+                },
+            },
+        )
+
+    client = LocalWahaClient(config, transport=httpx.MockTransport(handler))
+    try:
+        result = client.configure_business_webhook("00000000-0000-4000-8000-000000000008")
+        assert requests == ["GET", "GET", "PUT"]
+        assert result["business_webhook_configured"] is True
+        assert config.webhook_secret not in json.dumps(result)
+    finally:
+        client.close()

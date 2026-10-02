@@ -26,7 +26,7 @@ flowchart TD
   Q --> DB
 ```
 
-Replay ingestion, durable worker, fixed extraction stub, internal confirmation, calendar/task updates and audit are implemented. The external connector/model/outbox/send branch remains target architecture. PostgreSQL is the Compose runtime; SQLite is only a test fallback.
+Replay ingestion, durable worker, fixed extraction stub, internal confirmation, calendar/task updates and audit are implemented. Opt-in [WAHA reception/monitoring](role-a-stage3-acceptance.md) now adds trusted persistent mappings, signed transactional input and scoped connection state; real content bypasses fictional extraction. General models, external approvals/outbox/send remain target architecture. PostgreSQL is the Compose runtime; SQLite is only a test fallback.
 
 ## Modules
 
@@ -60,4 +60,4 @@ Record capabilities for text, edits, revocations, acknowledgments, lookup and re
 
 Models receive bounded, allowlisted context and emit sourced proposals. Validate structure, ownership, identifiers, sources and dates. Record model/prompt/schema versions. Server code computes conflicts and executes approved actions.
 
-Enforce ownership on every query and mutation. Keep connector credentials private and validate supported webhook authentication/signatures; see [WAHA security](https://waha.devlike.pro/docs/how-to/security/). Logs contain IDs, stage, latency and stable error codes, never complete messages, addresses, tokens or QR material. Revoked consent or disconnection blocks external execution. Deletion must cover data and queued jobs; proposed prototype raw-message retention is 30 days and must be implemented before real trials.
+Enforce ownership on every query and mutation. Keep connector credentials private and validate supported webhook authentication/signatures; see [WAHA security](https://waha.devlike.pro/docs/how-to/security/). Logs contain IDs, stage, latency and stable error codes, never complete messages, addresses, tokens or QR material. Revoked consent or disconnection blocks external execution. WAHA maintenance now removes receipts/jobs and scrubs revision text beyond 30 days, retaining identity/source metadata; full account/backup deletion is still pending.

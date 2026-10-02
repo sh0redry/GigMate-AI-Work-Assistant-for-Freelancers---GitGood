@@ -180,6 +180,48 @@ class LocalWahaClient:
             raise AdapterError("WAHA_SESSION_MISMATCH")
         return {"mode": "capability_probe", "restart_requested": True}
 
+    def configure_business_webhook(self, connection_id):
+        try:
+            if str(UUID(connection_id)) != connection_id:
+                raise ValueError
+        except (ValueError, TypeError, AttributeError):
+            raise AdapterError("INVALID_TRUSTED_MAPPING") from None
+        self.status()  # Check the pinned engine before changing its configuration.
+        session = self._request("GET", "/api/sessions/default")
+        if not isinstance(session, dict) or session.get("name") != "default":
+            raise AdapterError("WAHA_SESSION_MISMATCH")
+        existing = session.get("config") or {}
+        if not isinstance(existing, dict) or not isinstance(existing.get("webjs") or {}, dict):
+            raise AdapterError("WAHA_INVALID_RESPONSE")
+        result = self._request(
+            "PUT",
+            "/api/sessions/default",
+            body={
+                "name": "default",
+                "config": {
+                    **existing,
+                    "webjs": {**(existing.get("webjs") or {}), "tagsEventsOn": True},
+                    "webhooks": [
+                        {
+                            "url": f"http://ingress:8000/api/v1/connectors/waha/{connection_id}/events",
+                            "events": [
+                                "session.status",
+                                "message.any",
+                                "message.edited",
+                                "message.revoked",
+                                "message.ack",
+                            ],
+                            "hmac": {"key": self.config.webhook_secret},
+                            "retries": {"policy": "constant", "delaySeconds": 2, "attempts": 3},
+                        }
+                    ],
+                },
+            },
+        )
+        if not isinstance(result, dict) or result.get("name") != "default":
+            raise AdapterError("WAHA_SESSION_MISMATCH")
+        return {"business_webhook_configured": True, "session_restart_possible": True}
+
     def qr(self):
         if self.status()["state"] != "SCAN_QR_CODE":
             raise AdapterError("WAHA_NOT_WAITING_FOR_QR")

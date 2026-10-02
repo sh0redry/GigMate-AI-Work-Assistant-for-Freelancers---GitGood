@@ -264,6 +264,150 @@
         "title": "ConnectionInfo",
         "type": "object"
       },
+      "ConnectorReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "context_version": {
+            "minimum": 0.0,
+            "title": "Context Version",
+            "type": "integer"
+          },
+          "duplicate": {
+            "title": "Duplicate",
+            "type": "boolean"
+          },
+          "durable_acceptance": {
+            "const": true,
+            "title": "Durable Acceptance",
+            "type": "boolean"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "duplicate",
+          "context_version",
+          "durable_acceptance"
+        ],
+        "title": "ConnectorReceipt",
+        "type": "object"
+      },
+      "ConnectorStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "minimum": 0.0,
+            "title": "Accepted",
+            "type": "integer"
+          },
+          "connector": {
+            "const": "waha",
+            "title": "Connector",
+            "type": "string"
+          },
+          "duplicates": {
+            "minimum": 0.0,
+            "title": "Duplicates",
+            "type": "integer"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "failed_jobs": {
+            "minimum": 0.0,
+            "title": "Failed Jobs",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_sync_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "pattern": "Z$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sync At"
+          },
+          "live_connected": {
+            "title": "Live Connected",
+            "type": "boolean"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "pattern": "Z$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "pending_jobs": {
+            "minimum": 0.0,
+            "title": "Pending Jobs",
+            "type": "integer"
+          },
+          "processing_jobs": {
+            "minimum": 0.0,
+            "title": "Processing Jobs",
+            "type": "integer"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "stale_events": {
+            "minimum": 0.0,
+            "title": "Stale Events",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "unknown",
+              "connected",
+              "connecting",
+              "disconnected",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "connector",
+          "state",
+          "enabled",
+          "live_connected",
+          "stale",
+          "observed_at",
+          "last_sync_at",
+          "accepted",
+          "duplicates",
+          "stale_events",
+          "pending_jobs",
+          "processing_jobs",
+          "failed_jobs"
+        ],
+        "title": "ConnectorStatus",
+        "type": "object"
+      },
       "Conversation": {
         "additionalProperties": false,
         "properties": {
@@ -442,6 +586,25 @@
           "request_id"
         ],
         "title": "Detail[ConnectionInfo]",
+        "type": "object"
+      },
+      "Detail_ConnectorReceipt_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ConnectorReceipt"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[ConnectorReceipt]",
         "type": "object"
       },
       "Detail_Conversation_": {
@@ -691,6 +854,41 @@
           "request_id"
         ],
         "title": "Page[ChangeView]",
+        "type": "object"
+      },
+      "Page_ConnectorStatus_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectorStatus"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor",
+          "request_id"
+        ],
+        "title": "Page[ConnectorStatus]",
         "type": "object"
       },
       "Page_ConversationMessage_": {
@@ -1360,6 +1558,104 @@
           }
         },
         "summary": "Connection"
+      }
+    },
+    "/api/v1/connectors": {
+      "get": {
+        "operationId": "connector_statuses_api_v1_connectors_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ConnectorStatus_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Connector Statuses"
+      }
+    },
+    "/api/v1/connectors/waha/{connection_id}/events": {
+      "post": {
+        "operationId": "waha_events_api_v1_connectors_waha__connection_id__events_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_ConnectorReceipt_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Waha Events"
       }
     },
     "/api/v1/conversations/{conversation_id}": {

@@ -482,6 +482,150 @@
       "title": "ConfirmChangeCommand",
       "type": "object"
     },
+    "ConnectorReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "context_version": {
+          "minimum": 0,
+          "title": "Context Version",
+          "type": "integer"
+        },
+        "duplicate": {
+          "title": "Duplicate",
+          "type": "boolean"
+        },
+        "durable_acceptance": {
+          "const": true,
+          "title": "Durable Acceptance",
+          "type": "boolean"
+        },
+        "event_id": {
+          "format": "uuid",
+          "title": "Event Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "duplicate",
+        "context_version",
+        "durable_acceptance"
+      ],
+      "title": "ConnectorReceipt",
+      "type": "object"
+    },
+    "ConnectorStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted": {
+          "minimum": 0,
+          "title": "Accepted",
+          "type": "integer"
+        },
+        "connector": {
+          "const": "waha",
+          "title": "Connector",
+          "type": "string"
+        },
+        "duplicates": {
+          "minimum": 0,
+          "title": "Duplicates",
+          "type": "integer"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "failed_jobs": {
+          "minimum": 0,
+          "title": "Failed Jobs",
+          "type": "integer"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "last_sync_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Sync At"
+        },
+        "live_connected": {
+          "title": "Live Connected",
+          "type": "boolean"
+        },
+        "observed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Observed At"
+        },
+        "pending_jobs": {
+          "minimum": 0,
+          "title": "Pending Jobs",
+          "type": "integer"
+        },
+        "processing_jobs": {
+          "minimum": 0,
+          "title": "Processing Jobs",
+          "type": "integer"
+        },
+        "stale": {
+          "title": "Stale",
+          "type": "boolean"
+        },
+        "stale_events": {
+          "minimum": 0,
+          "title": "Stale Events",
+          "type": "integer"
+        },
+        "state": {
+          "enum": [
+            "unknown",
+            "connected",
+            "connecting",
+            "disconnected",
+            "failed"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "connector",
+        "state",
+        "enabled",
+        "live_connected",
+        "stale",
+        "observed_at",
+        "last_sync_at",
+        "accepted",
+        "duplicates",
+        "stale_events",
+        "pending_jobs",
+        "processing_jobs",
+        "failed_jobs"
+      ],
+      "title": "ConnectorStatus",
+      "type": "object"
+    },
     "Conversation": {
       "additionalProperties": false,
       "properties": {
