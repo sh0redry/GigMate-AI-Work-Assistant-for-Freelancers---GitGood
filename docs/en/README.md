@@ -11,6 +11,7 @@ These agreements prepare the repository for later contributors. A runnable synth
 | [Getting started](getting-started.md) | Checks available now and next implementation gate |
 | [Contributing](contributing.md) | Task, branch, review and completion rules |
 | [Role A responsibilities](role-a-responsibilities.md) | Ingestion, authentication, durable events, monitoring and handoffs |
+| [WhatsApp connection flow](whatsapp-connection-flow.md) | QR pairing, conversation allowlists, live events and historical sync |
 | [Role A development roadmap](role-a-development-roadmap.md) | Coherent development batches, dependencies, failure tests and unified acceptance |
 | [Equal collaboration](team-governance.md) | Equal permission target, peer review and independent onboarding gate |
 | [Decisions](adr/README.md) | Accepted choices and change conditions |

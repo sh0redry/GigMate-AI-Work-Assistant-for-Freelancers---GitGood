@@ -72,7 +72,13 @@ Materials are published on docs/equal-team-onboarding (initial commit 6f84983), 
 - Verification: `.venv/Scripts/python.exe scripts/check_baseline.py` passed: 36 Markdown files, 122 local links, 3 schemas, 11 valid fixtures, 6 rejected fixtures and 12 synthetic acceptance scenarios. Working-tree and staged `git diff --check` passed; a repository content scan found no remaining conflict markers.
 - Documentation only; no application/live tests rerun. Resolution does not itself complete the merge commit or push, and no commit/push was performed in this task.
 
-## Remaining implementation
+## WhatsApp connection documentation — 2026-10-02
+
+- Added bilingual product/technical flow for GigMate login, owned WAHA sessions, QR pairing, allowlists, authenticated live events and bounded available history. Linked both indexes and Role A responsibility/roadmap documents; cited official provider documentation.
+- Clarified that pairing is separate from per-conversation processing consent, historical snapshots require live-event reconciliation, and QR/history/live ingress remain pending. No runtime or contract changes; no commit/push.
+- Verification: `.venv/Scripts/python.exe scripts/check_baseline.py` passed (38 Markdown files, 134 local links, 3 schemas, 11 valid/6 rejected fixtures, 12 synthetic scenarios); `git diff --check` passed. Self-review checked bilingual alignment and implementation boundaries. No application, frontend or live tests rerun; external links were consulted, not validated by baseline.
+
+## Outstanding capabilities
 
 Live WAHA capabilities and engine/version pinning; general model extraction and evaluation; multi-order classification UI; other requirement fields and rejection/edit commands; action approval/outbox/sending/reconciliation; full calendar buffers/work hours; production authentication; retention/deletion automation; media and external calendars.
 

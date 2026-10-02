@@ -4,6 +4,8 @@
 
 ## 1. 起点与总体目标
 
+扫码、session 绑定、会话选择和首次历史同步的产品/技术路径见[WhatsApp 连接与消息获取](whatsapp-connection-flow.md)，对应 A-02/A-03 的开发与验收。
+
 当前基线是 v0.2：FastAPI + SQLAlchemy/Alembic + PostgreSQL，单仓库模块化后端和独立 Worker。已实现开发账号认证、允许会话的 Replay 新建/修改/撤回、Inbox/Job、版本校验、固定抽取桩和内部日程确认。通用 AI、真实 WAHA、生产鉴权、发送审批/outbox/核对均未实现。
 
 目标链路：Replay 或 WAHA → 来源鉴权与可信归属 → 白名单 → 标准事件 → PostgreSQL 原子接收与持久任务 → Worker → 提议与业务服务。连接状态进入独立持久状态及账号隔离接口；未来发送链路由 actions 审批后通过 adapter 执行。

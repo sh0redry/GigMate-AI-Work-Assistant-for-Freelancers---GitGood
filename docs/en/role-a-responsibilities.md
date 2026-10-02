@@ -6,6 +6,8 @@ A converts chat changes into trusted, stable, traceable events, delivers them re
 
 ## Responsibilities and current boundaries
 
+See [WhatsApp connection flow](whatsapp-connection-flow.md) for pairing, selected conversations and live/historical message access.
+
 | Area | Responsibility | Current state |
 | --- | --- | --- |
 | Ingestion | Maintain Replay; test and pin WAHA version/engine; normalize creation, edits, revocations, acknowledgments and session events | Replay text/create/edit/revoke implemented; live adapter, acknowledgment and session consumption pending |

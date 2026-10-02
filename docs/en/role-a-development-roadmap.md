@@ -4,6 +4,8 @@ Updated: 2026-10-02. This is a development plan, not completed implementation. S
 
 ## Starting point and operating policy
 
+The [WhatsApp connection flow](whatsapp-connection-flow.md) explains pairing, session ownership, conversation selection and initial history synchronization for A-02/A-03.
+
 v0.2 uses FastAPI, SQLAlchemy/Alembic, PostgreSQL, one modular backend and a separate worker. Development authentication, allowlisted replay create/edit/revoke, inbox/jobs, version checks, fixed extraction and internal schedule confirmation exist. Live WAHA, production authentication, general AI and external approval/outbox/reconciliation do not.
 
 Target flow: adapter → source authentication/trusted ownership → consent/allowlist → normalized event → atomic PostgreSQL reception/jobs → worker → proposals/business services. Persist connection state separately and expose an account-scoped API. Future sending passes through approved actions.
