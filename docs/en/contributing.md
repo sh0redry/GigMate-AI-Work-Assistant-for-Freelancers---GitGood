@@ -8,7 +8,7 @@ Use the task template with scenario, module, dependencies, case IDs and exclusio
 
 Use the PR template to describe behavior, contracts, validation and limits. Link the issue and acceptance cases. Label documentation-only future behavior accurately.
 
-With one maintainer, record self-review against the checklist before merging. Once another contributor is active, require an independent reviewer for code changes. Shared schemas, migrations and approval rules require affected module-owner review. Solo work still requires validation and migration notes. Host branch protection must be configured separately; templates do not enforce it.
+With one contributor, record self-review against the checklist before merging. Once another contributor is active, require at least one independent peer approval for PRs, including onboarding documentation. Any member can merge after checks and review requirements are met; the creator is not a mandatory approver. Shared schemas, migrations and approval rules require an informed reviewer from the affected areas, not an exclusive module-owner gate. Solo work still requires validation and migration notes. Host branch protection must be configured separately; templates do not enforce it. See [equal collaboration and onboarding](team-governance.md) for permissions, platform limits and the pending setup.
 
 ## Definition of done
 
@@ -26,4 +26,4 @@ Wire fields use snake_case and canonical enums. Required-field additions, remova
 
 The transition in [ADR 0002](adr/0002-contract-authority.md) is implemented. Update Pydantic models, run scripts/export_contracts.py and frontend generate:api, then verify drift and fixture compatibility. Event/AI schemas remain independently maintained. Never edit generated files or shared migrations to hide a change. Update both implementation-status records with actual evidence.
 
-Record architectural decisions in ADRs. Use issues for current work and blockers; when contributors join, assign module owners and check the main flow daily.
+Record architectural decisions in ADRs. Use issues for current work and blockers; when contributors join, agree rotating module contacts for coordination and check the main flow regularly. Contacts have no additional permissions or exclusive approval rights.

@@ -42,7 +42,7 @@ The test suite emits one upstream Starlette/httpx deprecation warning; it does n
 - Additional local PostgreSQL/migration and HTTP reruns were not completed: Docker became unavailable after Compose startup. The waiting native migration check was interrupted. Use the successful cloud backend run above as this freeze's fresh PostgreSQL evidence; earlier local results remain historical evidence.
 - Solo self-review: this follow-up changes documentation only; runtime contracts and shared migrations are untouched, related English/Chinese records agree, documentation checks pass, and no private data was added.
 - Baseline label: v0.2.0. The annotation identifies the tested implementation commit; later documentation-only freeze records do not change its runtime scope. Tags are immutable team references; fixes receive new commits and subsequent version labels.
-- Next collaboration gates: independently verify a teammate's fresh checkout, configure host branch protection/required checks, assign actual module owners and prepare scoped starter issues. These are not completed by passing CI or creating a tag.
+- Next collaboration gates: independently verify a teammate's fresh checkout, configure host branch protection/required checks, agree rotating module contacts and prepare scoped starter issues. These are not completed by passing CI or creating a tag.
 
 This freeze covers synthetic replay only. It is not a production release, live connector validation or proof of general AI extraction quality.
 
@@ -54,7 +54,25 @@ This freeze covers synthetic replay only. It is not a production release, live c
 - Verification: `.venv/Scripts/python.exe scripts/check_baseline.py` passed: 30 Markdown files, 91 local links, 3 schemas, 11 valid fixtures, 6 rejected fixtures and 12 synthetic acceptance scenarios; jsonschema 4.26.0. `git diff --check` passed. These checks cover documentation/contracts, not application behavior or live capability. Ruff, pytest, migrations and frontend checks were not rerun for this documentation-only batch.
 - Self-review checked local navigation, bilingual policy/phase alignment, current-versus-planned claims and absence of private data. Other role assignments and live acceptance remain pending.
 
-## Outstanding implementation
+## Onboarding and equal-collaboration preparation — 2026-10-01
+
+COLLAB-02 materials are prepared: internal step-by-step onboarding/report, [matching public policy and acceptance](team-governance.md), ADR 0004 and an Onboarding verification issue template. Contribution/PR rules now use equal peer review and rotating coordination contacts; the baseline checker requires the new materials.
+
+ONB-01 through ONB-08 cover clone/start/login, conflict rejection, proposal-only behavior, explicit confirmation, deduplication, restart persistence, account isolation and a real first peer-reviewed PR. Setup instructions reflect the actual fixed Compose project/volume behavior, scripts/docs absent from the API image and idempotent seed passwords.
+
+This change affects documents, templates and the documentation check's required-file list only. Documentation/link/positive-negative fixture checks passed; solo self-review checked English/internal consistency, configuration facts and explicit pending status. No runtime/migration changes or new full application retest are claimed. No independent teammate report or peer-approved starter PR exists yet.
+
+COLLAB-03 protection settings are specified but not applied. Equal repository Admin access requires an agreed organization because the current owner is a personal account. Actual member usernames, target organization and permission scope are pending; no transfer, invitations or authorization changes were made. Organization Owner is a separate decision. All members follow the same review/check targets; no creator-only approval or bypass is intended.
+
+Materials are published on docs/equal-team-onboarding (initial commit 6f84983), with unassigned [teammate verification issue #1](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/issues/1) and [documentation draft PR #2](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/pull/2), not merged into main. This materials PR is not the teammate's first acceptance PR. An authenticated GitHub API read confirmed main protected=false and current repository admin access; no permission or protection settings were changed.
+
+## Local documentation conflict resolution — 2026-10-02
+
+- Resolved overlapping insertions between local main c71cc6a and incoming main 50c989f: kept both Role A and equal-collaboration navigation, and both completion records. Automatically merged contribution rules retain unified batch acceptance and equal peer review.
+- Verification: `.venv/Scripts/python.exe scripts/check_baseline.py` passed: 36 Markdown files, 122 local links, 3 schemas, 11 valid fixtures, 6 rejected fixtures and 12 synthetic acceptance scenarios. Working-tree and staged `git diff --check` passed; a repository content scan found no remaining conflict markers.
+- Documentation only; no application/live tests rerun. Resolution does not itself complete the merge commit or push, and no commit/push was performed in this task.
+
+## Remaining implementation
 
 Live WAHA capabilities and engine/version pinning; general model extraction and evaluation; multi-order classification UI; other requirement fields and rejection/edit commands; action approval/outbox/sending/reconciliation; full calendar buffers/work hours; production authentication; retention/deletion automation; media and external calendars.
 
