@@ -1,0 +1,98 @@
+{
+  "manifest_version": "1.0.0",
+  "profile": "synthetic_waha_a01_v1",
+  "data_classification": "synthetic",
+  "context": {
+    "account_id": "00000000-0000-4000-8000-000000000001",
+    "instance_id": "synthetic:waha-instance-1",
+    "session_id": "synthetic:session-1",
+    "source_verified": true,
+    "consent_active": true,
+    "message": {
+      "conversation_id": "00000000-0000-4000-8000-000000000002",
+      "provider_chat_id": "synthetic:customer-chat",
+      "provider_reference": "synthetic:original-message",
+      "provider_message_id": "synthetic:original-message",
+      "message_id": "00000000-0000-4000-8000-000000000005",
+      "revision": 1,
+      "allowlisted": true,
+      "source": "app"
+    }
+  },
+  "raw": {
+    "id": "synthetic:event-created-1",
+    "timestamp": 1790899200000,
+    "event": "message",
+    "session": "synthetic:session-1",
+    "payload": {
+      "id": "synthetic:original-message",
+      "from": "synthetic:customer-chat",
+      "to": "synthetic:merchant-chat",
+      "fromMe": false,
+      "hasMedia": false,
+      "body": "Synthetic appointment request"
+    }
+  },
+  "cases": [
+    {"name": "text-created", "expect": {"event_type": "message.created"}},
+    {
+      "name": "own-api-message",
+      "raw_patch": {"id": "synthetic:event-own-1", "event": "message.any", "source": "api", "payload": {"from": "synthetic:merchant-chat", "to": "synthetic:customer-chat", "fromMe": true}},
+      "context_patch": {"message": {"source": "api"}},
+      "expect": {"event_type": "message.created", "direction": "outgoing", "source": "api"}
+    },
+    {
+      "name": "text-edited",
+      "raw_patch": {"id": "synthetic:event-edited-1", "event": "message.edited", "timestamp": 1790899201000, "payload": {"id": "synthetic:edit-action", "editedMessageId": "synthetic:original-short-id", "body": "Synthetic revised appointment"}},
+      "context_patch": {"message": {"provider_reference": "synthetic:original-short-id", "revision": 2}},
+      "expect": {"event_type": "message.edited", "message_revision": 2}
+    },
+    {
+      "name": "text-revoked",
+      "raw_patch": {"id": "synthetic:event-revoked-1", "event": "message.revoked", "timestamp": 1790899202000, "payload": {"revokedMessageId": "synthetic:original-short-id", "before": null, "after": {"id": "synthetic:revoke-action", "from": "synthetic:customer-chat", "to": "synthetic:merchant-chat", "fromMe": false}}},
+      "context_patch": {"message": {"provider_reference": "synthetic:original-short-id", "revision": 3}},
+      "expect": {"event_type": "message.revoked", "message_revision": 3}
+    },
+    {
+      "name": "delivery-read",
+      "raw_patch": {"id": "synthetic:event-ack-1", "event": "message.ack", "payload": {"ack": 3, "ackName": "READ"}},
+      "expect": {"event_type": "message.ack", "payload": {"message_id": "00000000-0000-4000-8000-000000000005", "delivery_status": "read"}}
+    },
+    {
+      "name": "session-connected",
+      "raw_patch": {"id": "synthetic:event-session-1", "event": "session.status", "payload": {"name": "synthetic:session-1", "status": "WORKING"}},
+      "context_patch": {"message": null},
+      "expect": {"event_type": "session.status", "payload": {"status": "connected"}, "conversation_id": null}
+    },
+    {"name": "unverified-source", "context_patch": {"source_verified": false}, "expect": {"error": "SOURCE_UNVERIFIED"}},
+    {"name": "revoked-consent", "context_patch": {"consent_active": false}, "expect": {"error": "CONSENT_REVOKED"}},
+    {"name": "not-allowlisted", "context_patch": {"message": {"allowlisted": false}}, "expect": {"error": "CONVERSATION_NOT_ALLOWED"}},
+    {"name": "foreign-session", "raw_patch": {"session": "synthetic:other-session"}, "expect": {"error": "SESSION_MAPPING_MISMATCH"}},
+    {"name": "missing-event-id", "raw_patch": {"id": null}, "expect": {"error": "EVENT_ID_REQUIRED"}},
+    {"name": "missing-message-map", "context_patch": {"message": null}, "expect": {"error": "MESSAGE_MAPPING_REQUIRED"}},
+    {"name": "wrong-chat", "raw_patch": {"payload": {"from": "synthetic:other-chat"}}, "expect": {"error": "CONVERSATION_MAPPING_MISMATCH"}},
+    {"name": "wrong-message", "raw_patch": {"payload": {"id": "synthetic:other-message"}}, "expect": {"error": "MESSAGE_MAPPING_MISMATCH"}},
+    {"name": "empty-text", "raw_patch": {"payload": {"body": ""}}, "expect": {"error": "INVALID_PROVIDER_SHAPE"}},
+    {"name": "media-message", "raw_patch": {"payload": {"hasMedia": true}}, "expect": {"error": "UNSUPPORTED_MEDIA"}},
+    {"name": "unsupported-event", "raw_patch": {"event": "message.reaction"}, "expect": {"error": "UNSUPPORTED_EVENT"}},
+    {"name": "invalid-direction", "raw_patch": {"payload": {"fromMe": "false"}}, "expect": {"error": "INVALID_PROVIDER_SHAPE"}},
+    {"name": "invalid-timestamp", "raw_patch": {"timestamp": true}, "expect": {"error": "INVALID_TIMESTAMP"}},
+    {"name": "creation-wrong-revision", "context_patch": {"message": {"revision": 2}}, "expect": {"error": "VERSION_CONFLICT"}},
+    {
+      "name": "edit-action-not-original",
+      "raw_patch": {"event": "message.edited", "payload": {"id": "synthetic:edit-action", "editedMessageId": "synthetic:original-short-id"}},
+      "context_patch": {"message": {"provider_reference": "synthetic:edit-action", "revision": 2}},
+      "expect": {"error": "MESSAGE_MAPPING_MISMATCH"}
+    },
+    {
+      "name": "ack-error",
+      "raw_patch": {"event": "message.ack", "payload": {"ack": -1, "ackName": "ERROR"}},
+      "expect": {"error": "ACK_ERROR_NEEDS_RECONCILIATION"}
+    },
+    {
+      "name": "unknown-session-state",
+      "raw_patch": {"event": "session.status", "payload": {"name": "synthetic:session-1", "status": "UNRECOGNIZED"}},
+      "expect": {"error": "UNSUPPORTED_SESSION_STATE"}
+    }
+  ]
+}

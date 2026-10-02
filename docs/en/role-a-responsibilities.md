@@ -6,6 +6,8 @@ A converts chat changes into trusted, stable, traceable events, delivers them re
 
 ## Responsibilities and current boundaries
 
+2026-10-02: independent offline normalization/failure verification delivered; see [A-01 acceptance](role-a-stage1-acceptance.md). Live capabilities below remain pending and existing services are not wired to WAHA.
+
 See [WhatsApp connection flow](whatsapp-connection-flow.md) for pairing, selected conversations and live/historical message access.
 
 | Area | Responsibility | Current state |

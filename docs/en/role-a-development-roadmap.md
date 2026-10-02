@@ -33,6 +33,8 @@ These are under apps/backend/src/gigmate, apps/backend/migrations, contracts and
 
 ## A-01: stable contracts and replay failure baseline
 
+2026-10-02: independent adapter/corpus/tests/demo delivered under the user's new-file/no-shared-code restriction. See [A-01 acceptance](role-a-stage1-acceptance.md) for evidence, mappings and pending shared integration. This is not completion of live ingress.
+
 Goal: downstream development can rely on one input structure without live accounts.
 
 1. Inventory five schema types against three implemented ingestion types; distinguish defined, accepted, consumed and live-tested capabilities.
