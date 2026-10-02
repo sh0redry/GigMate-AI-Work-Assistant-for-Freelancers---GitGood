@@ -2,7 +2,7 @@
 
 ## Tasks and branches
 
-Use the task template with scenario, module, dependencies, case IDs and exclusions. Prefer changes reviewable within a day. Use `feat/<name>`, `fix/<name>`, `docs/<name>` or `chore/<name>`. Keep main coherent and reviewable. Commit format: `type(scope): summary`.
+Use the task template with scenario, module, dependencies, case IDs and exclusions. Complete as many related tasks as practical within the authorized milestone as one coherent batch, then present unified acceptance. Include implementation, migrations, contracts, tests and bilingual docs; do not pause for user acceptance after each small task. Run checks and fix failures throughout development. Keep changes reviewable, preserve independent review and scope boundaries, and report blocked external verification honestly while completing unblocked work. See the [Role A batch plan](role-a-development-roadmap.md). Use `feat/<name>`, `fix/<name>`, `docs/<name>` or `chore/<name>`. Keep main coherent and reviewable. Commit format: `type(scope): summary`.
 
 ## Review
 

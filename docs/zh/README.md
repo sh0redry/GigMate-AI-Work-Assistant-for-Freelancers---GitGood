@@ -12,6 +12,8 @@
 | [协作检查表](collaboration-checklist.md) | 任务、提交、自查、评审与合并 |
 | [验收要求](acceptance.md) | 当前文档验收与后续业务验收 |
 | [阶段任务](roadmap.md) | 工作顺序、依赖与完成证据 |
+| [A 的职责](role-a-responsibilities.md) | 消息接入、鉴权、可靠任务、监控和角色交接 |
+| [A 的技术开发演进](role-a-development-roadmap.md) | 完整批次开发、依赖、异常测试和统一验收 |
 | [已完成工作](progress.md) | 实际实现、验证结果与未完成范围 |
 | [英文架构决策](../en/adr/README.md) | 选型与决策依据 |
 | [契约](../../contracts/README.md) | 字段、枚举、样例与接口约定 |

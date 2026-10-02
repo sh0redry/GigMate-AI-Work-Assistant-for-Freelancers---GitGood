@@ -46,7 +46,15 @@ The test suite emits one upstream Starlette/httpx deprecation warning; it does n
 
 This freeze covers synthetic replay only. It is not a production release, live connector validation or proof of general AI extraction quality.
 
-## Remaining
+## Role A documentation and batch policy — 2026-10-02
+
+- Added bilingual Role A responsibility and technical evolution documents: current boundaries, event mappings, security, durable jobs, monitoring, handoffs, four development batches and eight planned failure-test groups.
+- Persisted the user's current/future policy in AGENTS.md and bilingual contribution rules: complete as many related tasks as practical within the authorized milestone, self-check/fix during development, then unified batch acceptance. Independent review, scope limits and honest blocked verification remain required.
+- Added navigation in both documentation indexes. No runtime code, schemas, generated files, migrations or root README changed; no live integration was implemented, and no commit/push was performed.
+- Verification: `.venv/Scripts/python.exe scripts/check_baseline.py` passed: 30 Markdown files, 91 local links, 3 schemas, 11 valid fixtures, 6 rejected fixtures and 12 synthetic acceptance scenarios; jsonschema 4.26.0. `git diff --check` passed. These checks cover documentation/contracts, not application behavior or live capability. Ruff, pytest, migrations and frontend checks were not rerun for this documentation-only batch.
+- Self-review checked local navigation, bilingual policy/phase alignment, current-versus-planned claims and absence of private data. Other role assignments and live acceptance remain pending.
+
+## Outstanding implementation
 
 Live WAHA capabilities and engine/version pinning; general model extraction and evaluation; multi-order classification UI; other requirement fields and rejection/edit commands; action approval/outbox/sending/reconciliation; full calendar buffers/work hours; production authentication; retention/deletion automation; media and external calendars.
 

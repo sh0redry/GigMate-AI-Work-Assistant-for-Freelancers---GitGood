@@ -22,6 +22,8 @@ Read docs/en/architecture.md, relevant ADRs and contracts/README.md. Pydantic mo
 
 Preserve unrelated user files. Use focused changes and do not fill the repository with unused directories. Add versioned migrations when implementation exists; do not rewrite shared migrations.
 
+For current and future development, complete as many related tasks as practical within the authorized milestone as one coherent batch, including implementation, migrations, contracts, tests and bilingual documentation, then present unified acceptance. Do not stop for user acceptance after each small task. Run checks and fix failures during development; preserve scope boundaries and independent review. Continue unblocked work when external dependencies are missing and report blocked verification honestly. See docs/en/role-a-development-roadmap.md for Role A's batch plan.
+
 Current check from the repository root:
 
 ```text
