@@ -11,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "apps/backend/src"))
+sys.path.insert(0, str(ROOT))
 
 try:
     import httpx
@@ -136,7 +137,8 @@ def select_chats(config, *, limit, offset):
         return 0
     save_selected_chats([chats[index]["id"] for index in indices], original)
     print(f"已将所选 {len(indices)} 个聊天加入本地白名单，保留原有设置。")
-    print("请重启验证服务加载设置：")
+    print("请同步配置后重启验证服务：")
+    print(".venv\\Scripts\\python.exe scripts/waha_local.py sync-container-config")
     print(
         "docker compose --env-file local-data/waha-a02/.env -f infra/waha.compose.yaml restart probe"
     )
@@ -157,7 +159,14 @@ def main(argv=None):
         action="store_true",
         help="Bind inside loopback-published Compose service",
     )
-    for name in ("create", "status", "qr", "observations", "restart"):
+    for name in (
+        "create",
+        "status",
+        "qr",
+        "observations",
+        "restart",
+        "sync-container-config",
+    ):
         commands.add_parser(name)
     selection = commands.add_parser(
         "select-chats", help="Select recent chat metadata locally"
@@ -205,6 +214,13 @@ def main(argv=None):
     try:
         if args.command == "create":
             result = client.create_session()
+        elif args.command == "sync-container-config":
+            from scripts.waha_container_config import sync_private_config
+
+            try:
+                result = sync_private_config(config)
+            except RuntimeError:
+                raise AdapterError("CONTAINER_CONFIG_SYNC_FAILED") from None
         elif args.command == "restart":
             result = client.restart_failed_session()
         elif args.command == "status":

@@ -130,6 +130,40 @@ class MessageRow(Base):
     )
 
 
+class ServiceHeartbeat(Base):
+    __tablename__ = "service_heartbeats"
+    service: Mapped[str] = mapped_column(String(32), primary_key=True)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class WahaOperation(Base):
+    __tablename__ = "waha_operations"
+    connection_id: Mapped[str] = mapped_column(ForeignKey("waha_connections.id"), primary_key=True)
+    monitor_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    api_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    api_ok: Mapped[bool | None] = mapped_column(Boolean)
+    provider_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    provider_ok: Mapped[bool | None] = mapped_column(Boolean)
+    rejected: Mapped[int] = mapped_column(Integer, default=0)
+    last_rejection_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error_code: Mapped[str | None] = mapped_column(String(64))
+
+
+class WahaRecoveryIssue(Base):
+    __tablename__ = "waha_recovery_issues"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    connection_id: Mapped[str] = mapped_column(ForeignKey("waha_connections.id"), index=True)
+    code: Mapped[str] = mapped_column(String(64))
+    active_key: Mapped[str | None] = mapped_column(String(64))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    recovered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolution: Mapped[str | None] = mapped_column(String(32))
+    occurrences: Mapped[int] = mapped_column(Integer, default=1)
+    __table_args__ = (UniqueConstraint("connection_id", "active_key", name="uq_waha_active_issue"),)
+
+
 class Job(Base):
     __tablename__ = "jobs"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -141,6 +175,10 @@ class Job(Base):
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     lease_owner: Mapped[str | None] = mapped_column(String(36))
     error_code: Mapped[str | None] = mapped_column(String(64))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    processing_ms: Mapped[int | None] = mapped_column(Integer)
+    completion_latency_ms: Mapped[int | None] = mapped_column(BigInteger)
+    lease_recoveries: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class ChangeRow(Base):
@@ -192,7 +230,10 @@ def make_engine(url=DATABASE_URL):
     return create_engine(
         url,
         pool_pre_ping=True,
-        connect_args={"check_same_thread": False} if url.startswith("sqlite") else {},
+        connect_args={"check_same_thread": False}
+        if url.startswith("sqlite")
+        else {"connect_timeout": 5},
+        pool_timeout=5,
     )
 
 

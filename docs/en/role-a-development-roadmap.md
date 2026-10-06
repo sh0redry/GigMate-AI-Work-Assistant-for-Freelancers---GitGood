@@ -1,12 +1,16 @@
 # Role A technical evolution and unified acceptance
 
+Current extension: A-01/A-02 and durable A-03 ingress have implementation evidence; [recovery acceptance](role-a-recovery-acceptance.md) adds component health, fault verification and manual gap review. This remains A-03 work. A-04 sending still depends on C's approval/outbox/reconciliation services. Earlier baseline descriptions below are planning history; see implementation status for actual current behavior.
+
 Updated: 2026-10-02. This is a development plan, not completed implementation. Scope is ingestion, authentication, durable jobs and connection monitoring. See [responsibilities](role-a-responsibilities.md) and the [Chinese counterpart](../zh/role-a-development-roadmap.md).
 
 ## Starting point and operating policy
 
 The [WhatsApp connection flow](whatsapp-connection-flow.md) explains pairing, session ownership, conversation selection and initial history synchronization for A-02/A-03.
 
-v0.2 uses FastAPI, SQLAlchemy/Alembic, PostgreSQL, one modular backend and a separate worker. Development authentication, allowlisted replay create/edit/revoke, inbox/jobs, version checks, fixed extraction and internal schedule confirmation exist. Live WAHA, production authentication, general AI and external approval/outbox/reconciliation do not.
+v0.2 uses FastAPI, SQLAlchemy/Alembic, PostgreSQL, one modular backend and a separate worker. Development authentication, allowlisted replay create/edit/revoke, inbox/jobs, version checks, fixed extraction and internal schedule confirmation exist. Optional local WAHA durable reception/monitoring and real text mutations are verified. Production authentication, general live AI and external approval/outbox/reconciliation remain pending. See [current capability and handoff](role-a-waha-handoff.md).
+
+2026-10-06 plan: official Cloud API is deferred by the user and is not in the current plan. Next is A-03 unified independent review with E and human gap review; later authorized WAHA UI/live-processing/approved-execution batches depend on D/B/C respectively. No automatic move to sending.
 
 Target flow: adapter → source authentication/trusted ownership → consent/allowlist → normalized event → atomic PostgreSQL reception/jobs → worker → proposals/business services. Persist connection state separately and expose an account-scoped API. Future sending passes through approved actions.
 

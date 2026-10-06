@@ -253,6 +253,22 @@ def test_create_has_hmac_safe_subscriptions_and_no_automatic_retries(config):
         client.close()
 
 
+def test_compose_client_uses_only_fixed_internal_target(config):
+    def handler(request):
+        assert str(request.url) == "http://waha:3000/api/sessions/default"
+        assert request.headers["X-Api-Key"] == config.api_key
+        return httpx.Response(200, json={"synthetic": True})
+
+    client = LocalWahaClient(config, docker_service=True, transport=httpx.MockTransport(handler))
+    try:
+        assert client._request("GET", "/api/sessions/default") == {"synthetic": True}
+        assert config.base_url.startswith("http://127.0.0.1")
+    finally:
+        client.close()
+    with pytest.raises(AdapterError, match="INVALID_INTERNAL_MODE"):
+        LocalWahaClient(config, docker_service="http://untrusted.invalid")
+
+
 def test_status_and_qr_never_expose_server_credentials(config):
     requests = []
 

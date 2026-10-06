@@ -44,19 +44,32 @@ def test_versioned_migration_preserves_replay_rows(tmp_path):
                 "time": "2026-10-02 00:00:00",
             },
         )
+        db.execute(
+            text(
+                "INSERT INTO jobs (id,event_id,account_id,state,attempts,available_at) "
+                "VALUES ('synthetic-job','synthetic-event','synthetic-account','pending',0,'2026-10-02 00:00:00')"
+            )
+        )
     engine.dispose()
     migrate("upgrade", "head")
     engine = create_engine(url)
     assert "waha_connections" in inspect(engine).get_table_names()
+    assert "waha_operations" in inspect(engine).get_table_names()
     with engine.connect() as db:
         assert db.execute(text("SELECT payload, connection_id FROM inbox")).one() == (
             '{"synthetic":true}',
+            None,
+        )
+        assert db.execute(text("SELECT state,lease_recoveries,completed_at FROM jobs")).one() == (
+            "pending",
+            0,
             None,
         )
     engine.dispose()
     migrate("downgrade", "0001_replay_foundation")
     engine = create_engine(url)
     assert "waha_connections" not in inspect(engine).get_table_names()
+    assert "waha_operations" not in inspect(engine).get_table_names()
     with engine.connect() as db:
         assert db.execute(text("SELECT count(*) FROM inbox")).scalar() == 1
     engine.dispose()

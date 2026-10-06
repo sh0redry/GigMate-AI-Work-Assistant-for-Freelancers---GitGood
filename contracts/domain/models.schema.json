@@ -456,6 +456,40 @@
       "title": "CalendarEvent",
       "type": "object"
     },
+    "ComponentHealth": {
+      "additionalProperties": false,
+      "properties": {
+        "observed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Observed At"
+        },
+        "state": {
+          "enum": [
+            "healthy",
+            "unavailable",
+            "stale",
+            "unknown"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "observed_at"
+      ],
+      "title": "ComponentHealth",
+      "type": "object"
+    },
     "ConfirmChangeCommand": {
       "additionalProperties": false,
       "properties": {
@@ -480,6 +514,124 @@
         "apply_calendar_update"
       ],
       "title": "ConfirmChangeCommand",
+      "type": "object"
+    },
+    "ConnectorMetrics": {
+      "additionalProperties": false,
+      "properties": {
+        "average_completion_latency_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Average Completion Latency Ms"
+        },
+        "average_processing_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Average Processing Ms"
+        },
+        "expired_leases": {
+          "minimum": 0,
+          "title": "Expired Leases",
+          "type": "integer"
+        },
+        "last_error_code": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Error Code"
+        },
+        "last_rejection_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Rejection At"
+        },
+        "lease_recoveries": {
+          "minimum": 0,
+          "title": "Lease Recoveries",
+          "type": "integer"
+        },
+        "maximum_processing_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Maximum Processing Ms"
+        },
+        "oldest_pending_seconds": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Oldest Pending Seconds"
+        },
+        "rejected": {
+          "minimum": 0,
+          "title": "Rejected",
+          "type": "integer"
+        },
+        "retries": {
+          "minimum": 0,
+          "title": "Retries",
+          "type": "integer"
+        },
+        "timed_jobs": {
+          "minimum": 0,
+          "title": "Timed Jobs",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rejected",
+        "retries",
+        "lease_recoveries",
+        "expired_leases",
+        "oldest_pending_seconds",
+        "timed_jobs",
+        "average_processing_ms",
+        "maximum_processing_ms",
+        "average_completion_latency_ms",
+        "last_error_code",
+        "last_rejection_at"
+      ],
+      "title": "ConnectorMetrics",
       "type": "object"
     },
     "ConnectorReceipt": {
@@ -522,6 +674,9 @@
           "title": "Accepted",
           "type": "integer"
         },
+        "api_health": {
+          "$ref": "#/$defs/ComponentHealth"
+        },
         "connector": {
           "const": "waha",
           "title": "Connector",
@@ -563,6 +718,12 @@
           "title": "Live Connected",
           "type": "boolean"
         },
+        "metrics": {
+          "$ref": "#/$defs/ConnectorMetrics"
+        },
+        "monitor_health": {
+          "$ref": "#/$defs/ComponentHealth"
+        },
         "observed_at": {
           "anyOf": [
             {
@@ -581,10 +742,21 @@
           "title": "Pending Jobs",
           "type": "integer"
         },
+        "pipeline_ready": {
+          "title": "Pipeline Ready",
+          "type": "boolean"
+        },
         "processing_jobs": {
           "minimum": 0,
           "title": "Processing Jobs",
           "type": "integer"
+        },
+        "provider_health": {
+          "$ref": "#/$defs/ComponentHealth"
+        },
+        "review_required": {
+          "title": "Review Required",
+          "type": "boolean"
         },
         "stale": {
           "title": "Stale",
@@ -605,6 +777,14 @@
           ],
           "title": "State",
           "type": "string"
+        },
+        "unresolved_issues": {
+          "minimum": 0,
+          "title": "Unresolved Issues",
+          "type": "integer"
+        },
+        "worker_health": {
+          "$ref": "#/$defs/ComponentHealth"
         }
       },
       "required": [
@@ -621,7 +801,15 @@
         "stale_events",
         "pending_jobs",
         "processing_jobs",
-        "failed_jobs"
+        "failed_jobs",
+        "api_health",
+        "worker_health",
+        "monitor_health",
+        "provider_health",
+        "pipeline_ready",
+        "review_required",
+        "unresolved_issues",
+        "metrics"
       ],
       "title": "ConnectorStatus",
       "type": "object"
@@ -967,6 +1155,97 @@
         "interpretation"
       ],
       "title": "ProvenancedField",
+      "type": "object"
+    },
+    "RecoveryIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "acknowledged_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Acknowledged At"
+        },
+        "code": {
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "connection_id": {
+          "format": "uuid",
+          "title": "Connection Id",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "last_seen_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Last Seen At",
+          "type": "string"
+        },
+        "occurrences": {
+          "minimum": 1,
+          "title": "Occurrences",
+          "type": "integer"
+        },
+        "recovered_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Recovered At"
+        },
+        "resolution": {
+          "anyOf": [
+            {
+              "enum": [
+                "reviewed_no_import",
+                "needs_followup"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Resolution"
+        },
+        "started_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Started At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "connection_id",
+        "code",
+        "started_at",
+        "last_seen_at",
+        "recovered_at",
+        "acknowledged_at",
+        "resolution",
+        "occurrences"
+      ],
+      "title": "RecoveryIssue",
       "type": "object"
     },
     "RejectActionCommand": {

@@ -50,6 +50,7 @@ $env:DATABASE_URL = 'postgresql+psycopg://gigmate:local-replay-only@127.0.0.1:54
 .venv\Scripts\python.exe -m alembic -c apps/backend/alembic.ini upgrade head
 .venv\Scripts\python.exe -m gigmate.seed
 .venv\Scripts\python.exe scripts/waha_ingress.py provision
+.venv\Scripts\python.exe scripts/waha_ingress.py sync-container-config
 docker compose --env-file local-data/waha-a02/.env -f infra/waha.compose.yaml -f infra/waha-ingress.compose.yaml up --build -d --wait ingress ingress-worker ingress-monitor
 # 更新 provider 回调，可能重启其会话：
 .venv\Scripts\python.exe scripts/waha_ingress.py configure-live
@@ -58,7 +59,9 @@ docker compose --env-file local-data/waha-a02/.env -f infra/waha.compose.yaml -f
 .venv\Scripts\python.exe scripts/smoke_waha_ingress.py
 ```
 
-`local-data/waha-a02/ingress.json` 是 Git 忽略的私有服务端绑定。API 只读挂载并通过 WAHA_CONNECTOR_CONFIG 加载；没有配置时接入关闭。密钥、二维码和 profile 保留在私有本地位置。开发账号/密码与 PostgreSQL 凭据仅用于本机测试，不代表生产鉴权；instance/账号/session 映射须对应真实 provider，不把实际 profile 放进夹具，不启用无关账号连接。
+当前运行配置使用私有 Docker 卷，主机配置变更须同步后再重启服务；见[恢复操作流程](role-a-recovery-acceptance.md)。
+
+`local-data/waha-a02/bindings/ingress.json` 是 Git 忽略的私有服务端绑定。API 只读挂载并通过 WAHA_CONNECTOR_CONFIG 加载；没有配置时接入关闭。密钥、二维码和 profile 保留在私有本地位置。开发账号/密码与 PostgreSQL 凭据仅用于本机测试，不代表生产鉴权；instance/账号/session 映射须对应真实 provider，不把实际 profile 放进夹具，不启用无关账号连接。
 
 后续改变聊天选择，要执行 select-chats，然后在此数据库上执行 `waha_ingress.py provision`；仅重启旧 probe 不会改变持久授权。立即停止接入使用 `waha_ingress.py pause`；串行化后续请求/任务会拒绝或取消。只编辑本地 consent 标志不能代替暂停权威数据库连接。更换挂载的绑定/密钥后，需重启 ingress/monitor 并同步 provider HMAC 配置。
 

@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4, uuid5
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 
 from gigmate.contracts import ConnectorStatus
 from gigmate.db import (
@@ -37,6 +37,7 @@ from gigmate.waha_adapter import (
     normalize_event,
     semantic_digest,
 )
+from gigmate.waha_recovery import operational_view
 
 
 @dataclass(frozen=True)
@@ -48,15 +49,13 @@ class WebhookBinding:
     secret: str = field(repr=False)
 
 
-def binding_for(connection_id):
+def configured_binding():
     """Read private operator configuration, never derive ownership from the body."""
     path = os.environ.get("WAHA_CONNECTOR_CONFIG")
     if not path:
         raise BusinessError(503, "CONNECTOR_DISABLED", "WAHA ingress is not configured")
     try:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
-        if data["connection_id"] != connection_id:
-            raise BusinessError(404, "NOT_FOUND", "Connector not found")
         result = WebhookBinding(**data)
         UUID(result.connection_id)
         UUID(result.account_id)
@@ -72,6 +71,13 @@ def binding_for(connection_id):
         raise BusinessError(
             503, "CONNECTOR_CONFIG_INVALID", "Connector configuration is invalid"
         ) from None
+
+
+def binding_for(connection_id):
+    result = configured_binding()
+    if result.connection_id != connection_id:
+        raise BusinessError(404, "NOT_FOUND", "Connector not found")
+    return result
 
 
 def fail(code, status=409):
@@ -110,6 +116,10 @@ def stanza_id(reference, peer, outgoing):
 
 def receive(db, binding, raw, *, now=None):
     now = now or datetime.now(UTC)
+    if db.bind.dialect.name == "postgresql":
+        # Bounded waits prevent an abandoned transaction exhausting the HTTP worker pool.
+        db.execute(text("SET LOCAL lock_timeout = '3s'"))
+        db.execute(text("SET LOCAL statement_timeout = '5s'"))
     # Account first matches business commands and worker lock order.
     account = db.scalar(select(Account).where(Account.id == binding.account_id).with_for_update())
     connection = db.scalar(
@@ -419,4 +429,5 @@ def status_view(db, connection, *, now=None):
         pending_jobs=counts.get("pending", 0),
         processing_jobs=counts.get("processing", 0),
         failed_jobs=counts.get("failed", 0),
+        **operational_view(db, connection, now=now),
     ).model_dump(mode="json")

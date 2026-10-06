@@ -6,19 +6,21 @@ A converts chat changes into trusted, stable, traceable events, delivers them re
 
 ## Responsibilities and current boundaries
 
-2026-10-02: independent offline normalization/failure verification delivered; see [A-01 acceptance](role-a-stage1-acceptance.md). Live capabilities below remain pending and existing services are not wired to WAHA.
+For the latest consolidated implementation, operator commands and B/C/D/E integration boundaries, read [WAHA handoff](role-a-waha-handoff.md).
+
+2026-10-02: offline normalization, local WAHA capability tooling and opt-in durable reception are implemented. Fresh live text/edit/revoke and ACK have been verified. Component health, safe operational evidence and reproducible fault tests are described in [recovery acceptance](role-a-recovery-acceptance.md); production identity, complete history recovery, independent E review and external sending remain pending. Earlier baseline-only statements in this document are historical; the implementation status governs current evidence.
 
 See [WhatsApp connection flow](whatsapp-connection-flow.md) for pairing, selected conversations and live/historical message access.
 
 | Area | Responsibility | Current state |
 | --- | --- | --- |
-| Ingestion | Maintain Replay; test and pin WAHA version/engine; normalize creation, edits, revocations, acknowledgments and session events | Replay text/create/edit/revoke implemented; live adapter, acknowledgment and session consumption pending |
-| Authentication | Verify webhook source, resolve account/session/conversation ownership server-side, enforce consent and allowlist before content storage or model calls | Development sessions, CSRF, ownership and allowlists implemented; production identity and provider webhook authentication pending |
+| Ingestion | Maintain Replay; test and pin WAHA version/engine; normalize creation, edits, revocations, acknowledgments and session events | Replay and opt-in WEBJS signed durable reception implemented; fresh live text/edit/revoke/ACK verified; complete historical recovery pending |
+| Authentication | Verify webhook source, resolve account/session/conversation ownership server-side, enforce consent and allowlist before content storage or model calls | Development sessions, CSRF, ownership, allowlists and raw-body HMAC implemented; production identity/secrets pending |
 | Event contract | Maintain schema, provider mappings, stable identities/revisions, fixtures and capability records | Wire 0.1.0 defines five types; schema presence does not imply service support |
-| Durable reception | Atomically persist inbox/message revisions/context/jobs; handle duplicates, conflicts, failure and recovery | PostgreSQL Inbox/Job and separate worker implemented; live identity and ordering reconciliation pending |
-| Monitoring | Persist connection state and sync progress; expose account-scoped status, freshness and safe errors | Current endpoint returns synthetic_replay/replay/live_connected=false, not live monitoring |
+| Durable reception | Atomically persist inbox/message revisions/context/jobs; handle duplicates, conflicts, failure and recovery | Persistent mappings, deduplication, bounded leases/retries and source revision ordering implemented; missing/ambiguous sources need manual review |
+| Monitoring | Persist connection state and sync progress; expose account-scoped status, freshness and safe errors | Provider/API/worker/monitor samples, pipeline readiness, safe metrics and persisted gap review implemented; production alert transport and D's UI pending |
 | Environment | Maintain ingestion configuration, Compose, setup and recovery instructions | Reuse modular backend, separate worker and PostgreSQL; no new queue service by default |
-| Testing with E | Supply reproducible inputs, fault injection, safe diagnostics and fixes | Some replay failures tested; live webhook/reconnect/send-echo cases pending |
+| Testing with E | Supply reproducible inputs, fault injection, safe diagnostics and fixes | Automated/isolated fault tests and local provider interruption verified; E independent review, Internet/logout recovery and send echoes pending |
 
 ## First deliverable: a stable event contract
 
@@ -63,11 +65,11 @@ A does not directly confirm orders, mutate formal calendars or execute AI drafts
 | Case | Expected result | Evidence boundary |
 | --- | --- | --- |
 | Duplicate / changed content under same identity | No repeated records/jobs; identity conflict rejected | Replay tests exist |
-| Missing authentication, CSRF, cross-account, allowlist or consent failure | Reject before business storage/model calls | Some development/replay tests; live webhook pending |
+| Missing authentication, CSRF, cross-account, allowlist or consent failure | Reject before business storage/model calls | Development/replay and signed ingress tests, scoped recovery tests and HTTP smoke verified; production identity pending |
 | Edit/revoke/stale task | Source revisions retained, old proposal cannot be confirmed | Revocation/stale-context tests; live ordering pending |
 | Worker crash/expired lease/concurrent claims/persistent failure | Recovery without repeated proposals, bounded retries | Tests exist; concurrency requires PostgreSQL |
-| Database unavailable | No false receipt acknowledgment; resume durable work after recovery | Worker poll test exists; complete reception-transaction cases need additions |
-| Disconnect/reconnect/late state events | Accurate state and reconciliation of missing/duplicate events | Live implementation pending |
+| Database unavailable | No false receipt acknowledgment; resume durable work after recovery | PostgreSQL tests and isolated real API/database fault runner verified; missed-content restoration unproved |
+| Disconnect/reconnect/late state events | Accurate state and reconciliation of missing/duplicate events | Persistent state/late-event tests and local WAHA interruption verified; Internet/logout recovery and automatic backfill pending |
 | API echo / unknown send outcome | No reply loop or retroactive cancellation; no blind resend | External execution pending |
 
 Use synthetic repository fixtures. Live verification needs separately authorized test accounts and private local evidence; track only sanitized findings and synthetic reproductions.

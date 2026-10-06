@@ -34,6 +34,7 @@
 ```powershell
 # 仅首次配置；已有配置时拒绝覆盖密钥：
 .venv\Scripts\python.exe scripts/waha_local.py init
+.venv\Scripts\python.exe scripts/waha_local.py sync-container-config
 docker compose --env-file local-data/waha-a02/.env -f infra/waha.compose.yaml up --build -d --wait
 # 仅 default 会话不存在时创建；失败后先查询状态，勿盲目重复：
 .venv\Scripts\python.exe scripts/waha_local.py create

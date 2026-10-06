@@ -16,7 +16,7 @@ services:
       WAHA_CONNECTOR_CONFIG: /run/gigmate/ingress.json
       COOKIE_SECURE: "false"
     volumes:
-      - ../local-data/waha-a02/ingress.json:/run/gigmate/ingress.json:ro
+      - waha-ingress-bindings:/run/gigmate:ro
     ports: ["127.0.0.1:18702:8000"]
     command: ["uvicorn", "gigmate.api:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--log-level", "error"]
     healthcheck:
@@ -34,13 +34,14 @@ services:
       context: ..
       dockerfile: infra/waha-probe.Dockerfile
     restart: "no"
-    network_mode: "service:waha"
     environment:
       DATABASE_URL: postgresql+psycopg://gigmate:local-replay-only@host.docker.internal:54329/gigmate_waha_a03
     command: ["python", "scripts/waha_ingress.py", "watch", "--container"]
     volumes:
-      - ../local-data/waha-a02/config.json:/app/local-data/waha-a02/config.json:ro
-      - ../local-data/waha-a02/ingress.json:/app/local-data/waha-a02/ingress.json:ro
+      - waha-monitor-config:/app/local-data/waha-a02:ro
     depends_on:
       ingress: {condition: service_healthy}
       waha: {condition: service_started}
+
+volumes:
+  waha-ingress-bindings:

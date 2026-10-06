@@ -2,7 +2,7 @@
 
 Milestone: **0.2 replay skeleton**. Updated: **2026-10-01**.
 
-These agreements prepare the repository for later contributors. A runnable synthetic replay skeleton is implemented. Live connector verification, general extraction and external sending remain pending.
+The replay skeleton and optional local WAHA durable ingress/monitoring are implemented and tested. Production onboarding, general live extraction and external sending remain pending. Start with the current WAHA handoff below; earlier stage documents retain development history.
 
 | Document | Purpose |
 | --- | --- |
@@ -11,8 +11,10 @@ These agreements prepare the repository for later contributors. A runnable synth
 | [Getting started](getting-started.md) | Checks available now and next implementation gate |
 | [Contributing](contributing.md) | Task, branch, review and completion rules |
 | [Role A responsibilities](role-a-responsibilities.md) | Ingestion, authentication, durable events, monitoring and handoffs |
+| [WAHA implementation and team handoff](role-a-waha-handoff.md) | Current capability matrix, limits, role integrations and remaining plan |
 | [WhatsApp connection flow](whatsapp-connection-flow.md) | QR pairing, conversation allowlists, live events and historical sync |
 | [Role A development roadmap](role-a-development-roadmap.md) | Coherent development batches, dependencies, failure tests and unified acceptance |
+| [Role A recovery acceptance](role-a-recovery-acceptance.md) | Component health, fault recovery, manual gap review and reproducible tests for E |
 | [Equal collaboration](team-governance.md) | Equal permission target, peer review and independent onboarding gate |
 | [Decisions](adr/README.md) | Accepted choices and change conditions |
 | [Contracts](../../contracts/README.md) | Canonical schemas, API agreement and synthetic fixtures |

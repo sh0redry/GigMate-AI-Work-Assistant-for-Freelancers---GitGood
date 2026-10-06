@@ -28,6 +28,7 @@ $env:DATABASE_URL = 'postgresql+psycopg://gigmate:local-replay-only@127.0.0.1:54
 .venv\Scripts\python.exe -m alembic -c apps/backend/alembic.ini upgrade head
 .venv\Scripts\python.exe -m gigmate.seed
 .venv\Scripts\python.exe scripts/waha_ingress.py provision
+.venv\Scripts\python.exe scripts/waha_ingress.py sync-container-config
 docker compose --env-file local-data/waha-a02/.env -f infra/waha.compose.yaml -f infra/waha-ingress.compose.yaml up --build -d --wait ingress ingress-worker ingress-monitor
 # Changes provider callback configuration and may restart its session:
 .venv\Scripts\python.exe scripts/waha_ingress.py configure-live
@@ -36,7 +37,9 @@ docker compose --env-file local-data/waha-a02/.env -f infra/waha.compose.yaml -f
 .venv\Scripts\python.exe scripts/smoke_waha_ingress.py
 ```
 
-`local-data/waha-a02/ingress.json` is the ignored private server binding. API mounts it read-only through WAHA_CONNECTOR_CONFIG; ingress is disabled without that configuration. Credentials/QR/profiles remain local/private. Development accounts/password and PostgreSQL credentials are only for this loopback test environment, not production authentication. The CLI's instance/account/session mapping must match the actual connected provider. Never copy real profiles into fixtures or enable an unrelated account's connection.
+Current runtime configuration uses private Docker volumes; synchronize host changes before restarting services. See [recovery workflow](role-a-recovery-acceptance.md).
+
+`local-data/waha-a02/bindings/ingress.json` is the ignored private server binding. API mounts it read-only through WAHA_CONNECTOR_CONFIG; ingress is disabled without that configuration. Credentials/QR/profiles remain local/private. Development accounts/password and PostgreSQL credentials are only for this loopback test environment, not production authentication. The CLI's instance/account/session mapping must match the actual connected provider. Never copy real profiles into fixtures or enable an unrelated account's connection.
 
 Changing the selected chats now requires `select-chats`, then `waha_ingress.py provision` against this database. Restarting only the old probe does not update durable authorization. To stop reception immediately run `waha_ingress.py pause`; in-flight work is serialized and future requests/jobs are rejected/cancelled. Editing the private consent flag alone is not a substitute for pausing the authoritative database connection. Rotating/replacing the mounted binding requires restarting ingress/monitor and updating the provider HMAC configuration.
 

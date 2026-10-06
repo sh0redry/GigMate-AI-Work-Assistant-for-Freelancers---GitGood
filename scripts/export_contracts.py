@@ -19,6 +19,7 @@ def domain_schema():
         c.SourceRef,
         c.ConnectorStatus,
         c.ConnectorReceipt,
+        c.RecoveryIssue,
         c.ProvenancedField,
         c.WorkOrder,
         c.AccountConsent,

@@ -21,6 +21,7 @@ from gigmate.db import (
     WorkOrderRow,
 )
 from gigmate.understanding import extract
+from gigmate.waha_recovery import worker_heartbeat
 
 log = logging.getLogger("gigmate.worker")
 
@@ -43,6 +44,13 @@ def run_once(factory=Session):
         )
         if not job:
             return False
+        if job.attempts >= 3:
+            job.state, job.error_code = "failed", "RETRY_EXHAUSTED"
+            job.lease_owner, job.lease_until = None, None
+            job.completed_at = now
+            return True
+        if job.state == "processing":
+            job.lease_recoveries += 1
         job.state, job.lease_owner, job.lease_until = (
             "processing",
             owner,
@@ -50,6 +58,7 @@ def run_once(factory=Session):
         )
         job.attempts += 1
         job_id, account_id = job.id, job.account_id
+    began = time.monotonic()
     try:
         with factory.begin() as db:
             account = db.scalar(select(Account).where(Account.id == account_id).with_for_update())
@@ -144,6 +153,7 @@ def run_once(factory=Session):
             if job.lease_until.replace(tzinfo=UTC) <= datetime.now(UTC):
                 raise RuntimeError("LEASE_EXPIRED")
             job.lease_owner, job.lease_until = None, None
+            complete_metrics(job, inbox, began)
     except Exception:
         # No raw message text or exception values enter logs.
         log.error("job_failed job_id=%s code=PROCESSING_FAILED", job_id)
@@ -154,7 +164,27 @@ def run_once(factory=Session):
                 job.error_code = "PROCESSING_FAILED"
                 job.available_at = datetime.now(UTC) + timedelta(seconds=2**job.attempts)
                 job.lease_owner, job.lease_until = None, None
+                if job.state == "failed":
+                    complete_metrics(job, db.get(Inbox, job.event_id), began)
     return True
+
+
+def complete_metrics(job, inbox, began):
+    job.completed_at = datetime.now(UTC)
+    job.processing_ms = max(0, int((time.monotonic() - began) * 1000))
+    job.completion_latency_ms = max(
+        0, int((job.completed_at - inbox.received_at.replace(tzinfo=UTC)).total_seconds() * 1000)
+    )
+
+
+def heartbeat(factory=Session):
+    try:
+        with factory.begin() as db:
+            worker_heartbeat(db)
+        return True
+    except SQLAlchemyError:
+        log.error("worker_heartbeat_failed code=DATABASE_UNAVAILABLE")
+        return False
 
 
 def poll(factory=Session):
@@ -168,7 +198,11 @@ def poll(factory=Session):
 def main():
     logging.basicConfig(level=logging.INFO)
     maintenance_at = 0
+    heartbeat_at = 0
     while True:
+        if time.monotonic() >= heartbeat_at:
+            heartbeat()
+            heartbeat_at = time.monotonic() + 10
         if time.monotonic() >= maintenance_at:
             maintain()
             maintenance_at = time.monotonic() + 3600

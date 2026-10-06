@@ -10,7 +10,7 @@ services:
     ports: ["127.0.0.1:18701:18701"]
     command: ["python", "scripts/waha_local.py", "probe", "--container"]
     volumes:
-      - ../local-data/waha-a02/config.json:/app/local-data/waha-a02/config.json:ro
+      - waha-monitor-config:/app/local-data/waha-a02:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:18701/health')"]
       interval: 3s
@@ -40,3 +40,4 @@ services:
 
 volumes:
   waha_sessions:
+  waha-monitor-config:

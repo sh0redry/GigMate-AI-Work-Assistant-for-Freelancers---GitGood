@@ -34,6 +34,7 @@ Run from the repository root with Docker Desktop's Linux engine running:
 ```powershell
 # Only on a fresh setup; refuses to overwrite existing secrets:
 .venv\Scripts\python.exe scripts/waha_local.py init
+.venv\Scripts\python.exe scripts/waha_local.py sync-container-config
 docker compose --env-file local-data/waha-a02/.env -f infra/waha.compose.yaml up --build -d --wait
 # Only when no default session exists; inspect status before retrying:
 .venv\Scripts\python.exe scripts/waha_local.py create

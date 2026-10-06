@@ -69,10 +69,13 @@ class LocalWahaConfig:
 
 
 class LocalWahaClient:
-    def __init__(self, config: LocalWahaConfig, *, transport=None):
+    def __init__(self, config: LocalWahaConfig, *, transport=None, docker_service=False):
+        if type(docker_service) is not bool:
+            raise AdapterError("INVALID_INTERNAL_MODE")
         self.config = config
         self._client = httpx.Client(
-            base_url=local_url(config.base_url),
+            # Operator-only Compose mode has one fixed internal target; config URLs remain loopback-only.
+            base_url="http://waha:3000" if docker_service else local_url(config.base_url),
             headers={"X-Api-Key": config.api_key},
             timeout=10,
             follow_redirects=False,

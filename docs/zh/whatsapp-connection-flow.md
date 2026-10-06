@@ -1,6 +1,6 @@
 # 用户如何连接 WhatsApp，以及 WAHA 如何获取消息
 
-更新：2026-10-02。本文是产品与技术流程说明，真实接入待实现；当前仓库只有 v0.2 合成回放。WAHA 接口依据本次查阅的官方文档，实际开发仍须固定版本/引擎并实测。见[A 的职责](role-a-responsibilities.md)、[开发演进](role-a-development-roadmap.md)和[英文对应说明](../en/whatsapp-connection-flow.md)。
+更新：2026-10-06。下文前端流程与历史同步为产品目标；本地 CLI 扫码/选择、WAHA 持久文字接入/监控已经实现，历史工具仅统计可用记录，不导入正文。见[当前能力总览](role-a-waha-handoff.md)、[A 的职责](role-a-responsibilities.md)、[开发演进](role-a-development-roadmap.md)和[英文对应说明](../en/whatsapp-connection-flow.md)。实际能力以已测试版本/引擎和证据为准。
 
 ## 1. 用户看到的操作
 

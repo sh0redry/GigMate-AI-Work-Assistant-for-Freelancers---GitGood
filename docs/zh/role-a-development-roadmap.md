@@ -1,12 +1,16 @@
 # A 的技术开发演进与统一验收方案
 
+当前扩展：A-01/A-02 及 A-03 持久接入已有实现证据；[异常恢复验收](role-a-recovery-acceptance.md)补齐分组件健康、故障验证和遗漏人工核对，仍属于 A-03。A-04 外发仍依赖 C 的审批/outbox/核对服务。下文早期基线描述属于规划历史，实际当前行为以进度记录为准。
+
 更新：2026-10-02。本文是可执行的开发计划，不是实现完成记录。范围为 A 的消息接入、鉴权、可靠任务和连接监控；[职责说明](role-a-responsibilities.md)解释边界，[英文对应方案](../en/role-a-development-roadmap.md)同步维护。
 
 ## 1. 起点与总体目标
 
 扫码、session 绑定、会话选择和首次历史同步的产品/技术路径见[WhatsApp 连接与消息获取](whatsapp-connection-flow.md)，对应 A-02/A-03 的开发与验收。
 
-当前基线是 v0.2：FastAPI + SQLAlchemy/Alembic + PostgreSQL，单仓库模块化后端和独立 Worker。已实现开发账号认证、允许会话的 Replay 新建/修改/撤回、Inbox/Job、版本校验、固定抽取桩和内部日程确认。通用 AI、真实 WAHA、生产鉴权、发送审批/outbox/核对均未实现。
+当前基线是 v0.2：FastAPI + SQLAlchemy/Alembic + PostgreSQL，单仓库模块化后端和独立 Worker。已实现开发账号认证、允许会话的 Replay 新建/修改/撤回、Inbox/Job、版本校验、固定抽取桩和内部日程确认。可选本地 WAHA 持久接入/监控及真实文字变更已经验证；真实通用 AI、生产鉴权、发送审批/outbox/核对尚未完成。见[当前能力与交接](role-a-waha-handoff.md)。
+
+2026-10-06 计划：按用户要求，官方 Cloud API 暂停，不纳入当前计划。下一步为 E 的 A-03 统一独立评审与人工缺口核对；后续获授权的 WAHA 页面/真实处理/批准执行批次分别依赖 D/B/C，不自动进入发送开发。
 
 目标链路：Replay 或 WAHA → 来源鉴权与可信归属 → 白名单 → 标准事件 → PostgreSQL 原子接收与持久任务 → Worker → 提议与业务服务。连接状态进入独立持久状态及账号隔离接口；未来发送链路由 actions 审批后通过 adapter 执行。
 

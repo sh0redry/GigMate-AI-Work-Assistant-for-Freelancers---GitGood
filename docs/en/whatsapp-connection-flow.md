@@ -1,6 +1,6 @@
 # Connecting WhatsApp and receiving messages through WAHA
 
-Updated: 2026-10-02. This describes planned product/technical behavior, not implemented live access. The repository remains v0.2 synthetic replay. Provider APIs were checked against official documentation; implementation must pin and test the actual version/engine. See [Role A responsibilities](role-a-responsibilities.md), [roadmap](role-a-development-roadmap.md) and the [Chinese counterpart](../zh/whatsapp-connection-flow.md).
+Updated: 2026-10-06. The frontend flow and history synchronization below are product targets. Local CLI pairing/selection and durable WAHA text reception/monitoring are now implemented; history is a count-only probe, not an import. See [current capability summary](role-a-waha-handoff.md), [Role A responsibilities](role-a-responsibilities.md), [roadmap](role-a-development-roadmap.md) and the [Chinese counterpart](../zh/whatsapp-connection-flow.md). Tested version/engine and evidence govern actual capability.
 
 ## User flow and identities
 

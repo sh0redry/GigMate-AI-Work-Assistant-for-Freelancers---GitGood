@@ -1,0 +1,46 @@
+# Disposable synthetic-only fault environment. Never points at the live database/session.
+name: gigmate-waha-recovery
+x-backend: &backend
+  build:
+    context: ..
+    dockerfile: infra/backend.Dockerfile
+  environment:
+    DATABASE_URL: postgresql+psycopg://gigmate:synthetic-recovery-only@db:5432/gigmate_recovery
+    COOKIE_SECURE: "false"
+    WAHA_CONNECTOR_CONFIG: /run/gigmate/binding.json
+  volumes:
+    - recovery-binding:/run/gigmate:ro
+  restart: "no"
+services:
+  db:
+    image: postgres:17.9
+    environment:
+      POSTGRES_USER: gigmate
+      POSTGRES_PASSWORD: synthetic-recovery-only
+      POSTGRES_DB: gigmate_recovery
+    ports: ["127.0.0.1:54339:5432"]
+    volumes: ["recovery-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gigmate -d gigmate_recovery"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  api:
+    <<: *backend
+    ports: ["127.0.0.1:18712:8000"]
+    command: ["uvicorn", "gigmate.api:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--log-level", "error"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    depends_on:
+      db: {condition: service_healthy}
+  worker:
+    <<: *backend
+    command: ["python", "-m", "gigmate.worker"]
+    depends_on:
+      db: {condition: service_healthy}
+volumes:
+  recovery-data:
+  recovery-binding:

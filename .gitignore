@@ -226,3 +226,6 @@ local-data/
 
 # Frontend dependencies
 node_modules/
+
+# Personal local memo
+/start.txt

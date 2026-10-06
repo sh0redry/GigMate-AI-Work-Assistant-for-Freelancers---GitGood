@@ -12,8 +12,15 @@ POST /auth/login is a pre-auth development credential flow with origin checking;
 
 `GET /connectors` requires the existing authenticated account and returns paginated ConnectorStatus values: persistent state, freshness, sync timestamp, safe counters and queue counts. No connector administration, credentials or chat identifiers are returned. State older than 120 seconds is stale and not live-connected; the local monitor polls every 30 seconds. The original `/connection-status` continues to describe Replay, preserving its clients. The local capability probe is separate and never claims durable acceptance. See [stage-three setup/limits](../docs/en/role-a-stage3-acceptance.md).
 
-## Responses and errors
+## Operational health and recovery
 
+`GET /health` checks database access and, when WAHA is configured, private-binding readability/validity and persisted ownership mapping. An unusable binding returns 503. Replay without WAHA configuration remains supported. This does not prove real webhook delivery. `/health` 在启用 WAHA 时同时验证私有绑定及持久归属；绑定不可用返回 503，无 WAHA 配置的 Replay 保持支持，不能代替真实回调验收。
+
+WAHA status additionally exposes API/provider/worker/monitor health samples, `pipeline_ready`, independent `review_required`/`unresolved_issues`, and safe metrics. `live_connected` remains a provider-session signal; clients should use `pipeline_ready` for sampled end-to-end readiness. Worker samples expire after 30 seconds, the other samples after 120 seconds. Timings are nullable and cover measured retained jobs only. Generated client types include these additions.
+
+`GET /connectors/{connection_id}/recovery-issues` is a session-authenticated, account-scoped paged list of safe outage/review metadata, with no provider IDs or content. Review acknowledgement is operator-only; recovery never automatically acknowledges missing-message risk or imports history. Signed rejected business input is counted after rollback where persistence is available; forged signatures do not create diagnostics. See [recovery operations and limits](../docs/en/role-a-recovery-acceptance.md).
+
+## Responses and errors
 Details: `{"data": <resource>, "request_id": "<uuid>"}`. Lists: `{"items": [], "next_cursor": null, "request_id": "<uuid>"}`. Default limit 20, maximum 100; opaque cursor; deterministic ordering with stable ID tie-breaker. Calendar list additionally filters start/end UTC times and includes date-only entries for the user's date range.
 
 Errors: `{"error": {"code": "VERSION_CONFLICT", "message": "Refresh and review the current version", "details": {}}, "request_id": "<uuid>"}`. Do not include private content in details.
