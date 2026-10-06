@@ -1,5 +1,9 @@
 # Implementation status and validation
 
+## Main protection applied — 2026-10-06
+
+User-authorized GitHub main protection applied and API-readback verified: one PR approval, dismiss stale reviews, strict current-branch checks documentation-and-contracts/backend/frontend bound to GitHub Actions app 15368, conversation resolution, administrators enforced, force push/deletion disabled, no named merger/CODEOWNERS/bypass gate. No existing protection/rulesets were present before this change. PR #3 remains unmerged with passing checks and zero independent approvals; GitHub reports blocked. Independent review of the administrative change remains pending. No destructive bypass test performed. Bilingual governance/status records updated locally; no commit/push authorized by this settings-only request.
+
 ## PR backend CI import-path correction — 2026-10-06
 
 PR #3 backend run 37432110763 failed during test collection with `ModuleNotFoundError: No module named 'scripts'` in test_waha_team.py. CI used the `pytest` console entry point with only backend src in PYTHONPATH; earlier local runs used `python -m pytest`, which additionally exposed the repository root. Reproduced locally using the console entry point. Backend pytest configuration now explicitly includes `src` and repository root (`../..` relative to apps/backend), making both launchers consistent without bypassing any tests. This is a test-environment correction, not a WAHA/database runtime failure. Related bilingual documentation updated; actual retest and online CI results follow when completed.
