@@ -4,7 +4,7 @@ x-ingress-backend: &ingress-backend
     context: ..
     dockerfile: infra/backend.Dockerfile
   environment:
-    DATABASE_URL: postgresql+psycopg://gigmate:local-replay-only@host.docker.internal:54329/gigmate_waha_a03
+    DATABASE_URL: ${WAHA_DATABASE_URL:-postgresql+psycopg://gigmate:local-replay-only@host.docker.internal:54329/gigmate_waha_a03}
     COOKIE_SECURE: "false"
   restart: "no"
 
@@ -12,7 +12,7 @@ services:
   ingress:
     <<: *ingress-backend
     environment:
-      DATABASE_URL: postgresql+psycopg://gigmate:local-replay-only@host.docker.internal:54329/gigmate_waha_a03
+      DATABASE_URL: ${WAHA_DATABASE_URL:-postgresql+psycopg://gigmate:local-replay-only@host.docker.internal:54329/gigmate_waha_a03}
       WAHA_CONNECTOR_CONFIG: /run/gigmate/ingress.json
       COOKIE_SECURE: "false"
     volumes:
@@ -35,7 +35,7 @@ services:
       dockerfile: infra/waha-probe.Dockerfile
     restart: "no"
     environment:
-      DATABASE_URL: postgresql+psycopg://gigmate:local-replay-only@host.docker.internal:54329/gigmate_waha_a03
+      DATABASE_URL: ${WAHA_DATABASE_URL:-postgresql+psycopg://gigmate:local-replay-only@host.docker.internal:54329/gigmate_waha_a03}
     command: ["python", "scripts/waha_ingress.py", "watch", "--container"]
     volumes:
       - waha-monitor-config:/app/local-data/waha-a02:ro

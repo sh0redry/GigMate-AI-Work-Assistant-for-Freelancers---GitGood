@@ -6,6 +6,8 @@
 
 ## 1. 起点与总体目标
 
+[团队本地 WAHA 框架](role-a-team-local-development.md)提供当前自己账号的开发路径及 B/C/D/E 具体接入位置；生产接入和真实通用抽取仍为后续已授权批次。
+
 扫码、session 绑定、会话选择和首次历史同步的产品/技术路径见[WhatsApp 连接与消息获取](whatsapp-connection-flow.md)，对应 A-02/A-03 的开发与验收。
 
 当前基线是 v0.2：FastAPI + SQLAlchemy/Alembic + PostgreSQL，单仓库模块化后端和独立 Worker。已实现开发账号认证、允许会话的 Replay 新建/修改/撤回、Inbox/Job、版本校验、固定抽取桩和内部日程确认。可选本地 WAHA 持久接入/监控及真实文字变更已经验证；真实通用 AI、生产鉴权、发送审批/outbox/核对尚未完成。见[当前能力与交接](role-a-waha-handoff.md)。

@@ -6,6 +6,8 @@ Updated: 2026-10-02. This is a development plan, not completed implementation. S
 
 ## Starting point and operating policy
 
+The [team local WAHA framework](role-a-team-local-development.md) provides the current own-account development path and concrete B/C/D/E integration surfaces. Production onboarding and real general extraction remain future authorized batches.
+
 The [WhatsApp connection flow](whatsapp-connection-flow.md) explains pairing, session ownership, conversation selection and initial history synchronization for A-02/A-03.
 
 v0.2 uses FastAPI, SQLAlchemy/Alembic, PostgreSQL, one modular backend and a separate worker. Development authentication, allowlisted replay create/edit/revoke, inbox/jobs, version checks, fixed extraction and internal schedule confirmation exist. Optional local WAHA durable reception/monitoring and real text mutations are verified. Production authentication, general live AI and external approval/outbox/reconciliation remain pending. See [current capability and handoff](role-a-waha-handoff.md).

@@ -23,9 +23,11 @@ The optional local WAHA connector feeds trusted events into the existing modular
 
 ## API, commands and reading order
 
+New teammates should follow [own-account local development](role-a-team-local-development.md): isolated team database, startup/doctor/checkpoint/verify wrapper and concrete downstream integration surfaces. Legacy installations remain supported without automatic adoption.
+
 - Browser: authenticated, account-scoped `GET /api/v1/connectors` and `GET /api/v1/connectors/{connection_id}/recovery-issues`.
 - Provider: signed `POST /api/v1/connectors/waha/{connection_id}/events`, separate from browser authentication. Frontend must not administer WAHA or access its keys.
-- `scripts/waha_local.py`: init/probe/start/status/qr/observations/select-chats/history/sync-container-config; capability probe observations are volatile, not the durable business inbox.
+- `scripts/waha_local.py`: init/probe/create/status/qr/restart/observations/select-chats/history/sync-container-config; capability probe observations are volatile, not the durable business inbox.
 - `scripts/waha_ingress.py`: provision/status/diagnose/reconcile/watch/pause/purge/configure-live/issues/ack-issue/migrate-binding/sync-container-config. Review does not perform imports. Purge is an explicit destructive retention operation, not a routine acceptance step.
 - Read this summary first, then [responsibilities](role-a-responsibilities.md), [recovery runbook and E matrix](role-a-recovery-acceptance.md), [API agreement](../../contracts/api-v1.md) and [current implementation evidence](implementation-status.md). Earlier stage notes preserve development history; use the latest dated results.
 

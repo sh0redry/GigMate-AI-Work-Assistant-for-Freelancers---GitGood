@@ -23,9 +23,11 @@
 
 ## 接口、工具与阅读顺序
 
+新组员按[自己账号的本地联调流程](role-a-team-local-development.md)执行：独立团队数据库、启动/诊断/测试起点/验证工具，以及下游具体接入位置。已有旧安装不自动认领或迁移。
+
 - 前端使用已登录且账号隔离的 `GET /api/v1/connectors`、`GET /api/v1/connectors/{connection_id}/recovery-issues`。
 - 供应商使用独立签名接口 `POST /api/v1/connectors/waha/{connection_id}/events`；前端不得直接管理 WAHA 或读取密钥。
-- `scripts/waha_local.py`：init/probe/start/status/qr/observations/select-chats/history/sync-container-config；probe 的 observations 是易失能力观察，不是持久业务 Inbox。
+- `scripts/waha_local.py`：init/probe/create/status/qr/restart/observations/select-chats/history/sync-container-config；probe 的 observations 是易失能力观察，不是持久业务 Inbox。
 - `scripts/waha_ingress.py`：provision/status/diagnose/reconcile/watch/pause/purge/configure-live/issues/ack-issue/migrate-binding/sync-container-config。核对不导入历史；purge 会删除过期内容，不是常规验收步骤。
 - 先读本总览，再读[职责](role-a-responsibilities.md)、[恢复操作与 E 用例](role-a-recovery-acceptance.md)、[API 约定](../../contracts/api-v1.md)、[完成记录](progress.md)。旧阶段保留开发历史，实际结果以最新日期为准。
 
