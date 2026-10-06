@@ -51,6 +51,69 @@ class Model(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
+class ComponentHealth(Model):
+    state: Literal["healthy", "unavailable", "stale", "unknown"]
+    observed_at: UtcTimestamp | None
+
+
+class ConnectorMetrics(Model):
+    rejected: Annotated[int, Field(ge=0)]
+    retries: Annotated[int, Field(ge=0)]
+    lease_recoveries: Annotated[int, Field(ge=0)]
+    expired_leases: Annotated[int, Field(ge=0)]
+    oldest_pending_seconds: Annotated[float, Field(ge=0)] | None
+    timed_jobs: Annotated[int, Field(ge=0)]
+    average_processing_ms: Annotated[float, Field(ge=0)] | None
+    maximum_processing_ms: Annotated[int, Field(ge=0)] | None
+    average_completion_latency_ms: Annotated[float, Field(ge=0)] | None
+    last_error_code: Text | None
+    last_rejection_at: UtcTimestamp | None
+
+
+class RecoveryIssue(Model):
+    id: Id
+    connection_id: Id
+    code: Text
+    started_at: UtcTimestamp
+    last_seen_at: UtcTimestamp
+    recovered_at: UtcTimestamp | None
+    acknowledged_at: UtcTimestamp | None
+    resolution: Literal["reviewed_no_import", "needs_followup"] | None
+    occurrences: Annotated[int, Field(ge=1)]
+
+
+class ConnectorStatus(Model):
+    id: Id
+    connector: Literal["waha"]
+    state: Literal["unknown", "connected", "connecting", "disconnected", "failed"]
+    enabled: bool
+    live_connected: bool
+    stale: bool
+    observed_at: UtcTimestamp | None
+    last_sync_at: UtcTimestamp | None
+    accepted: Annotated[int, Field(ge=0)]
+    duplicates: Annotated[int, Field(ge=0)]
+    stale_events: Annotated[int, Field(ge=0)]
+    pending_jobs: Annotated[int, Field(ge=0)]
+    processing_jobs: Annotated[int, Field(ge=0)]
+    failed_jobs: Annotated[int, Field(ge=0)]
+    api_health: ComponentHealth
+    worker_health: ComponentHealth
+    monitor_health: ComponentHealth
+    provider_health: ComponentHealth
+    pipeline_ready: bool
+    review_required: bool
+    unresolved_issues: Annotated[int, Field(ge=0)]
+    metrics: ConnectorMetrics
+
+
+class ConnectorReceipt(Model):
+    event_id: Id
+    duplicate: bool
+    context_version: Annotated[int, Field(ge=0)]
+    durable_acceptance: Literal[True]
+
+
 class WorkOrderStatus(StrEnum):
     unclassified = "unclassified"
     pending_confirmation = "pending_confirmation"

@@ -1,0 +1,19 @@
+# One developer-owned installation per machine; separate from replay/legacy DB.
+name: gigmate-waha-team
+services:
+  db:
+    image: postgres:17.9
+    restart: "no"
+    environment:
+      POSTGRES_USER: gigmate
+      POSTGRES_PASSWORD: local-team-only
+      POSTGRES_DB: gigmate_waha_team
+    ports: ["127.0.0.1:54349:5432"]
+    volumes: ["team-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gigmate -d gigmate_waha_team"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+volumes:
+  team-data:

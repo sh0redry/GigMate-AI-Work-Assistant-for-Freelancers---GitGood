@@ -1,0 +1,43 @@
+name: gigmate-waha-a02
+
+# Independent local capability probe; never merged into the replay deployment.
+services:
+  probe:
+    build:
+      context: ..
+      dockerfile: infra/waha-probe.Dockerfile
+    restart: "no"
+    ports: ["127.0.0.1:18701:18701"]
+    command: ["python", "scripts/waha_local.py", "probe", "--container"]
+    volumes:
+      - waha-monitor-config:/app/local-data/waha-a02:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:18701/health')"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+  waha:
+    image: devlikeapro/waha:latest-2026.9.1@sha256:41283bd89922ec3f722e5a772b844c451634d4aa72e9c34043c3480184f970fe
+    restart: "no"
+    ports: ["127.0.0.1:18700:3000"]
+    environment:
+      WHATSAPP_DEFAULT_ENGINE: WEBJS
+      WAHA_API_KEY: ${WAHA_API_KEY_HASH:?Run scripts/waha_local.py init first}
+      WAHA_DASHBOARD_ENABLED: "false"
+      WHATSAPP_SWAGGER_ENABLED: "false"
+      WAHA_PRINT_QR: "false"
+      WAHA_LOG_LEVEL: error
+      WAHA_HTTP_LOG_LEVEL: error
+      WAHA_EVENTS_DOWNLOAD_MEDIA: "false"
+      WAHA_API_DOWNLOAD_MEDIA: "false"
+      WAHA_APPS_ENABLED: "false"
+    volumes:
+      # Chromium profile locks need Linux filesystem semantics on Windows hosts.
+      - waha_sessions:/app/.sessions
+    depends_on:
+      probe: {condition: service_healthy}
+    shm_size: 512m
+
+volumes:
+  waha_sessions:
+  waha-monitor-config:

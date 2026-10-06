@@ -72,6 +72,57 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/connectors": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Connector Statuses */
+    get: operations["connector_statuses_api_v1_connectors_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/waha/{connection_id}/events": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Waha Events */
+    post: operations["waha_events_api_v1_connectors_waha__connection_id__events_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/recovery-issues": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Recovery Issues */
+    get: operations["recovery_issues_api_v1_connectors__connection_id__recovery_issues_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/conversations/{conversation_id}": {
     parameters: {
       query?: never;
@@ -338,6 +389,16 @@ export interface components {
        */
       work_order_id: string;
     };
+    /** ComponentHealth */
+    ComponentHealth: {
+      /** Observed At */
+      observed_at: string | null;
+      /**
+       * State
+       * @enum {string}
+       */
+      state: "healthy" | "unavailable" | "stale" | "unknown";
+    };
     /** ConfirmChangeCommand */
     ConfirmChangeCommand: {
       /** Apply Calendar Update */
@@ -364,6 +425,99 @@ export interface components {
        * @constant
        */
       mode: "synthetic_replay";
+    };
+    /** ConnectorMetrics */
+    ConnectorMetrics: {
+      /** Average Completion Latency Ms */
+      average_completion_latency_ms: number | null;
+      /** Average Processing Ms */
+      average_processing_ms: number | null;
+      /** Expired Leases */
+      expired_leases: number;
+      /** Last Error Code */
+      last_error_code: string | null;
+      /** Last Rejection At */
+      last_rejection_at: string | null;
+      /** Lease Recoveries */
+      lease_recoveries: number;
+      /** Maximum Processing Ms */
+      maximum_processing_ms: number | null;
+      /** Oldest Pending Seconds */
+      oldest_pending_seconds: number | null;
+      /** Rejected */
+      rejected: number;
+      /** Retries */
+      retries: number;
+      /** Timed Jobs */
+      timed_jobs: number;
+    };
+    /** ConnectorReceipt */
+    ConnectorReceipt: {
+      /** Context Version */
+      context_version: number;
+      /** Duplicate */
+      duplicate: boolean;
+      /**
+       * Durable Acceptance
+       * @constant
+       */
+      durable_acceptance: true;
+      /**
+       * Event Id
+       * Format: uuid
+       */
+      event_id: string;
+    };
+    /** ConnectorStatus */
+    ConnectorStatus: {
+      /** Accepted */
+      accepted: number;
+      api_health: components["schemas"]["ComponentHealth"];
+      /**
+       * Connector
+       * @constant
+       */
+      connector: "waha";
+      /** Duplicates */
+      duplicates: number;
+      /** Enabled */
+      enabled: boolean;
+      /** Failed Jobs */
+      failed_jobs: number;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Last Sync At */
+      last_sync_at: string | null;
+      /** Live Connected */
+      live_connected: boolean;
+      metrics: components["schemas"]["ConnectorMetrics"];
+      monitor_health: components["schemas"]["ComponentHealth"];
+      /** Observed At */
+      observed_at: string | null;
+      /** Pending Jobs */
+      pending_jobs: number;
+      /** Pipeline Ready */
+      pipeline_ready: boolean;
+      /** Processing Jobs */
+      processing_jobs: number;
+      provider_health: components["schemas"]["ComponentHealth"];
+      /** Review Required */
+      review_required: boolean;
+      /** Stale */
+      stale: boolean;
+      /** Stale Events */
+      stale_events: number;
+      /**
+       * State
+       * @enum {string}
+       */
+      state: "unknown" | "connected" | "connecting" | "disconnected" | "failed";
+      /** Unresolved Issues */
+      unresolved_issues: number;
+      worker_health: components["schemas"]["ComponentHealth"];
     };
     /** Conversation */
     Conversation: {
@@ -452,6 +606,15 @@ export interface components {
     /** Detail[ConnectionInfo] */
     Detail_ConnectionInfo_: {
       data: components["schemas"]["ConnectionInfo"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[ConnectorReceipt] */
+    Detail_ConnectorReceipt_: {
+      data: components["schemas"]["ConnectorReceipt"];
       /**
        * Request Id
        * Format: uuid
@@ -564,10 +727,34 @@ export interface components {
        */
       request_id: string;
     };
+    /** Page[ConnectorStatus] */
+    Page_ConnectorStatus_: {
+      /** Items */
+      items: components["schemas"]["ConnectorStatus"][];
+      /** Next Cursor */
+      next_cursor: string | null;
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
     /** Page[ConversationMessage] */
     Page_ConversationMessage_: {
       /** Items */
       items: components["schemas"]["ConversationMessage"][];
+      /** Next Cursor */
+      next_cursor: string | null;
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Page[RecoveryIssue] */
+    Page_RecoveryIssue_: {
+      /** Items */
+      items: components["schemas"]["RecoveryIssue"][];
       /** Next Cursor */
       next_cursor: string | null;
       /**
@@ -617,6 +804,39 @@ export interface components {
         | components["schemas"]["InstantDeadline"]
         | null;
     } & (unknown & unknown);
+    /** RecoveryIssue */
+    RecoveryIssue: {
+      /** Acknowledged At */
+      acknowledged_at: string | null;
+      /** Code */
+      code: string;
+      /**
+       * Connection Id
+       * Format: uuid
+       */
+      connection_id: string;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Last Seen At
+       * Format: date-time
+       */
+      last_seen_at: string;
+      /** Occurrences */
+      occurrences: number;
+      /** Recovered At */
+      recovered_at: string | null;
+      /** Resolution */
+      resolution: ("reviewed_no_import" | "needs_followup") | null;
+      /**
+       * Started At
+       * Format: date-time
+       */
+      started_at: string;
+    };
     /** ReplayCommand */
     ReplayCommand: {
       /**
@@ -873,6 +1093,103 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Detail_ConnectionInfo_"];
+        };
+      };
+    };
+  };
+  connector_statuses_api_v1_connectors_get: {
+    parameters: {
+      query?: {
+        cursor?: string | null;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Page_ConnectorStatus_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  waha_events_api_v1_connectors_waha__connection_id__events_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_ConnectorReceipt_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  recovery_issues_api_v1_connectors__connection_id__recovery_issues_get: {
+    parameters: {
+      query?: {
+        cursor?: string | null;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Page_RecoveryIssue_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
         };
       };
     };

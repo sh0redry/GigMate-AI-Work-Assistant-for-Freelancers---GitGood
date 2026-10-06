@@ -20,7 +20,9 @@ Sources: [personal repository permissions](https://docs.github.com/en/repositori
 - Resolve disagreements using evidence and recorded decisions. Architectural changes use ADRs.
 - Management operations affecting deletion, transfer, visibility, permissions or protection settings need a recorded impact and another member's review. This is a common operating agreement, not a lesser platform role for some members.
 
-## Branch protection target — not applied yet
+## Main branch protection — applied 2026-10-06
+
+At the user's explicit request, main protection was configured and read back through GitHub API: PR with one approval, stale approvals dismissed, conversations resolved, strict up-to-date status checks `documentation-and-contracts`, `backend`, `frontend` restricted to GitHub Actions app 15368; administrators included; force pushes/deletion disabled; no review bypass list or CODEOWNERS gate. PR #3 has passing checks and zero approving reviews and is blocked pending independent approval. Settings impact: direct/unreviewed main changes are blocked, personal feature branches remain available. Independent teammate review of the administration change is still pending; no attempted force push/delete or merge was used as a verification test. The former target below now describes the applied policy.
 
 Protect main through PRs; require one independent approval after a second member is active; dismiss stale approvals, resolve conversations and require up-to-date branches. Require the existing GitHub Actions checks documentation-and-contracts, backend and frontend. Apply rules to administrators with no creator/member bypass list. Disable force pushes and deletion of main; do not restrict merging to a named person or require CODEOWNERS approval.
 

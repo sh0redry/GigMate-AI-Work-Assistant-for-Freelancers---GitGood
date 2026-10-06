@@ -1,4 +1,6 @@
 import base64
+import json
+import os
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
@@ -7,17 +9,22 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import Field
 from sqlalchemy import select, text
+from sqlalchemy.exc import SQLAlchemyError
+from starlette.concurrency import run_in_threadpool
 
 from gigmate import identity
 from gigmate.config import COOKIE_SECURE, TRUSTED_ORIGINS
 from gigmate.contracts import (
     CalendarEvent,
     ConfirmChangeCommand,
+    ConnectorReceipt,
+    ConnectorStatus,
     Conversation,
     ConversationMessage,
     Detail,
     Model,
     Page,
+    RecoveryIssue,
     RequirementChange,
     Task,
     Text,
@@ -31,11 +38,18 @@ from gigmate.db import (
     MessageRow,
     Session,
     TaskRow,
+    WahaChat,
+    WahaConnection,
+    WahaRecoveryIssue,
     WorkOrderRow,
 )
 from gigmate.errors import BusinessError
 from gigmate.messaging import ingest, replay_event
 from gigmate.planning import conflicts
+from gigmate.waha_adapter import AdapterError
+from gigmate.waha_ingress import binding_for, configured_binding, receive, status_view
+from gigmate.waha_probe import MAX_BODY, _non_json_constant, _pairs, verify_hmac
+from gigmate.waha_recovery import issue_view, record_rejection
 from gigmate.workorders import command_cache, confirm, owned, save_result
 
 app = FastAPI(title="GigMate replay skeleton", version="0.2.0")
@@ -85,6 +99,7 @@ async def request_context(request: Request, call_next):
 
 @app.exception_handler(BusinessError)
 async def business_error(request: Request, exc: BusinessError):
+    await record_webhook_failure(request, exc.code)
     return JSONResponse(
         status_code=exc.status,
         content={
@@ -109,9 +124,42 @@ async def validation_error(request: Request, _exc):
     )
 
 
+@app.exception_handler(SQLAlchemyError)
+async def database_error(request: Request, _exc):
+    await record_webhook_failure(request, "DATABASE_UNAVAILABLE")
+    return JSONResponse(
+        status_code=503,
+        content={
+            "error": {
+                "code": "DATABASE_UNAVAILABLE",
+                "message": "Retry after checking connector delivery",
+                "details": {},
+            },
+            "request_id": request.state.request_id,
+        },
+    )
+
+
 def database():
     with Session.begin() as db:
         yield db
+
+
+async def record_webhook_failure(request, code):
+    binding = getattr(request.state, "authenticated_webhook", None)
+    if binding is None:
+        return
+
+    def persist():
+        try:
+            with Session.begin() as db:
+                record_rejection(db, binding, code)
+        except (SQLAlchemyError, BusinessError):
+            # A database outage cannot durably count its own failed writes.
+            # The independent monitor records the uncertain window after recovery.
+            pass
+
+    await run_in_threadpool(persist)
 
 
 def origin_check(request):
@@ -155,11 +203,30 @@ def page(request, rows, cursor, limit, mapper=lambda row: row.data):
 @app.get("/health")
 def health(db=Depends(database)):
     db.execute(text("SELECT 1"))
+    if os.environ.get("WAHA_CONNECTOR_CONFIG"):
+        binding = configured_binding()
+        connection = db.scalar(
+            select(WahaConnection).where(
+                WahaConnection.id == binding.connection_id,
+                WahaConnection.account_id == binding.account_id,
+                WahaConnection.instance_id == binding.instance_id,
+                WahaConnection.session_id == binding.session_id,
+            )
+        )
+        if not connection:
+            raise BusinessError(
+                503, "CONNECTOR_CONFIG_INVALID", "Connector configuration is invalid"
+            )
     return {"status": "ok", "mode": "synthetic_replay"}
 
 
 @app.post("/api/v1/auth/login", response_model=Detail[LoginResult])
-def login(command: LoginCommand, request: Request, response: Response, db=Depends(database)):
+def login(
+    command: LoginCommand,
+    request: Request,
+    response: Response,
+    db=Depends(database, scope="function"),
+):
     origin_check(request)
     account, token, csrf = identity.login(db, command.username, command.password)
     response.set_cookie(
@@ -183,7 +250,12 @@ def login(command: LoginCommand, request: Request, response: Response, db=Depend
 
 
 @app.post("/api/v1/auth/logout")
-def logout(request: Request, response: Response, account=Depends(actor), db=Depends(database)):
+def logout(
+    request: Request,
+    response: Response,
+    account=Depends(actor),
+    db=Depends(database, scope="function"),
+):
     db.delete(db.get(LoginSession, identity.digest(request.cookies["gigmate_session"])))
     response.delete_cookie("gigmate_session", path="/")
     return detail(request, {"signed_out": True})
@@ -278,12 +350,17 @@ def conversation_info(
             )
         )
     )
+    chat = db.scalar(
+        select(WahaChat)
+        .join(WahaConnection)
+        .where(WahaChat.conversation_id == row.id, WahaConnection.account_id == account.id)
+    )
     return detail(
         request,
         {
             "id": row.id,
             "account_id": account.id,
-            "provider_conversation_id": f"synthetic:{row.id}",
+            "provider_conversation_id": chat.provider_chat_id if chat else f"synthetic:{row.id}",
             "context_version": row.context_version,
             "work_order_ids": ids,
         },
@@ -349,6 +426,87 @@ def calendar(
 def connection(request: Request, account=Depends(actor)):
     return detail(
         request, {"mode": "synthetic_replay", "connector": "replay", "live_connected": False}
+    )
+
+
+@app.get("/api/v1/connectors", response_model=Page[ConnectorStatus])
+def connector_statuses(
+    request: Request,
+    cursor: str | None = None,
+    limit: int = Query(20, ge=1, le=100),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    return page(
+        request,
+        db.scalars(select(WahaConnection).where(WahaConnection.account_id == account.id)),
+        cursor,
+        limit,
+        lambda row: status_view(db, row),
+    )
+
+
+@app.post("/api/v1/connectors/waha/{connection_id}/events", response_model=Detail[ConnectorReceipt])
+async def waha_events(
+    connection_id: UUID, request: Request, db=Depends(database, scope="function")
+):
+    binding = binding_for(str(connection_id))
+    if request.headers.get("content-type", "").split(";")[0].strip() != "application/json":
+        raise BusinessError(422, "INVALID_WEBHOOK_JSON", "Expected JSON")
+    for name in ("x-webhook-hmac", "x-webhook-hmac-algorithm"):
+        if len(request.headers.getlist(name)) != 1:
+            raise BusinessError(401, "WEBHOOK_AUTH_REJECTED", "Webhook authentication failed")
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(body) + len(chunk) > MAX_BODY:
+            raise BusinessError(413, "WEBHOOK_TOO_LARGE", "Webhook exceeds limit")
+        body.extend(chunk)
+    try:
+        verify_hmac(
+            bytes(body),
+            request.headers.get("X-Webhook-Hmac"),
+            request.headers.get("X-Webhook-Hmac-Algorithm"),
+            binding.secret,
+        )
+    except AdapterError:
+        raise BusinessError(401, "WEBHOOK_AUTH_REJECTED", "Webhook authentication failed") from None
+    request.state.authenticated_webhook = binding
+    try:
+        raw = json.loads(body, object_pairs_hook=_pairs, parse_constant=_non_json_constant)
+    except (ValueError, UnicodeDecodeError, RecursionError):
+        raise BusinessError(422, "INVALID_WEBHOOK_JSON", "Invalid webhook JSON") from None
+    # Row-lock waits must not block the event loop that schedules transaction exit.
+    result = await run_in_threadpool(receive, db, binding, raw)
+    return detail(request, result)
+
+
+@app.get("/api/v1/connectors/{connection_id}/recovery-issues", response_model=Page[RecoveryIssue])
+def recovery_issues(
+    connection_id: UUID,
+    request: Request,
+    cursor: str | None = None,
+    limit: int = Query(20, ge=1, le=100),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    connection = db.scalar(
+        select(WahaConnection).where(
+            WahaConnection.id == str(connection_id),
+            WahaConnection.account_id == account.id,
+        )
+    )
+    if not connection:
+        raise BusinessError(404, "NOT_FOUND", "Connector not found")
+    return page(
+        request,
+        db.scalars(
+            select(WahaRecoveryIssue).where(
+                WahaRecoveryIssue.connection_id == connection.id,
+            )
+        ),
+        cursor,
+        limit,
+        issue_view,
     )
 
 

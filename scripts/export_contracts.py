@@ -17,6 +17,9 @@ def domain_schema():
     definitions = {}
     models = [
         c.SourceRef,
+        c.ConnectorStatus,
+        c.ConnectorReceipt,
+        c.RecoveryIssue,
         c.ProvenancedField,
         c.WorkOrder,
         c.AccountConsent,

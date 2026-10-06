@@ -17,9 +17,11 @@ from gigmate.db import (
     Job,
     MessageRow,
     Session,
+    WahaConnection,
     WorkOrderRow,
 )
 from gigmate.understanding import extract
+from gigmate.waha_recovery import worker_heartbeat
 
 log = logging.getLogger("gigmate.worker")
 
@@ -42,6 +44,13 @@ def run_once(factory=Session):
         )
         if not job:
             return False
+        if job.attempts >= 3:
+            job.state, job.error_code = "failed", "RETRY_EXHAUSTED"
+            job.lease_owner, job.lease_until = None, None
+            job.completed_at = now
+            return True
+        if job.state == "processing":
+            job.lease_recoveries += 1
         job.state, job.lease_owner, job.lease_until = (
             "processing",
             owner,
@@ -49,11 +58,17 @@ def run_once(factory=Session):
         )
         job.attempts += 1
         job_id, account_id = job.id, job.account_id
+    began = time.monotonic()
     try:
         with factory.begin() as db:
             account = db.scalar(select(Account).where(Account.id == account_id).with_for_update())
             job = db.scalar(select(Job).where(Job.id == job_id).with_for_update())
-            if job.state != "processing" or job.lease_owner != owner:
+            if (
+                job.state != "processing"
+                or job.lease_owner != owner
+                or job.lease_until is None
+                or job.lease_until.replace(tzinfo=UTC) <= datetime.now(UTC)
+            ):
                 return True
             inbox = db.get(Inbox, job.event_id)
             event = inbox.payload
@@ -66,7 +81,14 @@ def run_once(factory=Session):
                 )
                 .order_by(MessageRow.revision.desc())
             )
-            if not account.active or not conversation.allowlisted:
+            connection = (
+                db.get(WahaConnection, inbox.connection_id) if inbox.connection_id else None
+            )
+            if (
+                not account.active
+                or not conversation.allowlisted
+                or (connection and not connection.enabled)
+            ):
                 job.state, job.error_code = "cancelled", "CONSENT_REVOKED"
             elif (
                 inbox.context_version != conversation.context_version
@@ -74,6 +96,9 @@ def run_once(factory=Session):
                 or latest.data["revoked"]
             ):
                 job.state, job.error_code = "completed", "SOURCE_SUPERSEDED"
+            elif event["connector"] == "waha":
+                # Real content must never run through fictional fixed extraction templates.
+                job.state, job.error_code = "completed", "LIVE_EXTRACTION_PENDING"
             else:
                 linked = list(
                     db.scalars(
@@ -125,7 +150,10 @@ def run_once(factory=Session):
                         "completed",
                         None if proposal else "STUB_UNSUPPORTED_INPUT",
                     )
+            if job.lease_until.replace(tzinfo=UTC) <= datetime.now(UTC):
+                raise RuntimeError("LEASE_EXPIRED")
             job.lease_owner, job.lease_until = None, None
+            complete_metrics(job, inbox, began)
     except Exception:
         # No raw message text or exception values enter logs.
         log.error("job_failed job_id=%s code=PROCESSING_FAILED", job_id)
@@ -136,7 +164,27 @@ def run_once(factory=Session):
                 job.error_code = "PROCESSING_FAILED"
                 job.available_at = datetime.now(UTC) + timedelta(seconds=2**job.attempts)
                 job.lease_owner, job.lease_until = None, None
+                if job.state == "failed":
+                    complete_metrics(job, db.get(Inbox, job.event_id), began)
     return True
+
+
+def complete_metrics(job, inbox, began):
+    job.completed_at = datetime.now(UTC)
+    job.processing_ms = max(0, int((time.monotonic() - began) * 1000))
+    job.completion_latency_ms = max(
+        0, int((job.completed_at - inbox.received_at.replace(tzinfo=UTC)).total_seconds() * 1000)
+    )
+
+
+def heartbeat(factory=Session):
+    try:
+        with factory.begin() as db:
+            worker_heartbeat(db)
+        return True
+    except SQLAlchemyError:
+        log.error("worker_heartbeat_failed code=DATABASE_UNAVAILABLE")
+        return False
 
 
 def poll(factory=Session):
@@ -149,9 +197,32 @@ def poll(factory=Session):
 
 def main():
     logging.basicConfig(level=logging.INFO)
+    maintenance_at = 0
+    heartbeat_at = 0
     while True:
+        if time.monotonic() >= heartbeat_at:
+            heartbeat()
+            heartbeat_at = time.monotonic() + 10
+        if time.monotonic() >= maintenance_at:
+            maintain()
+            maintenance_at = time.monotonic() + 3600
         if not poll():
             time.sleep(0.5)
+
+
+def maintain(factory=Session):
+    from gigmate.waha_ingress import purge_expired
+
+    try:
+        with factory() as db:
+            identifiers = list(db.scalars(select(WahaConnection.id)))
+        for identifier in identifiers:
+            with factory.begin() as db:
+                purge_expired(db, identifier)
+        return True
+    except SQLAlchemyError:
+        log.error("worker_maintenance_failed code=DATABASE_UNAVAILABLE")
+        return False
 
 
 if __name__ == "__main__":

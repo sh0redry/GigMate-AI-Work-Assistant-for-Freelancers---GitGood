@@ -4,10 +4,23 @@ Status: **wire baseline 0.1.0, v0.2 subset implemented**. Prefix: `/api/v1`. JSO
 
 Implemented: login/logout; order list/detail/change list/schedule confirmation; conversation detail/latest-revision message list; task/calendar list; replay connection status; synthetic replay and custom-event ingestion. Changes include context_version and computed conflict_ids in the response view. Not implemented: rejection/edit commands, actions/approvals/cancellation/outbox/sending, and calendar start/end filters or task work_order filters. The inventory below is a target; OpenAPI is the implemented subset. All skeleton lists use stable ID order, with the UI sorting displayed messages by occurred_at. Larger-volume database-side pagination is future work.
 
-POST /auth/login is a pre-auth development credential flow with origin checking; logout requires session/CSRF. These auth endpoints do not use business idempotency keys. POST /replay accepts scenario=reschedule or available; POST /replay/events accepts a normalized replay event; both require session, CSRF and Idempotency-Key. No public provider webhook exists yet.
+POST /auth/login is a pre-auth development credential flow with origin checking; logout requires session/CSRF. These auth endpoints do not use business idempotency keys. POST /replay accepts scenario=reschedule or available; POST /replay/events accepts a normalized replay event; both require session, CSRF and Idempotency-Key. Optional WAHA reception and monitoring are implemented as described below.
+
+## Opt-in WAHA ingress and monitoring
+
+`POST /connectors/waha/{connection_id}/events` authenticates the pinned provider raw body using SHA-512 HMAC, not browser cookies/CSRF or a browser idempotency key. A private server configuration and database binding resolve ownership. It accepts bounded strict provider JSON, then checks active account/connector and allowlisted conversation before content storage. HTTP 200 with ConnectorReceipt/durable_acceptance true means reception committed; it does not mean AI processing, customer confirmation or external sending. Invalid signature is 401, mapping/allowlist/consent denial is 403, identity/order/source conflicts are 409, oversized bodies are 413, unsupported/invalid payloads are 422, disabled configuration/database failures are 503. No credentials or raw content appear in errors. Body timestamps are authenticated but no unsigned timestamp header is used as freshness proof. Persistent identities, local revision ordering and 30-day expiry constrain replay; remote gaps still require reconciliation.
+
+`GET /connectors` requires the existing authenticated account and returns paginated ConnectorStatus values: persistent state, freshness, sync timestamp, safe counters and queue counts. No connector administration, credentials or chat identifiers are returned. State older than 120 seconds is stale and not live-connected; the local monitor polls every 30 seconds. The original `/connection-status` continues to describe Replay, preserving its clients. The local capability probe is separate and never claims durable acceptance. See [stage-three setup/limits](../docs/en/role-a-stage3-acceptance.md).
+
+## Operational health and recovery
+
+`GET /health` checks database access and, when WAHA is configured, private-binding readability/validity and persisted ownership mapping. An unusable binding returns 503. Replay without WAHA configuration remains supported. This does not prove real webhook delivery. `/health` 在启用 WAHA 时同时验证私有绑定及持久归属；绑定不可用返回 503，无 WAHA 配置的 Replay 保持支持，不能代替真实回调验收。
+
+WAHA status additionally exposes API/provider/worker/monitor health samples, `pipeline_ready`, independent `review_required`/`unresolved_issues`, and safe metrics. `live_connected` remains a provider-session signal; clients should use `pipeline_ready` for sampled end-to-end readiness. Worker samples expire after 30 seconds, the other samples after 120 seconds. Timings are nullable and cover measured retained jobs only. Generated client types include these additions.
+
+`GET /connectors/{connection_id}/recovery-issues` is a session-authenticated, account-scoped paged list of safe outage/review metadata, with no provider IDs or content. Review acknowledgement is operator-only; recovery never automatically acknowledges missing-message risk or imports history. Signed rejected business input is counted after rollback where persistence is available; forged signatures do not create diagnostics. See [recovery operations and limits](../docs/en/role-a-recovery-acceptance.md).
 
 ## Responses and errors
-
 Details: `{"data": <resource>, "request_id": "<uuid>"}`. Lists: `{"items": [], "next_cursor": null, "request_id": "<uuid>"}`. Default limit 20, maximum 100; opaque cursor; deterministic ordering with stable ID tie-breaker. Calendar list additionally filters start/end UTC times and includes date-only entries for the user's date range.
 
 Errors: `{"error": {"code": "VERSION_CONFLICT", "message": "Refresh and review the current version", "details": {}}, "request_id": "<uuid>"}`. Do not include private content in details.
@@ -49,7 +62,7 @@ For send_text snapshots, hash exactly these fields from the stored action: id, a
 
 ## Ingestion and execution boundary
 
-Connector webhook ingestion is an adapter endpoint with separate key/signature authentication, not a browser endpoint. Map the pinned provider's body to the normalized event schema, allowlist before business storage, persist accepted context and durable jobs, then acknowledge. Provider route/payload/signature details remain unverified until LIVE-01.
+Connector webhook ingestion is an adapter endpoint with separate key/signature authentication, not a browser endpoint. The opt-in WAHA route implements normalization, allowlisting and transactional reception/jobs. Real signed status callbacks and earlier live capability checks are verified; complete durable text/edit/revoke/ACK and outage checks remain independent live acceptance work. No full-history or universal engine compatibility is claimed.
 
 There is no browser `send arbitrary text` endpoint. An approved action is queued and revalidated by the worker before connector dispatch. Provider acceptance, delivery acknowledgment and customer confirmation are separate. A timeout after possible submission becomes result_unknown. Reconciliation and definitely-not-submitted retries are internal services, not a permission shortcut.
 

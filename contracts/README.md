@@ -1,6 +1,6 @@
 # Shared contracts
 
-Wire version: **0.1.0**; implemented milestone: **v0.2 replay skeleton**. JSON Schema dialect: **2020-12**.
+Wire version: **0.1.0**; implemented milestone: **v0.2 replay skeleton with opt-in A-03 WAHA ingress/monitoring**. JSON Schema dialect: **2020-12**.
 
 The transition in [ADR 0002](../docs/en/adr/0002-contract-authority.md) is complete: Pydantic models generate the domain schema, implemented routes generate [OpenAPI](openapi.json), and frontend types are generated from that file. Do not edit generated files. Event/AI schemas remain independent. [API agreement](api-v1.md) distinguishes implemented routes from future targets. A model definition does not imply a service exists.
 
