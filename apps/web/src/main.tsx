@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { components } from "./generated/api";
 import "./style.css";
+import { ConnectionWorkspace } from "./ConnectionWorkspace";
 
 type Order = components["schemas"]["WorkOrder"];
 type Change = components["schemas"]["ChangeView"];
@@ -54,6 +55,7 @@ function schedule(value: unknown): string {
 }
 
 function App() {
+  const [view, setView] = useState<"connect" | "replay" | "demo">("connect");
   const [login, setLogin] = useState<Login | null>(null);
   const [username, setUsername] = useState("merchant");
   const [password, setPassword] = useState("demo-only-change-me");
@@ -68,9 +70,20 @@ function App() {
   const [busy, setBusy] = useState(false);
   const csrf = login?.csrf_token ?? "";
   const order = orders.find((item) => item.id === selected);
+  const expireSession = useCallback(() => {
+    setLogin(null);
+    setOrders([]);
+    setSelected("");
+    setChanges([]);
+    setMessages([]);
+    setTasks([]);
+    setCalendar([]);
+    setContextVersion(0);
+    setNotice("登录已过期，请重新登录。");
+  }, []);
 
   const refresh = useCallback(async () => {
-    if (!login) return;
+    if (!login || view !== "replay") return;
     const [o, t, c] = await Promise.all([
       api<Page<Order>>("/work-orders", csrf),
       api<Page<Task>>("/tasks", csrf),
@@ -97,17 +110,17 @@ function App() {
       m.items.sort((a, b) => a.occurred_at.localeCompare(b.occurred_at)),
     );
     setContextVersion(info.data.context_version);
-  }, [login, csrf, selected]);
+  }, [login, csrf, selected, view]);
 
   useEffect(() => {
-    if (!login) return;
+    if (!login || view !== "replay") return;
     const update = () => {
       void refresh().catch((error) => setNotice(String(error)));
     };
     update();
     const timer = setInterval(update, 1500);
     return () => clearInterval(timer);
-  }, [login, refresh]);
+  }, [login, refresh, view]);
 
   async function act(task: () => Promise<unknown>, success: string) {
     setBusy(true);
@@ -129,20 +142,57 @@ function App() {
         <div className="brand">
           跟單 <span>GigMate</span>
         </div>
-        <div className="mode">虚构数据 · 回放模式</div>
+        <div className="mode">
+          {view === "demo"
+            ? "合成演示"
+            : view === "connect"
+              ? "本地连接工作台"
+              : "虚构数据 · 回放模式"}
+        </div>
       </header>
-      <section className="intro">
-        <p className="eyebrow">业务协作工作台</p>
-        <h1>把变更核对清楚，再落实安排。</h1>
-        <p>
-          查看原文、检查冲突、确认业务变化。这里使用固定抽取桩，没有连接真实
-          WhatsApp，也不会发送消息。
-        </p>
-      </section>
-      <div className="notice" role="status" aria-live="polite">
-        {notice || "所有时间以香港时区显示。顾客提议不会自动覆盖正式安排。"}
-      </div>
-      {!login ? (
+      <nav className="workspace-navigation" aria-label="工作台页面">
+        <button
+          className="secondary"
+          aria-pressed={view === "connect"}
+          onClick={() => setView("connect")}
+        >
+          WhatsApp 连接
+        </button>
+        {login && (
+          <button
+            className="secondary"
+            aria-pressed={view === "replay"}
+            onClick={() => setView("replay")}
+          >
+            工单回放
+          </button>
+        )}
+        <button
+          className="secondary"
+          aria-pressed={view === "demo"}
+          onClick={() => setView("demo")}
+        >
+          D-01 演示预览
+        </button>
+      </nav>
+      {view === "replay" && (
+        <section className="intro">
+          <p className="eyebrow">业务协作工作台</p>
+          <h1>把变更核对清楚，再落实安排。</h1>
+          <p>
+            查看原文、检查冲突、确认业务变化。这里使用固定抽取桩，没有连接真实
+            WhatsApp，也不会发送消息。
+          </p>
+        </section>
+      )}
+      {(notice || view === "replay") && (
+        <div className="notice" role="status" aria-live="polite">
+          {notice || "所有时间以香港时区显示。顾客提议不会自动覆盖正式安排。"}
+        </div>
+      )}
+      {view === "demo" ? (
+        <ConnectionWorkspace demo />
+      ) : !login ? (
         <form
           className="panel login"
           onSubmit={(event) => {
@@ -153,11 +203,11 @@ function App() {
                 password,
               });
               setLogin(result.data);
-            }, "已进入回放工作台");
+            }, "已登录本地工作台");
           }}
         >
-          <h2>开发账号登录</h2>
-          <p>预置 merchant / other 两个隔离账号，仅供本地开发。</p>
+          <h2>登录 GigMate 工作台</h2>
+          <p>先登录本地工作台，再连接你的 WhatsApp。预置账号仅供开发。</p>
           <label>
             账号
             <input
@@ -204,169 +254,175 @@ function App() {
               退出
             </button>
           </div>
-          <div className="grid">
-            <aside className="panel">
-              <h2>业务列表</h2>
-              {orders.map((item) => (
+          {view === "connect" ? (
+            <ConnectionWorkspace onSessionExpired={expireSession} />
+          ) : (
+            <div className="grid">
+              <aside className="panel">
+                <h2>业务列表</h2>
+                {orders.map((item) => (
+                  <button
+                    key={item.id}
+                    className={`order ${selected === item.id ? "active" : ""}`}
+                    onClick={() => setSelected(item.id)}
+                  >
+                    <strong>{item.summary}</strong>
+                    <small>
+                      版本 {item.version} · {item.status}
+                    </small>
+                  </button>
+                ))}
+                <h3>回放输入</h3>
+                <p>先看冲突，再回放可用时段。重复同一输入不会重复建单。</p>
                 <button
-                  key={item.id}
-                  className={`order ${selected === item.id ? "active" : ""}`}
-                  onClick={() => setSelected(item.id)}
+                  className="secondary"
+                  disabled={busy || login.username !== "merchant"}
+                  onClick={() =>
+                    void act(
+                      () => api("/replay", csrf, { scenario: "reschedule" }),
+                      "改期消息已进入持久队列，等待后台处理",
+                    )
+                  }
                 >
-                  <strong>{item.summary}</strong>
-                  <small>
-                    版本 {item.version} · {item.status}
-                  </small>
+                  回放：15:00 冲突改期
                 </button>
-              ))}
-              <h3>回放输入</h3>
-              <p>先看冲突，再回放可用时段。重复同一输入不会重复建单。</p>
-              <button
-                className="secondary"
-                disabled={busy || login.username !== "merchant"}
-                onClick={() =>
-                  void act(
-                    () => api("/replay", csrf, { scenario: "reschedule" }),
-                    "改期消息已进入持久队列，等待后台处理",
-                  )
-                }
-              >
-                回放：15:00 冲突改期
-              </button>
-              <button
-                disabled={busy || login.username !== "merchant"}
-                onClick={() =>
-                  void act(
-                    () => api("/replay", csrf, { scenario: "available" }),
-                    "可用时段消息已进入持久队列",
-                  )
-                }
-              >
-                回放：16:30 可用时段
-              </button>
-            </aside>
-            <main className="panel">
-              <h2>待核对的业务变化</h2>
-              {order && (
-                <div className="confirmed">
-                  <small>
-                    当前正式安排 · 业务版本 {order.version} · 会话版本{" "}
-                    {contextVersion}
-                  </small>
-                  <strong>{schedule(order.fields.schedule.value)}</strong>
-                  <span>
-                    地址：
-                    {order.fields.address.value === null
-                      ? "未提供"
-                      : String(order.fields.address.value)}
-                  </span>
-                </div>
-              )}
-              {!changes.length && (
-                <p className="empty">
-                  还没有变更提议。回放一条消息后，后台会生成带原文依据的提议。
-                </p>
-              )}
-              {changes.map((change) => (
-                <article className="change" key={change.id}>
-                  <div className="row">
-                    <h3>改期提议</h3>
-                    <span
-                      className={`tag ${change.conflict_ids.length ? "warning" : ""}`}
-                    >
-                      {change.status === "confirmed"
-                        ? "已确认"
-                        : change.status === "needs_review"
-                          ? "已失效，需复核"
-                          : change.conflict_ids.length
-                            ? "时间冲突"
-                            : "待商户确认"}
+                <button
+                  disabled={busy || login.username !== "merchant"}
+                  onClick={() =>
+                    void act(
+                      () => api("/replay", csrf, { scenario: "available" }),
+                      "可用时段消息已进入持久队列",
+                    )
+                  }
+                >
+                  回放：16:30 可用时段
+                </button>
+              </aside>
+              <main className="panel">
+                <h2>待核对的业务变化</h2>
+                {order && (
+                  <div className="confirmed">
+                    <small>
+                      当前正式安排 · 业务版本 {order.version} · 会话版本{" "}
+                      {contextVersion}
+                    </small>
+                    <strong>{schedule(order.fields.schedule.value)}</strong>
+                    <span>
+                      地址：
+                      {order.fields.address.value === null
+                        ? "未提供"
+                        : String(order.fields.address.value)}
                     </span>
                   </div>
-                  <p>原安排：{schedule(change.old_value)}</p>
-                  <p>
-                    <strong>新提议：{schedule(change.new_value)}</strong>
+                )}
+                {!changes.length && (
+                  <p className="empty">
+                    还没有变更提议。回放一条消息后，后台会生成带原文依据的提议。
                   </p>
-                  <small>
-                    来源消息：
-                    {change.sources
-                      .map(
-                        (source) =>
-                          `${source.message_id.slice(-4)} · r${source.message_revision}`,
-                      )
-                      .join(", ")}
-                  </small>
-                  <p>
-                    {change.conflict_ids.length
-                      ? "该时段与另一项已确认预约重叠，不能确认。"
-                      : "确认后将同步正式日历，取消旧自动待办并生成新的准备事项。"}
-                  </p>
-                  <button
-                    disabled={
-                      busy ||
-                      change.status !== "proposed" ||
-                      change.conflict_ids.length > 0
-                    }
-                    onClick={() => {
-                      if (!order) return;
-                      const command: Confirm = {
-                        expected_version: order.version,
-                        expected_context_version: contextVersion,
-                        apply_calendar_update: true,
-                      };
-                      void act(
-                        () =>
-                          api(
-                            `/work-orders/${order.id}/changes/${change.id}/confirm`,
-                            csrf,
-                            command,
-                          ),
-                        "已确认并持久化工单、日历和待办",
-                      );
-                    }}
-                  >
-                    确认并同步安排
-                  </button>
-                </article>
-              ))}
-              <h2>来源时间线</h2>
-              {messages.map((message) => (
-                <div className="message" key={message.id}>
-                  <small>
-                    {message.direction === "incoming" ? "顾客" : "商户"} ·{" "}
-                    {message.source} · r{message.revision}
-                  </small>
-                  <p>
-                    {message.revoked
-                      ? "消息已撤回，相关内容需要复核"
-                      : message.text}
-                  </p>
-                </div>
-              ))}
-            </main>
-            <aside className="panel">
-              <h2>个人安排</h2>
-              {calendar.map((event) => (
-                <div className="calendar" key={event.id}>
-                  <span>
-                    {event.work_order_id === selected ? "当前业务" : "其他业务"}
-                  </span>
-                  <strong>{schedule(event.schedule)}</strong>
-                </div>
-              ))}
-              <h2>待办事项</h2>
-              {tasks
-                .filter((task) => task.work_order_id === selected)
-                .map((task) => (
-                  <div className="task" key={task.id}>
-                    <strong>{task.title}</strong>
+                )}
+                {changes.map((change) => (
+                  <article className="change" key={change.id}>
+                    <div className="row">
+                      <h3>改期提议</h3>
+                      <span
+                        className={`tag ${change.conflict_ids.length ? "warning" : ""}`}
+                      >
+                        {change.status === "confirmed"
+                          ? "已确认"
+                          : change.status === "needs_review"
+                            ? "已失效，需复核"
+                            : change.conflict_ids.length
+                              ? "时间冲突"
+                              : "待商户确认"}
+                      </span>
+                    </div>
+                    <p>原安排：{schedule(change.old_value)}</p>
+                    <p>
+                      <strong>新提议：{schedule(change.new_value)}</strong>
+                    </p>
                     <small>
-                      {task.state} · 业务版本 {task.work_order_version}
+                      来源消息：
+                      {change.sources
+                        .map(
+                          (source) =>
+                            `${source.message_id.slice(-4)} · r${source.message_revision}`,
+                        )
+                        .join(", ")}
                     </small>
+                    <p>
+                      {change.conflict_ids.length
+                        ? "该时段与另一项已确认预约重叠，不能确认。"
+                        : "确认后将同步正式日历，取消旧自动待办并生成新的准备事项。"}
+                    </p>
+                    <button
+                      disabled={
+                        busy ||
+                        change.status !== "proposed" ||
+                        change.conflict_ids.length > 0
+                      }
+                      onClick={() => {
+                        if (!order) return;
+                        const command: Confirm = {
+                          expected_version: order.version,
+                          expected_context_version: contextVersion,
+                          apply_calendar_update: true,
+                        };
+                        void act(
+                          () =>
+                            api(
+                              `/work-orders/${order.id}/changes/${change.id}/confirm`,
+                              csrf,
+                              command,
+                            ),
+                          "已确认并持久化工单、日历和待办",
+                        );
+                      }}
+                    >
+                      确认并同步安排
+                    </button>
+                  </article>
+                ))}
+                <h2>来源时间线</h2>
+                {messages.map((message) => (
+                  <div className="message" key={message.id}>
+                    <small>
+                      {message.direction === "incoming" ? "顾客" : "商户"} ·{" "}
+                      {message.source} · r{message.revision}
+                    </small>
+                    <p>
+                      {message.revoked
+                        ? "消息已撤回，相关内容需要复核"
+                        : message.text}
+                    </p>
                   </div>
                 ))}
-            </aside>
-          </div>
+              </main>
+              <aside className="panel">
+                <h2>个人安排</h2>
+                {calendar.map((event) => (
+                  <div className="calendar" key={event.id}>
+                    <span>
+                      {event.work_order_id === selected
+                        ? "当前业务"
+                        : "其他业务"}
+                    </span>
+                    <strong>{schedule(event.schedule)}</strong>
+                  </div>
+                ))}
+                <h2>待办事项</h2>
+                {tasks
+                  .filter((task) => task.work_order_id === selected)
+                  .map((task) => (
+                    <div className="task" key={task.id}>
+                      <strong>{task.title}</strong>
+                      <small>
+                        {task.state} · 业务版本 {task.work_order_version}
+                      </small>
+                    </div>
+                  ))}
+              </aside>
+            </div>
+          )}
         </>
       )}
       <footer>
