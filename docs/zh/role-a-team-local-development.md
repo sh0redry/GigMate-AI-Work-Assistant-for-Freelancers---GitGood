@@ -10,6 +10,8 @@
 
 ## 全新克隆，用自己的账号启动
 
+自动测试的模块路径由 apps/backend/pyproject.toml 明确包含后端 src 和仓库根目录，pytest 与 python -m pytest 均可导入共享 scripts 工具，不依赖某一种启动入口碰巧加入根目录。
+
 安装 Python 3.12.10 与 Docker Desktop/Linux 引擎，启动 Docker，在仓库根目录执行：
 
 ```powershell

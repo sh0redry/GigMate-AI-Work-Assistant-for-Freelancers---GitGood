@@ -78,6 +78,8 @@ New-Item -ItemType Directory -Path local-data -Force | Out-Null
 
 --basetemp is a disposable test-only directory whose contents pytest replaces. Without TEST_DATABASE_URL, tests use SQLite files and skip the PostgreSQL concurrent-claim test; this does not prove row-lock semantics.
 
+Pytest explicitly adds backend `src` and the repository root from its backend configuration. Both `pytest` and `python -m pytest` can therefore import application modules and the shared `scripts` tooling; test collection does not depend on an incidental current-directory entry from one launcher.
+
 From apps/web:
 
 ```text

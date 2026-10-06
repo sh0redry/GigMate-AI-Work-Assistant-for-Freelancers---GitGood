@@ -1,5 +1,11 @@
 # Implementation status and validation
 
+## PR backend CI import-path correction — 2026-10-06
+
+PR #3 backend run 37432110763 failed during test collection with `ModuleNotFoundError: No module named 'scripts'` in test_waha_team.py. CI used the `pytest` console entry point with only backend src in PYTHONPATH; earlier local runs used `python -m pytest`, which additionally exposed the repository root. Reproduced locally using the console entry point. Backend pytest configuration now explicitly includes `src` and repository root (`../..` relative to apps/backend), making both launchers consistent without bypassing any tests. This is a test-environment correction, not a WAHA/database runtime failure. Related bilingual documentation updated; actual retest and online CI results follow when completed.
+
+Local retest with PYTHONPATH unset: console `pytest` full PostgreSQL suite **253 passed** (`local-data/pytest-ci-console-fixed-pg`); both console/module launchers' team subset **12 passed** each. Ruff/format, generated-contract check, baseline/diff passed. Existing Starlette/httpx warning is not the failure cause. Online CI will rerun on the fix commit; its actual conclusion must be checked independently of local results.
+
 ## Team own-account local development batch — 2026-10-06
 
 Final handoff checks also validated the rendered Compose override for API/worker/monitor, confirmed doctor Docker/database/binding/API healthy in the permitted Docker environment, and scanned all 14 changed/new files against local credentials/chat identifiers with no matches. Doctor distinguishes unavailable or access-denied Docker rather than assuming the engine is stopped.
