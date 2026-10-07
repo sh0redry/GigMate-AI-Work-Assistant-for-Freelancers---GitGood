@@ -28,7 +28,7 @@ const states: Record<string, string> = {
 const errors: Record<string, string> = {
   CONNECTOR_DISABLED: "尚未配置扫码服务，请按联调文档初始化本机环境。",
   CONNECTOR_CONFIG_INVALID: "连接配置与账号不匹配，请联系接入负责人检查。",
-  WAHA_RESOURCE_NOT_FOUND: "WhatsApp 会话尚未创建，点击「启动连接」继续。",
+  WAHA_RESOURCE_NOT_FOUND: "WhatsApp 会话尚未创建，请先准备本机服务后刷新。",
   WAHA_UNAVAILABLE: "WhatsApp 服务暂不可用，请检查服务后刷新。",
   WAHA_RESULT_UNKNOWN: "启动结果未知，请先刷新状态，再决定是否继续。",
   WAHA_NOT_WAITING_FOR_QR: "二维码已失效或扫码完成，请刷新状态。",
@@ -36,6 +36,17 @@ const errors: Record<string, string> = {
   VERSION_CONFLICT: "授权已在其他窗口更新。请重新载入并核对，再保存。",
   CHAT_CHOICE_EXPIRED: "会话选项已过期。请重新载入并核对，再保存。",
   UNAUTHENTICATED: "登录已过期，请退出后重新登录。",
+  LOCAL_PAIRING_UNAVAILABLE:
+    "无法读取本机扫码服务，请检查 Docker 和本地环境后刷新。",
+  LOCAL_PAIRING_BUSY: "正在获取本机二维码，请稍后刷新。",
+  LOCAL_BINDING_MISMATCH: "当前连接与本机配置不匹配，请联系接入负责人检查。",
+  LOCAL_CONFIG_INVALID_OR_MISSING:
+    "本机扫码环境尚未配置，请按联调文档准备后刷新。",
+  CONSENT_REVOKED: "连接授权已暂停，二维码已隐藏。",
+  LOCAL_PYTHON_UNAVAILABLE:
+    "未找到项目 Python 环境，请按本地启动指南准备 .venv。",
+  LOCAL_PAIRING_DEPENDENCIES_MISSING:
+    "项目 Python 依赖缺失，请按本地启动指南安装锁定依赖。",
 };
 const mergeChoices = (a: Choice[], b: Choice[]) => [
   ...new Map([...a, ...b].map((c) => [c.choice_id, c])).values(),
@@ -72,6 +83,8 @@ export function ConnectionWorkspace({
   const epoch = useRef(0);
   const statusFailure = useRef(false);
   const qrRef = useRef<string | null>(null);
+  const qrRequest = useRef(0);
+  const qrLoading = useRef(false);
   const saveAttempt = useRef<{ signature: string; key: string } | null>(null);
   const connector = connectors.find((c) => c.id === id);
   const connected = api.capabilities.pairing
@@ -79,6 +92,7 @@ export function ConnectionWorkspace({
     : !!connector?.live_connected && !connector.stale && !statusFetchFailed;
   const dirty = !!selection && !sameSelection(picked, selection.selected);
   const clearQr = useCallback(() => {
+    qrRequest.current++;
     if (qrRef.current) URL.revokeObjectURL(qrRef.current);
     qrRef.current = null;
     setQr(null);
@@ -112,6 +126,8 @@ export function ConnectionWorkspace({
       if (stamp === epoch.current) {
         statusFailure.current = true;
         setStatusFetchFailed(true);
+        setPairing(null);
+        clearQr();
       }
       throw e;
     }
@@ -156,6 +172,32 @@ export function ConnectionWorkspace({
     if (stamp === epoch.current) setIssues(records);
   }, [api, id, clearQr, report]);
 
+  const loadQr = useCallback(async () => {
+    if (qrLoading.current) return;
+    qrLoading.current = true;
+    const stamp = epoch.current;
+    const request = ++qrRequest.current;
+    try {
+      const blob = await api.qr(id);
+      if (stamp !== epoch.current || request !== qrRequest.current) return;
+      clearQr();
+      const url = URL.createObjectURL(blob);
+      qrRef.current = url;
+      setQr(url);
+      setQrTime(Date.now());
+      setQrAge(0);
+      setNotice("");
+      setFailure(false);
+    } catch (error) {
+      if (stamp === epoch.current && request === qrRequest.current) {
+        clearQr();
+        throw error;
+      }
+    } finally {
+      qrLoading.current = false;
+    }
+  }, [api, id, clearQr]);
+
   useEffect(() => {
     let active = true,
       running = false;
@@ -189,6 +231,42 @@ export function ConnectionWorkspace({
     );
     return () => clearInterval(timer);
   }, [qrTime]);
+
+  useEffect(() => {
+    if (
+      demo ||
+      !pairing?.qr_available ||
+      statusFetchFailed ||
+      !connector?.enabled
+    )
+      return;
+    const update = () => {
+      if (!document.hidden) void loadQr().catch(report);
+    };
+    update();
+    const timer = setInterval(update, 20000);
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", update);
+    };
+  }, [
+    demo,
+    pairing?.qr_available,
+    statusFetchFailed,
+    connector?.enabled,
+    loadQr,
+    report,
+  ]);
+
+  useEffect(() => {
+    if (qrTime === null) return;
+    const timer = setTimeout(
+      clearQr,
+      Math.max(0, 30000 - (Date.now() - qrTime)),
+    );
+    return () => clearTimeout(timer);
+  }, [qrTime, clearQr]);
 
   async function act(task: () => Promise<void>) {
     setBusy(true);
@@ -345,7 +423,9 @@ export function ConnectionWorkspace({
         {notice ||
           (demo
             ? "演示数据仅保留在当前预览中；会话读取授权不会开启自动回复。"
-            : "当前可查看连接状态；扫码和会话授权功能待接入。")}
+            : api.capabilities.pairing
+              ? "在此窗口扫描本机二维码；会话选择与保存授权仍待接入。"
+              : "当前可查看连接状态；扫码和会话授权功能待接入。")}
       </div>
       {connectors.length > 1 && (
         <label>
@@ -425,15 +505,28 @@ export function ConnectionWorkspace({
                       ✓
                     </div>
                     <strong>WhatsApp 已连接</strong>
-                    <p>无需再次扫码，可选择工作会话。</p>
+                    <p>
+                      {api.capabilities.selection
+                        ? "无需再次扫码，可选择工作会话。"
+                        : "无需再次扫码；会话选择仍待接入。"}
+                    </p>
                   </>
                 ) : qr ? (
                   <>
                     <img
                       src={qr}
                       alt="使用手机 WhatsApp 关联设备扫描此二维码"
+                      onError={() => {
+                        clearQr();
+                        report(
+                          new ConnectionError(
+                            "WAHA_INVALID_QR",
+                            "二维码显示失败，请刷新重试。",
+                          ),
+                        );
+                      }}
                     />
-                    <small>获取于 {qrAge} 秒前 · 二维码可能失效</small>
+                    <small>获取于 {qrAge} 秒前 · 自动更新中</small>
                   </>
                 ) : (
                   <>
@@ -444,7 +537,9 @@ export function ConnectionWorkspace({
                     <p>
                       {demo
                         ? "此区域展示真实二维码的位置"
-                        : "启动连接后获取二维码"}
+                        : pairing?.qr_available
+                          ? "正在加载本机二维码，也可点击「获取二维码」重试"
+                          : "等待本机服务准备扫码，请刷新状态"}
                     </p>
                   </>
                 )}
@@ -459,7 +554,7 @@ export function ConnectionWorkspace({
                 <button
                   disabled={
                     busy ||
-                    !api.capabilities.pairing ||
+                    !api.capabilities.start ||
                     pairing?.connected ||
                     pairing?.qr_available ||
                     pairing?.state === "STARTING"
@@ -481,18 +576,7 @@ export function ConnectionWorkspace({
                     !pairing?.qr_available ||
                     demo
                   }
-                  onClick={() =>
-                    void act(async () => {
-                      const stamp = epoch.current;
-                      const blob = await api.qr(id);
-                      if (stamp !== epoch.current) return;
-                      clearQr();
-                      const url = URL.createObjectURL(blob);
-                      qrRef.current = url;
-                      setQr(url);
-                      setQrTime(Date.now());
-                    })
-                  }
+                  onClick={() => void act(loadQr)}
                 >
                   {qr ? "刷新二维码" : "获取二维码"}
                 </button>

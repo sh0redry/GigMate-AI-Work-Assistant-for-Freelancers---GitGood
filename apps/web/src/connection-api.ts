@@ -31,7 +31,11 @@ export class ConnectionError extends Error {
   }
 }
 export interface ConnectionApi {
-  readonly capabilities: { pairing: boolean; selection: boolean };
+  readonly capabilities: {
+    pairing: boolean;
+    start: boolean;
+    selection: boolean;
+  };
   connectors(): Promise<Connector[]>;
   pairing(id: string): Promise<Pairing>;
   start(id: string, key: string): Promise<Pairing>;
@@ -48,6 +52,8 @@ export interface ConnectionApi {
 }
 
 export function liveConnectionApi(): ConnectionApi {
+  const localPairing =
+    import.meta.env.DEV && import.meta.env.GIGMATE_LOCAL_PAIRING === true;
   async function request<T>(path: string): Promise<T> {
     const response = await fetch(`/api/v1${path}`, {
       credentials: "same-origin",
@@ -72,8 +78,28 @@ export function liveConnectionApi(): ConnectionApi {
     );
   }
   const base = (id: string) => `/connectors/${encodeURIComponent(id)}`;
+  async function localRequest(id: string, kind: "status" | "qr") {
+    const response = await fetch(
+      `/__gigmate_local_pairing/${encodeURIComponent(id)}/${kind}`,
+      {
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "X-GigMate-Local-Pairing": "1" },
+      },
+    );
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}));
+      throw new ConnectionError(
+        response.status === 401
+          ? "UNAUTHENTICATED"
+          : (result.error?.code ?? "LOCAL_PAIRING_UNAVAILABLE"),
+        "无法读取本机扫码状态，请检查服务后刷新。",
+      );
+    }
+    return response;
+  }
   return {
-    capabilities: { pairing: false, selection: false },
+    capabilities: { pairing: localPairing, start: false, selection: false },
     async connectors() {
       const result: Connector[] = [];
       let cursor: string | null = null;
@@ -86,9 +112,28 @@ export function liveConnectionApi(): ConnectionApi {
       } while (cursor);
       return result;
     },
-    pairing: pending,
+    pairing: localPairing
+      ? async (id) =>
+          (await localRequest(id, "status")).json() as Promise<Pairing>
+      : pending,
     start: pending,
-    qr: pending,
+    qr: localPairing
+      ? async (id) => {
+          const response = await localRequest(id, "qr");
+          const blob = await response.blob();
+          if (
+            blob.type !== "image/png" ||
+            blob.size === 0 ||
+            blob.size > 2 * 1024 * 1024
+          ) {
+            throw new ConnectionError(
+              "WAHA_INVALID_QR",
+              "二维码图片无效，请刷新重试。",
+            );
+          }
+          return blob;
+        }
+      : pending,
     selection: pending,
     chats: pending,
     save: pending,
@@ -174,7 +219,7 @@ export function demoConnectionApi(): ConnectionApi & {
     selected: selected.map((c) => ({ ...c, selected: true })),
   });
   return {
-    capabilities: { pairing: true, selection: true },
+    capabilities: { pairing: true, start: true, selection: true },
     connect(value) {
       connected = value;
       stale = false;

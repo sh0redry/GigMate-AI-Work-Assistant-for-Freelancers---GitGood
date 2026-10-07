@@ -1,6 +1,6 @@
 # D-01: frontend connection and conversation selection
 
-Owner: Kyrie. Prepared on 2026-10-06 on `Kyrie_Frontend`, based on latest `main` merge commit `0cd7e3f`. The user requested a local commit with message `还没测试`; no push. Real WhatsApp pairing and user acceptance have not been tested; the automated checks below have passed. [Chinese counterpart](../zh/role-d-stage1-acceptance.md).
+Owner: Kyrie. Prepared on 2026-10-06 on `Kyrie_Frontend`, based on `main` merge commit `0cd7e3f`. The user requested a local commit with message `还没测试`; no push. Real WhatsApp pairing was attempted on 2026-10-07 but has not succeeded; user acceptance remains pending. Verification evidence is recorded below. [Chinese counterpart](../zh/role-d-stage1-acceptance.md).
 
 ## Scope and current result
 
@@ -8,7 +8,7 @@ This batch changes only frontend files in `apps/web` and this pair of D-specific
 
 The desktop workspace provides a pairing area, connection/processing health, conversation checkboxes, explicit save, revoke and discard controls, and a clearly marked synthetic preview. Read authorization does not enable automatic replies. Automatic replies and message sending remain separate milestones.
 
-Live mode uses main's existing authenticated connection and recovery-issue queries. It shows connection state, sampled readiness, freshness, receiving permission and unresolved issues separately. Missing pairing and conversation-selection capabilities are visibly pending; the corresponding controls are disabled. The live adapter makes no requests to unimplemented routes or WAHA administration endpoints.
+Live mode uses main's existing authenticated connection and recovery-issue queries. It shows connection state, sampled readiness, freshness, receiving permission and unresolved issues separately. Product pairing and conversation-selection APIs remain pending. An explicitly enabled local development bridge now displays real pairing status and QR images inside the page using Andy's unchanged server-side adapter; default development and production builds leave pairing disabled. Start/restart and conversation-selection controls remain disabled in live mode. The browser never calls WAHA administration endpoints.
 
 The preview is browser memory only: simulated scan, connect/disconnect, stale status, selection, saving and offline revocation. Leaving the preview or reloading resets it. The QR area is a placeholder, not a scannable QR. Preview success does not prove database writes, real authorization, pairing or delivery.
 
@@ -23,7 +23,7 @@ Already implemented in main and used by live mode:
 | `GET /api/v1/connectors` | Account-scoped, paginated `ConnectorStatus`; use generated main types |
 | `GET /api/v1/connectors/{id}/recovery-issues` | Account-scoped, paginated `RecoveryIssue`; use generated main types |
 
-The following routes and shapes are **frontend proposals only**. Andy should confirm or replace them before implementation. They are not additions to the shared contract or evidence of implemented routes.
+The following product routes and shapes are **frontend proposals only**. Andy should confirm or replace them before implementation. They are not additions to the shared contract or evidence of implemented product routes. The local development bridge below does not replace these APIs.
 
 | Proposed route | Needed behavior |
 | --- | --- |
@@ -56,6 +56,16 @@ GIGMATE_API_URL=http://127.0.0.1:18702 npm run dev
 
 The proxy accepts local HTTP origins only. This selects an existing backend; it does not provision WhatsApp or add missing product APIs. Existing backend origin/authentication requirements still apply.
 
+To display a real QR in the page using your already initialized, workspace-bound Andy team setup, keep its services/session running, then start the frontend from `apps/web`:
+
+```bash
+GIGMATE_API_URL=http://127.0.0.1:18702 GIGMATE_LOCAL_PAIRING=1 npm run dev
+```
+
+Sign in to the local workspace and use **WhatsApp 连接**. While the provider is in `SCAN_QR_CODE`, the page automatically loads a fresh PNG into browser memory, refreshes it every 20 seconds while visible, and offers manual refresh. A displayed image is hidden 30 seconds after retrieval unless replaced; provider rotation can still invalidate it earlier. No PNG file needs to be opened in Preview. The existing ignored `qr.png` is neither read nor rewritten by this bridge. Logout, failed status/QR reads, non-QR provider state and leaving the workspace clear the image and revoke its object URL. A successful image display does not establish phone pairing.
+
+`apps/web/local-pairing.mjs` is a Vite development middleware, disabled unless explicitly opted in and absent from the production server/build. Its read-only routes are `GET /__gigmate_local_pairing/{connection_id}/status` and `/qr`. Requests require a loopback socket/Host, same-origin checks, a custom request header and an authenticated app session. Ownership and enabled receiving permission are resolved through main's existing connectors API before and after retrieval; the Python process also checks the workspace profile and private connection binding. Only safe status fields or private, non-cacheable PNG bytes reach the browser. Credentials remain in the existing Python server-side adapter. There are no session mutations, chat reads, allowlist writes or sends. This local tool is not a deployable onboarding API; Andy still owns the future authenticated product APIs and shared contracts.
+
 ## Acceptance evidence
 
 Verification on 2026-10-06 is recorded here, without changing shared progress documents:
@@ -70,4 +80,24 @@ Verification on 2026-10-06 is recorded here, without changing shared progress do
 
 Required frontend commands: `npm run check:api`, `npm run format:check`, `npm run build`. Contract and baseline checks must use unchanged main sources. Browser acceptance must distinguish real main API responses from intercepted synthetic status fixtures.
 
-Pending external verification: Docker/WAHA phone pairing, live chat discovery, persistent save/revoke, PostgreSQL behavior and independent teammate review. Neither synthetic preview nor a SQLite development login proves these.
+Pending external verification: real WAHA phone pairing, live chat discovery, persistent save/revoke and independent teammate review. The later PostgreSQL evidence is recorded below; neither synthetic preview nor a SQLite development login proves live integration.
+
+## Computer-controlled verification: 2026-10-07
+
+At the user's request, the committed D-01 frontend (`d0859f0`) was operated through the visible local browser. Simulated scan, loading choices, explicit save, preserving unsaved choices during status refresh, discarding changes, revoking while disconnected, stale/review indicators and reset on leaving the preview passed. Real local development login, existing replay reads, logout and API shutdown/recovery states passed. These preview writes are browser memory, not live conversation authorization. A synthetic acceptance screenshot remains under ignored `local-data`.
+
+Docker Engine/Compose are available. Andy's unchanged team tools initialized a new developer-owned private setup with an empty allowlist and a separate PostgreSQL 17.9 database. The full unmodified backend suite using isolated PostgreSQL test schemas passed: **253 passed, no skips** (one existing Starlette/httpx warning). No main/shared source or generated contract changes were made; this follow-up only records evidence in D's two documents. No additional commit or push.
+
+Mac compatibility: the pinned WAHA image has no `linux/arm64/v8` manifest, so the stock team startup failed on this Apple Silicon Mac. A temporary Compose override supplied through stdin sets only the WAHA service to `linux/amd64`; tracked Compose files remain unchanged. Andy should decide how to document/support Apple Silicon in the team startup. The compatible image subsequently downloaded successfully and all six local services started. Doctor reported Docker/database/binding/API healthy. An initially absent provider session was created once, then reported `SCAN_QR_CODE`. A private PNG was generated using the existing CLI, confirmed Git-ignored with mode 0600, and opened in macOS Preview for the user to scan. No QR bytes were included in tracked evidence. The frontend was restarted with process-only `GIGMATE_API_URL=http://127.0.0.1:18702`; main's existing APIs authenticated the local developer and displayed the real connecting state, freshness and recovery review while absent product APIs remained disabled. The receiving allowlist remains empty. The user reported the phone message `Can't link new devices right now`; the provider still reported `SCAN_QR_CODE`, not `WORKING`. The displayed PNG was refreshed once using the existing CLI, confirmed to have changed, and reopened for a prompt retry. This does not establish the cause of the phone error. Real pairing remains unverified.
+
+The retry produced the same phone message. The user elected to end the real-pairing test; an account issue is suspected by the user but not established by this verification. No further scan, session reset or account troubleshooting was performed. The final live page shows an unconnected session and a processing pipeline that is not ready. Its QR-free screenshot is an ignored local artifact. Local services remain available for a later test; this is not successful live D-01 acceptance.
+
+## In-page QR correction: 2026-10-07
+
+The user requested that the QR be displayed in the browser instead of a separate local image viewer, and authorized a local commit after display verification. Changes are confined to D's frontend development middleware/configuration, frontend adapter/workspace, tests and these two documents. Andy/B/C sources, infrastructure, migrations, dependencies, shared documentation, generated types and contracts remain unchanged. No push is authorized.
+
+Browser control confirmed the real in-page image decoded successfully at **276×276**, used an in-memory blob URL, loaded again on manual refresh and automatically refreshed while visible. It disappeared on logout and appeared again after login. When the provider entered `FAILED`, the page hid the QR as expected; after confirming the failed state, one existing Andy CLI restart restored `SCAN_QR_CODE` and the page resumed image loading. The synthetic preview still uses fictional connection/selection data and contains no real QR. This verification does not retry the phone scan or claim `WORKING`. A screenshot of the controls below the QR is retained only under ignored `local-data` and excludes QR pixels.
+
+Run `node --test local-pairing.test.mjs` from `apps/web` for the eight focused bridge tests: authenticated image/status, denied login/origin/Host/connection access, paused permission, expiry during retrieval, paginated ownership, invalid PNG/provider errors, connected-state QR rejection, backend outage and a missing project Python environment. Also run the existing frontend API/format/build checks and `prettier --check local-pairing.mjs local-pairing.test.mjs`. Keep QR/credentials out of tracked evidence.
+
+Actual checks: **8 bridge tests passed**; frontend `check:api`, formatting, TypeScript and production build passed. A build with the local opt-in environment set still excluded the local pairing route from its client bundle. Unauthenticated local QR access returned 401. Direct Vite file requests for the private config/QR returned the SPA HTML fallback, not private JSON/PNG; private `local-data` is explicitly denied by the frontend filesystem configuration. Contract export and baseline checks passed. The documented Ruff scope (`apps/backend`, `scripts/export_contracts.py`, `scripts/smoke_replay.py`) passed. An additional broader Ruff run over all `scripts` found an existing unused `sys` import and formatting issue in unchanged main's `scripts/check_baseline.py`; it was preserved under the user's ownership boundary. The unchanged backend PostgreSQL suite had already passed 253 tests earlier that day and was not repeated for this frontend-only correction. Browser warning/error logs were empty after final display verification.
