@@ -59,6 +59,7 @@ async function readProvider(root, id, kind) {
         encoding: "buffer",
         timeout: 25000,
         maxBuffer: 2 * 1024 * 1024,
+        windowsHide: true,
       },
     );
     return result.stdout;

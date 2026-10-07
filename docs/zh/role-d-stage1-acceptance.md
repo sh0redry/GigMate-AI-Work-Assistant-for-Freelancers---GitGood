@@ -38,7 +38,7 @@ main 已实现且真实模式使用：
 
 开启写入前需对齐返回包装、分页、过期／错误码、同源会话鉴权、CSRF 与幂等约定。保存／撤销应在刷新后保持，核对版本并更新权威白名单；获得授权前不能存业务正文或调用模型。写入结果未知时需核对。前端不能持有 WAHA 密钥、webhook 密钥或 provider session 文件。这里授予读取／处理权限，不是自动回复权限。
 
-## Mac 预览与已有接口
+## Windows／Mac 预览与已有接口
 
 在 `apps/web`，安装仓库固定版本的 Node／npm 依赖后：
 
@@ -61,6 +61,16 @@ GIGMATE_API_URL=http://127.0.0.1:18702 npm run dev
 ```bash
 GIGMATE_API_URL=http://127.0.0.1:18702 GIGMATE_LOCAL_PAIRING=1 npm run dev
 ```
+
+Windows PowerShell 对应命令，同样在 `apps/web` 运行：
+
+```powershell
+$env:GIGMATE_API_URL = "http://127.0.0.1:18702"
+$env:GIGMATE_LOCAL_PAIRING = "1"
+npm run dev
+```
+
+网页使用标准浏览器 API。本机入口在 Windows 选择 `.venv/Scripts/python.exe`，在 Mac 选择 `.venv/bin/python`，通过路径解析和无 shell 的调用执行，并隐藏 Windows 子进程控制台。每台机器均需自行初始化 Andy 原有团队环境，安装仓库固定版本 Node／npm／Python 依赖并保持 Docker 服务运行。Mac 已验证；Windows 已核对代码兼容性，仍需队友实际运行验收。Apple 芯片 Mac 仍需下文记录的兼容 WAHA 镜像／平台配置，本前端不修改 Andy 的 Compose 文件。
 
 登录本地工作台并进入 **WhatsApp 连接**。provider 为 `SCAN_QR_CODE` 时，页面自动把最新 PNG 载入浏览器内存，可见时每 20 秒更新，也可以手动刷新。图片获取 30 秒后若尚未替换就隐藏；provider 可能更早轮换二维码。不再需要在「预览」打开 PNG。本入口不会读取或重写原来被忽略的 `qr.png`。退出登录、状态／二维码读取失败、provider 不再等待扫码，以及离开工作台都会清除图片并释放对象 URL。显示成功不能证明手机关联成功。
 
@@ -94,7 +104,7 @@ Mac 兼容问题：固定 WAHA 镜像没有 `linux/arm64/v8` manifest，因此�
 
 ## 2026-10-07 页面内二维码修正
 
-用户要求把二维码显示在浏览器页面，而非单独打开本地图片，并授权显示验证通过后创建本地提交。改动只涉及 D 的前端开发中间件／配置、前端适配器／工作台、测试及这两份文档。Andy／B／C 源码、基础设施、迁移、依赖、共享文档、生成类型及契约未改。未获授权推送。
+用户要求把二维码显示在浏览器页面，而非单独打开本地图片，并授权显示验证通过后创建本地提交。改动只涉及 D 的前端开发中间件／配置、前端适配器／工作台、测试及这两份文档。Andy／B／C 源码、基础设施、迁移、依赖、共享文档、生成类型及契约未改。后续跨平台核对请求已授权发布 `Kyrie_Frontend`，并向 `main` 发起 PR，由队友审核和合并。
 
 电脑控制确认真实页面内图片成功解码为 **276×276**，使用内存 blob URL，手动刷新重新载入，可见时自动更新；退出登录后清除，重新登录后再次显示。provider 进入 `FAILED` 时，页面按预期隐藏二维码；确认失败状态后，仅使用一次 Andy 原有 CLI 重连，恢复 `SCAN_QR_CODE`，页面再次载入图片。合成演示仍使用虚构连接／会话数据，不含真实二维码。本次不重新尝试手机扫码，也不声称已到 `WORKING`。二维码下方控件的截图只保留在被忽略的 `local-data`，不含二维码像素。
 

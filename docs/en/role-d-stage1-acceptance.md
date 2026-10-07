@@ -38,7 +38,7 @@ Preview-local `Pairing`, `Choice`, `Selection` and `Discovery` in `src/connectio
 
 Agree response envelopes, pagination, expiration/error codes, same-origin session authentication, CSRF and idempotency before enabling writes. Save/revoke must survive reload, check versions and update the authoritative allowlist; business content must not be stored or sent to models before authorization. Unknown write outcomes must be reconciled. Frontend never receives WAHA keys, webhook secrets or provider session files. This is read/processing permission, not automatic-reply permission.
 
-## macOS preview and existing API
+## Windows/macOS preview and existing API
 
 From `apps/web`, with the repository's pinned Node/npm dependencies installed:
 
@@ -61,6 +61,16 @@ To display a real QR in the page using your already initialized, workspace-bound
 ```bash
 GIGMATE_API_URL=http://127.0.0.1:18702 GIGMATE_LOCAL_PAIRING=1 npm run dev
 ```
+
+Windows PowerShell equivalent, also from `apps/web`:
+
+```powershell
+$env:GIGMATE_API_URL = "http://127.0.0.1:18702"
+$env:GIGMATE_LOCAL_PAIRING = "1"
+npm run dev
+```
+
+The web UI uses standard browser APIs. The local bridge selects `.venv/Scripts/python.exe` on Windows and `.venv/bin/python` on macOS, resolves paths without shell commands, and hides the Windows child-process console. Each machine must initialize its own existing Andy team environment with the repository's pinned Node/npm/Python dependencies and running Docker services. macOS was verified; Windows compatibility has been inspected in code but a native Windows run remains for peer acceptance. Apple Silicon still needs a compatible WAHA image/platform configuration as recorded below; this frontend does not change Andy's Compose files.
 
 Sign in to the local workspace and use **WhatsApp 连接**. While the provider is in `SCAN_QR_CODE`, the page automatically loads a fresh PNG into browser memory, refreshes it every 20 seconds while visible, and offers manual refresh. A displayed image is hidden 30 seconds after retrieval unless replaced; provider rotation can still invalidate it earlier. No PNG file needs to be opened in Preview. The existing ignored `qr.png` is neither read nor rewritten by this bridge. Logout, failed status/QR reads, non-QR provider state and leaving the workspace clear the image and revoke its object URL. A successful image display does not establish phone pairing.
 
@@ -94,7 +104,7 @@ The retry produced the same phone message. The user elected to end the real-pair
 
 ## In-page QR correction: 2026-10-07
 
-The user requested that the QR be displayed in the browser instead of a separate local image viewer, and authorized a local commit after display verification. Changes are confined to D's frontend development middleware/configuration, frontend adapter/workspace, tests and these two documents. Andy/B/C sources, infrastructure, migrations, dependencies, shared documentation, generated types and contracts remain unchanged. No push is authorized.
+The user requested that the QR be displayed in the browser instead of a separate local image viewer, and authorized a local commit after display verification. Changes are confined to D's frontend development middleware/configuration, frontend adapter/workspace, tests and these two documents. Andy/B/C sources, infrastructure, migrations, dependencies, shared documentation, generated types and contracts remain unchanged. The later cross-platform review request authorizes publishing `Kyrie_Frontend` and opening a PR against `main` for teammate review and merge.
 
 Browser control confirmed the real in-page image decoded successfully at **276×276**, used an in-memory blob URL, loaded again on manual refresh and automatically refreshed while visible. It disappeared on logout and appeared again after login. When the provider entered `FAILED`, the page hid the QR as expected; after confirming the failed state, one existing Andy CLI restart restored `SCAN_QR_CODE` and the page resumed image loading. The synthetic preview still uses fictional connection/selection data and contains no real QR. This verification does not retry the phone scan or claim `WORKING`. A screenshot of the controls below the QR is retained only under ignored `local-data` and excludes QR pixels.
 
