@@ -13,6 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from starlette.concurrency import run_in_threadpool
 
 from gigmate import identity
+from gigmate import waha_controls as controls
 from gigmate.config import COOKIE_SECURE, TRUSTED_ORIGINS
 from gigmate.contracts import (
     CalendarEvent,
@@ -28,6 +29,12 @@ from gigmate.contracts import (
     RequirementChange,
     Task,
     Text,
+    WahaChoice,
+    WahaControlCommand,
+    WahaControlResult,
+    WahaSelectionCommand,
+    WahaSetup,
+    WahaVersionCommand,
     WorkOrder,
 )
 from gigmate.db import (
@@ -444,6 +451,157 @@ def connector_statuses(
         limit,
         lambda row: status_view(db, row),
     )
+
+
+def setup_actor(request: Request, db=Depends(database, scope="function")):
+    if db.bind.dialect.name == "postgresql":
+        db.execute(text("SET LOCAL lock_timeout = '3s'"))
+        db.execute(text("SET LOCAL statement_timeout = '5s'"))
+    return actor(request, db)
+
+
+@app.get("/api/v1/connectors/{connection_id}/setup", response_model=Detail[WahaSetup])
+def connector_setup(
+    connection_id: UUID,
+    request: Request,
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    return detail(request, controls.setup_view(db, controls.owned(db, account, str(connection_id))))
+
+
+@app.post(
+    "/api/v1/connectors/{connection_id}/operations",
+    status_code=202,
+    response_model=Detail[WahaControlResult],
+)
+def connector_command(
+    connection_id: UUID,
+    command: WahaControlCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    row = controls.owned(db, account, str(connection_id), lock=True)
+    return detail(request, controls.enqueue(db, row, command, idempotency_key))
+
+
+@app.get(
+    "/api/v1/connectors/{connection_id}/operations/{operation_id}",
+    response_model=Detail[WahaControlResult],
+)
+def connector_operation(
+    connection_id: UUID,
+    operation_id: UUID,
+    request: Request,
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    row = controls.owned(db, account, str(connection_id))
+    operation = db.get(controls.WahaControl, str(operation_id))
+    if not operation or operation.connection_id != row.id:
+        controls.fail("NOT_FOUND", 404)
+    return detail(request, controls.operation_view(operation))
+
+
+@app.post(
+    "/api/v1/connectors/{connection_id}/operations/{operation_id}/reconcile",
+    response_model=Detail[WahaControlResult],
+)
+def connector_reconcile(
+    connection_id: UUID,
+    operation_id: UUID,
+    command: WahaVersionCommand,
+    request: Request,
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    row = controls.owned(db, account, str(connection_id), lock=True)
+    return detail(request, controls.reconcile(db, row, str(operation_id), command))
+
+
+@app.post("/api/v1/connectors/{connection_id}/pause", response_model=Detail[WahaSetup])
+def connector_pause(
+    connection_id: UUID,
+    command: WahaVersionCommand,
+    request: Request,
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    row = controls.owned(db, account, str(connection_id), lock=True)
+    return detail(request, controls.pause_resume(db, row, command, False))
+
+
+@app.post("/api/v1/connectors/{connection_id}/resume", response_model=Detail[WahaSetup])
+def connector_resume(
+    connection_id: UUID,
+    command: WahaVersionCommand,
+    request: Request,
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    row = controls.owned(db, account, str(connection_id), lock=True)
+    return detail(request, controls.pause_resume(db, row, command, True))
+
+
+@app.get(
+    "/api/v1/connectors/{connection_id}/qr",
+    response_class=Response,
+    responses={200: {"content": {"image/png": {"schema": {"type": "string", "format": "binary"}}}}},
+)
+def connector_qr(
+    connection_id: UUID, account=Depends(setup_actor), db=Depends(database, scope="function")
+):
+    row = controls.owned(db, account, str(connection_id))
+    if not row.enabled:
+        controls.fail("CONNECTOR_PAUSED", 403)
+    initial_version = row.control_version
+    client = controls.client_for(row)
+    try:
+        png = client.qr()
+    except AdapterError as exc:
+        controls.fail(exc.code, 409 if exc.code == "WAHA_NOT_WAITING_FOR_QR" else 502)
+    finally:
+        client.close()
+    db.refresh(row)
+    if not row.enabled or row.control_version != initial_version:
+        controls.fail("WAHA_SETUP_CHANGED", 409)
+    from gigmate.db import Account
+
+    if not db.scalar(select(Account.active).where(Account.id == account.id)):
+        controls.fail("CONSENT_REVOKED", 403)
+    return Response(
+        png,
+        media_type="image/png",
+        headers={
+            "Cache-Control": "no-store, private",
+            "Pragma": "no-cache",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@app.get("/api/v1/connectors/{connection_id}/chats", response_model=Detail[list[WahaChoice]])
+def connector_chats(
+    connection_id: UUID,
+    request: Request,
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    return detail(request, controls.choices(db, controls.owned(db, account, str(connection_id))))
+
+
+@app.put("/api/v1/connectors/{connection_id}/chats", response_model=Detail[WahaSetup])
+def connector_select(
+    connection_id: UUID,
+    command: WahaSelectionCommand,
+    request: Request,
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    row = controls.owned(db, account, str(connection_id), lock=True)
+    return detail(request, controls.select_chats(db, row, command))
 
 
 @app.post("/api/v1/connectors/waha/{connection_id}/events", response_model=Detail[ConnectorReceipt])

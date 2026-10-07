@@ -225,6 +225,57 @@ class LocalWahaClient:
             raise AdapterError("WAHA_SESSION_MISMATCH")
         return {"business_webhook_configured": True, "session_restart_possible": True}
 
+    def create_business_session(self, connection_id):
+        if str(UUID(connection_id)) != connection_id:
+            raise AdapterError("INVALID_TRUSTED_MAPPING")
+        result = self._request(
+            "POST",
+            "/api/sessions",
+            body={
+                "name": "default",
+                "start": True,
+                "config": {
+                    "debug": False,
+                    "webjs": {"tagsEventsOn": True},
+                    "webhooks": [
+                        {
+                            "url": f"http://ingress:8000/api/v1/connectors/waha/{connection_id}/events",
+                            "events": [
+                                "session.status",
+                                "message.any",
+                                "message.edited",
+                                "message.revoked",
+                                "message.ack",
+                            ],
+                            "hmac": {"key": self.config.webhook_secret},
+                            "retries": {"policy": "constant", "delaySeconds": 2, "attempts": 3},
+                        }
+                    ],
+                },
+            },
+        )
+        if not isinstance(result, dict) or result.get("name") != "default":
+            raise AdapterError("WAHA_RESULT_UNKNOWN")
+        return {"session_created": True}
+
+    def inspect_business_session(self, connection_id):
+        status = self.status()
+        session = self._request("GET", "/api/sessions/default")
+        config = session.get("config") if isinstance(session, dict) else None
+        hooks = config.get("webhooks") if isinstance(config, dict) else None
+        expected = f"http://ingress:8000/api/v1/connectors/waha/{connection_id}/events"
+        matches = bool(
+            isinstance(hooks, list)
+            and len(hooks) == 1
+            and isinstance(hooks[0], dict)
+            and hooks[0].get("url") == expected
+            and isinstance(hooks[0].get("hmac"), dict)
+            and hooks[0]["hmac"].get("key") == self.config.webhook_secret
+            and set(hooks[0].get("events", []))
+            >= {"session.status", "message.any", "message.edited", "message.revoked", "message.ack"}
+        )
+        return {**status, "business_webhook_matches": matches}
+
     def qr(self):
         if self.status()["state"] != "SCAN_QR_CODE":
             raise AdapterError("WAHA_NOT_WAITING_FOR_QR")

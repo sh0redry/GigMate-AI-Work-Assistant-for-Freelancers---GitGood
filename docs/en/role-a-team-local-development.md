@@ -12,6 +12,30 @@ One installation per machine: fixed project `gigmate-waha-a02`, ports 18700/1870
 
 Install Python 3.12.10 and Docker Desktop/Linux engine, start Docker, then from repository root:
 
+### macOS (Intel or Apple Silicon)
+
+Install Python 3.12 and Docker Desktop for your Mac's chip. Host tools are Python scripts, not Windows executables:
+
+```bash
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r apps/backend/requirements.lock
+.venv/bin/python scripts/waha_team.py init
+.venv/bin/python scripts/waha_team.py up
+.venv/bin/python scripts/waha_team.py doctor
+.venv/bin/python scripts/waha_team.py run local create
+.venv/bin/python scripts/waha_team.py run local status
+.venv/bin/python scripts/waha_team.py run local qr
+open local-data/waha-a02/qr.png
+```
+
+For subsequent commands below, replace `.venv\Scripts\python.exe` with `.venv/bin/python`; no PowerShell is needed. A new environment is required per machine: do not copy Windows .venv, private profile/config or Docker sessions. Existing installations should use their original setup rather than rerunning init.
+
+Team up/stop reads the Docker daemon's architecture, not the host Python architecture (Python may run under Rosetta). For arm64/aarch64 it appends `infra/waha-arm64.compose.yaml`, pinning native `arm-2026.9.1` digest b4216daddb7d5c1eb3ab99e608b76a005ec7523e766f923939d229718df4aafb and WEBJS. x86 remains on the previously tested image. Manual Compose users must also append that override on ARM and retain their correct database environment. Do not switch to unpinned :arm or another engine to work around a manifest error. ARM image architecture/configuration has been checked; a physical Mac account scan has not been verified.
+
+Docker is not automatic CPU translation: the original fixed index has linux/amd64 only (plus an attestation), so Apple Silicon can fail pulling it without an ARM override/emulation. WAHA publishes separate [ARM images](https://waha.devlike.pro/docs/how-to/engines/); [Docker's multi-platform explanation](https://docs.docker.com/build/building/multi-platform/) distinguishes native execution and emulation. Backend/config helper Python images are multi-platform. This local path requires Docker Desktop; an alternative Docker engine's host networking is not implicitly validated.
+
+### Windows PowerShell
+
 ```powershell
 py -3.12 -m venv .venv
 .venv\Scripts\python.exe -m pip install -r apps/backend/requirements.lock
@@ -72,7 +96,7 @@ Stop safely: `waha_team.py stop` stops only team services and preserves volumes.
 
 ## Concrete integration framework
 
-Runtime uses built images, not live host source mounts. After backend changes run team up to rebuild/recreate, then diagnose/smoke and new-message acceptance. Existing completed jobs are not a substitute for new input. Before frontend development install the locked dependencies with `npm ci` in apps/web; run check:api/format:check/build. Frontend work can use the ingress API for development login/status, but QR/selection APIs do not exist yet. Keep a feature branch from the team's agreed main commit and coordinate shared contracts with A/C; do not merge or send automatically from this tool.
+Runtime uses built images, not live host source mounts. After backend changes run team up to rebuild/recreate, then diagnose/smoke and new-message acceptance. Existing completed jobs are not a substitute for new input. Before frontend development install the locked dependencies with `npm ci` in apps/web; run check:api/format:check/build. Frontend can now use the [owned setup/QR/chat APIs](role-a-setup-api-acceptance.md) for the operator-prepared local connection; product screens remain D's work. Keep a feature branch from the team's agreed main commit and coordinate shared contracts with A/C; do not merge or send automatically from this tool.
 
 Entry chain: `api.waha_events` → source HMAC → `waha_ingress.receive` → `messaging.ingest` → Inbox/MessageRow/ConversationRow/Job → `worker.run_once`. Pydantic/domain/OpenAPI types are generated; independent event schema remains versioned. Account ownership comes from trusted configuration, never provider-supplied account IDs. Do not bypass this chain to call a model directly from the webhook.
 
@@ -80,7 +104,7 @@ Entry chain: `api.waha_events` → source HMAC → `waha_ingress.receive` → `m
 | --- | --- | --- |
 | B | worker.run_once currently completes trusted live jobs as LIVE_EXTRACTION_PENDING. Replace that branch in an authorized batch with general extraction/proposal integration; use Inbox normalized event, MessageRow source revision, ConversationRow context_version and explicit work-order assignment. understanding.extract is currently a fictional Replay stub, not the live model. | Ambiguous multi-order assignment needs review. Persist proposals only for current context/source. Real-model credentials remain server-side. Completed old jobs are not automatically re-extracted; reprocessing needs an explicit idempotent design. |
 | C | messaging.ingest advances context and invalidates changes; workorders.confirm owns existing internal confirmation. Design actions/outbox/executor/reconciliation before requesting WAHA sending. | Customer proposal/confirmation and merchant approval separate. Immutable approval snapshot/version/expiry checks. Unknown outcomes never blindly resend. No external adapter now. |
-| D | GET /api/v1/connectors and scoped recovery-issues, generated ConnectorStatus/RecoveryIssue in api.d.ts. Vite currently proxies the Replay API; changing its target to ingress must be deliberate and include origin/auth checks. No backend product QR/selection endpoints yet. | Distinguish connected, pipeline_ready, stale and review_required. Show sampled health, not guaranteed delivery. Add server-owned onboarding APIs with A before UI; never call WAHA administration from browser. |
+| D | GET /api/v1/connectors/recovery-issues plus local setup/QR/opaque chats/control operations; generated types in api.d.ts. Vite currently proxies Replay API; switching to ingress requires explicit origin/auth checks. | Distinguish readiness/review and operation outcome; poll 202 intents, preserve request keys and refresh control_version. Use the setup agreement; never call WAHA administration directly. |
 | E | waha_team checkpoint/verify + smoke_waha_ingress + check_waha_recovery --run. Record fresh clone SHA, dependency versions, actual outputs and defects. | Independent review; no real content/keys/QR in tracked evidence. SQLite cannot establish PostgreSQL locking. Router/logout/missing-history recovery remain separate checks. |
 
 Develop coordinated related tasks as one authorized batch, including migrations/contracts/tests/bilingual docs, then one acceptance. Do not change shared migrations or generated artifacts manually. Before main merge, an independent teammate should execute the clean own-account path; developer self-tests cannot replace this. Cloud API remains excluded, and this document does not authorize sending, general AI or production deployment.

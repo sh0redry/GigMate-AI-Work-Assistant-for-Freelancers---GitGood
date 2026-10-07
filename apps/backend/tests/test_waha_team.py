@@ -138,6 +138,8 @@ def test_clean_bootstrap_and_restart_preserves_pause(tmp_path, monkeypatch):
 
     def run(args, env=None):
         calls.append(args)
+        if "{{.Architecture}}" in args:
+            return "x86_64"
         return ""
 
     monkeypatch.setattr(team, "run", run)
@@ -176,3 +178,18 @@ def test_clean_bootstrap_and_restart_preserves_pause(tmp_path, monkeypatch):
         team.startup(env)
     assert (private / "bindings/ingress.json").read_bytes() == before
     engine.dispose()
+
+
+@pytest.mark.parametrize("architecture", ["amd64", "x86_64", "arm64", "aarch64"])
+def test_compose_chooses_daemon_architecture_not_host_python(monkeypatch, architecture):
+    monkeypatch.setattr(team, "run", lambda args: architecture)
+    args = team.compose("up", "-d")
+    arm = any("waha-arm64.compose.yaml" in item for item in args)
+    assert arm is (architecture in {"arm64", "aarch64"})
+    assert args[-2:] == ["up", "-d"]
+
+
+def test_unknown_daemon_architecture_fails_clearly(monkeypatch):
+    monkeypatch.setattr(team, "run", lambda args: "unknown")
+    with pytest.raises(team.TeamError, match="UNSUPPORTED_DOCKER_ARCHITECTURE"):
+        team.compose("up")

@@ -4,6 +4,8 @@
 
 ## 目前已经能做什么
 
+2026-10-07 扩展：[接入后端交付](role-a-setup-api-acceptance.md)已实现预先准备的本地 session 的归属隔离连接意图、二维码、不透明聊天选择、暂停/恢复接口。产品页面、生产/多商户接入仍待做；下文这些后端操作的 CLI-only 描述属于早期记录。
+
 可选本地 WAHA 接入把可信事件送入现有模块化后端、PostgreSQL Inbox 和独立 Worker，Replay 保留。固定 WAHA Core 2026.9.1、WEBJS，镜像摘要见 [Compose](../../infra/waha.compose.yaml)；其他版本/引擎未验证。
 
 | 能力 | 实际行为与边界 |

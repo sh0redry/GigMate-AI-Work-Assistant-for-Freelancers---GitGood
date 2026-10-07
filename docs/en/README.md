@@ -13,6 +13,7 @@ The replay skeleton and optional local WAHA durable ingress/monitoring are imple
 | [Role A responsibilities](role-a-responsibilities.md) | Ingestion, authentication, durable events, monitoring and handoffs |
 | [WAHA implementation and team handoff](role-a-waha-handoff.md) | Current capability matrix, limits, role integrations and remaining plan |
 | [Team local WAHA development](role-a-team-local-development.md) | Own-account setup, safe verification and concrete B/C/D/E development framework |
+| [WAHA setup API acceptance](role-a-setup-api-acceptance.md) | Implemented local connection/QR/chat-control routes, async intent and D/E handoff |
 | [WhatsApp connection flow](whatsapp-connection-flow.md) | QR pairing, conversation allowlists, live events and historical sync |
 | [Role A development roadmap](role-a-development-roadmap.md) | Coherent development batches, dependencies, failure tests and unified acceptance |
 | [Role A recovery acceptance](role-a-recovery-acceptance.md) | Component health, fault recovery, manual gap review and reproducible tests for E |

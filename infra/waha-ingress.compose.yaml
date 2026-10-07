@@ -6,6 +6,12 @@ x-ingress-backend: &ingress-backend
   environment:
     DATABASE_URL: ${WAHA_DATABASE_URL:-postgresql+psycopg://gigmate:local-replay-only@host.docker.internal:54329/gigmate_waha_a03}
     COOKIE_SECURE: "false"
+    WAHA_CONNECTOR_CONFIG: /run/gigmate/ingress.json
+    WAHA_CONTROL_CONFIG: /run/waha-control/config.json
+    WAHA_CONTROL_INTERNAL: "true"
+  volumes:
+    - waha-ingress-bindings:/run/gigmate:ro
+    - waha-monitor-config:/run/waha-control:ro
   restart: "no"
 
 services:
@@ -15,8 +21,11 @@ services:
       DATABASE_URL: ${WAHA_DATABASE_URL:-postgresql+psycopg://gigmate:local-replay-only@host.docker.internal:54329/gigmate_waha_a03}
       WAHA_CONNECTOR_CONFIG: /run/gigmate/ingress.json
       COOKIE_SECURE: "false"
+      WAHA_CONTROL_CONFIG: /run/waha-control/config.json
+      WAHA_CONTROL_INTERNAL: "true"
     volumes:
       - waha-ingress-bindings:/run/gigmate:ro
+      - waha-monitor-config:/run/waha-control:ro
     ports: ["127.0.0.1:18702:8000"]
     command: ["uvicorn", "gigmate.api:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--log-level", "error"]
     healthcheck:

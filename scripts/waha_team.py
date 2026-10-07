@@ -47,7 +47,12 @@ def run(args, env=None):
 
 
 def compose(*args):
-    return [
+    architecture = (
+        run(["docker", "info", "--format", "{{.Architecture}}"]).strip().lower()
+    )
+    if architecture not in {"amd64", "x86_64", "arm64", "aarch64"}:
+        raise TeamError("UNSUPPORTED_DOCKER_ARCHITECTURE")
+    command = [
         "docker",
         "compose",
         "--env-file",
@@ -56,14 +61,16 @@ def compose(*args):
         str(ROOT / "infra/waha.compose.yaml"),
         "-f",
         str(ROOT / "infra/waha-ingress.compose.yaml"),
-        *args,
     ]
+    if architecture in {"arm64", "aarch64"}:
+        command.extend(["-f", str(ROOT / "infra/waha-arm64.compose.yaml")])
+    return [*command, *args]
 
 
 def environment():
     env = os.environ.copy()
     if PROFILE.exists():
-        profile = json.loads(private_path(PROFILE).read_text())
+        profile = json.loads(private_path(PROFILE).read_text(encoding="utf-8"))
         if profile != {"workspace": str(ROOT.resolve()), "database": DATABASE}:
             raise TeamError("TEAM_PROFILE_WORKSPACE_MISMATCH")
         if env.get("DATABASE_URL") not in (None, DATABASE):
@@ -306,7 +313,7 @@ def evidence(env, checkpoint=False):
                 "since": at,
                 "next": "send, edit, revoke ONE new allowed text; then verify",
             }
-        mark = json.loads(private_path(CHECKPOINT).read_text())
+        mark = json.loads(private_path(CHECKPOINT).read_text(encoding="utf-8"))
         if mark["connection_id"] != owned:
             raise TeamError("CHECKPOINT_CONNECTION_MISMATCH")
         datetime.fromisoformat(mark["since"]).astimezone(UTC)

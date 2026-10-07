@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import time
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -206,6 +207,13 @@ def main():
         if time.monotonic() >= maintenance_at:
             maintain()
             maintenance_at = time.monotonic() + 3600
+        if os.environ.get("WAHA_CONTROL_CONFIG"):
+            from gigmate.waha_controls import run_once as control_once
+
+            try:
+                control_once()
+            except SQLAlchemyError:
+                log.error("control_poll_failed code=DATABASE_UNAVAILABLE")
         if not poll():
             time.sleep(0.5)
 
@@ -214,6 +222,18 @@ def maintain(factory=Session):
     from gigmate.waha_ingress import purge_expired
 
     try:
+        from sqlalchemy import delete
+
+        from gigmate.db import WahaCandidate, WahaControl
+
+        with factory.begin() as db:
+            db.execute(delete(WahaCandidate).where(WahaCandidate.expires_at <= datetime.now(UTC)))
+            db.execute(
+                delete(WahaControl).where(
+                    WahaControl.active_key.is_(None),
+                    WahaControl.created_at < datetime.now(UTC) - timedelta(days=30),
+                )
+            )
         with factory() as db:
             identifiers = list(db.scalars(select(WahaConnection.id)))
         for identifier in identifiers:

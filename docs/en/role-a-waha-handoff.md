@@ -4,6 +4,8 @@ Updated: 2026-10-06. This is the current capability summary, not a claim that ev
 
 ## What works now
 
+2026-10-07 extension: [setup API delivery](role-a-setup-api-acceptance.md) implements owner-scoped backend connection intents, QR, opaque chat selection and pause/resume for the already bootstrapped local session. Product screens and production/multi-merchant onboarding remain pending; earlier CLI-only notes below are historical for those backend operations.
+
 The optional local WAHA connector feeds trusted events into the existing modular backend, PostgreSQL inbox and separate worker. Replay remains available. Pinned provider: WAHA Core 2026.9.1, WEBJS, image digest in [Compose](../../infra/waha.compose.yaml). Other provider versions/engines are not validated.
 
 | Capability | Implemented behavior and limits |

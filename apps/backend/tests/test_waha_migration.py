@@ -55,6 +55,8 @@ def test_versioned_migration_preserves_replay_rows(tmp_path):
     engine = create_engine(url)
     assert "waha_connections" in inspect(engine).get_table_names()
     assert "waha_operations" in inspect(engine).get_table_names()
+    assert "waha_controls" in inspect(engine).get_table_names()
+    assert "waha_candidates" in inspect(engine).get_table_names()
     with engine.connect() as db:
         assert db.execute(text("SELECT payload, connection_id FROM inbox")).one() == (
             '{"synthetic":true}',
@@ -70,6 +72,7 @@ def test_versioned_migration_preserves_replay_rows(tmp_path):
     engine = create_engine(url)
     assert "waha_connections" not in inspect(engine).get_table_names()
     assert "waha_operations" not in inspect(engine).get_table_names()
+    assert "waha_controls" not in inspect(engine).get_table_names()
     with engine.connect() as db:
         assert db.execute(text("SELECT count(*) FROM inbox")).scalar() == 1
     engine.dispose()

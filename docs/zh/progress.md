@@ -1,5 +1,17 @@
 # 已完成工作与验证记录
 
+## Apple Silicon 兼容性排查 — 2026-10-07
+
+队友确认 Apple Silicon，尚无失败命令/日志。确认两项问题：命令示例仅 Windows，以及固定 WAHA 2026.9.1 镜像索引只有 linux/amd64 加证明材料、没有 ARM64。注册表实查同版本原生 arm-2026.9.1 摘要 b4216daddb7d5c1eb3ab99e608b76a005ec7523e766f923939d229718df4aafb 含 linux/arm64，Python 3.12.10-slim 含 ARM64。增加明确 ARM Compose 覆盖、team up/stop 按 Docker 引擎架构选择（不受 Python Rosetta/远程引擎误判）、私有文件 UTF-8 读取及双语 Mac 命令。不换引擎/版本、不迁移会话。17 项团队测试通过，含四种架构选择及未知架构拒绝；实际展开 x86/ARM 配置检查镜像/平台/WEBJS，不输出私有值。尚无实体 Mac 扫码/运行实测；队友具体失败仍需命令/错误原文。修复已确认兼容缺口，不证明所有 Mac 环境都通过。未 commit/push。
+
+## WAHA 本地产品接入后端批次 — 2026-10-07
+
+交付[接入 API 协议与统一验收](role-a-setup-api-acceptance.md)：账号/CSRF/版本校验的 setup、异步 connect/recover/inspect/discover、私有二维码、过期不透明聊天选择、明确同意、暂停/恢复及未知结果只读核对。新增迁移 0005_waha_controls，持久独立意图/候选/control_version；生成领域/OpenAPI/前端类型。Worker 先提交租约再调供应商，不自动重试不确定写操作，拒绝旧持有者、过期待执行意图、清理过期联系人元数据。只读鉴权不占账号写锁，变更仍串行归属校验；CLI 授权推进接入/上下文版本。Compose 给 API/Worker 私有控制配置。组员框架及双语入口更新；无页面、AI/发送/历史导入、生产/任意多商户注册或 Cloud API。
+
+验证：独立 PostgreSQL 17.9 全套 **268 通过**（check_waha_setup --run --suite）；SQLite **262 通过、6 跳过**（`local-data/pytest-setup-final-sqlite`），跳过项需 PG 锁，保留现有 Starlette/httpx 警告。控制测试覆盖归属/CSRF、幂等/冲突、不透明/过期选择、严格同意、未知结果/不重试、过期/待执行/旧租约和并发唯一。迁移升降再升保留旧 Replay 数据。实际 HTTP API/Worker + 合成供应商的六个流程检查点及独立清理通过，Worker 重启保留待处理意图，空测试库 Alembic check 通过。Ruff/格式、契约同步、baseline/diff、前端生成/类型/格式/构建通过（Vite 初次沙箱 EPERM，在允许环境构建成功）。
+
+环境限制：Docker 未运行，恢复后 Windows 保留 54261–54360，原 PG 54329 无法绑定。未修改系统保留端口、未删除真实数据库/会话卷；独立验收改用 16432，仅清理自己的资源。真实账号供应商探测不可用，因此本批新浏览器扫码/发现流程尚未在真实 WhatsApp 账号独立验收；不声称已升级/部署原 live 数据库或生产可用。此前真实文字证据为历史，新合成供应商运行验证不等于真实 WhatsApp 测试。E/人工步骤已明确；未 commit/push/合并 main。
+
 ## main 保护落地 — 2026-10-06
 
 用户授权后已配置 GitHub main 保护并回读核验：PR 一位批准、旧批准随新提交失效、分支最新、三项 documentation-and-contracts/backend/frontend 检查绑定 GitHub Actions app 15368、讨论解决、管理员同样遵守、禁止强推/删除，无指定合并人/CODEOWNERS/绕过门槛。变更前无已有保护规则或 ruleset。PR #3 检查通过、独立批准零、未合并，GitHub 状态 blocked。管理动作仍待另一组员复核，未执行破坏性绕过测试。双语规则/进度已在本地记录；本次仅配置授权，不自行 commit/push。
