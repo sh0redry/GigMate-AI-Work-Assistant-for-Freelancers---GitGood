@@ -168,3 +168,24 @@ PR #3 的 backend run 37432110763 在 test_waha_team.py 收集阶段报 `ModuleN
 - Ruff/格式、export_contracts.py --check、baseline、前端 generate:api/check:api/format:check/build 通过。原生 Vite 初次遇到沙箱 spawn EPERM，在授权的进程权限环境重试 build 成功。
 - 独立本地 API/worker/monitor 构建运行成功，provider 配置回调后无需再次扫码恢复 WORKING，两条真实 HMAC 状态通知持久入库且不创建任务。`scripts/smoke_waha_ingress.py` **六项 HTTP 检查通过**，不读取实际正文；API/worker/monitor 重启保留连接/映射/事件，再次 smoke 通过，监控刷新新鲜度。
 - 私有绑定、密钥、二维码和 profile 保持忽略/不跟踪。业务回调现已切到可靠接入，不再由内存 probe 接收。真实新文字/编辑/撤回/ACK 持久接入和更完整断网恢复仍待授权聊天及 E 的一次独立统一评审。本批未 commit/push。
+
+## Role B 抽取子系统 — 2026-10-08
+
+分支 `william/role-b-extraction-prompts-eval`（本地，未推送）。交付默认 deterministic 抽取 provider、离线评测工具、持久提议证据，并用 provider 钩子取代原先的 `LIVE_EXTRACTION_PENDING`。范围、合约和评测格式见 [docs/zh/role-b-extraction.md](role-b-extraction.md) 及英文对应。
+
+- 新增 Pydantic 模型 `ChangeProposal`、`ProposalChange`、`ProposalCandidate`、`AssignmentResult`、`EvaluationCase`、`EvaluationRun`；`python scripts/export_contracts.py --check` 通过，`contracts/domain/models.schema.json` 已从源重新生成。OpenAPI 与前端类型未变。
+- 迁移 `0005_extraction_evidence` 新增 `proposals`、`model_call_traces`、`evaluation_runs`、`evaluation_cases`。`0001..0004` 不改。`alembic upgrade head && alembic check` 通过。
+- `gigmate.extraction` 子包交付 `DeterministicProvider`（默认）与 `DisabledProvider`；通过 `GIGMATE_EXTRACTION_PROVIDER={deterministic,disabled}` 选择，未知名启动时直接报错。Replay 分支仍调用 `gigmate.understanding.extract`，`test_workflow` 的 monkey patch 不受影响。
+- Worker 的 WAHA 分支在同一事务中落库 `proposals` + `model_call_traces`。未知 live 内容以 `EXTRACTION_NEEDS_REVIEW` 完成，替代 `LIVE_EXTRACTION_PENDING`；不会写 `requirement_changes`。`test_waha_ingress::test_real_content_worker_never_calls_fictional_extractor` 改断言新错误码。
+- `scripts/run_evaluation.py` + `contracts/evaluation/manifest.json`（6 条合成用例：已知改期、已知可用、未知 live、无工单关联、多工单歧义、prompt-injection）。一次性 SQLite 跑出 6/6 通过；清单为空时直接报错。
+
+临时 SQLite 验证（A-03 迁移已升级到 head）：
+
+- `python -m ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py`：0 错。
+- `python -m ruff format --check ...`：50 文件已格式化。
+- `python scripts/export_contracts.py --check`：同步。
+- `python -m alembic -c apps/backend/alembic.ini check`：无新迁移操作。
+- `python -m pytest apps/backend/tests -q --basetemp=/tmp/extraction_full`：262 通过、5 跳过（PostgreSQL 行锁测试需要真实 PG 实例，SQLite 不证明）。
+- `python scripts/check_baseline.py`：52 个 Markdown、253 个本地链接、3 个 schema、11 合法 / 6 拒绝样例、12 个合成场景。
+
+未证明：生产级模型接入、对真实 provider 的 prompt-injection 回归、负载下的延迟预算、新 provider 的真实 WhatsApp 流量、E 的独立签字。deterministic provider 默认拒绝未知 live 内容是设计，放开是下一个授权批次。

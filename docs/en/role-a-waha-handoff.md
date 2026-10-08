@@ -45,7 +45,7 @@ For setup/migrations/Compose/private-volume synchronization, use the recovery ru
 
 | Role | Ready to use | Still required |
 | --- | --- | --- |
-| B | Trusted allowlisted events, source revisions and context; synthetic fixtures and preserved business storage | General extraction, prompts/evaluation and integration for real content. A completed live ingress job does not currently produce an AI proposal. |
+| B | Trusted allowlisted events, source revisions and context; synthetic fixtures and preserved business storage; provider interface plus deterministic default; offline evaluation harness; durable `proposals` + `model_call_traces` evidence | Real-model integration for live content. The deterministic provider refuses unknown live content with `EXTRACTION_NEEDS_REVIEW`; lifting that guard requires a separately authorized real-model batch. |
 | C | Persistent ownership, inbox/jobs, source/context invalidation, locks and bounded recovery | Business confirmation/approval semantics; approved external actions, outbox, final checks and unknown-outcome reconciliation. Existing Replay internal confirmation is not WAHA external execution. |
 | D | Generated ConnectorStatus/RecoveryIssue types and scoped APIs | Product QR/selection/consent flow, health/review UI and safe errors. connected alone is insufficient: display pipeline readiness separately from review_required. |
 | E | Stage evidence, safe HTTP smoke, disposable fault runner, independent real text evidence | Independent acceptance and review; Internet/router/logout/QR recovery and missing-content restoration are not established. |
