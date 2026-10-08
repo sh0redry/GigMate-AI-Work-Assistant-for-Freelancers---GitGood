@@ -13,7 +13,6 @@ from gigmate.api import app  # noqa: E402
 from pydantic import TypeAdapter  # noqa: E402
 
 
-
 def domain_schema():
     definitions = {}
     models = [
