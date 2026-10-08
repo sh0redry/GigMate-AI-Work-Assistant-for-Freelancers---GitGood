@@ -313,6 +313,14 @@
       "title": "ApproveActionCommand",
       "type": "object"
     },
+    "AssignmentResult": {
+      "enum": [
+        "matched",
+        "needs_review"
+      ],
+      "title": "AssignmentResult",
+      "type": "string"
+    },
     "AuditLog": {
       "additionalProperties": false,
       "properties": {
@@ -454,6 +462,164 @@
         "sources"
       ],
       "title": "CalendarEvent",
+      "type": "object"
+    },
+    "ChangeProposal": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "assignment": {
+                "const": "matched"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "base_work_order_version": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "work_order_id": {
+                "format": "uuid",
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "assignment": {
+                "const": "needs_review"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "base_work_order_version": {
+                "type": "null"
+              },
+              "work_order_id": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "assignment": {
+          "$ref": "#/$defs/AssignmentResult"
+        },
+        "base_context_version": {
+          "minimum": 1,
+          "title": "Base Context Version",
+          "type": "integer"
+        },
+        "base_work_order_version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Base Work Order Version"
+        },
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/ProposalCandidate"
+          },
+          "minItems": 0,
+          "title": "Candidates",
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/ProposalChange"
+          },
+          "minItems": 0,
+          "title": "Changes",
+          "type": "array"
+        },
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "draft_text": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Draft Text"
+        },
+        "model_version": {
+          "minLength": 1,
+          "title": "Model Version",
+          "type": "string"
+        },
+        "prompt_version": {
+          "minLength": 1,
+          "title": "Prompt Version",
+          "type": "string"
+        },
+        "proposal_id": {
+          "format": "uuid",
+          "title": "Proposal Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "0.1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "unresolved_questions": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 0,
+          "title": "Unresolved Questions",
+          "type": "array"
+        },
+        "work_order_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Work Order Id"
+        }
+      },
+      "required": [
+        "schema_version",
+        "proposal_id",
+        "conversation_id",
+        "work_order_id",
+        "base_work_order_version",
+        "base_context_version",
+        "assignment",
+        "candidates",
+        "changes",
+        "unresolved_questions",
+        "draft_text",
+        "model_version",
+        "prompt_version"
+      ],
+      "title": "ChangeProposal",
       "type": "object"
     },
     "ComponentHealth": {
@@ -985,6 +1151,159 @@
         }
       ]
     },
+    "EvaluationCase": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "minLength": 1,
+          "title": "Case Id",
+          "type": "string"
+        },
+        "data_classification": {
+          "const": "synthetic",
+          "title": "Data Classification",
+          "type": "string"
+        },
+        "expected_assignment": {
+          "$ref": "#/$defs/AssignmentResult"
+        },
+        "expected_change_fields": {
+          "items": {
+            "enum": [
+              "schedule",
+              "address",
+              "summary",
+              "quantity",
+              "specification",
+              "deadline"
+            ],
+            "type": "string"
+          },
+          "title": "Expected Change Fields",
+          "type": "array"
+        },
+        "expected_min_confidence": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Min Confidence"
+        },
+        "input_event": {
+          "additionalProperties": true,
+          "title": "Input Event",
+          "type": "object"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "scenario": {
+          "minLength": 1,
+          "title": "Scenario",
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id",
+        "scenario",
+        "data_classification",
+        "input_event",
+        "expected_assignment"
+      ],
+      "title": "EvaluationCase",
+      "type": "object"
+    },
+    "EvaluationRun": {
+      "additionalProperties": false,
+      "properties": {
+        "case_count": {
+          "minimum": 1,
+          "title": "Case Count",
+          "type": "integer"
+        },
+        "cases": {
+          "items": {
+            "$ref": "#/$defs/EvaluationCase"
+          },
+          "minItems": 0,
+          "title": "Cases",
+          "type": "array"
+        },
+        "failed": {
+          "minimum": 1,
+          "title": "Failed",
+          "type": "integer"
+        },
+        "finished_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Finished At",
+          "type": "string"
+        },
+        "model_version": {
+          "minLength": 1,
+          "title": "Model Version",
+          "type": "string"
+        },
+        "passed": {
+          "minimum": 1,
+          "title": "Passed",
+          "type": "integer"
+        },
+        "prompt_version": {
+          "minLength": 1,
+          "title": "Prompt Version",
+          "type": "string"
+        },
+        "provider_name": {
+          "minLength": 1,
+          "title": "Provider Name",
+          "type": "string"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "started_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Started At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "started_at",
+        "finished_at",
+        "provider_name",
+        "model_version",
+        "prompt_version",
+        "case_count",
+        "passed",
+        "failed",
+        "cases"
+      ],
+      "title": "EvaluationRun",
+      "type": "object"
+    },
     "FieldStatus": {
       "enum": [
         "missing",
@@ -1053,6 +1372,151 @@
         "timezone"
       ],
       "title": "InstantDeadline",
+      "type": "object"
+    },
+    "ProposalCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "work_order_id": {
+          "format": "uuid",
+          "title": "Work Order Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "work_order_id",
+        "confidence"
+      ],
+      "title": "ProposalCandidate",
+      "type": "object"
+    },
+    "ProposalChange": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "field_status": {
+                "const": "missing"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "new_value": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "customer_confirmation": {
+          "$ref": "#/$defs/CustomerConfirmation"
+        },
+        "field": {
+          "enum": [
+            "schedule",
+            "address",
+            "summary",
+            "quantity",
+            "specification",
+            "deadline"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "field_status": {
+          "$ref": "#/$defs/FieldStatus"
+        },
+        "new_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/TimedSchedule"
+            },
+            {
+              "$ref": "#/$defs/DateOnly"
+            },
+            {
+              "$ref": "#/$defs/InstantDeadline"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "New Value"
+        },
+        "old_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/TimedSchedule"
+            },
+            {
+              "$ref": "#/$defs/DateOnly"
+            },
+            {
+              "$ref": "#/$defs/InstantDeadline"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Old Value"
+        },
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
+        }
+      },
+      "required": [
+        "field",
+        "old_value",
+        "new_value",
+        "field_status",
+        "customer_confirmation",
+        "sources",
+        "reason"
+      ],
+      "title": "ProposalChange",
       "type": "object"
     },
     "ProvenancedField": {
