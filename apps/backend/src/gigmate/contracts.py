@@ -389,6 +389,114 @@ class ConfirmChangeCommand(Model):
     apply_calendar_update: bool
 
 
+class AssignmentResult(StrEnum):
+    matched = "matched"
+    needs_review = "needs_review"
+
+
+class ProposalCandidate(Model):
+    work_order_id: Id
+    confidence: Annotated[float, Field(ge=0, le=1)]
+
+
+class ProposalChange(Model):
+    field: Literal["schedule", "address", "summary", "quantity", "specification", "deadline"]
+    old_value: FieldValue
+    new_value: FieldValue
+    field_status: Annotated[FieldStatus, Field(strict=False)]
+    customer_confirmation: Annotated[CustomerConfirmation, Field(strict=False)]
+    sources: Annotated[list[SourceRef], Field(min_length=1)]
+    reason: Text
+    model_config = ConfigDict(
+        extra="forbid",
+        strict=True,
+        json_schema_extra={
+            "allOf": [
+                {
+                    "if": {"properties": {"field_status": {"const": "missing"}}},
+                    "then": {"properties": {"new_value": {"type": "null"}}},
+                }
+            ]
+        },
+    )
+
+
+class ChangeProposal(Model):
+    schema_version: Literal["0.1.0"]
+    proposal_id: Id
+    conversation_id: Id
+    work_order_id: Id | None
+    base_work_order_version: Positive | None
+    base_context_version: Positive
+    assignment: Annotated[AssignmentResult, Field(strict=False)]
+    candidates: Annotated[list[ProposalCandidate], Field(min_length=0)]
+    changes: Annotated[list[ProposalChange], Field(min_length=0)]
+    unresolved_questions: Annotated[list[Text], Field(min_length=0)]
+    draft_text: Text | None
+    model_version: Text
+    prompt_version: Text
+    model_config = ConfigDict(
+        extra="forbid",
+        strict=True,
+        json_schema_extra={
+            "allOf": [
+                {
+                    "if": {"properties": {"assignment": {"const": "matched"}}},
+                    "then": {
+                        "properties": {
+                            "work_order_id": {"type": "string", "format": "uuid"},
+                            "base_work_order_version": {"type": "integer", "minimum": 1},
+                        }
+                    },
+                },
+                {
+                    "if": {"properties": {"assignment": {"const": "needs_review"}}},
+                    "then": {
+                        "properties": {
+                            "work_order_id": {"type": "null"},
+                            "base_work_order_version": {"type": "null"},
+                        }
+                    },
+                },
+            ]
+        },
+    )
+
+    @model_validator(mode="after")
+    def no_executing_authority(self):
+        # AI proposals may not be marked formally confirmed or authorize execution.
+        for change in self.changes:
+            if change.field_status == "confirmed":
+                raise ValueError("AI proposals must not mark a field as confirmed")
+        return self
+
+
+class EvaluationCase(Model):
+    case_id: Text
+    scenario: Text
+    data_classification: Literal["synthetic"]
+    input_event: dict
+    expected_assignment: Annotated[AssignmentResult, Field(strict=False)]
+    expected_min_confidence: Annotated[float, Field(ge=0, le=1)] | None = None
+    expected_change_fields: list[
+        Literal["schedule", "address", "summary", "quantity", "specification", "deadline"]
+    ] = Field(default_factory=list)
+    note: Text | None = None
+
+
+class EvaluationRun(Model):
+    run_id: Id
+    started_at: UtcTimestamp
+    finished_at: UtcTimestamp
+    provider_name: Text
+    model_version: Text
+    prompt_version: Text
+    case_count: Positive
+    passed: Positive
+    failed: Positive
+    cases: Annotated[list[EvaluationCase], Field(min_length=0)]
+
+
 class RejectCommand(Model):
     expected_version: Positive
     reason: Text

@@ -45,7 +45,7 @@ $env:DATABASE_URL = 'postgresql+psycopg://gigmate:local-replay-only@127.0.0.1:54
 
 | 角色 | A 已提供 | 仍需完成 |
 | --- | --- | --- |
-| B | 已授权可信事件、来源修订与上下文、合成样例及持久业务存储 | 真实内容的通用抽取、提示词/评估和接入；当前 live Job 完成不产生 AI 提议。 |
+| B | 已授权可信事件、来源修订与上下文、合成样例及持久业务存储；provider 接口与默认 deterministic 实现；离线评测；持久 `proposals` + `model_call_traces` 证据 | 真实内容的真实模型接入。deterministic provider 对未知 live 内容返回 `EXTRACTION_NEEDS_REVIEW`；放开这道闸是后续单独授权的真实模型批次。 |
 | C | 持久归属、Inbox/Job、来源/上下文失效、行锁和有上限恢复 | 业务确认/审批规则，以及外部批准动作、outbox、发送前校验和未知结果核对。Replay 内部确认不等于 WAHA 外部执行。 |
 | D | 已生成 ConnectorStatus/RecoveryIssue 类型和账号隔离接口 | 产品扫码/选择/同意流程、健康与核对页面、安全错误展示；connected 不足以表示链路就绪，pipeline_ready 与 review_required 分别展示。 |
 | E | 阶段证据、安全 HTTP 检查、独立故障脚本与真实文字证据 | 独立验收/评审；Internet/路由器/注销后扫码恢复和遗漏正文恢复未证明。 |

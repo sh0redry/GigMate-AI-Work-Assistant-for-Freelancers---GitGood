@@ -156,3 +156,36 @@ The user authorized shared changes after commits `908855f` (offline adapter) and
 - Ruff check/format, export_contracts.py --check, baseline, frontend generate:api/check:api/format:check/build passed. Native Vite first encountered sandbox spawn EPERM; the authorized build outside that process restriction succeeded.
 - Independent local ingress/API, worker and monitor built and ran. Provider callback configuration changed, session recovered WORKING without rescan, and two real HMAC-authenticated status callbacks committed without jobs. `scripts/smoke_waha_ingress.py`: **six HTTP checks passed**, no real message content read. API/worker/monitor restart retained connection/mapping/receipt state and repeated smoke passed; monitor refreshed freshness.
 - Private ingress configuration, secrets, QR and session profiles remain ignored/untracked. Current callbacks use durable ingress rather than the volatile probe. Actual durable fresh text/edit/revoke/ACK and broader network recovery still require the user's consenting test chat and E's independent unified review. No commit/push this batch.
+
+## Role B extraction subsystem — 2026-10-08
+
+Branch `william/role-b-extraction-prompts-eval` (local, not pushed). Delivers the deterministic extraction provider plus an evaluation harness, durable proposal evidence and the WAHA-side hook replacing the prior `LIVE_EXTRACTION_PENDING` placeholder. Scope, contracts and evaluation format are documented in [docs/en/role-b-extraction.md](role-b-extraction.md) and the Chinese counterpart.
+
+- New Pydantic `ChangeProposal`, `ProposalChange`, `ProposalCandidate`, `AssignmentResult`, `EvaluationCase` and `EvaluationRun`; regenerated `contracts/domain/models.schema.json` with `python scripts/export_contracts.py --check` passing. OpenAPI and frontend types unchanged.
+- Migration `0005_extraction_evidence` adds `proposals`, `model_call_traces`, `evaluation_runs` and `evaluation_cases`. `0001..0004` untouched. `alembic upgrade head && alembic check` passes.
+- `gigmate.extraction` module ships `DeterministicProvider` (default) and `DisabledProvider`; selection via `GIGMATE_EXTRACTION_PROVIDER={deterministic,disabled}`; unknown names raise at startup. The Replay branch still calls `gigmate.understanding.extract` so `test_workflow` monkey-patching continues to work.
+- Worker WAHA branch now persists `proposals` + `model_call_traces` rows in the same transaction as the Job outcome. Unknown live content ends with `EXTRACTION_NEEDS_REVIEW` instead of `LIVE_EXTRACTION_PENDING`; nothing is written to `requirement_changes`. `test_waha_ingress::test_real_content_worker_never_calls_fictional_extractor` updated to assert the new error code.
+- `scripts/run_evaluation.py` plus `contracts/evaluation/manifest.json` (7 synthetic cases: known reschedule, known available, unknown live text, no-order linkage, multi-order ambiguity, prompt-injection, live-origin with fixture-equal text). Local run with disposable SQLite: 7/7 cases pass; non-empty manifest requirement enforced.
+
+Verification on a disposable SQLite database after the Branch A-03 migrations were already upgraded to head:
+
+- `python -m ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py`: 0 errors.
+- `python -m ruff format --check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py`: 50 files already formatted.
+- `python scripts/export_contracts.py --check`: synchronized.
+- `python -m alembic -c apps/backend/alembic.ini check`: no new upgrade operations detected.
+- `python -m pytest apps/backend/tests -q --basetemp=/tmp/extraction_full`: 262 passed, 5 skipped (PostgreSQL row-locking tests require a real PG instance; SQLite does not prove those).
+- `python scripts/check_baseline.py`: 52 Markdown files, 253 local links, 3 schemas, 11 valid / 6 rejected fixtures, 12 synthetic scenarios.
+
+Not proved: production-grade model integration, prompt-injection regression for real providers, latency budget under load, real WhatsApp traffic through the new provider, E's independent signoff. The deterministic provider refuses unknown live content by design; lifting that guard is the next authorized batch.
+
+## Role B review fixes — 2026-10-08
+
+Applied on PR head `7de6042` (branch `WillW27-patch` on GitHub) in response to the reviewer's four findings; all fixes verified with synthetic inputs only.
+
+- P1 persistence: `persist_changes_for` no longer reads `.value` off Literal strings and no longer round-trips Pydantic values through `json.dumps`; it constructs `RequirementChange` directly and serializes with `model_dump(mode="json")`. Regression test `test_matched_waha_proposal_persists_evidence_then_merchant_confirms` covers matched input → proposal/trace/change rows → merchant confirmation.
+- P1 retention: `waha_ingress.purge_expired` now deletes `model_call_traces`, then `proposals`, then inbox receipts, so the `proposals.event_id` foreign key no longer rolls back the 30-day purge. The result gains `deleted_proposals` / `deleted_traces` counts. Evidence shares the receipt retention window; confirmed business changes on work orders are retained. Regression test `test_waha_ingress::test_retention_removes_extraction_evidence_with_receipts` runs the full receive → worker → purge chain (foreign keys enforced under PostgreSQL; SQLite runs confirm the deletion logic).
+- P1 source trust: `ExtractionRequest.origin` (`synthetic` | `live`, default `live`) is the server-side trust boundary. The worker's WAHA branch always marks `origin="live"`; the deterministic provider refuses live-origin input even when the text equals a fixture, so fixed-date templates can only apply to trusted Replay/evaluation input. New manifest case `case-007-live-origin-with-fixture-text` plus unit/worker regression tests pin this.
+- P2 provider switch: the legacy Replay path (`gigmate.understanding.extract`) now resolves its provider through `gigmate.extraction.provider()` instead of hardcoding `deterministic`, so `GIGMATE_EXTRACTION_PROVIDER=disabled` suppresses proposals on both paths (Replay → `STUB_UNSUPPORTED_INPUT`, live → `EXTRACTION_NEEDS_REVIEW`); unknown names raise. Documented in both languages.
+- Minor: `scripts/run_evaluation.py` imports carry `# noqa: E402` and the script joined `ruff check`/`ruff format --check` scope in `.github/workflows/skeleton.yml`.
+
+Verification: `ruff check`/`ruff format --check` (ruff 0.15.6, CI scope incl. `run_evaluation.py`) clean; `pytest apps/backend/tests -q`: 268 passed, 5 skipped (PostgreSQL suite requires a real PG instance; the two new FK-sensitive tests execute the same code path on SQLite); `export_contracts.py --check` synchronized; `check_baseline.py` PASS; evaluation run 7/7 pass. No migration changes in this round (`0005` already shipped in the PR).
