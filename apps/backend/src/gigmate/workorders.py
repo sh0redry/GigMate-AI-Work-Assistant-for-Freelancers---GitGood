@@ -2,6 +2,7 @@ import hashlib
 import json
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
@@ -153,6 +154,8 @@ def confirm(db, account, work_order_id, change_id, command, key, request_id):
         if task.generated and task.data["state"] in {"pending", "blocked"}:
             task.data = {**task.data, "state": "cancelled"}
     task_id = str(uuid4())
+    start = datetime.fromisoformat(schedule["start_at"]).astimezone(ZoneInfo(schedule["timezone"]))
+    ready_by = start - timedelta(hours=1)
     due = (
         (datetime.fromisoformat(schedule["start_at"]) - timedelta(hours=1))
         .isoformat()
@@ -165,7 +168,7 @@ def confirm(db, account, work_order_id, change_id, command, key, request_id):
             "account_id": account.id,
             "work_order_id": order.id,
             "work_order_version": value["version"],
-            "title": "准备预约（固定回放规则：提前一小时）",
+            "title": f"{ready_by:%m/%d %H:%M} 准备 {start:%H:%M} 的{value['summary']}",
             "owner_id": account.id,
             "due": {"kind": "instant", "at": due, "timezone": schedule["timezone"]},
             "depends_on": [],
