@@ -119,7 +119,7 @@ def seed(factory=Session):
                             "account_id": account_id,
                             "work_order_id": order_id,
                             "work_order_version": 3,
-                            "title": "准备原预约（固定回放规则）",
+                            "title": "10/07 14:00 准备 15:00 的虚构业务预约",
                             "owner_id": account_id,
                             "due": {
                                 "kind": "instant",
