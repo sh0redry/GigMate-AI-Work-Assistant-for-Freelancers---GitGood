@@ -18,6 +18,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from gigmate.db import (
+    Account,
     Base,
     ChangeRow,
     EvaluationCaseRecord,
@@ -26,6 +27,7 @@ from gigmate.db import (
     Job,
     ModelCallTrace,
     Proposal,
+    WorkOrderRow,
 )
 from gigmate.extraction import (
     ExtractionRequest,
@@ -45,6 +47,9 @@ from gigmate.messaging import ingest, replay_event
 from gigmate.seed import seed as seed_function
 from gigmate.seed import uid
 from gigmate.worker import EXTRACTION_NEEDS_REVIEW, run_once
+
+ORDER = uid(3)
+ORDER_PATH = f"/api/v1/work-orders/{ORDER}"
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -74,6 +79,7 @@ def _build_reschedule_request(
     candidate_work_order_ids=("00000000-0000-4000-8000-000000000003",),
     revision: int = 1,
     message_id: str = "00000000-0000-4000-8000-000000000004",
+    origin: str = "synthetic",
 ) -> ExtractionRequest:
     return ExtractionRequest(
         account_id=uid(1),
@@ -85,6 +91,7 @@ def _build_reschedule_request(
         candidate_work_order_ids=candidate_work_order_ids,
         base_work_order_version=3,
         base_work_order_snapshot=load_fixture("work-order"),
+        origin=origin,
     )
 
 
@@ -118,6 +125,31 @@ def test_deterministic_provider_marks_unknown_waha_content_needs_review():
     assert outcome.proposal.assignment.value == "needs_review"
     assert outcome.proposal.changes == []
     assert outcome.refused_reason and "separately authorized provider" in outcome.refused_reason
+
+
+def test_deterministic_provider_refuses_live_origin_even_with_fixture_text():
+    """Live-origin input must never run through fixed synthetic templates."""
+    req = _build_reschedule_request(
+        text=load_fixture("message-reschedule")["payload"]["text"],
+        origin="live",
+    )
+    outcome = DeterministicProvider().propose(req)
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert outcome.proposal.changes == []
+    assert outcome.refused_reason and "live content" in outcome.refused_reason
+
+
+def test_extraction_request_defaults_to_live_origin():
+    """An unmarked request can never be treated as trusted synthetic input."""
+    fresh = ExtractionRequest(
+        account_id=uid(1),
+        conversation_id=uid(2),
+        message_id="00000000-0000-4000-8000-000000000004",
+        message_revision=1,
+        message_text="text",
+        context_version=5,
+    )
+    assert fresh.origin == "live"
 
 
 def test_deterministic_provider_refuses_multi_order_candidates():
@@ -263,19 +295,146 @@ def test_waha_job_with_unknown_text_completes_with_extraction_needs_review(
         assert db.scalar(select(ChangeRow)) is None  # no business row inserted
 
 
+def test_waha_job_with_fixture_text_from_live_source_needs_review(memory_account):
+    """Live-origin input is refused even when the text equals a synthetic fixture."""
+    message = deepcopy(replay_event("reschedule"))  # keeps the canonical fixture text
+    message["connector"] = "waha"
+    message["source"] = "app"
+    message["provider_message_id"] = "synthetic:waha-fixture-text"
+    message["message_revision"] = 1
+    with memory_account.begin() as db:
+        account = db.scalar(select(Account).where(Account.username == "merchant"))
+    with memory_account.begin() as db:
+        ingest(db, account, message, trusted_waha=True)
+    assert run_once(memory_account) is True
+    with memory_account.begin() as db:
+        job = db.scalar(select(Job).order_by(Job.id.desc()))
+        inbox = db.get(Inbox, job.event_id)
+        proposal_row = db.scalar(select(Proposal).where(Proposal.event_id == inbox.id))
+        change_rows = list(db.scalars(select(ChangeRow)))
+    assert job.error_code == EXTRACTION_NEEDS_REVIEW
+    assert proposal_row.assignment == "needs_review"
+    assert proposal_row.changes == []
+    assert change_rows == []
+
+
+def test_matched_waha_proposal_persists_evidence_then_merchant_confirms(signed_in):
+    """Regression for the P1 persistence bug: matched input must persist
+    proposal/trace/change rows with JSON-serializable payloads, and the
+    resulting change must still be merchant-confirmable.
+
+    Uses a test provider that simulates a separately authorized live model by
+    re-marking the request origin as synthetic; everything else is the real
+    worker persistence and confirmation path.
+    """
+    client, factory, _, headers = signed_in
+
+    class _AuthorizedLiveStub(DeterministicProvider):
+        name = "test-authorized-live"
+        model_version = "synthetic:test-authorized-live"
+
+        def propose(self, request):
+            from dataclasses import replace
+
+            return super().propose(replace(request, origin="synthetic"))
+
+    _reset_provider_for_testing(_AuthorizedLiveStub())
+    try:
+        message = deepcopy(replay_event("available"))
+        message["connector"] = "waha"
+        message["source"] = "app"
+        message["provider_message_id"] = "synthetic:waha-matched"
+        message["message_revision"] = 1
+        with factory.begin() as db:
+            account = db.scalar(select(Account).where(Account.username == "merchant"))
+        with factory.begin() as db:
+            ingest(db, account, message, trusted_waha=True)
+        assert run_once(factory) is True
+        with factory.begin() as db:
+            job = db.scalar(select(Job).order_by(Job.id.desc()))
+            inbox = db.get(Inbox, job.event_id)
+            proposal_row = db.scalar(select(Proposal).where(Proposal.event_id == inbox.id))
+            trace_row = db.scalar(
+                select(ModelCallTrace).where(ModelCallTrace.proposal_id == proposal_row.id)
+            )
+            change_row = db.scalar(select(ChangeRow).where(ChangeRow.work_order_id == ORDER))
+            order = db.get(WorkOrderRow, ORDER)
+        assert job.error_code is None
+        assert proposal_row.assignment == "matched"
+        assert trace_row.provider_name == "test-authorized-live"
+        # P1 regression: payload is JSON-serializable and keeps the snapshot.
+        assert change_row.data["field"] == "schedule"
+        assert change_row.data["status"] == "proposed"
+        assert change_row.data["old_value"]["kind"] == "timed"
+        assert change_row.data["new_value"]["kind"] == "timed"
+        assert change_row.data["customer_confirmation"] == "confirmed"
+        assert change_row.id in order.data["pending_change_ids"]
+        rows = client.get(ORDER_PATH + "/changes").json()["items"]
+        change = next(row for row in rows if row["status"] == "proposed")
+        response = client.post(
+            ORDER_PATH + f"/changes/{change['id']}/confirm",
+            json={
+                "expected_version": 3,
+                "expected_context_version": change["context_version"],
+                "apply_calendar_update": True,
+            },
+            headers={**headers, "Idempotency-Key": str(uuid4())},
+        )
+        assert response.status_code == 200, response.text
+        data = response.json()["data"]
+        assert data["version"] == 4
+        assert data["fields"]["schedule"]["status"] == "confirmed"
+    finally:
+        _reset_provider_for_testing(None)
+
+
+def test_replay_and_waha_paths_respect_disabled_provider(monkeypatch, memory_account):
+    """GIGMATE_EXTRACTION_PROVIDER=disabled suppresses proposals on both paths."""
+    monkeypatch.setenv("GIGMATE_EXTRACTION_PROVIDER", "disabled")
+    _reset_provider_for_testing(None)
+    try:
+        with memory_account.begin() as db:
+            account = db.scalar(select(Account).where(Account.username == "merchant"))
+        with memory_account.begin() as db:
+            ingest(db, account, replay_event("available"), trusted_waha=False)
+        # Process the replay job before ingesting the WAHA message, otherwise
+        # the newer message would supersede the replay source.
+        assert run_once(memory_account) is True
+        waha_message = deepcopy(replay_event("reschedule"))
+        waha_message["connector"] = "waha"
+        waha_message["source"] = "app"
+        waha_message["provider_message_id"] = "synthetic:waha-disabled"
+        waha_message["message_revision"] = 1
+        with memory_account.begin() as db:
+            ingest(db, account, waha_message, trusted_waha=True)
+        assert run_once(memory_account) is True
+        with memory_account.begin() as db:
+            jobs = list(db.scalars(select(Job)))
+            proposals = list(db.scalars(select(Proposal)))
+            assert db.scalar(select(ChangeRow)) is None
+        assert {job.error_code for job in jobs} == {
+            "STUB_UNSUPPORTED_INPUT",
+            EXTRACTION_NEEDS_REVIEW,
+        }
+        assert proposals and all(row.assignment == "needs_review" for row in proposals)
+        assert provider().name == "disabled"
+    finally:
+        _reset_provider_for_testing(None)
+
+
 def test_evaluation_manifest_persists_per_case_records(memory_account):
     summary = None
     with memory_account.begin() as db:
         summary = evaluate_manifest(db, "contracts/evaluation/manifest.json")
         # Force flush inside the open transaction (we already used begin())
     cases = list(summary.cases)
-    assert len(cases) == 6
+    assert len(cases) == 7
     with memory_account.begin() as db:
         runs = list(db.scalars(select(EvaluationRun)))
         rows = list(db.scalars(select(EvaluationCaseRecord)))
     assert len(runs) == 1
     assert runs[0].passed >= 5
-    assert len(rows) == 6
+    assert len(rows) == 7
     statuses = {row.case_id: row.status for row in rows}
     assert all(value == "pass" for value in statuses.values())
 

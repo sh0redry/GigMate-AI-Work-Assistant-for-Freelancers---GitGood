@@ -22,6 +22,8 @@ from gigmate.db import (
     Inbox,
     Job,
     MessageRow,
+    ModelCallTrace,
+    Proposal,
     WahaChat,
     WahaConnection,
     WahaMessage,
@@ -428,7 +430,13 @@ def test_retention_removes_expired_content_without_reintroducing_it(ingress):
     future = datetime.now(UTC) + timedelta(days=31)
     with factory.begin() as db:
         result = purge_expired(db, binding.connection_id, now=future)
-        assert result == {"deleted_receipts": 1, "deleted_jobs": 1, "scrubbed_revisions": 1}
+        assert result == {
+            "deleted_receipts": 1,
+            "deleted_jobs": 1,
+            "deleted_proposals": 0,
+            "deleted_traces": 0,
+            "scrubbed_revisions": 1,
+        }
     with factory() as db:
         mapping = db.scalar(select(WahaMessage))
         assert db.get(MessageRow, (mapping.message_id, 1)).data["text"] is None
@@ -436,6 +444,28 @@ def test_retention_removes_expired_content_without_reintroducing_it(ingress):
         with pytest.raises(BusinessError, match="WAHA event") as error:
             receive(db, binding, event, now=future)
         assert error.value.code == "EVENT_RETENTION_EXPIRED"
+
+
+def test_retention_removes_extraction_evidence_with_receipts(ingress):
+    """Ingest → worker (needs_review) → 30-day purge must not hit the
+    proposals → inbox foreign key; evidence shares the receipt retention."""
+    _, factory, _, _, binding, _ = ingress
+    event = raw()
+    assert post(ingress, event).status_code == 200
+    assert run_once(factory)  # job routes through the provider and persists evidence
+    with factory.begin() as db:
+        assert db.scalar(select(Proposal)) is not None
+        assert db.scalar(select(ModelCallTrace)) is not None
+    future = datetime.now(UTC) + timedelta(days=31)
+    with factory.begin() as db:
+        result = purge_expired(db, binding.connection_id, now=future)
+    assert result["deleted_receipts"] == 1
+    assert result["deleted_proposals"] == 1
+    assert result["deleted_traces"] == 1
+    with factory() as db:
+        assert db.scalar(select(Inbox)) is None
+        assert db.scalar(select(Proposal)) is None
+        assert db.scalar(select(ModelCallTrace)) is None
 
 
 def test_provisioning_merges_scoped_allowlist_and_revokes_removed_chats(ingress):

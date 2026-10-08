@@ -21,6 +21,8 @@ from gigmate.db import (
     Inbox,
     Job,
     MessageRow,
+    ModelCallTrace,
+    Proposal,
     WahaChat,
     WahaConnection,
     WahaMessage,
@@ -386,6 +388,15 @@ def purge_expired(db, connection_id, *, now=None):
         Inbox.connection_id == connection_id, Inbox.received_at < cutoff
     )
     jobs = db.execute(delete(Job).where(Job.event_id.in_(old_events))).rowcount
+    # Extraction evidence (proposal + model call trace) references the receipt
+    # and shares its retention window: delete it before the inbox rows so the
+    # foreign keys stay satisfied. Confirmed business changes live on the work
+    # order and are intentionally retained.
+    old_proposals = select(Proposal.id).where(Proposal.event_id.in_(old_events))
+    traces = db.execute(
+        delete(ModelCallTrace).where(ModelCallTrace.proposal_id.in_(old_proposals))
+    ).rowcount
+    proposals = db.execute(delete(Proposal).where(Proposal.event_id.in_(old_events))).rowcount
     events = db.execute(delete(Inbox).where(Inbox.id.in_(old_events))).rowcount
     message_ids = (
         select(WahaMessage.message_id).join(WahaChat).where(WahaChat.connection_id == connection_id)
@@ -398,7 +409,13 @@ def purge_expired(db, connection_id, *, now=None):
             message.data = {**message.data, "text": None}
             scrubbed += 1
     db.flush()
-    return {"deleted_receipts": events, "deleted_jobs": jobs, "scrubbed_revisions": scrubbed}
+    return {
+        "deleted_receipts": events,
+        "deleted_jobs": jobs,
+        "deleted_proposals": proposals,
+        "deleted_traces": traces,
+        "scrubbed_revisions": scrubbed,
+    }
 
 
 def status_view(db, connection, *, now=None):

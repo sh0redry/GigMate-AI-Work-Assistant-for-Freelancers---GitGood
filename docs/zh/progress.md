@@ -177,7 +177,7 @@ PR #3 的 backend run 37432110763 在 test_waha_team.py 收集阶段报 `ModuleN
 - 迁移 `0005_extraction_evidence` 新增 `proposals`、`model_call_traces`、`evaluation_runs`、`evaluation_cases`。`0001..0004` 不改。`alembic upgrade head && alembic check` 通过。
 - `gigmate.extraction` 子包交付 `DeterministicProvider`（默认）与 `DisabledProvider`；通过 `GIGMATE_EXTRACTION_PROVIDER={deterministic,disabled}` 选择，未知名启动时直接报错。Replay 分支仍调用 `gigmate.understanding.extract`，`test_workflow` 的 monkey patch 不受影响。
 - Worker 的 WAHA 分支在同一事务中落库 `proposals` + `model_call_traces`。未知 live 内容以 `EXTRACTION_NEEDS_REVIEW` 完成，替代 `LIVE_EXTRACTION_PENDING`；不会写 `requirement_changes`。`test_waha_ingress::test_real_content_worker_never_calls_fictional_extractor` 改断言新错误码。
-- `scripts/run_evaluation.py` + `contracts/evaluation/manifest.json`（6 条合成用例：已知改期、已知可用、未知 live、无工单关联、多工单歧义、prompt-injection）。一次性 SQLite 跑出 6/6 通过；清单为空时直接报错。
+- `scripts/run_evaluation.py` + `contracts/evaluation/manifest.json`（7 条合成用例：已知改期、已知可用、未知 live、无工单关联、多工单歧义、prompt-injection、live 来源且文本与样例一致）。一次性 SQLite 跑出 7/7 通过；清单为空时直接报错。
 
 临时 SQLite 验证（A-03 迁移已升级到 head）：
 
@@ -189,3 +189,16 @@ PR #3 的 backend run 37432110763 在 test_waha_team.py 收集阶段报 `ModuleN
 - `python scripts/check_baseline.py`：52 个 Markdown、253 个本地链接、3 个 schema、11 合法 / 6 拒绝样例、12 个合成场景。
 
 未证明：生产级模型接入、对真实 provider 的 prompt-injection 回归、负载下的延迟预算、新 provider 的真实 WhatsApp 流量、E 的独立签字。deterministic provider 默认拒绝未知 live 内容是设计，放开是下一个授权批次。
+
+
+## Role B review 修复 — 2026-10-08
+
+针对评审人在 PR head `7de6042`（GitHub 分支 `WillW27-patch`）提出的四个问题逐一修复；全部只用合成输入验证。
+
+- P1 落库：`persist_changes_for` 不再对 Literal 字符串取 `.value`，也不再让 Pydantic 对象过 `json.dumps`；改为直接构造 `RequirementChange` 并用 `model_dump(mode="json")` 序列化。回归测试 `test_matched_waha_proposal_persists_evidence_then_merchant_confirms` 覆盖 matched 输入 → proposal/trace/change 落库 → 商家确认。
+- P1 保留：`waha_ingress.purge_expired` 现在按 trace → proposal → 收据的顺序删除，`proposals.event_id` 外键不再让 30 天清理整笔回滚；结果新增 `deleted_proposals` / `deleted_traces` 计数。证据与收据共享保留窗口；工单上已确认的业务变更有意保留。回归测试 `test_waha_ingress::test_retention_removes_extraction_evidence_with_receipts` 覆盖接收 → worker → 过期清理全链路（外键在 PostgreSQL 下强制；SQLite 验证删除逻辑）。
+- P1 来源信任：`ExtractionRequest.origin`（`synthetic` | `live`，默认 `live`）是服务端信任边界。Worker 的 WAHA 分支一律标记 `origin="live"`；deterministic provider 对 live 来源即使文本与样例一致也拒绝，固定日期模板只作用于受信 Replay/评测输入。新增清单用例 `case-007-live-origin-with-fixture-text` 及单元/worker 回归测试固化。
+- P2 provider 开关：legacy Replay 路径改经 `gigmate.extraction.provider()` 解析，不再硬编码 `deterministic`；`GIGMATE_EXTRACTION_PROVIDER=disabled` 同时作用于两条路径（Replay → `STUB_UNSUPPORTED_INPUT`，live → `EXTRACTION_NEEDS_REVIEW`）；未知名直接报错。双语文档已同步。
+- 小项：`scripts/run_evaluation.py` 导入补 `# noqa: E402`，并把该脚本纳入 `.github/workflows/skeleton.yml` 的 `ruff check`/`ruff format --check` 范围。
+
+验证：`ruff check`/`ruff format --check`（ruff 0.15.6，CI 范围含 `run_evaluation.py`）通过；`pytest apps/backend/tests -q`：268 通过、5 跳过（PostgreSQL 套件需要真实 PG 实例；两条新的外键敏感测试在 SQLite 上执行同一代码路径）；`export_contracts.py --check` 同步；`check_baseline.py` 通过；评测 7/7 通过。本轮无迁移改动（`0005` 已随 PR 交付）。

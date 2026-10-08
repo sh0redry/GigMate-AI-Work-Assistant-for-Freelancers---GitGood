@@ -95,20 +95,25 @@ def persist_changes_for(
     change_ids: list[str] = []
     for change in proposal.changes:
         change_id = str(uuid4())
-        payload = {
-            "id": change_id,
-            "account_id": account_id,
-            "work_order_id": work_order_id,
-            "field": change.field.value,
-            "old_value": change.old_value,
-            "new_value": change.new_value,
-            "status": change.field_status.value,
-            "customer_confirmation": change.customer_confirmation.value,
-            "proposer": "customer",
-            "sources": [source.model_dump(mode="json") for source in change.sources],
-            "base_work_order_version": base_work_order_version,
-        }
-        payload = RequirementChange.model_validate_json(json.dumps(payload)).model_dump(mode="json")
+        # Construct the model directly instead of round-tripping through
+        # json.dumps: change.field is a plain Literal string (no .value) and
+        # old_value/new_value may hold Pydantic models (TimedSchedule etc.)
+        # that json.dumps cannot serialize. model_dump(mode="json") is the
+        # canonical JSON-safe serialization.
+        validated = RequirementChange(
+            id=change_id,
+            account_id=account_id,
+            work_order_id=work_order_id,
+            field=change.field,
+            old_value=change.old_value,
+            new_value=change.new_value,
+            status=change.field_status,
+            customer_confirmation=change.customer_confirmation,
+            proposer="customer",
+            sources=list(change.sources),
+            base_work_order_version=base_work_order_version,
+        )
+        payload = validated.model_dump(mode="json")
         db.add(
             ChangeRow(
                 id=change_id,
@@ -128,7 +133,7 @@ def persist_changes_for(
 
 
 def candidate_change_fields(proposal: ChangeProposal) -> Iterable[str]:
-    return [change.field.value for change in proposal.changes]
+    return [str(change.field) for change in proposal.changes]
 
 
 __all__ = ["persist_proposal", "persist_changes_for", "candidate_change_fields"]

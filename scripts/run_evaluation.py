@@ -21,8 +21,8 @@ from sqlalchemy.orm import sessionmaker
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "apps/backend/src"))
 
-from gigmate.db import Base, make_engine
-from gigmate.extraction import evaluate_manifest
+from gigmate.db import Base, make_engine  # noqa: E402
+from gigmate.extraction import evaluate_manifest  # noqa: E402
 
 
 def _parse_args() -> argparse.Namespace:

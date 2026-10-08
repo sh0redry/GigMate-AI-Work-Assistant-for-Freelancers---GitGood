@@ -63,6 +63,9 @@ def _build_request(case_payload: dict[str, Any], provider_name: str) -> Extracti
         candidate_work_order_ids=tuple(payload.get("candidate_work_order_ids", ())),
         base_work_order_version=payload.get("base_work_order_version"),
         base_work_order_snapshot=base_snapshot or None,
+        # Evaluation manifests are synthetic-only by contract; a case may still
+        # declare origin "live" to assert that live input is refused.
+        origin=payload.get("origin", "synthetic"),
         extra={"provider_name": provider_name, "case_id": case_payload.get("case_id")},
     )
 

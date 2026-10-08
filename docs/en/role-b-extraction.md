@@ -40,9 +40,13 @@ does not touch the worker, the contracts or the existing Replay behaviour.
 - AI never grants execution authority. The persisted `RequirementChange.proposer`
   is always `customer` or `merchant` (set from the source message), regardless
   of which provider emitted the proposal.
-- Live traffic is refused by `DeterministicProvider` unless the text exactly
-  matches one of the canonical synthetic fixtures used by the Replay smoke.
-  Real content returns `assignment: needs_review` with empty `changes` and an
+- Live traffic is refused by `DeterministicProvider` on two independent
+  conditions: the request's `origin` must be `synthetic` (trusted Replay or
+  evaluation channel) **and** the text must exactly match one of the canonical
+  synthetic fixtures. Live-origin input returns `assignment: needs_review`
+  even when its text equals a fixture, so real content can never be promoted
+  through the fixed-date templates. Real content returns
+  `assignment: needs_review` with empty `changes` and an
   `unresolved_questions` entry explaining that general extraction is not yet
   enabled. This preserves the
   `real content must never run through fictional fixed extraction templates`
@@ -55,6 +59,22 @@ does not touch the worker, the contracts or the existing Replay behaviour.
 - Proposals only target the current accepted `context_version`; older
   contexts cannot create actionable proposals because `messaging.ingest`
   demotes pending changes on context advance.
+
+### Origin trust boundary
+
+`ExtractionRequest.origin` is set server-side and is the trust boundary
+between synthetic and live input:
+
+- `origin="synthetic"` — set only by the trusted Replay legacy path
+  (`gigmate.understanding.extract`) and the offline evaluation harness. This
+  is the only origin for which fixed-template providers may emit `matched`.
+- `origin="live"` (the default) — set by the worker's WAHA branch for every
+  real connector event. Unmarked requests default to `live`, so a caller that
+  forgets to classify its input can never be treated as synthetic.
+
+A provider that wants to mark live content `matched` is a separately
+authorized batch; the evaluation manifest's `case-007-live-origin-with-fixture-text`
+pins this behaviour.
 
 ## Provider interface
 
@@ -94,6 +114,14 @@ Tests inject providers through
 `gigmate.extraction.registry._reset_provider_for_testing` to avoid touching
 process-level state.
 
+The switch applies to **both** paths: the worker's WAHA branch and the legacy
+Replay `gigmate.understanding.extract` entry point both resolve the provider
+through `gigmate.extraction.provider()`. With
+`GIGMATE_EXTRACTION_PROVIDER=disabled`, Replay jobs end with
+`STUB_UNSUPPORTED_INPUT` (no change rows) and live jobs end with
+`EXTRACTION_NEEDS_REVIEW` (evidence retained, no change rows). Unknown
+provider names raise instead of silently falling back.
+
 ## Worker integration
 
 `apps/backend/src/gigmate/worker.py` calls the provider in the WAHA branch
@@ -116,10 +144,21 @@ The provider path:
    one `RequirementChange` was created; otherwise
    `error_code = EXTRACTION_NEEDS_REVIEW`.
 
-Real WhatsApp content currently never reaches step 6 because the
-deterministic provider refuses unknown text. This is intentional; lifting
-the guard is a separately authorized batch that must add a real-model
-provider and harden the seam with prompt-injection tests.
+Real WhatsApp content currently never reaches step 6 because the worker marks
+every WAHA request `origin="live"` and the deterministic provider refuses
+live-origin input regardless of text. This is intentional; lifting the guard
+is a separately authorized batch that must add a real-model provider and
+harden the seam with prompt-injection tests.
+
+### Retention
+
+`Proposal` and `ModelCallTrace` rows reference the inbox receipt
+(`proposals.event_id`) and share its 30-day retention window.
+`waha_ingress.purge_expired` deletes traces, then proposals, then receipts in
+that order so the foreign keys stay satisfied; the purge result counts both
+(`deleted_proposals`, `deleted_traces`). Confirmed business changes live on
+the work order (`requirement_changes`) and are intentionally retained past
+the receipt window.
 
 ## Evaluation harness
 
@@ -127,9 +166,9 @@ provider and harden the seam with prompt-injection tests.
 `contracts/evaluation/manifest.json` through the configured provider,
 persists `EvaluationRun` + `EvaluationCaseRecord` rows and writes a JSON
 report. Cases assert assignment, minimum confidence and expected change
-fields. Six synthetic cases currently cover known reschedule, known
-available, unknown live text, no-order-linkage, multi-order ambiguity and
-prompt-injection attempts.
+fields. Seven synthetic cases currently cover known reschedule, known
+available, unknown live text, no-order-linkage, multi-order ambiguity,
+prompt-injection attempts and live-origin input with fixture-equal text.
 
 ```text
 .venv/bin/python scripts/run_evaluation.py \

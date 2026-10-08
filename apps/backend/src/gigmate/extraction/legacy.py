@@ -2,14 +2,15 @@
 
 Kept so existing Replay smoke tests (``test_workflow.py``) continue to monkey
 patch ``gigmate.worker.extract`` without provider plumbing leaking into them.
-The legacy helper delegates to the deterministic provider, returning the same
-plain dict the historical stub produced so no schema or fixture changes are
-needed.
+The legacy helper goes through the configured provider
+(``GIGMATE_EXTRACTION_PROVIDER``) and marks its input as trusted synthetic
+Replay content, returning the same plain dict the historical stub produced so
+no schema or fixture changes are needed.
 """
 
 from __future__ import annotations
 
-from gigmate.extraction.registry import build_provider
+from gigmate.extraction.registry import provider
 from gigmate.extraction.types import ExtractionRequest
 
 
@@ -29,9 +30,9 @@ def _legacy_extract(event: dict, order: dict, context_version: int) -> dict | No
         candidate_work_order_ids=(order["id"],),
         base_work_order_version=order.get("version"),
         base_work_order_snapshot=order,
+        origin="synthetic",
     )
-    provider = build_provider("deterministic")
-    outcome = provider.propose(request)
+    outcome = provider().propose(request)
     if outcome.proposal.assignment.value == "needs_review":
         return None
     return outcome.proposal.model_dump(mode="json")

@@ -206,11 +206,11 @@ def _route_through_provider(
     """Invoke the registered extraction provider and persist its evidence.
 
     Returns ``True`` only when the proposal was matched and at least one
-    ``RequirementChange`` row was created. Real WhatsApp content currently
-    never reaches this point: the deterministic default provider recognizes
-    only the canonical synthetic fixtures used by the Replay smoke flow. A real
-    provider that wants to mark ``matched`` for live content must be a
-    separately authorized batch.
+    ``RequirementChange`` row was created. The WAHA branch always marks the
+    request ``origin="live"``; the deterministic default provider therefore
+    returns ``needs_review`` for live content even when the text equals a
+    synthetic fixture. A provider that wants to mark ``matched`` for live
+    content must be a separately authorized batch.
     """
     target_order_id: str | None = None
     base_snapshot = None
@@ -231,6 +231,7 @@ def _route_through_provider(
         candidate_work_order_ids=tuple(linked),
         base_work_order_version=base_version,
         base_work_order_snapshot=base_snapshot,
+        origin="live",
     )
     outcome = provider().propose(request)
     proposal_row = persist_proposal(

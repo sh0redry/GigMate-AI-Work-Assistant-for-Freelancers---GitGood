@@ -1,12 +1,10 @@
 """Deterministic default extraction provider.
 
 Intentionally narrow: it only recognizes the two synthetic fixture texts used by
-the Replay smoke flow. For every other input it returns
-``assignment: needs_review`` with empty ``changes`` and an ``unresolved_questions``
-note explaining that a general provider is required. This preserves the
-``real content must never run through fictional fixed extraction templates``
-rule from ``docs/en/role-a-team-local-development.md`` while keeping the
-extraction seam present for future authorized real-model integration.
+the Replay smoke flow, and only for requests whose ``origin`` is ``"synthetic"``
+(trusted Replay/evaluation channel). Live connector input is always
+``assignment: needs_review`` even when its text happens to equal a fixture, so
+real content can never be promoted through fictional fixed-date templates.
 """
 
 from __future__ import annotations
@@ -32,6 +30,16 @@ class DeterministicProvider:
 
     def propose(self, request: ExtractionRequest) -> ExtractionOutcome:
         began = time.monotonic()
+        if request.origin != "synthetic":
+            return self._needs_review(
+                request,
+                reason=(
+                    "Deterministic provider only processes trusted synthetic "
+                    "Replay/evaluation input; live content requires a separately "
+                    "authorized provider."
+                ),
+                latency_ms=self._elapsed(began),
+            )
         text = (request.message_text or "").strip()
         if text not in {_KNOWN_RESCHEDULE, _KNOWN_AVAILABLE}:
             return self._needs_review(

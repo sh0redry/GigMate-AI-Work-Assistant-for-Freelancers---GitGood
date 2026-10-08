@@ -34,10 +34,12 @@ Role B 拥有 AI 抽取流水线：Provider 接口、提示词/模型版本注�
   在类型层强制。
 - AI 不得授予执行权限。落库的 `RequirementChange.proposer` 始终是
   `customer` 或 `merchant`（按来源消息作者填写），与 provider 无关。
-- 真实流量由 `DeterministicProvider` 默认拒绝，除非文本与 Replay 烟测用
-  的合成样例完全一致。非已知文本返回
-  `assignment: needs_review`、`changes` 为空，并在 `unresolved_questions`
-  解释通用抽取尚未启用。这保留了
+- 真实流量由 `DeterministicProvider` 在两个独立条件下拒绝：请求的
+  `origin` 必须是 `synthetic`（受信 Replay 或评测通道）**且**文本与合成
+  样例完全一致。live 来源输入即使文本与样例相同也返回
+  `assignment: needs_review`，真实内容绝不可能借固定日期模板被提升为
+  提议。非已知文本返回 `assignment: needs_review`、`changes` 为空，并在
+  `unresolved_questions` 解释通用抽取尚未启用。这保留了
   `role-a-team-local-development.md` 中“真实内容不得经过虚构固定抽取
   模板”的约束，同时让接缝可读。
 - 多工单歧义永不悄悄合并。provider 始终收到 `candidate_work_order_ids`；
@@ -45,6 +47,21 @@ Role B 拥有 AI 抽取流水线：Provider 接口、提示词/模型版本注�
   `ASSIGNMENT_NEEDS_REVIEW`。
 - 提议只针对当前已接受的 `context_version`；旧上下文不能产生可执行
   提议，因为 `messaging.ingest` 推进上下文时会把 pending 变更降级。
+
+### 来源信任边界
+
+`ExtractionRequest.origin` 由服务端设置，是合成输入与真实输入的信任
+边界：
+
+- `origin="synthetic"`——只由受信 Replay legacy 路径
+  （`gigmate.understanding.extract`）和离线评测工具设置；固定模板
+  provider 只允许对这个来源产出 `matched`。
+- `origin="live"`（默认）——Worker 的 WAHA 分支对每条真实连接器事件都
+  标记为 live。未标记的请求默认 live，忘记分类的调用方永远不可能被
+  当作合成输入。
+
+想让真实内容产出 `matched` 的 provider 属于后续单独授权批次；评测清单
+的 `case-007-live-origin-with-fixture-text` 固化了这一行为。
 
 ## Provider 接口
 
@@ -81,6 +98,13 @@ class Provider(Protocol):
 测试通过 `gigmate.extraction.registry._reset_provider_for_testing` 注入
 provider，不污染进程级缓存。
 
+该开关同时作用于两条路径：Worker 的 WAHA 分支与 legacy Replay 入口
+`gigmate.understanding.extract` 都通过 `gigmate.extraction.provider()`
+解析 provider。设置 `GIGMATE_EXTRACTION_PROVIDER=disabled` 时，Replay
+任务以 `STUB_UNSUPPORTED_INPUT` 结束（无变更行），live 任务以
+`EXTRACTION_NEEDS_REVIEW` 结束（保留证据、无变更行）。未知 provider
+名称直接报错，绝不悄悄回落。
+
 ## Worker 集成
 
 `apps/backend/src/gigmate/worker.py` 仅在 WAHA 分支调用 provider。
@@ -99,17 +123,27 @@ provider 路径：
 7. Job 状态 `completed`：只有至少写出一条 `RequirementChange` 时
    `error_code = None`，否则 `error_code = EXTRACTION_NEEDS_REVIEW`。
 
-因为 deterministic provider 拒绝未知文本，当前真实 WhatsApp 内容
-不会进入步骤 6。放开这道闸是后续单独授权批次，必须配套新增真实模型
-provider 与 prompt-injection 测试。
+Worker 的 WAHA 分支把每条请求标记为 `origin="live"`，deterministic
+provider 对 live 来源一律拒绝（与文本无关），因此当前真实 WhatsApp
+内容不会进入步骤 6。放开这道闸是后续单独授权批次，必须配套新增真实
+模型 provider 与 prompt-injection 测试。
+
+### 保留策略
+
+`Proposal` 与 `ModelCallTrace` 行引用 inbox 收据
+（`proposals.event_id`），与其共享 30 天保留窗口。
+`waha_ingress.purge_expired` 按"先 trace、再 proposal、再收据”的顺序
+删除，外键始终满足；清理结果同时返回
+`deleted_proposals`、`deleted_traces` 计数。已确认的业务变更保存在
+工单上（`requirement_changes`），有意在收据窗口之后继续保留。
 
 ## 评测工具
 
 `scripts/run_evaluation.py` 读取 `contracts/evaluation/manifest.json`，
 逐条运行当前 provider，落库 `EvaluationRun` + `EvaluationCaseRecord`
 并写出 JSON 报告。用例断言 assignment、最低置信度和预期变更字段。
-六条合成用例当前覆盖：已知改期、已知可用、未知 live 文本、无工单关联、
-多工单歧义、prompt-injection。
+七条合成用例当前覆盖：已知改期、已知可用、未知 live 文本、无工单关联、
+多工单歧义、prompt-injection、live 来源且文本与样例一致。
 
 ```text
 .venv/bin/python scripts/run_evaluation.py \
