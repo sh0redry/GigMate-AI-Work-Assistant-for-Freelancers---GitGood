@@ -1,6 +1,6 @@
 # A 的技术开发演进与统一验收方案
 
-2026-10-07 批次：[本地产品接入接口](role-a-setup-api-acceptance.md)增加归属隔离的连接/扫码/聊天控制与持久远程意图核对；前端、独立真实账号验收和生产接入仍分别待完成，不做 Cloud API。
+2026-10-08 批次：[统一适配](role-a-integration-acceptance.md)把 D 的本地产品页面接到 A 的[接入接口](role-a-setup-api-acceptance.md)，替代桥接并补齐安全故障审阅和 provider 采样。独立真实账号验收和生产接入仍分别待完成，不做 Cloud API。
 
 当前扩展：A-01/A-02 及 A-03 持久接入已有实现证据；[异常恢复验收](role-a-recovery-acceptance.md)补齐分组件健康、故障验证和遗漏人工核对，仍属于 A-03。A-04 外发仍依赖 C 的审批/outbox/核对服务。下文早期基线描述属于规划历史，实际当前行为以进度记录为准。
 

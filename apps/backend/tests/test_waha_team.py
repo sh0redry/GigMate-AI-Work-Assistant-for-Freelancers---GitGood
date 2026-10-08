@@ -109,11 +109,14 @@ def test_dependency_errors_do_not_echo_secrets(monkeypatch):
 
 
 def test_clean_bootstrap_and_restart_preserves_pause(tmp_path, monkeypatch):
+    from datetime import UTC, datetime
+    from uuid import uuid4
+
     from scripts import waha_ingress, waha_local
     from sqlalchemy import create_engine, func, select
     from sqlalchemy.orm import sessionmaker
 
-    from gigmate.db import Account, Base, ConversationRow, Job, WahaConnection
+    from gigmate.db import Account, Base, ConversationRow, Job, WahaConnection, WahaControl
 
     private = tmp_path / "local-data/waha-a02"
     monkeypatch.setattr(team, "ROOT", tmp_path)
@@ -165,10 +168,30 @@ def test_clean_bootstrap_and_restart_preserves_pause(tmp_path, monkeypatch):
         assert db.scalar(select(func.count()).select_from(Job)) == 0
         connection = db.scalar(select(WahaConnection))
         connection.enabled = False
+        connection_id = connection.id
+    journal = tmp_path / "local-data/d01-operations" / ("restart-" + connection_id + ".json")
+    journal.parent.mkdir()
+    old_key = str(uuid4())
+    journal.write_text(
+        json.dumps({"key": old_key, "state": "unknown", "at": datetime.now(UTC).isoformat()}),
+        encoding="utf-8",
+    )
     team.startup(env)
     with factory.begin() as db:
         assert db.scalar(select(WahaConnection)).enabled is False
         assert db.scalar(select(func.count()).select_from(Account)) == 1
+        operation = db.scalar(select(WahaControl))
+        assert operation.state == "result_unknown" and operation.active_key == connection_id
+        assert operation.request_key == "legacy-restart:" + old_key
+    migrated = json.loads(journal.read_text(encoding="utf-8"))
+    assert migrated["state"] == "migrated" and migrated["legacy_state"] == "unknown"
+    assert migrated["key"] == old_key
+    assert team.migrate_legacy_restart(synced[-1]) == {
+        "legacy_imported": False,
+        "reconciliation_required": False,
+    }
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(WahaControl)) == 1
     assert len(synced) == 2
     assert any("alembic" in args for args in calls)
     assert not any("create_session" in args for args in calls)

@@ -165,6 +165,20 @@ class LocalWahaClient:
         engine = result.get("engine", {})
         if not isinstance(state, str) or state not in SESSION_STATES:
             raise AdapterError("WAHA_UNKNOWN_STATE")
+        if state == "STOPPED" and (engine is None or engine == {}):
+            # Stopped sessions have no runtime engine. Verify the pinned server,
+            # never assume that missing metadata means the expected engine.
+            declared = result.get("config") or {}
+            if not isinstance(declared, dict) or declared.get("engine") not in {None, ENGINE}:
+                raise AdapterError("WAHA_ENGINE_MISMATCH")
+            server = self._request("GET", "/api/server/version")
+            if (
+                not isinstance(server, dict)
+                or server.get("engine") != ENGINE
+                or server.get("version") != VERSION
+            ):
+                raise AdapterError("WAHA_ENGINE_MISMATCH")
+            engine = {"engine": ENGINE}
         if not isinstance(engine, dict) or engine.get("engine") != ENGINE:
             raise AdapterError("WAHA_ENGINE_MISMATCH")
         # Never return config/credentials/me/profile to generic command output.

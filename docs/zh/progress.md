@@ -1,5 +1,15 @@
 # 已完成工作与验证记录
 
+## 合并 PR 后统一适配 — 2026-10-08
+
+在 Andy_WAHA_upgrade、main d31aa7d/合并 20611ce 基础上，D 页面已接入持久鉴权后端，完成连接/二维码/聊天发现与授权/暂停恢复/故障审阅；删除第二条 Vite/Python 控制路径，旧未知重启记录通过持久迁移承接。新增 0006 provider 采样迁移，只读控制不再推进授权版本；STOPPED 缺少引擎时仅在固定版本/WEBJS 二次校验后接受。C 的任务准备标题和截止时刻在夏令时及跨午夜保持一致。已同步生成契约/类型和双语交接，保留原有人工证据修改。本批尚未 commit/push。
+
+实际证据：**PostgreSQL 288 通过**；**SQLite 282 通过/6 项 PostgreSQL 专用跳过**；六个隔离真实 HTTP API/worker 流程、Alembic 模型检查及测试资源清理通过。前端 **9 项测试通过**，生成接口、TypeScript、格式和生产构建通过；契约同步、基线、限定范围 Ruff、Git 空白检查通过。合成浏览器检查发现/保存/撤销授权、暂停恢复、STOPPED 恢复/图片展示和明确核对未知操作；数据库确认已恢复故障已审阅，两条历史保留，活动故障未清除。一像素测试图片不是真机扫码证据；真实手机测试、Apple Silicon 真机配对和 E 独立评审仍需人工。本批没有真实发送、授权修改或故障确认，没有删除真实数据库/会话卷。[升级和整批验收步骤](role-a-integration-acceptance.md)。
+
+## 已提交协议与真实本地环境复查 — 2026-10-07
+
+已提交 cf14815，未 push。独立 PostgreSQL 全套现 **273 通过**，含新增五项架构测试；实际独立 HTTP API/Worker 六个流程及清理通过。保留 gigmate-replay_postgres-data 和原 WAHA 会话/配置卷，用忽略的 Compose 覆盖恢复 localhost 16433 数据库，原 gigmate_waha_a03 升级 0005、Alembic check 通过；重建 live API/Worker/监控，内部 DB 端口 16433。四项健康、pipeline_ready=true，供应商 WORKING/回调匹配，七项 HTTP 通过。真实 setup/inspect/discover、同键重投、CSRF 和其他账号拒绝已验证，仅输出安全元数据；已连接 session 的 connect 成功，不覆盖回调。发现联系人产生过期私有元数据，但未改白名单、实际暂停、取二维码、发送消息或确认故障。15 条历史核对记录仍保留。手机文字变化及新二维码/人工授权移除/暂停仍需本人做；双语接入验收已记录准确步骤及本地客户端。测试后文档更新留本地，未包含于 cf14815。
+
 ## Apple Silicon 兼容性排查 — 2026-10-07
 
 队友确认 Apple Silicon，尚无失败命令/日志。确认两项问题：命令示例仅 Windows，以及固定 WAHA 2026.9.1 镜像索引只有 linux/amd64 加证明材料、没有 ARM64。注册表实查同版本原生 arm-2026.9.1 摘要 b4216daddb7d5c1eb3ab99e608b76a005ec7523e766f923939d229718df4aafb 含 linux/arm64，Python 3.12.10-slim 含 ARM64。增加明确 ARM Compose 覆盖、team up/stop 按 Docker 引擎架构选择（不受 Python Rosetta/远程引擎误判）、私有文件 UTF-8 读取及双语 Mac 命令。不换引擎/版本、不迁移会话。17 项团队测试通过，含四种架构选择及未知架构拒绝；实际展开 x86/ARM 配置检查镜像/平台/WEBJS，不输出私有值。尚无实体 Mac 扫码/运行实测；队友具体失败仍需命令/错误原文。修复已确认兼容缺口，不证明所有 Mac 环境都通过。未 commit/push。

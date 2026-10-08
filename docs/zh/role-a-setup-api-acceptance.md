@@ -1,5 +1,7 @@
 # WAHA 本地产品接入后端：交付与统一验收
 
+2026-10-08 扩展：[统一适配](role-a-integration-acceptance.md)已接入 D 页面，新增故障审阅、0006 provider 采样和旧操作记录承接。inspect/discover 不推进 control_version。下方初期范围和证据按日期保留，前端页面已不再待做。
+
 日期：2026-10-07；Andy_WAHA_upgrade，基于 main 0cd7e3f。[英文对应](../en/role-a-setup-api-acceptance.md)。范围为一个私有配置的本地 Core/WEBJS session 的后端接入，不做页面、生产身份、任意多商户/session 注册、AI、历史导入、发送或 Cloud API。
 
 ## 已实现的结构
@@ -22,6 +24,7 @@
 | GET /chats | 已选聊天应用 UUID、未过期发现 UUID/标签，不返回 provider ID |
 | PUT /chats | expected_version、selected_ids、consent=true，替换授权集合，不自动恢复暂停 |
 | POST /pause、/resume | expected_version，暂停持久拒绝接入、恢复须显式；不删 session、不清缺口核对 |
+| POST /recovery-issues/review | WahaIssueReviewCommand，明确无需导入后，原子核对自己连接的已恢复故障并保留历史 |
 
 写请求示例：
 
@@ -62,3 +65,17 @@ result_unknown 阻止新活动供应商操作。显式 reconcile 仅调度 GET �
 脚本拒绝已有 gigmate-waha-setup-check 资源，在 16432 启动一次性 PostgreSQL 17.9、18802 实际 API/Worker、18800 合成供应商，不创建真实 WhatsApp 连接/二维码/消息；假配对字节仅验证 HTTP。检查持久连接/幂等、二维码权限/缓存、发现/选择/版本、暂停/恢复、Worker 重启和跨账号拒绝，可接着跑全套 PG 测试。finally 仅停止子进程并删除独立测试项目，不当作真实账号独立验收。
 
 独立人工步骤：自己的获授权测试账号上检查 setup/inspect、需要时扫码、发现/选择正确聊天、新建/编辑/撤回、移除授权、暂停/恢复和重启。只记录应用不透明 ID，真实聊天/密钥/二维码不入仓库。E 复核事务/并发/未知结果，D 按接口做页面，B/C 保留真实处理/审批职责。本机证据和受阻真实账号验证见 progress.md。
+
+### 本机已准备好的人工环境 — 2026-10-07
+
+已提交快照 cf14815，未 push。保留原数据库/会话卷，通过忽略的 `local-data/waha-a02/database-port-override.yaml` 将原数据库映射到 16433，避开 Windows 保留的 54329。已升级 0005、Alembic check 通过，重建 18702 的 API/Worker/监控，容器数据库地址改用内部 16433；原账号恢复 WORKING，业务回调匹配。主机 DATABASE_URL 使用原 gigmate_waha_a03 的 16433 地址；后续重新创建 Compose 要保留数据库覆盖文件及 WAHA_DATABASE_URL 内部 16433。新团队安装默认未改。
+
+已代跑 273 项 PostgreSQL 及独立 HTTP/Worker 六个流程检查点与清理。真实本机账号的七项 HTTP、setup/配置可用、inspect、discover（87 个私有选项）、重复键一致、CSRF 拒绝及跨账号拒绝通过。connect 对已连接 session 核对成功，没有覆盖回调。真实自动检查未发送消息、未取二维码、未改白名单、未实际暂停或确认故障。
+
+仅此机器已准备忽略的 `local-data/waha-a02/manual_setup_cf14815.py` 本地测试客户端，按已提交 HTTP 协议调用，不直接管理 WAHA；不属于仓库/队友安装文件。Windows 前缀为 `.venv\Scripts\python.exe`，数据库工具先设本机 localhost:16433/gigmate_waha_a03。
+
+1. 客户端 `discover` 仅在本地看名称/不透明 ID。测试聊天已经 selected=true 就保留；否则 `select --choice <UUID>` 并输入 YES，其他已选聊天不变。不要分享联系人列表。
+2. `waha_team.py checkpoint` 后，手机新发一条文字、编辑一次、为所有人删除；每次 `waha_ingress.py status`，最后 `waha_team.py verify` 应为 mutation_sequence_verified=true。这些手机操作需本人完成。
+3. 客户端 `pause` 后新发测试文字，确认 enabled=false/pipeline_ready=false，该文字不推进 last_sync_at，拒绝应为 CONSENT_REVOKED。保持暂停等待已配置的有限回调重试结束，再 `resume`，发一条全新文字验证恢复；不保证暂停期间消息自动导入。
+4. 测移除授权先客户端 `status` 刷新，取当前 selected 的持久 UUID，`remove --choice ...` 输入 YES，发测试文字应 CONVERSATION_NOT_ALLOWED 且不推进正文同步；重新 discover/select 恢复。候选 ID 会过期/更换，不在 API 验收中运行 CLI provision，避免按主机旧白名单覆盖。
+5. 账号已 WORKING 不强制注销来取二维码。仅自然出现 SCAN_QR_CODE 时客户端 connect、qr，打开打印的私有路径扫码，再 inspect。不向聊天上传二维码/凭据/截图。POST 超时保留了原键/请求体，使用 retry，不换新键；result_unknown 停下来显式核对。

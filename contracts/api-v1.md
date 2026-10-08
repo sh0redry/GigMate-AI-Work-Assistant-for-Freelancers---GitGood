@@ -23,6 +23,8 @@ WAHA status additionally exposes API/provider/worker/monitor health samples, `pi
 `GET /connectors/{connection_id}/recovery-issues` is a session-authenticated, account-scoped paged list of safe outage/review metadata, with no provider IDs or content. Review acknowledgement is operator-only; recovery never automatically acknowledges missing-message risk or imports history. Signed rejected business input is counted after rollback where persistence is available; forged signatures do not create diagnostics. See [recovery operations and limits](../docs/en/role-a-recovery-acceptance.md).
 
 ## Responses and errors
+
+WAHA integration uses the implemented `/api/v1/connectors/{id}` setup/control routes described in [setup acceptance](../docs/en/role-a-setup-api-acceptance.md) and [merged integration](../docs/en/role-a-integration-acceptance.md). `inspect`/`discover` do not increment control_version; authorization and provider mutations do. POST `/{id}/recovery-issues/review` requires session/CSRF, owner-scoped unique issue_ids and confirmed_no_import=true; it atomically acknowledges only recovered issues as reviewed_no_import, retaining audit history. Generated OpenAPI governs command shapes. The retired Vite bridge is not an API surface.
 Details: `{"data": <resource>, "request_id": "<uuid>"}`. Lists: `{"items": [], "next_cursor": null, "request_id": "<uuid>"}`. Default limit 20, maximum 100; opaque cursor; deterministic ordering with stable ID tie-breaker. Calendar list additionally filters start/end UTC times and includes date-only entries for the user's date range.
 
 Errors: `{"error": {"code": "VERSION_CONFLICT", "message": "Refresh and review the current version", "details": {}}, "request_id": "<uuid>"}`. Do not include private content in details.

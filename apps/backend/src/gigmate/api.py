@@ -32,6 +32,8 @@ from gigmate.contracts import (
     WahaChoice,
     WahaControlCommand,
     WahaControlResult,
+    WahaIssueReviewCommand,
+    WahaIssueReviewResult,
     WahaSelectionCommand,
     WahaSetup,
     WahaVersionCommand,
@@ -653,19 +655,58 @@ def recovery_issues(
             WahaConnection.account_id == account.id,
         )
     )
+
     if not connection:
         raise BusinessError(404, "NOT_FOUND", "Connector not found")
     return page(
         request,
         db.scalars(
-            select(WahaRecoveryIssue).where(
-                WahaRecoveryIssue.connection_id == connection.id,
-            )
+            select(WahaRecoveryIssue).where(WahaRecoveryIssue.connection_id == connection.id)
         ),
         cursor,
         limit,
         issue_view,
     )
+
+
+@app.post(
+    "/api/v1/connectors/{connection_id}/recovery-issues/review",
+    response_model=Detail[WahaIssueReviewResult],
+)
+def review_recovered_issues(
+    connection_id: UUID,
+    command: WahaIssueReviewCommand,
+    request: Request,
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    row = controls.owned(db, account, str(connection_id), lock=True)
+    if command.confirmed_no_import is not True or len(set(command.issue_ids)) != len(
+        command.issue_ids
+    ):
+        controls.fail("REVIEW_CONFIRMATION_REQUIRED", 422)
+    issues = list(
+        db.scalars(
+            select(WahaRecoveryIssue)
+            .where(
+                WahaRecoveryIssue.connection_id == row.id,
+                WahaRecoveryIssue.id.in_(command.issue_ids),
+            )
+            .order_by(WahaRecoveryIssue.id)
+            .with_for_update()
+        )
+    )
+    if len(issues) != len(command.issue_ids):
+        controls.fail("NOT_FOUND", 404)
+    if any(item.recovered_at is None for item in issues):
+        controls.fail("COMPONENT_STILL_UNAVAILABLE")
+    from gigmate.waha_ingress import WebhookBinding
+    from gigmate.waha_recovery import acknowledge_issue
+
+    binding = WebhookBinding(row.id, row.account_id, row.instance_id, row.session_id, "")
+    for item in issues:
+        acknowledge_issue(db, binding, item.id, "reviewed_no_import")
+    return detail(request, {"reviewed": len(issues)})
 
 
 @app.post("/api/v1/replay", status_code=202, response_model=Detail[ReplayResult])

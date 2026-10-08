@@ -1,5 +1,7 @@
 # WAHA local product setup API: delivery and unified acceptance
 
+2026-10-08 extension: [merged integration](role-a-integration-acceptance.md) adds the implemented D screens, recovered-issue review, migration 0006 provider samples and legacy journal adoption. `inspect`/`discover` do not advance control_version. The dated initial scope/evidence below is retained; frontend screens are no longer pending.
+
 Date: 2026-10-07; branch Andy_WAHA_upgrade, based on main 0cd7e3f. [Chinese](../zh/role-a-setup-api-acceptance.md). Scope: backend setup for one privately configured local Core/WEBJS session. No frontend screens, production identity, arbitrary multi-merchant/session provisioning, AI, history import, sending or Cloud API.
 
 ## Delivered architecture
@@ -22,6 +24,7 @@ Prefix: `/api/v1/connectors/{connection_id}`. Obtain the application UUID from a
 | GET /chats | Selected opaque chat UUIDs and unexpired discovery UUIDs/labels; no provider chat IDs |
 | PUT /chats | WahaSelectionCommand: expected_version, selected_ids, consent=true; replaces authorized set without resuming paused reception |
 | POST /pause, /resume | WahaVersionCommand; pause is local durable denial, resume explicit; neither deletes sessions nor clears gap review |
+| POST /recovery-issues/review | WahaIssueReviewCommand; explicit no-import acknowledgement of recovered owned issues, atomic and audit-preserving |
 
 Example mutation bodies:
 
@@ -62,3 +65,17 @@ Upgrade database to head before rebuilding API/worker. The ingress Compose suppl
 This refuses existing gigmate-waha-setup-check resources, runs disposable PostgreSQL 17.9 on 16432, actual API/worker on 18802 and a synthetic provider on 18800. It creates no real WhatsApp connection, QR or message; safe fake pairing bytes only test HTTP handling. It tests durable connect/idempotence, QR ownership/cache, discovery/selection/versioning, pause/resume, worker restart and cross-account denial, then optionally all PostgreSQL tests. Finally it stops only its child processes and removes only its disposable Compose resources. Do not confuse this with an independent real-account acceptance.
 
 Independent manual gate: on a consenting test account, verify setup/inspect, scan if required, discover/select the correct chat, new/edit/revoke text, remove authorization, pause/resume and restart. Record IDs as opaque application IDs only; no real chats/keys/QR in tracked files. E reviews transaction/concurrency/unknown-result cases, D builds screens using these routes, B/C retain their existing live-processing/approval boundaries. Current environment evidence and blocked real-account checks are in implementation-status.md.
+
+### This operator's prepared manual environment — 2026-10-07
+
+Committed snapshot cf14815 (not pushed). The original database/session volumes were preserved; ignored `local-data/waha-a02/database-port-override.yaml` maps the existing database to 16433 because Windows reserved 54329. Migration to 0005 and Alembic check completed, API/worker/monitor rebuilt on 18702 with the internal database address on 16433. Existing provider recovered WORKING with matching business webhook. Set host DATABASE_URL to the original gigmate_waha_a03 database on 16433; future Compose recreation must keep the ignored database override and WAHA_DATABASE_URL internal port 16433. Team-new-install defaults are unchanged.
+
+I ran 273 PostgreSQL tests and the six disposable HTTP/worker workflow checks plus cleanup. On the real local account: seven HTTP checks, setup/config availability, inspect, discover (87 private choices), duplicate-key consistency, CSRF denial and cross-account denial passed. Existing-session connect inspected successfully without replacing its callback. No message sent, QR fetched, allowlist changed, pause applied or incident acknowledged by the automatic real-account checks.
+
+For this machine only, an ignored local client `local-data/waha-a02/manual_setup_cf14815.py` is prepared for the remaining steps; it calls the committed HTTP protocol as a development user, not WAHA administration. It is not part of the repository/teammate installation. Commands use `.venv/Scripts/python.exe` on Windows. First set DATABASE_URL to localhost:16433/gigmate_waha_a03 as above for database tools.
+
+1. `manual_setup_cf14815.py discover`: view private names/opaque IDs locally. If the test chat is already selected, keep it. Otherwise run `select --choice <opaque UUID>`, confirm YES; other selected chats are preserved. Never share the contacts list.
+2. `waha_team.py checkpoint`, then on the phone send a NEW text, edit it once and delete it for everyone. Run `waha_ingress.py status` after each; then `waha_team.py verify` must report mutation_sequence_verified=true. This is the phone work automation cannot do.
+3. `manual_setup_cf14815.py pause`, send another test text and check enabled=false/pipeline_ready=false; last content sync must not advance from this text and rejection should be CONSENT_REVOKED. Keep paused long enough for the configured bounded callback retries to finish, then `resume`; send a NEW text and confirm fresh reception. Resume does not guarantee importing paused messages.
+4. For removal testing, refresh `status`, use the current selected persistent opaque UUID with `remove --choice ...`, confirm YES, send a test and expect CONVERSATION_NOT_ALLOWED without a new content sync. Rediscover/reselect to restore authorization; discovered handles change after expiry. Do not run CLI provision during this API test, as host allowlists are a separate source.
+5. Do not force logout to test QR on the paired WORKING account. Only if the account naturally waits for SCAN_QR_CODE: `connect`, then `qr`; open the private path printed locally and scan, then `inspect`. No QR/credentials/screenshots need to be pasted into chat. A timed-out POST has a saved request key/body; use `retry`, not a new key. result_unknown stops the test for explicit reconciliation.

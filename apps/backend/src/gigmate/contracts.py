@@ -96,6 +96,15 @@ class WahaChoice(Model):
     expires_at: UtcTimestamp | None
 
 
+class WahaIssueReviewCommand(Model):
+    issue_ids: Annotated[list[Id], Field(min_length=1, max_length=100)]
+    confirmed_no_import: Annotated[bool, Field(strict=True)]
+
+
+class WahaIssueReviewResult(Model):
+    reviewed: Annotated[int, Field(ge=1)]
+
+
 class WahaControlResult(Model):
     id: Id
     connection_id: Id

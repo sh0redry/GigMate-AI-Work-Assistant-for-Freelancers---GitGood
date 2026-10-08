@@ -57,6 +57,9 @@ def test_versioned_migration_preserves_replay_rows(tmp_path):
     assert "waha_operations" in inspect(engine).get_table_names()
     assert "waha_controls" in inspect(engine).get_table_names()
     assert "waha_candidates" in inspect(engine).get_table_names()
+    assert {"provider_state", "provider_observed_at"} <= {
+        item["name"] for item in inspect(engine).get_columns("waha_connections")
+    }
     with engine.connect() as db:
         assert db.execute(text("SELECT payload, connection_id FROM inbox")).one() == (
             '{"synthetic":true}',

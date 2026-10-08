@@ -1,11 +1,13 @@
 """Disposable PostgreSQL + actual HTTP API/worker, synthetic provider, no WhatsApp account."""
 
 import argparse
+import base64
 import json
 import os
 import socket
 import subprocess
 import sys
+import shutil
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -20,6 +22,7 @@ CONNECTION = "00000000-0000-4000-8000-000000000070"
 SECRET = "synthetic-setup-secret-" + "a" * 64
 KEY = "synthetic-setup-api-" + "b" * 64
 state = {"session": None, "writes": 0}
+stop_requested = threading.Event()
 
 
 class Provider(BaseHTTPRequestHandler):
@@ -37,10 +40,17 @@ class Provider(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.headers.get("X-Api-Key") != KEY:
             return self.answer({}, 401)
+        if self.path == "/api/server/version":
+            return self.answer({"version": "2026.9.1", "engine": "WEBJS"})
         if self.path.startswith("/api/sessions/default"):
             return self.answer(state["session"] or {}, 200 if state["session"] else 404)
         if self.path.startswith("/api/default/auth/qr"):
-            return self.answer(b"\x89PNG\r\n\x1a\nsynthetic-only", png=True)
+            return self.answer(
+                base64.b64decode(
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aA4sAAAAASUVORK5CYII="
+                ),
+                png=True,
+            )
         if self.path.startswith("/api/default/chats"):
             return self.answer(
                 [{"id": "synthetic:peer-new@lid", "name": "Synthetic participant"}]
@@ -50,6 +60,24 @@ class Provider(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.headers.get("X-Api-Key") != KEY:
             return self.answer({}, 401)
+        if self.path == "/__test/shutdown":
+            stop_requested.set()
+            return self.answer({"synthetic_shutdown": True})
+        if self.path == "/__test/state":
+            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            status = body.get("state")
+            if status not in {"WORKING", "SCAN_QR_CODE", "STOPPED", "FAILED"}:
+                return self.answer({}, 422)
+            state["session"]["status"] = status
+            state["session"]["engine"] = (
+                None if status == "STOPPED" else {"engine": "WEBJS"}
+            )
+            return self.answer({"synthetic_state": status})
+        if self.path == "/api/sessions/default/restart":
+            state["writes"] += 1
+            state["session"]["status"] = "SCAN_QR_CODE"
+            state["session"]["engine"] = {"engine": "WEBJS"}
+            return self.answer({"name": "default"})
         if self.path != "/api/sessions":
             return self.answer({}, 404)
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
@@ -90,6 +118,11 @@ def checkpoint(name):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", action="store_true", required=True)
+    parser.add_argument(
+        "--frontend",
+        action="store_true",
+        help="Serve synthetic-only browser acceptance on 18803 for thirty minutes",
+    )
     parser.add_argument(
         "--suite", action="store_true", help="Also run full PostgreSQL suite"
     )
@@ -144,6 +177,7 @@ def main():
         "WAHA_CONTROL_CONFIG": str(private / "config.json"),
         "WAHA_CONNECTOR_CONFIG": str(private / "binding.json"),
         "WAHA_CONTROL_INTERNAL": "false",
+        "TRUSTED_ORIGINS": "http://127.0.0.1:18803,http://localhost:18803",
     }
     processes, server = [], None
     try:
@@ -347,6 +381,28 @@ def main():
                 test_env,
             )
             print(result[-1100:], flush=True)
+        if args.frontend:
+            processes.append(
+                subprocess.Popen(
+                    [
+                        shutil.which("node"),
+                        str(ROOT / "apps/web/node_modules/vite/bin/vite.js"),
+                        "--host",
+                        "127.0.0.1",
+                        "--port",
+                        "18803",
+                        "--strictPort",
+                    ],
+                    cwd=ROOT / "apps/web",
+                    env={**env, "GIGMATE_API_URL": "http://127.0.0.1:18802", "CI": "1"},
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            )
+            checkpoint("synthetic_frontend_serving_18803")
+            until = time.monotonic() + 1800
+            while time.monotonic() < until and not stop_requested.is_set():
+                time.sleep(1)
         command(
             [
                 sys.executable,

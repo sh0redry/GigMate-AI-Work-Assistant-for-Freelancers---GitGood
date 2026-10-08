@@ -8,6 +8,7 @@ The replay skeleton and optional local WAHA durable ingress/monitoring are imple
 | --- | --- |
 | [Overview](overview.md) | Scope and exclusions |
 | [Architecture](architecture.md) | Modules, ownership, state flow and reliability |
+| [WAHA merged integration acceptance](role-a-integration-acceptance.md) | Canonical frontend/backend control, migration and unified team acceptance |
 | [Getting started](getting-started.md) | Checks available now and next implementation gate |
 | [Contributing](contributing.md) | Task, branch, review and completion rules |
 | [Role A responsibilities](role-a-responsibilities.md) | Ingestion, authentication, durable events, monitoring and handoffs |

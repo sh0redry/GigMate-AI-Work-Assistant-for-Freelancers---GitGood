@@ -2223,6 +2223,46 @@
       "title": "WahaControlResult",
       "type": "object"
     },
+    "WahaIssueReviewCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "confirmed_no_import": {
+          "title": "Confirmed No Import",
+          "type": "boolean"
+        },
+        "issue_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Issue Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "issue_ids",
+        "confirmed_no_import"
+      ],
+      "title": "WahaIssueReviewCommand",
+      "type": "object"
+    },
+    "WahaIssueReviewResult": {
+      "additionalProperties": false,
+      "properties": {
+        "reviewed": {
+          "minimum": 1,
+          "title": "Reviewed",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "reviewed"
+      ],
+      "title": "WahaIssueReviewResult",
+      "type": "object"
+    },
     "WahaSelectionCommand": {
       "additionalProperties": false,
       "properties": {

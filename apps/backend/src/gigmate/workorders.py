@@ -155,12 +155,10 @@ def confirm(db, account, work_order_id, change_id, command, key, request_id):
             task.data = {**task.data, "state": "cancelled"}
     task_id = str(uuid4())
     start = datetime.fromisoformat(schedule["start_at"]).astimezone(ZoneInfo(schedule["timezone"]))
-    ready_by = start - timedelta(hours=1)
-    due = (
-        (datetime.fromisoformat(schedule["start_at"]) - timedelta(hours=1))
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    # Derive display and persisted due from the same absolute instant across DST.
+    ready_instant = datetime.fromisoformat(schedule["start_at"]) - timedelta(hours=1)
+    ready_by = ready_instant.astimezone(ZoneInfo(schedule["timezone"]))
+    due = ready_instant.isoformat().replace("+00:00", "Z")
     task = validate(
         Task,
         {

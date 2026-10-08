@@ -226,6 +226,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/connectors/{connection_id}/recovery-issues/review": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Review Recovered Issues */
+    post: operations["review_recovered_issues_api_v1_connectors__connection_id__recovery_issues_review_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/connectors/{connection_id}/resume": {
     parameters: {
       query?: never;
@@ -794,6 +811,15 @@ export interface components {
        */
       request_id: string;
     };
+    /** Detail[WahaIssueReviewResult] */
+    Detail_WahaIssueReviewResult_: {
+      data: components["schemas"]["WahaIssueReviewResult"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
     /** Detail[WahaSetup] */
     Detail_WahaSetup_: {
       data: components["schemas"]["WahaSetup"];
@@ -1164,6 +1190,18 @@ export interface components {
         | "failed"
         | "result_unknown"
         | "cancelled";
+    };
+    /** WahaIssueReviewCommand */
+    WahaIssueReviewCommand: {
+      /** Confirmed No Import */
+      confirmed_no_import: boolean;
+      /** Issue Ids */
+      issue_ids: string[];
+    };
+    /** WahaIssueReviewResult */
+    WahaIssueReviewResult: {
+      /** Reviewed */
+      reviewed: number;
     };
     /** WahaSelectionCommand */
     WahaSelectionCommand: {
@@ -1686,6 +1724,41 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Page_RecoveryIssue_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  review_recovered_issues_api_v1_connectors__connection_id__recovery_issues_review_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WahaIssueReviewCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaIssueReviewResult_"];
         };
       };
       /** @description Validation Error */

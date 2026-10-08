@@ -213,6 +213,7 @@ def startup(env):
         with Session.begin() as db:
             binding = provision(db, config, "local-waha-webjs")
         save_binding(binding)
+    migrate_legacy_restart(binding)
     sync_private_config(config, binding)
     run(
         compose(
@@ -231,6 +232,65 @@ def startup(env):
         "services_started": True,
         "scan_or_status_next": True,
         "sending_enabled": False,
+    }
+
+
+def migrate_legacy_restart(binding):
+    """Preserve bridge uncertainty before enabling the canonical controller."""
+    path = (
+        ROOT
+        / "local-data/d01-operations"
+        / ("restart-" + binding.connection_id + ".json")
+    )
+    if not path.exists():
+        return {"legacy_imported": False}
+    private_path(path)
+    original = path.read_bytes()
+    record = json.loads(original.decode("utf-8"))
+    from gigmate.db import Session, Account
+    from gigmate import waha_controls
+    from types import SimpleNamespace
+    from sqlalchemy import select
+
+    with Session.begin() as db:
+        account = db.scalar(
+            select(Account).where(Account.id == binding.account_id).with_for_update()
+        )
+        if not account or not account.active:
+            raise TeamError("LEGACY_OWNER_UNAVAILABLE")
+        row = waha_controls.owned(
+            db, SimpleNamespace(id=binding.account_id), binding.connection_id, lock=True
+        )
+        identifier = waha_controls.import_legacy_restart(db, row, record)
+    if identifier:
+        if path.read_bytes() != original:
+            raise TeamError("LEGACY_RECORD_CHANGED_REVIEW_REQUIRED")
+        import tempfile
+
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=path.parent, delete=False
+            ) as file:
+                json.dump(
+                    {
+                        **record,
+                        "legacy_state": record["state"],
+                        "state": "migrated",
+                        "operation_id": identifier,
+                    },
+                    file,
+                )
+                file.flush()
+                os.fsync(file.fileno())
+                temporary = Path(file.name)
+            os.replace(temporary, path)
+        finally:
+            if temporary:
+                temporary.unlink(missing_ok=True)
+    return {
+        "legacy_imported": bool(identifier),
+        "reconciliation_required": bool(identifier),
     }
 
 
@@ -374,7 +434,16 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "command",
-        choices=["init", "up", "doctor", "checkpoint", "verify", "run", "stop"],
+        choices=[
+            "init",
+            "up",
+            "doctor",
+            "checkpoint",
+            "verify",
+            "run",
+            "stop",
+            "import-legacy",
+        ],
     )
     parser.add_argument("args", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
@@ -386,6 +455,12 @@ def main(argv=None):
             result = startup(env)
         elif args.command == "doctor":
             result = doctor(env)
+        elif args.command == "import-legacy":
+            os.environ["DATABASE_URL"] = env["DATABASE_URL"]
+            from scripts.waha_local import load_config
+            from scripts.waha_ingress import local_binding
+
+            result = migrate_legacy_restart(local_binding(load_config()))
         elif args.command in {"checkpoint", "verify"}:
             result = evidence(env, checkpoint=args.command == "checkpoint")
         elif args.command == "stop":

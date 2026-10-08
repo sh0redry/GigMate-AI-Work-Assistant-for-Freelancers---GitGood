@@ -1,5 +1,7 @@
 # Team local WAHA development and integration framework
 
+2026-10-08: after bootstrapping below, use the [merged integration guide](role-a-integration-acceptance.md) for the implemented browser setup/authorization and legacy journal upgrade. D now uses A's canonical backend; no local-pairing bridge is needed.
+
 Updated: 2026-10-06. [Chinese](../zh/role-a-team-local-development.md). Current capabilities: [handoff](role-a-waha-handoff.md). This batch provides developer tooling, not production onboarding, AI or sending. Cloud API is outside the current plan.
 
 ## Environment ownership

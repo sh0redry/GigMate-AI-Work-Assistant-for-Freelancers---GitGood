@@ -72,6 +72,48 @@ def version(row, expected):
         fail("WAHA_SETUP_VERSION_CONFLICT")
 
 
+def import_legacy_restart(db, row, record):
+    """Import unresolved development-bridge intent; never execute it."""
+    if record.get("state") not in {"submitting", "unknown"}:
+        return None
+    from uuid import UUID
+
+    try:
+        key = str(UUID(record["key"]))
+        at = datetime.fromisoformat(record["at"])
+        if at.tzinfo is None:
+            raise ValueError
+    except (KeyError, TypeError, ValueError):
+        fail("WAHA_LEGACY_RECORD_INVALID", 422)
+    request_key = "legacy-restart:" + key
+    previous = db.scalar(
+        select(WahaControl).where(
+            WahaControl.connection_id == row.id, WahaControl.request_key == request_key
+        )
+    )
+    if previous:
+        return previous.id
+    if db.scalar(select(WahaControl.id).where(WahaControl.active_key == row.id)):
+        fail("WAHA_LEGACY_REVIEW_REQUIRED")
+    row.control_version += 1
+    op = WahaControl(
+        id=str(uuid4()),
+        connection_id=row.id,
+        account_id=row.account_id,
+        request_key=request_key,
+        action="recover",
+        version=row.control_version,
+        state="result_unknown",
+        active_key=row.id,
+        created_at=at,
+        result={},
+        error_code="WAHA_LEGACY_RESTART_UNRESOLVED",
+    )
+    db.add(op)
+    db.flush()
+    return op.id
+
+
 def operation_view(op):
     return dict(
         id=op.id,
@@ -98,6 +140,15 @@ def setup_view(db, row):
     except BusinessError:
         available = False
     result = latest.result if latest else {}
+    if row.provider_observed_at and (
+        not result.get("provider_observed_at")
+        or row.provider_observed_at.replace(tzinfo=UTC)
+        > datetime.fromisoformat(result["provider_observed_at"].replace("Z", "+00:00"))
+    ):
+        result = {
+            "provider_state": row.provider_state,
+            "provider_observed_at": stamp(row.provider_observed_at),
+        }
     last = db.scalar(
         select(WahaControl)
         .where(WahaControl.connection_id == row.id)
@@ -129,7 +180,10 @@ def enqueue(db, row, command, key):
         )
     )
     if previous:
-        if previous.action != command.action or previous.version != command.expected_version + 1:
+        advances = command.action in {"connect", "recover"}
+        if previous.action != command.action or previous.version != command.expected_version + int(
+            advances
+        ):
             fail("IDEMPOTENCY_CONFLICT")
         return operation_view(previous)
     version(row, command.expected_version)
@@ -138,7 +192,8 @@ def enqueue(db, row, command, key):
         fail("CONNECTOR_PAUSED", 403)
     if db.scalar(select(WahaControl.id).where(WahaControl.active_key == row.id)):
         fail("WAHA_OPERATION_NEEDS_RECONCILIATION")
-    row.control_version += 1
+    if command.action in {"connect", "recover"}:
+        row.control_version += 1
     op = WahaControl(
         id=str(uuid4()),
         connection_id=row.id,
@@ -383,11 +438,12 @@ def run_once(factory=Session, *, make_client=client_for):
             op.state, op.active_key, op.error_code = "failed", None, "WAHA_CONTROL_CONFIG_INVALID"
             return True
     result, discovered, error = {}, [], None
+    sampled_at = datetime.now(UTC)
     try:
         observed, discovered = provider_action(client, binding, action, checking)
         result = {
             "provider_state": observed["state"],
-            "provider_observed_at": stamp(datetime.now(UTC)),
+            "provider_observed_at": stamp(sampled_at),
         }
     except (AdapterError, BusinessError) as exc:
         error = exc.code
@@ -399,20 +455,39 @@ def run_once(factory=Session, *, make_client=client_for):
         if db.bind.dialect.name == "postgresql":
             db.execute(text("SET LOCAL lock_timeout = '3s'"))
             db.execute(text("SET LOCAL statement_timeout = '5s'"))
-        db.scalar(select(Account).where(Account.id == account_id).with_for_update())
+        account = db.scalar(select(Account).where(Account.id == account_id).with_for_update())
         row = db.scalar(
             select(WahaConnection).where(WahaConnection.id == connection_id).with_for_update()
         )
         op = db.get(WahaControl, identifier)
         if op.state != "running" or op.lease_token != token:
             return True  # An expired owner must not finalize a later reconciliation.
-        if error:
+        if not account.active:
+            op.state, op.error_code = (
+                ("result_unknown" if action in {"connect", "recover"} else "cancelled"),
+                "CONSENT_REVOKED",
+            )
+        elif error:
             op.state = "result_unknown" if action in {"connect", "recover"} else "failed"
             op.error_code = error
         elif not checking and row.control_version != op.version:
-            op.state, op.error_code = "result_unknown", "WAHA_SETUP_CHANGED"
+            op.state, op.error_code = (
+                ("result_unknown" if action in {"connect", "recover"} else "failed"),
+                "WAHA_SETUP_CHANGED",
+            )
         else:
             op.state, op.result, op.error_code = "succeeded", result, None
+            if row.enabled:
+                from gigmate.waha_ingress import reconcile_state
+
+                reconcile_state(
+                    db,
+                    binding,
+                    result["provider_state"],
+                    now=datetime.fromisoformat(
+                        result["provider_observed_at"].replace("Z", "+00:00")
+                    ),
+                )
             if action == "discover":
                 db.execute(delete(WahaCandidate).where(WahaCandidate.connection_id == row.id))
                 for chat in discovered:

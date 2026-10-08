@@ -25,6 +25,8 @@ def domain_schema():
         c.WahaVersionCommand,
         c.WahaSelectionCommand,
         c.WahaChoice,
+        c.WahaIssueReviewCommand,
+        c.WahaIssueReviewResult,
         c.WahaControlResult,
         c.ProvenancedField,
         c.WorkOrder,

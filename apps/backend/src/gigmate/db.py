@@ -78,6 +78,8 @@ class WahaConnection(Base):
     session_id: Mapped[str] = mapped_column(String(128))
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     control_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    provider_state: Mapped[str | None] = mapped_column(String(32))
+    provider_observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     state: Mapped[str] = mapped_column(String(24), default="unknown")
     state_timestamp: Mapped[int | None] = mapped_column(BigInteger)
     state_received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

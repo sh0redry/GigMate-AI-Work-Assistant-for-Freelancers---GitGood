@@ -871,6 +871,25 @@
         "title": "Detail[WahaControlResult]",
         "type": "object"
       },
+      "Detail_WahaIssueReviewResult_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/WahaIssueReviewResult"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[WahaIssueReviewResult]",
+        "type": "object"
+      },
       "Detail_WahaSetup_": {
         "additionalProperties": false,
         "properties": {
@@ -1855,6 +1874,46 @@
         "title": "WahaControlResult",
         "type": "object"
       },
+      "WahaIssueReviewCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmed_no_import": {
+            "title": "Confirmed No Import",
+            "type": "boolean"
+          },
+          "issue_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Issue Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "issue_ids",
+          "confirmed_no_import"
+        ],
+        "title": "WahaIssueReviewCommand",
+        "type": "object"
+      },
+      "WahaIssueReviewResult": {
+        "additionalProperties": false,
+        "properties": {
+          "reviewed": {
+            "minimum": 1.0,
+            "title": "Reviewed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reviewed"
+        ],
+        "title": "WahaIssueReviewResult",
+        "type": "object"
+      },
       "WahaSelectionCommand": {
         "additionalProperties": false,
         "properties": {
@@ -2736,6 +2795,56 @@
           }
         },
         "summary": "Recovery Issues"
+      }
+    },
+    "/api/v1/connectors/{connection_id}/recovery-issues/review": {
+      "post": {
+        "operationId": "review_recovered_issues_api_v1_connectors__connection_id__recovery_issues_review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WahaIssueReviewCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WahaIssueReviewResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Recovered Issues"
       }
     },
     "/api/v1/connectors/{connection_id}/resume": {

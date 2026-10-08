@@ -10,7 +10,14 @@ from test_waha_ingress import ACCOUNT, ingress  # noqa: F401
 
 from gigmate import waha_controls as controls
 from gigmate.contracts import WahaControlCommand
-from gigmate.db import Account, ConversationRow, WahaCandidate, WahaControl
+from gigmate.db import (
+    Account,
+    ConversationRow,
+    WahaCandidate,
+    WahaConnection,
+    WahaControl,
+    WahaRecoveryIssue,
+)
 from gigmate.waha_adapter import AdapterError
 from gigmate.waha_client import LocalWahaConfig
 
@@ -191,7 +198,7 @@ def test_discover_choices_opaque_select_and_remove(setup):
     option = next(item for item in response.json()["data"] if item["label"] == "Synthetic contact")
     update = setup[0].put(
         path(setup, "chats"),
-        json={"expected_version": 1, "selected_ids": [option["id"]], "consent": True},
+        json={"expected_version": 0, "selected_ids": [option["id"]], "consent": True},
         headers=setup[2],
     )
     assert update.status_code == 200
@@ -213,7 +220,7 @@ def test_discover_choices_opaque_select_and_remove(setup):
         setup[0]
         .put(
             path(setup, "chats"),
-            json={"expected_version": 2, "selected_ids": [], "consent": True},
+            json={"expected_version": 1, "selected_ids": [], "consent": True},
             headers=setup[2],
         )
         .status_code
@@ -335,3 +342,124 @@ def test_postgres_concurrent_queue_single_intent(setup):
     assert len(set(identifiers)) == 1
     with setup[1]() as db:
         assert db.scalar(select(func.count()).select_from(WahaControl)) == 1
+
+
+def test_read_sampling_and_discovery_do_not_invalidate_authorization_version(setup):
+    command(setup, "inspect", key="read-1")
+    work(setup)
+    assert setup[0].get(path(setup, "setup")).json()["data"]["control_version"] == 0
+    command(setup, "discover", key="read-2")
+    work(setup)
+    value = setup[0].get(path(setup, "setup")).json()["data"]
+    assert value["control_version"] == 0 and value["provider_state"] == "WORKING"
+    assert value["provider_sample_stale"] is False
+
+
+def test_explicit_recovered_review_atomic_and_preserves_records(setup):
+    recovered, active = str(uuid4()), str(uuid4())
+    with setup[1].begin() as db:
+        for identifier, done in [(recovered, True), (active, False)]:
+            db.add(
+                WahaRecoveryIssue(
+                    id=identifier,
+                    connection_id=setup[3].connection_id,
+                    code="MONITOR_GAP",
+                    started_at=datetime.now(UTC),
+                    last_seen_at=datetime.now(UTC),
+                    recovered_at=datetime.now(UTC) if done else None,
+                    occurrences=1,
+                )
+            )
+    for ids, confirmed, expected in [
+        ([recovered], False, 422),
+        ([recovered, active], True, 409),
+        ([recovered, str(uuid4())], True, 404),
+    ]:
+        response = setup[0].post(
+            path(setup, "recovery-issues/review"),
+            json={"issue_ids": ids, "confirmed_no_import": confirmed},
+            headers=setup[2],
+        )
+        assert response.status_code == expected
+        with setup[1]() as db:
+            assert db.get(WahaRecoveryIssue, recovered).acknowledged_at is None
+    for _ in range(2):
+        response = setup[0].post(
+            path(setup, "recovery-issues/review"),
+            json={"issue_ids": [recovered], "confirmed_no_import": True},
+            headers=setup[2],
+        )
+        assert response.status_code == 200 and response.json()["data"]["reviewed"] == 1
+    with setup[1]() as db:
+        assert db.get(WahaRecoveryIssue, active).acknowledged_at is None
+        assert db.get(WahaRecoveryIssue, recovered).resolution == "reviewed_no_import"
+        assert db.scalar(select(func.count()).select_from(WahaRecoveryIssue)) == 2
+
+
+def test_issue_review_requires_csrf_and_owned_connection(setup):
+    response = setup[0].post(
+        path(setup, "recovery-issues/review"),
+        json={"issue_ids": [str(uuid4())], "confirmed_no_import": True},
+    )
+    assert response.status_code == 403
+    other = (
+        setup[0]
+        .post("/api/v1/auth/login", json={"username": "other", "password": "demo-only-change-me"})
+        .json()["data"]["csrf_token"]
+    )
+    response = setup[0].post(
+        path(setup, "recovery-issues/review"),
+        json={"issue_ids": [str(uuid4())], "confirmed_no_import": True},
+        headers={"X-CSRF-Token": other},
+    )
+    assert response.status_code == 404
+
+
+def test_discovery_revocation_during_fetch_cannot_store_choices(setup):
+    def revoked(**kwargs):
+        with setup[1].begin() as db:
+            db.get(Account, ACCOUNT).active = False
+        return [{"id": "synthetic:private@lid", "name": "Synthetic private"}]
+
+    setup[4].recent_chats = revoked
+    command(setup, "discover")
+    work(setup)
+    with setup[1]() as db:
+        assert db.scalar(select(WahaControl)).state == "cancelled"
+        assert db.scalar(select(func.count()).select_from(WahaCandidate)) == 0
+
+
+def test_late_provider_lookup_cannot_overwrite_newer_signed_state(setup):
+    def delayed():
+        with setup[1].begin() as db:
+            row = db.get(WahaConnection, setup[3].connection_id)
+            row.state = "connected"
+            row.state_timestamp = int(datetime.now(UTC).timestamp() * 1000) + 1000
+            row.provider_state = "WORKING"
+            row.provider_observed_at = datetime.now(UTC) + timedelta(seconds=1)
+        return {"state": "SCAN_QR_CODE"}
+
+    setup[4].status = delayed
+    command(setup, "inspect")
+    work(setup)
+    with setup[1]() as db:
+        assert db.get(WahaConnection, setup[3].connection_id).provider_state == "WORKING"
+
+
+def test_legacy_unknown_restart_import_blocks_canonical_writes_without_resend(setup):
+    record = {"state": "unknown", "key": str(uuid4()), "at": datetime.now(UTC).isoformat()}
+    with setup[1].begin() as db:
+        row = db.get(WahaConnection, setup[3].connection_id)
+        first = controls.import_legacy_restart(db, row, record)
+    with setup[1].begin() as db:
+        row = db.get(WahaConnection, setup[3].connection_id)
+        assert controls.import_legacy_restart(db, row, record) == first
+    assert command(setup, "recover", version=1, key="new-restart").status_code == 409
+    assert not work(setup) and not setup[4].calls
+
+
+def test_completed_legacy_restart_does_not_create_controller_intent(setup):
+    with setup[1].begin() as db:
+        row = db.get(WahaConnection, setup[3].connection_id)
+        assert controls.import_legacy_restart(db, row, {"state": "submitted"}) is None
+        assert row.control_version == 0
