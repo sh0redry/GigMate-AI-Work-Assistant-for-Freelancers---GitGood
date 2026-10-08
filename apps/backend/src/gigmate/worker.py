@@ -20,10 +20,18 @@ from gigmate.db import (
     WahaConnection,
     WorkOrderRow,
 )
+from gigmate.extraction import (
+    ExtractionRequest,
+    persist_changes_for,
+    persist_proposal,
+    provider,
+)
 from gigmate.understanding import extract
 from gigmate.waha_recovery import worker_heartbeat
 
 log = logging.getLogger("gigmate.worker")
+
+EXTRACTION_NEEDS_REVIEW = "EXTRACTION_NEEDS_REVIEW"
 
 
 def run_once(factory=Session):
@@ -97,8 +105,23 @@ def run_once(factory=Session):
             ):
                 job.state, job.error_code = "completed", "SOURCE_SUPERSEDED"
             elif event["connector"] == "waha":
-                # Real content must never run through fictional fixed extraction templates.
-                job.state, job.error_code = "completed", "LIVE_EXTRACTION_PENDING"
+                linked = list(
+                    db.scalars(
+                        select(ConversationOrder.work_order_id).where(
+                            ConversationOrder.conversation_id == conversation.id
+                        )
+                    )
+                )
+                matched = _route_through_provider(
+                    db,
+                    account=account,
+                    inbox=inbox,
+                    event=event,
+                    conversation=conversation,
+                    linked=linked,
+                )
+                job.state = "completed"
+                job.error_code = None if matched else EXTRACTION_NEEDS_REVIEW
             else:
                 linked = list(
                     db.scalars(
@@ -131,7 +154,6 @@ def run_once(factory=Session):
                         payload = RequirementChange.model_validate_json(
                             json.dumps(payload)
                         ).model_dump(mode="json")
-                        # Only proposals at the current accepted context remain actionable.
                         db.add(
                             ChangeRow(
                                 id=change_id,
@@ -144,7 +166,10 @@ def run_once(factory=Session):
                         )
                         order.data = {
                             **order.data,
-                            "pending_change_ids": [*order.data["pending_change_ids"], change_id],
+                            "pending_change_ids": [
+                                *order.data["pending_change_ids"],
+                                change_id,
+                            ],
                         }
                     job.state, job.error_code = (
                         "completed",
@@ -167,6 +192,74 @@ def run_once(factory=Session):
                 if job.state == "failed":
                     complete_metrics(job, db.get(Inbox, job.event_id), began)
     return True
+
+
+def _route_through_provider(
+    db,
+    *,
+    account: Account,
+    inbox: Inbox,
+    event: dict,
+    conversation: ConversationRow,
+    linked: list[str],
+) -> bool:
+    """Invoke the registered extraction provider and persist its evidence.
+
+    Returns ``True`` only when the proposal was matched and at least one
+    ``RequirementChange`` row was created. Real WhatsApp content currently
+    never reaches this point: the deterministic default provider recognizes
+    only the canonical synthetic fixtures used by the Replay smoke flow. A real
+    provider that wants to mark ``matched`` for live content must be a
+    separately authorized batch.
+    """
+    target_order_id: str | None = None
+    base_snapshot = None
+    base_version: int | None = None
+    if len(linked) == 1:
+        target = db.get(WorkOrderRow, linked[0])
+        if target is not None and target.account_id == account.id:
+            target_order_id = target.id
+            base_snapshot = target.data
+            base_version = target.data.get("version")
+    request = ExtractionRequest(
+        account_id=account.id,
+        conversation_id=conversation.id,
+        message_id=event["payload"]["message_id"],
+        message_revision=event["message_revision"],
+        message_text=event.get("payload", {}).get("text"),
+        context_version=conversation.context_version,
+        candidate_work_order_ids=tuple(linked),
+        base_work_order_version=base_version,
+        base_work_order_snapshot=base_snapshot,
+    )
+    outcome = provider().propose(request)
+    proposal_row = persist_proposal(
+        db,
+        account_id=account.id,
+        conversation_id=conversation.id,
+        event_id=inbox.id,
+        proposal=outcome.proposal,
+        outcome=outcome,
+    )
+    if outcome.proposal.assignment.value == "matched" and target_order_id is not None:
+        order = db.get(WorkOrderRow, target_order_id)
+        new_ids = persist_changes_for(
+            db,
+            proposal_row=proposal_row,
+            proposal=outcome.proposal,
+            account_id=account.id,
+            conversation_id=conversation.id,
+            work_order_id=target_order_id,
+            base_work_order_version=base_version,
+            work_order_field=order.data if order is not None else {},
+        )
+        if new_ids and order is not None:
+            order.data = {
+                **order.data,
+                "pending_change_ids": list(order.data.get("pending_change_ids", [])) + new_ids,
+            }
+            return True
+    return False
 
 
 def complete_metrics(job, inbox, began):

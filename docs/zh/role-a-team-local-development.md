@@ -80,7 +80,7 @@ WORKING 后只选择获同意的测试聊天：
 
 | 角色 | 接入位置与后续批次 | 必须保留的规则 |
 | --- | --- | --- |
-| B | worker.run_once 当前将可信 live 任务以 LIVE_EXTRACTION_PENDING 完成；获授权后替换此分支，接通通用抽取/提议。使用 Inbox 标准事件、MessageRow 来源修订、ConversationRow.context_version 和明确工单归属；understanding.extract 是 Replay 虚构桩，不是 live 模型。 | 多工单归属歧义需复核；仅当前上下文/来源可写提议；模型密钥留服务端。旧 completed 任务不会自动重新抽取，重处理需显式幂等设计。 |
+| B | live WAHA Job 现已路由到 `gigmate.extraction.provider()`，落库 `proposals` + `model_call_traces`；未知内容以 `EXTRACTION_NEEDS_REVIEW` 完成，取代原先的 `LIVE_EXTRACTION_PENDING`。范围、合约和评测见 [Role B 抽取子系统](role-b-extraction.md)。沿用 Inbox 标准事件、`MessageRow` 来源修订和 `ConversationRow.context_version`；`gigmate.understanding.extract` 仍是 Replay 入口。 | 多工单归属歧义需复核；仅当前上下文/来源可写提议；模型密钥留服务端。旧 completed 任务不会自动重新抽取，重处理需显式幂等设计。真实模型接入是后续单独授权批次。 |
 | C | messaging.ingest 推进上下文并使旧提议失效，workorders.confirm 管现有内部确认。先设计 actions/outbox/执行器/未知结果核对，再要求 WAHA 发送。 | 客户提议/确认/商户批准分开；批准快照、版本、有效期复核；未知结果不盲重发，当前没有外部 adapter。 |
 | D | GET /api/v1/connectors、隔离 recovery-issues、api.d.ts 中 ConnectorStatus/RecoveryIssue。Vite 当前代理 Replay API，切换 ingress 必须显式修改并验证 origin/鉴权；暂无产品二维码/选择接口。 | connected、pipeline_ready、stale、review_required 分开展示；采样不保证送达。与 A 先补服务端归属的接入 API，前端不得直接管理 WAHA。 |
 | E | team checkpoint/verify、smoke_waha_ingress、check_waha_recovery --run，记录干净克隆 SHA、版本、实际输出与缺陷。 | 独立评审；不提交真实正文/密钥/二维码，SQLite 不证明 PG 锁；Internet/注销/遗漏历史恢复另验。 |

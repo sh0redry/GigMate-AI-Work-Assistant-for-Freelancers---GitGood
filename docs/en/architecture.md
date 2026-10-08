@@ -34,7 +34,8 @@ Replay ingestion, durable worker, fixed extraction stub, internal confirmation, 
 | --- | --- | --- |
 | identity | Authentication, consent, allowlists | Trusted account context |
 | messaging | Sessions, normalized events, messages | Accepted context revisions and source references |
-| understanding | Assignment candidates, extraction, drafts | Proposals only; no confirmed writes or external tools |
+| understanding | Assignment candidates, extraction, drafts (Replay legacy) | Proposals only; no confirmed writes or external tools |
+| extraction | Provider interface, deterministic / disabled defaults, evaluation harness, persisted proposal evidence | Proposals and traces only; never execution authority. Real-model integration is a separately authorized batch. |
 | workorders | Work orders, changes, confirmation history | Versioned domain commands |
 | planning | Tasks, internal calendar, conflicts | Computed availability and approved formal writes |
 | actions | Approval snapshots, invalidation, outbox, reconciliation | Only external-write gateway |

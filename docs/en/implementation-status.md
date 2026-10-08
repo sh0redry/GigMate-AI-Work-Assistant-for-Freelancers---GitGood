@@ -156,3 +156,24 @@ The user authorized shared changes after commits `908855f` (offline adapter) and
 - Ruff check/format, export_contracts.py --check, baseline, frontend generate:api/check:api/format:check/build passed. Native Vite first encountered sandbox spawn EPERM; the authorized build outside that process restriction succeeded.
 - Independent local ingress/API, worker and monitor built and ran. Provider callback configuration changed, session recovered WORKING without rescan, and two real HMAC-authenticated status callbacks committed without jobs. `scripts/smoke_waha_ingress.py`: **six HTTP checks passed**, no real message content read. API/worker/monitor restart retained connection/mapping/receipt state and repeated smoke passed; monitor refreshed freshness.
 - Private ingress configuration, secrets, QR and session profiles remain ignored/untracked. Current callbacks use durable ingress rather than the volatile probe. Actual durable fresh text/edit/revoke/ACK and broader network recovery still require the user's consenting test chat and E's independent unified review. No commit/push this batch.
+
+## Role B extraction subsystem — 2026-10-08
+
+Branch `william/role-b-extraction-prompts-eval` (local, not pushed). Delivers the deterministic extraction provider plus an evaluation harness, durable proposal evidence and the WAHA-side hook replacing the prior `LIVE_EXTRACTION_PENDING` placeholder. Scope, contracts and evaluation format are documented in [docs/en/role-b-extraction.md](role-b-extraction.md) and the Chinese counterpart.
+
+- New Pydantic `ChangeProposal`, `ProposalChange`, `ProposalCandidate`, `AssignmentResult`, `EvaluationCase` and `EvaluationRun`; regenerated `contracts/domain/models.schema.json` with `python scripts/export_contracts.py --check` passing. OpenAPI and frontend types unchanged.
+- Migration `0005_extraction_evidence` adds `proposals`, `model_call_traces`, `evaluation_runs` and `evaluation_cases`. `0001..0004` untouched. `alembic upgrade head && alembic check` passes.
+- `gigmate.extraction` module ships `DeterministicProvider` (default) and `DisabledProvider`; selection via `GIGMATE_EXTRACTION_PROVIDER={deterministic,disabled}`; unknown names raise at startup. The Replay branch still calls `gigmate.understanding.extract` so `test_workflow` monkey-patching continues to work.
+- Worker WAHA branch now persists `proposals` + `model_call_traces` rows in the same transaction as the Job outcome. Unknown live content ends with `EXTRACTION_NEEDS_REVIEW` instead of `LIVE_EXTRACTION_PENDING`; nothing is written to `requirement_changes`. `test_waha_ingress::test_real_content_worker_never_calls_fictional_extractor` updated to assert the new error code.
+- `scripts/run_evaluation.py` plus `contracts/evaluation/manifest.json` (6 synthetic cases: known reschedule, known available, unknown live text, no-order linkage, multi-order ambiguity, prompt-injection). Local run with disposable SQLite: 6/6 cases pass; non-empty manifest requirement enforced.
+
+Verification on a disposable SQLite database after the Branch A-03 migrations were already upgraded to head:
+
+- `python -m ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py`: 0 errors.
+- `python -m ruff format --check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py`: 50 files already formatted.
+- `python scripts/export_contracts.py --check`: synchronized.
+- `python -m alembic -c apps/backend/alembic.ini check`: no new upgrade operations detected.
+- `python -m pytest apps/backend/tests -q --basetemp=/tmp/extraction_full`: 262 passed, 5 skipped (PostgreSQL row-locking tests require a real PG instance; SQLite does not prove those).
+- `python scripts/check_baseline.py`: 52 Markdown files, 253 local links, 3 schemas, 11 valid / 6 rejected fixtures, 12 synthetic scenarios.
+
+Not proved: production-grade model integration, prompt-injection regression for real providers, latency budget under load, real WhatsApp traffic through the new provider, E's independent signoff. The deterministic provider refuses unknown live content by design; lifting that guard is the next authorized batch.

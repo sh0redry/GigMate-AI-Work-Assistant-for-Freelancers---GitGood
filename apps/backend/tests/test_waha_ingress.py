@@ -305,7 +305,7 @@ def test_real_content_worker_never_calls_fictional_extractor(ingress, monkeypatc
     assert run_once(ingress[1])
     assert count(ingress[1], ChangeRow) == 0
     with ingress[1]() as db:
-        assert db.scalar(select(Job)).error_code == "LIVE_EXTRACTION_PENDING"
+        assert db.scalar(select(Job)).error_code == "EXTRACTION_NEEDS_REVIEW"
 
 
 def test_worker_checks_connector_revocation_and_reclaims_expired_lease(ingress):

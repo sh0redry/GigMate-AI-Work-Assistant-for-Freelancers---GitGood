@@ -5,6 +5,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -224,6 +225,72 @@ class CommandResult(Base):
     digest: Mapped[str] = mapped_column(String(64))
     data: Mapped[dict] = mapped_column(JSON)
     __table_args__ = (UniqueConstraint("account_id", "scope", "key", name="uq_command_key"),)
+
+
+class Proposal(Base):
+    __tablename__ = "proposals"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"), index=True)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"))
+    event_id: Mapped[str] = mapped_column(ForeignKey("inbox.id"), index=True)
+    work_order_id: Mapped[str | None] = mapped_column(ForeignKey("work_orders.id"))
+    assignment: Mapped[str] = mapped_column(String(24))
+    context_version: Mapped[int] = mapped_column(Integer)
+    base_work_order_version: Mapped[int | None] = mapped_column(Integer)
+    proposal: Mapped[dict] = mapped_column(JSON)
+    changes: Mapped[list] = mapped_column(JSON)
+    unresolved_questions: Mapped[list] = mapped_column(JSON)
+    model_version: Mapped[str] = mapped_column(String(64))
+    prompt_version: Mapped[str] = mapped_column(String(32))
+    draft_text: Mapped[str | None] = mapped_column(String(2048))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ModelCallTrace(Base):
+    __tablename__ = "model_call_traces"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    proposal_id: Mapped[str] = mapped_column(ForeignKey("proposals.id"), index=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"), index=True)
+    provider_name: Mapped[str] = mapped_column(String(48))
+    model_version: Mapped[str] = mapped_column(String(64))
+    prompt_version: Mapped[str] = mapped_column(String(32))
+    latency_ms: Mapped[int] = mapped_column(Integer)
+    refused_reason: Mapped[str | None] = mapped_column(String(256))
+    notes: Mapped[list] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class EvaluationRun(Base):
+    __tablename__ = "evaluation_runs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    account_id: Mapped[str] = mapped_column(String(36), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    provider_name: Mapped[str] = mapped_column(String(48))
+    model_version: Mapped[str] = mapped_column(String(64))
+    prompt_version: Mapped[str] = mapped_column(String(32))
+    case_count: Mapped[int] = mapped_column(Integer)
+    passed: Mapped[int] = mapped_column(Integer)
+    failed: Mapped[int] = mapped_column(Integer)
+    manifest_path: Mapped[str] = mapped_column(String(512))
+
+
+class EvaluationCaseRecord(Base):
+    __tablename__ = "evaluation_cases"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("evaluation_runs.id"), index=True)
+    account_id: Mapped[str] = mapped_column(String(36))
+    case_id: Mapped[str] = mapped_column(String(64))
+    scenario: Mapped[str] = mapped_column(String(128))
+    expected_assignment: Mapped[str] = mapped_column(String(24))
+    actual_assignment: Mapped[str] = mapped_column(String(24))
+    actual_confidence: Mapped[float] = mapped_column(Float)
+    expected_min_confidence: Mapped[float | None] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String(16))
+    expected_change_fields: Mapped[list] = mapped_column(JSON)
+    actual_change_fields: Mapped[list] = mapped_column(JSON)
+    message: Mapped[str | None] = mapped_column(String(512))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 def make_engine(url=DATABASE_URL):
