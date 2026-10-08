@@ -78,10 +78,97 @@ async function readProvider(root, id, kind) {
   }
 }
 
+function operate(root, id, kind, payload) {
+  // Session/CSRF credentials travel through stdin, never argv or shell commands.
+  return new Promise((accept, reject) => {
+    const child = execFile(
+      resolve(
+        root,
+        ".venv",
+        process.platform === "win32" ? "Scripts/python.exe" : "bin/python",
+      ),
+      [resolve(root, "apps/web/local-operations.py"), id, kind],
+      {
+        cwd: root,
+        encoding: "buffer",
+        timeout: 30000,
+        maxBuffer: 8192,
+        windowsHide: true,
+      },
+      (error, stdout) => {
+        if (!error) return accept(stdout);
+        let code =
+          error.code === "ENOENT"
+            ? "LOCAL_PYTHON_UNAVAILABLE"
+            : "LOCAL_OPERATION_RESULT_UNKNOWN";
+        let status = 503;
+        try {
+          const value = JSON.parse(stdout.toString()).error;
+          if (/^[A-Z_]{1,80}$/.test(value?.code)) code = value.code;
+          if ([401, 403, 404, 409, 422, 503].includes(value?.status))
+            status = value.status;
+        } catch {
+          /* Never expose stderr or private provider responses. */
+        }
+        reject(Object.assign(new Error(code), { status }));
+      },
+    );
+    child.stdin.on("error", () => {}); // Callback above reports early process exit.
+    child.stdin.end(JSON.stringify(payload));
+  });
+}
+
+const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
+async function readCommand(req, kind) {
+  if (req.headers.origin !== `http://${req.headers.host}`)
+    throw Object.assign(new Error("LOCAL_PAIRING_FORBIDDEN"), { status: 403 });
+  const csrf = req.headers["x-csrf-token"];
+  if (typeof csrf !== "string" || !/^[A-Za-z0-9_-]{1,256}$/.test(csrf))
+    throw Object.assign(new Error("CSRF_INVALID"), { status: 403 });
+  if (req.headers["content-type"] !== "application/json")
+    throw Object.assign(new Error("INVALID_LOCAL_OPERATION"), { status: 422 });
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > 8192)
+      throw Object.assign(new Error("INVALID_LOCAL_OPERATION"), {
+        status: 422,
+      });
+    chunks.push(chunk);
+  }
+  let value;
+  try {
+    value = JSON.parse(Buffer.concat(chunks).toString());
+  } catch {
+    throw Object.assign(new Error("INVALID_LOCAL_OPERATION"), { status: 422 });
+  }
+  const keys =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? Object.keys(value).sort().join(",")
+      : "";
+  if (
+    kind === "restart"
+      ? keys !== "key" || !uuid.test(value.key)
+      : keys !== "confirmed,issue_ids" ||
+        value.confirmed !== true ||
+        !Array.isArray(value.issue_ids) ||
+        value.issue_ids.length < 1 ||
+        value.issue_ids.length > 100 ||
+        value.issue_ids.some(
+          (id) => typeof id !== "string" || !uuid.test(id),
+        ) ||
+        new Set(value.issue_ids).size !== value.issue_ids.length
+  )
+    throw Object.assign(new Error("INVALID_LOCAL_OPERATION"), { status: 422 });
+  return { ...value, csrf };
+}
+
 export function localPairingMiddleware({
   target,
   root,
   provider = readProvider,
+  operator = operate,
   backendFetch = fetch,
 }) {
   // This bridge is deliberately restricted to Andy's existing local ingress.
@@ -113,11 +200,14 @@ export function localPairingMiddleware({
       req.headers["x-gigmate-local-pairing"] !== "1"
     )
       return fail(403, "LOCAL_PAIRING_FORBIDDEN");
-    if (req.method !== "GET") return fail(405, "METHOD_NOT_ALLOWED");
     const match = req.url.match(
-      /^\/__gigmate_local_pairing\/([a-f0-9-]{36})\/(status|qr)$/,
+      /^\/__gigmate_local_pairing\/([a-f0-9-]{36})\/(status|qr|restart|review-issues)$/,
     );
-    if (!match) return fail(404, "LOCAL_PAIRING_NOT_FOUND");
+    if (!match || !uuid.test(match[1]))
+      return fail(404, "LOCAL_PAIRING_NOT_FOUND");
+    const mutation = ["restart", "review-issues"].includes(match[2]);
+    if (req.method !== (mutation ? "POST" : "GET"))
+      return fail(405, "METHOD_NOT_ALLOWED");
     const token = req.headers.cookie?.match(
       /(?:^|;\s*)gigmate_session=([A-Za-z0-9_-]+)(?:;|$)/,
     )?.[1];
@@ -148,17 +238,37 @@ export function localPairingMiddleware({
       return [404, "LOCAL_BINDING_MISMATCH"];
     };
     try {
+      const command = mutation ? await readCommand(req, match[2]) : null;
       const denied = await owned();
       if (denied) return fail(...denied);
       if (active >= 2) return fail(429, "LOCAL_PAIRING_BUSY");
       active++;
       let data;
       try {
-        data = await provider(root, match[1], match[2]);
+        data = mutation
+          ? await operator(root, match[1], match[2], { ...command, token })
+          : await provider(root, match[1], match[2]);
       } finally {
         active--;
       }
-      // Do not return a QR if the app login/consent expired during retrieval.
+      // The Python mutation revalidates identity/CSRF/owner under the account lock.
+      // Read responses additionally revalidate permission after retrieval.
+      if (mutation) {
+        const value = JSON.parse(data.toString());
+        const safe =
+          match[2] === "restart"
+            ? value.restart_requested === true &&
+              typeof value.duplicate === "boolean"
+              ? { restart_requested: true, duplicate: value.duplicate }
+              : null
+            : Number.isInteger(value.reviewed) &&
+                value.reviewed === command.issue_ids.length
+              ? { reviewed: value.reviewed }
+              : null;
+        if (!safe) return fail(502, "LOCAL_OPERATION_RESULT_UNKNOWN");
+        res.setHeader("Content-Type", "application/json");
+        return res.end(JSON.stringify(safe));
+      }
       const expired = await owned();
       if (expired) return fail(...expired);
       if (match[2] === "qr") {
@@ -191,7 +301,14 @@ export function localPairingMiddleware({
       const code = /^[A-Z_]{1,80}$/.test(error.message)
         ? error.message
         : "LOCAL_PAIRING_UNAVAILABLE";
-      fail(code === "WAHA_NOT_WAITING_FOR_QR" ? 409 : 503, code);
+      fail(
+        [401, 403, 404, 409, 422, 503].includes(error.status)
+          ? error.status
+          : code === "WAHA_NOT_WAITING_FOR_QR"
+            ? 409
+            : 503,
+        code,
+      );
     }
   };
 }

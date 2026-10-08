@@ -21,9 +21,28 @@ const status = Buffer.from(
 
 async function fixture(t, options = {}) {
   let calls = 0;
+  let operations = 0;
   const middleware = localPairingMiddleware({
     target: "http://127.0.0.1:18702",
     root: "/synthetic-workspace",
+    operator: async (_root, selected, kind, payload) => {
+      operations++;
+      assert.equal(selected, id);
+      assert.equal(payload.token, "synthetic-test");
+      assert.equal(payload.csrf, "synthetic-csrf");
+      if (options.operator) return options.operator(kind, payload);
+      return Buffer.from(
+        JSON.stringify(
+          kind === "restart"
+            ? {
+                restart_requested: true,
+                duplicate: false,
+                secret: "must-not-leak",
+              }
+            : { reviewed: payload.issue_ids.length },
+        ),
+      );
+    },
     provider: options.useRealProvider
       ? undefined
       : async (_root, selected, kind) => {
@@ -62,7 +81,8 @@ async function fixture(t, options = {}) {
   const origin = `http://127.0.0.1:${server.address().port}`;
   return {
     calls: () => calls,
-    request: (kind = "qr", headers = {}, selected = id, method = "GET") =>
+    operations: () => operations,
+    request: (kind = "qr", headers = {}, selected = id, method = "GET", body) =>
       new Promise((resolve, reject) => {
         const req = request(
           `${origin}/__gigmate_local_pairing/${selected}/${kind}`,
@@ -71,6 +91,13 @@ async function fixture(t, options = {}) {
             headers: {
               "X-GigMate-Local-Pairing": "1",
               Cookie: "gigmate_session=synthetic-test",
+              ...(method === "POST"
+                ? {
+                    Origin: origin,
+                    "Content-Type": "application/json",
+                    "X-CSRF-Token": "synthetic-csrf",
+                  }
+                : {}),
               ...headers,
             },
           },
@@ -89,7 +116,13 @@ async function fixture(t, options = {}) {
           },
         );
         req.on("error", reject);
-        req.end();
+        req.end(
+          typeof body === "string"
+            ? body
+            : body === undefined
+              ? undefined
+              : JSON.stringify(body),
+        );
       }),
   };
 }
@@ -107,6 +140,98 @@ test("owned authenticated reads return a private PNG and safe status only", asyn
     connected: false,
     qr_available: true,
   });
+});
+
+test("local recovery commands require same-origin POST, CSRF and strict explicit payloads", async (t) => {
+  const f = await fixture(t);
+  const body = { key: other };
+  for (const [headers, value, expected] of [
+    [{ Origin: "" }, body, 403],
+    [{ "X-CSRF-Token": "" }, body, 403],
+    [{ Cookie: "" }, body, 401],
+    [{ "Content-Type": "text/plain" }, body, 422],
+    [{}, { key: other, command: "arbitrary" }, 422],
+    [{}, { key: "../../private" }, 422],
+    [{}, "{", 422],
+    [{}, "x".repeat(8193), 422],
+  ])
+    assert.equal(
+      (await f.request("restart", headers, id, "POST", value)).status,
+      expected,
+    );
+  assert.equal((await f.request("restart")).status, 405);
+  for (const value of [
+    { confirmed: false, issue_ids: [other] },
+    { confirmed: true, issue_ids: [] },
+    { confirmed: true, issue_ids: [other, other] },
+  ])
+    assert.equal(
+      (await f.request("review-issues", {}, id, "POST", value)).status,
+      422,
+    );
+  assert.equal(f.operations(), 0);
+  assert.deepEqual(
+    await (await f.request("restart", {}, id, "POST", body)).json(),
+    { restart_requested: true, duplicate: false },
+  );
+  assert.deepEqual(
+    await (
+      await f.request("review-issues", {}, id, "POST", {
+        confirmed: true,
+        issue_ids: [other],
+      })
+    ).json(),
+    { reviewed: 1 },
+  );
+});
+
+test("ownership, paused permission and server-side CSRF failures prevent recovery writes", async (t) => {
+  const denied = await fixture(t, {
+    backendFetch: async () =>
+      Response.json({ items: [{ id, enabled: false }] }),
+  });
+  assert.equal(
+    (await denied.request("restart", {}, id, "POST", { key: other })).status,
+    403,
+  );
+  assert.equal(denied.operations(), 0);
+  const f = await fixture(t, {
+    operator: () => {
+      throw Object.assign(new Error("CSRF_REJECTED"), { status: 403 });
+    },
+  });
+  assert.equal(
+    (await f.request("restart", {}, other, "POST", { key: other })).status,
+    404,
+  );
+  assert.equal(f.operations(), 0);
+  const result = await f.request("restart", {}, id, "POST", { key: other });
+  assert.equal(result.status, 403);
+  assert.equal((await result.json()).error.code, "CSRF_REJECTED");
+});
+
+test("uncertain recovery outcomes stay explicit and are never retried by middleware", async (t) => {
+  const f = await fixture(t, {
+    operator: () => {
+      throw Object.assign(new Error("WAHA_RESULT_UNKNOWN"), { status: 409 });
+    },
+  });
+  assert.equal(
+    (await f.request("restart", {}, id, "POST", { key: other })).status,
+    409,
+  );
+  assert.equal(f.operations(), 1);
+  const malformed = await fixture(t, {
+    operator: () => Buffer.from('{"restart_requested":false}'),
+  });
+  const result = await malformed.request("restart", {}, id, "POST", {
+    key: other,
+  });
+  assert.equal(result.status, 502);
+  assert.equal(
+    (await result.json()).error.code,
+    "LOCAL_OPERATION_RESULT_UNKNOWN",
+  );
 });
 
 test("unauthenticated, foreign origins, rebinding hosts and other connections never reach provider", async (t) => {

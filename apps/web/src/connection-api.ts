@@ -35,6 +35,7 @@ export interface ConnectionApi {
     pairing: boolean;
     start: boolean;
     selection: boolean;
+    recovery: boolean;
   };
   connectors(): Promise<Connector[]>;
   pairing(id: string): Promise<Pairing>;
@@ -49,9 +50,11 @@ export interface ConnectionApi {
     key: string,
   ): Promise<Selection>;
   issues(id: string): Promise<Issue[]>;
+  restart(id: string, key: string): Promise<void>;
+  reviewIssues(id: string, issueIds: string[]): Promise<number>;
 }
 
-export function liveConnectionApi(): ConnectionApi {
+export function liveConnectionApi(csrf: string): ConnectionApi {
   const localPairing =
     import.meta.env.DEV && import.meta.env.GIGMATE_LOCAL_PAIRING === true;
   async function request<T>(path: string): Promise<T> {
@@ -78,13 +81,24 @@ export function liveConnectionApi(): ConnectionApi {
     );
   }
   const base = (id: string) => `/connectors/${encodeURIComponent(id)}`;
-  async function localRequest(id: string, kind: "status" | "qr") {
+  async function localRequest(
+    id: string,
+    kind: "status" | "qr" | "restart" | "review-issues",
+    body?: object,
+  ) {
     const response = await fetch(
       `/__gigmate_local_pairing/${encodeURIComponent(id)}/${kind}`,
       {
         credentials: "same-origin",
         cache: "no-store",
-        headers: { "X-GigMate-Local-Pairing": "1" },
+        method: body ? "POST" : "GET",
+        headers: {
+          "X-GigMate-Local-Pairing": "1",
+          ...(body
+            ? { "Content-Type": "application/json", "X-CSRF-Token": csrf }
+            : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
       },
     );
     if (!response.ok) {
@@ -99,7 +113,28 @@ export function liveConnectionApi(): ConnectionApi {
     return response;
   }
   return {
-    capabilities: { pairing: localPairing, start: false, selection: false },
+    capabilities: {
+      pairing: localPairing,
+      start: false,
+      selection: false,
+      recovery: localPairing && !!csrf,
+    },
+    restart: localPairing
+      ? async (id, key) => {
+          await localRequest(id, "restart", { key });
+        }
+      : pending,
+    reviewIssues: localPairing
+      ? async (id, issueIds) => {
+          const result = (await (
+            await localRequest(id, "review-issues", {
+              issue_ids: issueIds,
+              confirmed: true,
+            })
+          ).json()) as { reviewed: number };
+          return result.reviewed;
+        }
+      : pending,
     async connectors() {
       const result: Connector[] = [];
       let cursor: string | null = null;
@@ -172,6 +207,8 @@ export function demoConnectionApi(): ConnectionApi & {
   }));
   let connected = false,
     stale = false,
+    failed = false,
+    reviewed = false,
     version = 1,
     selected: Choice[] = [];
   const health = {
@@ -219,10 +256,16 @@ export function demoConnectionApi(): ConnectionApi & {
     selected: selected.map((c) => ({ ...c, selected: true })),
   });
   return {
-    capabilities: { pairing: true, start: true, selection: true },
+    capabilities: {
+      pairing: true,
+      start: true,
+      selection: true,
+      recovery: true,
+    },
     connect(value) {
       connected = value;
       stale = false;
+      failed = !value;
     },
     stale() {
       stale = true;
@@ -232,10 +275,18 @@ export function demoConnectionApi(): ConnectionApi & {
     },
     async pairing() {
       return {
-        state: connected ? "WORKING" : "SCAN_QR_CODE",
+        state: connected ? "WORKING" : failed ? "FAILED" : "SCAN_QR_CODE",
         connected,
-        qr_available: !connected,
+        qr_available: !connected && !failed,
       };
+    },
+    async restart() {
+      failed = false;
+      stale = false;
+    },
+    async reviewIssues(_id, ids) {
+      reviewed = true;
+      return ids.length;
     },
     async start() {
       return this.pairing("");
@@ -263,21 +314,38 @@ export function demoConnectionApi(): ConnectionApi & {
       return view();
     },
     async issues() {
-      return stale
-        ? [
-            {
-              id: "00000000-0000-4000-8000-000000000098",
-              connection_id: connector().id,
-              code: "PROVIDER_UNAVAILABLE",
-              started_at: "2026-10-06T08:00:00Z",
-              last_seen_at: "2026-10-06T08:00:00Z",
-              recovered_at: null,
-              acknowledged_at: null,
-              resolution: null,
-              occurrences: 1,
-            },
-          ]
-        : [];
+      return [
+        ...(!reviewed
+          ? [
+              {
+                id: "00000000-0000-4000-8000-000000000097",
+                connection_id: connector().id,
+                code: "MONITOR_GAP",
+                started_at: "2026-10-06T07:00:00Z",
+                last_seen_at: "2026-10-06T07:05:00Z",
+                recovered_at: "2026-10-06T07:05:00Z",
+                acknowledged_at: null,
+                resolution: null,
+                occurrences: 1,
+              },
+            ]
+          : []),
+        ...(stale || failed
+          ? [
+              {
+                id: "00000000-0000-4000-8000-000000000098",
+                connection_id: connector().id,
+                code: "PROVIDER_UNAVAILABLE",
+                started_at: "2026-10-06T08:00:00Z",
+                last_seen_at: "2026-10-06T08:00:00Z",
+                recovered_at: null,
+                acknowledged_at: null,
+                resolution: null,
+                occurrences: 1,
+              },
+            ]
+          : []),
+      ];
     },
   };
 }

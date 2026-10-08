@@ -10,6 +10,7 @@ import {
   type Selection,
 } from "./connection-api";
 import "./connection.css";
+import { connectionState, pendingIssues } from "./connection-state";
 
 const states: Record<string, string> = {
   unknown: "状态未知",
@@ -30,7 +31,8 @@ const errors: Record<string, string> = {
   CONNECTOR_CONFIG_INVALID: "连接配置与账号不匹配，请联系接入负责人检查。",
   WAHA_RESOURCE_NOT_FOUND: "WhatsApp 会话尚未创建，请先准备本机服务后刷新。",
   WAHA_UNAVAILABLE: "WhatsApp 服务暂不可用，请检查服务后刷新。",
-  WAHA_RESULT_UNKNOWN: "启动结果未知，请先刷新状态，再决定是否继续。",
+  WAHA_ENGINE_MISMATCH:
+    "本机会话未启动或服务引擎信息不匹配，请联系接入负责人恢复服务后刷新。",
   WAHA_NOT_WAITING_FOR_QR: "二维码已失效或扫码完成，请刷新状态。",
   WAHA_NOT_CONNECTED: "WhatsApp 尚未连接，连接后才能发现新会话。",
   VERSION_CONFLICT: "授权已在其他窗口更新。请重新载入并核对，再保存。",
@@ -47,25 +49,49 @@ const errors: Record<string, string> = {
     "未找到项目 Python 环境，请按本地启动指南准备 .venv。",
   LOCAL_PAIRING_DEPENDENCIES_MISSING:
     "项目 Python 依赖缺失，请按本地启动指南安装锁定依赖。",
+  CSRF_INVALID: "本机操作验证失败，请退出后重新登录。",
+  CSRF_REJECTED: "本机操作验证失败，请退出后重新登录。",
+  WAHA_RESULT_UNKNOWN:
+    "重连结果尚不确定。请刷新状态核对，不要重复重连；仍无法确认时请联系接入负责人。",
+  LOCAL_OPERATION_RESULT_UNKNOWN:
+    "操作结果尚不确定，请刷新状态核对，暂勿重复操作。",
+  WAHA_RECOVERY_NOT_REQUIRED: "会话状态已变化，无需重连。请刷新状态。",
+  LOCAL_RESTART_COOLDOWN: "刚刚已请求重连，请等待至少 30 秒并刷新状态。",
+  COMPONENT_STILL_UNAVAILABLE: "所选故障尚未恢复，不能清除。请刷新后检查。",
+  REVIEW_CONFIRMATION_REQUIRED: "请先核对故障时段，并确认无需导入历史消息。",
+  REVIEW_ALREADY_RECORDED:
+    "此故障已有其他核对结论，请刷新后检查，不能覆盖原结论。",
 };
 const mergeChoices = (a: Choice[], b: Choice[]) => [
   ...new Map([...a, ...b].map((c) => [c.choice_id, c])).values(),
 ];
 const sameSelection = (a: string[], b: Choice[]) =>
   a.length === b.length && b.every((c) => a.includes(c.choice_id));
+const issueLabels: Record<string, string> = {
+  MONITOR_GAP: "监测中断时段",
+  PROVIDER_UNAVAILABLE: "WhatsApp 服务不可用",
+  API_UNAVAILABLE: "接入服务不可用",
+  WORKER_UNAVAILABLE: "消息处理服务不可用",
+};
 
 export function ConnectionWorkspace({
   demo = false,
+  csrf = "",
   onSessionExpired,
 }: {
   demo?: boolean;
+  csrf?: string;
   onSessionExpired?: () => void;
 }) {
   const simulator = useMemo(() => (demo ? demoConnectionApi() : null), [demo]);
-  const api = useMemo(() => simulator ?? liveConnectionApi(), [simulator]);
+  const api = useMemo(
+    () => simulator ?? liveConnectionApi(csrf),
+    [simulator, csrf],
+  );
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [statusLoaded, setStatusLoaded] = useState(false);
   const [statusFetchFailed, setStatusFetchFailed] = useState(false);
+  const [pairingFetchFailed, setPairingFetchFailed] = useState(false);
   const [id, setId] = useState("");
   const [pairing, setPairing] = useState<Pairing | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
@@ -74,6 +100,9 @@ export function ConnectionWorkspace({
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [issues, setIssues] = useState<Issue[]>([]);
+  const [reviewSnapshot, setReviewSnapshot] = useState<string[]>([]);
+  const [issuesFetchFailed, setIssuesFetchFailed] = useState(false);
+  const [issuesLoaded, setIssuesLoaded] = useState(false);
   const [qr, setQr] = useState<string | null>(null);
   const [qrTime, setQrTime] = useState<number | null>(null);
   const [qrAge, setQrAge] = useState(0);
@@ -86,10 +115,32 @@ export function ConnectionWorkspace({
   const qrRequest = useRef(0);
   const qrLoading = useRef(false);
   const saveAttempt = useRef<{ signature: string; key: string } | null>(null);
+  const restartAttempt = useRef<string | null>(null);
   const connector = connectors.find((c) => c.id === id);
-  const connected = api.capabilities.pairing
-    ? !!pairing?.connected
-    : !!connector?.live_connected && !connector.stale && !statusFetchFailed;
+  const uncertain =
+    !!connector?.stale ||
+    statusFetchFailed ||
+    pairingFetchFailed ||
+    (api.capabilities.pairing && !pairing);
+  const connected =
+    !!connector?.enabled &&
+    !uncertain &&
+    (api.capabilities.pairing
+      ? !!pairing?.connected
+      : !!connector?.live_connected);
+  const presentation = connectionState({
+    enabled: !!connector?.enabled,
+    uncertain,
+    connected,
+    state: pairing?.state ?? connector?.state,
+  });
+  const pending = pendingIssues(issues);
+  const recovered = pending.filter((issue) => !!issue.recovered_at);
+  const reviewIds = recovered.slice(0, 100).map((issue) => issue.id);
+  const reviewConfirmed =
+    reviewSnapshot.length > 0 &&
+    reviewSnapshot.every((value) => reviewIds.includes(value)) &&
+    reviewSnapshot.length === reviewIds.length;
   const dirty = !!selection && !sameSelection(picked, selection.selected);
   const clearQr = useCallback(() => {
     qrRequest.current++;
@@ -148,28 +199,46 @@ export function ConnectionWorkspace({
       setChoices([]);
       setPicked([]);
       setIssues([]);
+      setIssuesLoaded(false);
       setNextOffset(null);
       saveAttempt.current = null;
+      restartAttempt.current = null;
+      setReviewSnapshot([]);
       clearQr();
       return;
     }
     if (!current) return;
+    if (!list.find((item) => item.id === current)?.enabled) clearQr();
     if (api.capabilities.pairing) {
       try {
         const p = await api.pairing(current);
         if (stamp !== epoch.current) return;
         setPairing(p);
-        if (!p.qr_available) clearQr();
+        setPairingFetchFailed(false);
+        if (["SCAN_QR_CODE", "WORKING"].includes(p.state))
+          restartAttempt.current = null;
+        if (!p.qr_available || list.find((item) => item.id === current)?.stale)
+          clearQr();
       } catch (e) {
         if (stamp === epoch.current) {
           setPairing(null);
+          setPairingFetchFailed(true);
           clearQr();
           report(e);
         }
       }
     }
-    const records = await api.issues(current);
-    if (stamp === epoch.current) setIssues(records);
+    try {
+      const records = await api.issues(current);
+      if (stamp === epoch.current) {
+        setIssues(records);
+        setIssuesFetchFailed(false);
+        setIssuesLoaded(true);
+      }
+    } catch (error) {
+      if (stamp === epoch.current) setIssuesFetchFailed(true);
+      throw error;
+    }
   }, [api, id, clearQr, report]);
 
   const loadQr = useCallback(async () => {
@@ -237,6 +306,8 @@ export function ConnectionWorkspace({
       demo ||
       !pairing?.qr_available ||
       statusFetchFailed ||
+      connector?.stale ||
+      pairingFetchFailed ||
       !connector?.enabled
     )
       return;
@@ -254,6 +325,8 @@ export function ConnectionWorkspace({
     demo,
     pairing?.qr_available,
     statusFetchFailed,
+    connector?.stale,
+    pairingFetchFailed,
     connector?.enabled,
     loadQr,
     report,
@@ -279,6 +352,26 @@ export function ConnectionWorkspace({
     } finally {
       setBusy(false);
     }
+  }
+  async function reconnect() {
+    clearQr();
+    restartAttempt.current ??= crypto.randomUUID();
+    await api.restart(id, restartAttempt.current);
+    restartAttempt.current = null;
+    await refreshStatus();
+    setNotice(
+      demo
+        ? "模拟重连完成。真实模式将自动显示新二维码。"
+        : "已请求重连。二维码准备好后会自动显示，请稍候。",
+    );
+  }
+  async function clearRecovered() {
+    const count = await api.reviewIssues(id, reviewSnapshot);
+    setReviewSnapshot([]);
+    await refreshStatus();
+    setNotice(
+      `已清除 ${count} 项已恢复故障的待核对标记；历史记录保留，未恢复故障仍需处理。`,
+    );
   }
   async function loadSelection() {
     const stamp = epoch.current;
@@ -442,6 +535,9 @@ export function ConnectionWorkspace({
               setChoices([]);
               setPicked([]);
               setIssues([]);
+              setIssuesLoaded(false);
+              setReviewSnapshot([]);
+              restartAttempt.current = null;
               setNextOffset(null);
               saveAttempt.current = null;
               setNotice("");
@@ -479,17 +575,20 @@ export function ConnectionWorkspace({
       ) : (
         <div className="connection-columns">
           <div className="connection-left">
-            <section className="panel pairing-panel">
+            <section
+              className={`panel pairing-panel connection-${presentation.tone}`}
+            >
               <div className="section-heading">
-                <h2>连接 WhatsApp</h2>
+                <h2 aria-live="polite">{presentation.title}</h2>
                 <span className={`status-dot ${connected ? "online" : ""}`}>
-                  {connector.stale || statusFetchFailed
+                  {uncertain
                     ? "状态待确认"
                     : pairing
                       ? (states[pairing.state] ?? "状态未知")
                       : states[connector.state]}
                 </span>
               </div>
+              <p className="connection-guidance">{presentation.help}</p>
               <div className={`qr-stage ${connected ? "qr-connected" : ""}`}>
                 {!api.capabilities.pairing ? (
                   <>
@@ -511,7 +610,7 @@ export function ConnectionWorkspace({
                         : "无需再次扫码；会话选择仍待接入。"}
                     </p>
                   </>
-                ) : qr ? (
+                ) : qr && !uncertain && connector.enabled ? (
                   <>
                     <img
                       src={qr}
@@ -533,74 +632,85 @@ export function ConnectionWorkspace({
                     <div className="scan-mark" aria-hidden="true">
                       ⌗
                     </div>
-                    <strong>{demo ? "扫码界面预览" : "等待获取二维码"}</strong>
+                    <strong>
+                      {uncertain
+                        ? "请先确认连接状态"
+                        : presentation.action === "restart"
+                          ? "连接已断开，需要重新连接"
+                          : demo
+                            ? "扫码界面预览"
+                            : "等待获取二维码"}
+                    </strong>
                     <p>
-                      {demo
-                        ? "此区域展示真实二维码的位置"
-                        : pairing?.qr_available
-                          ? "正在加载本机二维码，也可点击「获取二维码」重试"
-                          : "等待本机服务准备扫码，请刷新状态"}
+                      {uncertain
+                        ? "刷新状态后再获取二维码，避免使用旧的扫码信息。"
+                        : presentation.action === "restart"
+                          ? "点击下方「重新连接并获取二维码」，无需运行命令。"
+                          : demo
+                            ? "此区域展示真实二维码的位置"
+                            : pairing?.qr_available
+                              ? "正在加载本机二维码，也可点击「获取二维码」重试"
+                              : "等待本机服务准备扫码，请刷新状态"}
                     </p>
                   </>
                 )}
               </div>
-              {api.capabilities.pairing && !connected && (
+              {api.capabilities.pairing && presentation.action === "qr" && (
                 <ol className="scan-guide">
                   <li>手机打开 WhatsApp → 关联设备</li>
                   <li>选择「关联设备」，扫描这里的二维码</li>
                 </ol>
               )}
               <div className="connection-actions">
+                {presentation.action === "restart" && (
+                  <button
+                    disabled={busy || !api.capabilities.recovery}
+                    onClick={() => void act(reconnect)}
+                  >
+                    {busy ? "正在重连…" : "重新连接并获取二维码"}
+                  </button>
+                )}
+                {presentation.action === "qr" && (
+                  <button
+                    disabled={busy || !api.capabilities.pairing || demo}
+                    onClick={() => void act(loadQr)}
+                  >
+                    {qr ? "刷新二维码" : "获取二维码"}
+                  </button>
+                )}
                 <button
-                  disabled={
-                    busy ||
-                    !api.capabilities.start ||
-                    pairing?.connected ||
-                    pairing?.qr_available ||
-                    pairing?.state === "STARTING"
+                  className={
+                    presentation.action === "refresh" ? "" : "secondary"
                   }
-                  onClick={() =>
-                    void act(async () => {
-                      setPairing(await api.start(id, crypto.randomUUID()));
-                      await refreshStatus();
-                    })
-                  }
-                >
-                  启动连接
-                </button>
-                <button
-                  className="secondary"
-                  disabled={
-                    busy ||
-                    !api.capabilities.pairing ||
-                    !pairing?.qr_available ||
-                    demo
-                  }
-                  onClick={() => void act(loadQr)}
-                >
-                  {qr ? "刷新二维码" : "获取二维码"}
-                </button>
-                <button
-                  className="secondary"
                   disabled={busy}
                   onClick={() => void act(refreshStatus)}
                 >
                   刷新状态
                 </button>
               </div>
+              {presentation.action === "restart" &&
+                !api.capabilities.recovery && (
+                  <p className="subtle">
+                    一键重连需要已启用的本机开发服务及有效登录；正式接入接口待提供。
+                  </p>
+                )}
             </section>
             <section className="panel health-panel">
               <h2>连接与处理状态</h2>
               <dl>
                 <div>
                   <dt>WhatsApp 会话</dt>
-                  <dd>
-                    {connector.live_connected ? "已连接" : "未连接或待确认"}
-                  </dd>
+                  <dd>{connected ? "已连接" : "未连接或待确认"}</dd>
                 </div>
                 <div>
                   <dt>处理链路</dt>
-                  <dd>{connector.pipeline_ready ? "采样就绪" : "尚未就绪"}</dd>
+                  <dd>
+                    {uncertain
+                      ? "待重新确认"
+                      : connector.pipeline_ready
+                        ? "采样就绪"
+                        : "尚未就绪"}
+                  </dd>
                 </div>
                 <div>
                   <dt>状态新鲜度</dt>
@@ -635,22 +745,91 @@ export function ConnectionWorkspace({
                 <div>
                   <dt>故障核对</dt>
                   <dd>
-                    {connector.review_required
-                      ? `${connector.unresolved_issues} 项待核对`
-                      : "无待核对项"}
+                    {issuesFetchFailed
+                      ? "查询失败，需刷新"
+                      : !issuesLoaded
+                        ? "正在查询"
+                        : `${pending.length} 项待核对`}
                   </dd>
                 </div>
               </dl>
-              {issues
-                .filter((i) => !i.acknowledged_at)
-                .map((i) => (
-                  <div className="issue-note" key={i.id}>
-                    待核对：{i.code}
-                    <small>
-                      恢复连接不会自动清除历史缺口，需由操作者核对。
-                    </small>
-                  </div>
-                ))}
+              {[false, true].map((restored) => {
+                const group = pending.filter(
+                  (issue) => !!issue.recovered_at === restored,
+                );
+                return (
+                  group.length > 0 && (
+                    <details className="issue-note" key={String(restored)}>
+                      <summary>
+                        {restored ? "已恢复，等待核对" : "尚未恢复，暂不能清除"}{" "}
+                        · {group.length} 项
+                      </summary>
+                      {group.map((issue) => (
+                        <div className="issue-entry" key={issue.id}>
+                          <strong>
+                            {issueLabels[issue.code] ?? issue.code}
+                          </strong>
+                          <small>
+                            开始：
+                            {new Date(issue.started_at).toLocaleString(
+                              "zh-CN",
+                              { timeZone: "Asia/Hong_Kong", hour12: false },
+                            )}
+                          </small>
+                          {issue.recovered_at && (
+                            <small>
+                              恢复：
+                              {new Date(issue.recovered_at).toLocaleString(
+                                "zh-CN",
+                                { timeZone: "Asia/Hong_Kong", hour12: false },
+                              )}
+                            </small>
+                          )}
+                        </div>
+                      ))}
+                    </details>
+                  )
+                );
+              })}
+              <div className="issue-review">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={reviewConfirmed}
+                    disabled={
+                      busy ||
+                      issuesFetchFailed ||
+                      !reviewIds.length ||
+                      !api.capabilities.recovery
+                    }
+                    onChange={(event) =>
+                      setReviewSnapshot(event.target.checked ? reviewIds : [])
+                    }
+                  />
+                  <span>我已核对上述已恢复时段，确认无需导入历史消息。</span>
+                </label>
+                <button
+                  className="secondary"
+                  disabled={
+                    busy ||
+                    issuesFetchFailed ||
+                    !reviewConfirmed ||
+                    !api.capabilities.recovery
+                  }
+                  onClick={() => void act(clearRecovered)}
+                >
+                  清除已恢复故障（{reviewIds.length}）
+                </button>
+                <p className="subtle">
+                  仅清除已核对项的待处理标记，保留历史记录。未恢复故障不能清除；不会补拉或删除消息。
+                  {recovered.length > 100 ? "每次最多核对 100 项。" : ""}
+                </p>
+                {!api.capabilities.recovery && (
+                  <p className="subtle">
+                    本机核对操作未启用；正式接入接口待提供。
+                  </p>
+                )}
+              </div>
             </section>
           </div>
           <section className="panel conversation-panel">

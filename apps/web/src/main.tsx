@@ -255,7 +255,7 @@ function App() {
             </button>
           </div>
           {view === "connect" ? (
-            <ConnectionWorkspace onSessionExpired={expireSession} />
+            <ConnectionWorkspace csrf={csrf} onSessionExpired={expireSession} />
           ) : (
             <div className="grid">
               <aside className="panel">
