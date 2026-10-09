@@ -1,5 +1,7 @@
 # WAHA 当前实现与团队交接总览
 
+2026-10-10 D01 兼容：组合 PR #15 的原请求持久恢复、过期/授权版本校验、授权重新载入及回放工作台，与消息同步分支的会话分页、已载入搜索/类型筛选和 WahaMessages。恢复会话发现时保留原 offset/limit/version/key，将选项和 next_offset 返回页面，不自动提交新分页，也不重置未保存的勾选。connect/recover 原请求恢复仍与服务端 result_unknown 的明确核对分开。真实手机/群聊/媒体及独立验收边界不变。
+
 评审修正（2026-10-09）：撤销授权不再依赖 provider 配置；新增/重新授权仍会检查配置。不同窗口及分页刷新会保留有效候选 ID，不延长到期时间。D 保存后应刷新选项，并明确处理真正过期或授权版本冲突。A 的消息同步分支在配置失效撤权时仍取消活动同步并记录禁止读取区间。见[接入规则](role-a-setup-api-acceptance.md)。基线修复已作为 99e73b1 推送至 PR #11，并包含于 Andy_WAHA_message_sync。新增消息同步 PR 在 PR #11 合并前以 Andy_WAHA_upgrade 为目标。
 
 更新：2026-10-09。本页说明 GigMate 实际实现，不把 WAHA 自身全部能力当作项目功能。[英文对应](../en/role-a-waha-handoff.md)，[验证证据与故障历史](role-a-recovery-acceptance.md)，最新[消息同步批次](role-a-message-sync-acceptance.md)。

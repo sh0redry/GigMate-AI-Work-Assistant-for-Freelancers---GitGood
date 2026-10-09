@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { connectionState, pendingIssues } from "./src/connection-state.ts";
+import {
+  choiceExpired,
+  connectionState,
+  pendingIssues,
+} from "./src/connection-state.ts";
 
 test("stale and failed reads override even a previously connected provider", () => {
   const view = connectionState({
@@ -47,4 +51,17 @@ test("follow-up remains pending even if a historic acknowledgement exists", () =
     { acknowledged_at: "synthetic", resolution: "reviewed_no_import" },
   ];
   assert.deepEqual(pendingIssues(rows), rows.slice(0, 2));
+});
+
+test("new choices expire at their server deadline while persistent choices remain valid", () => {
+  const deadline = Date.parse("2026-10-09T10:00:00Z");
+  assert.equal(choiceExpired({ expires_at: null }, deadline), false);
+  assert.equal(
+    choiceExpired({ expires_at: "2026-10-09T10:00:00Z" }, deadline - 1),
+    false,
+  );
+  assert.equal(
+    choiceExpired({ expires_at: "2026-10-09T10:00:00Z" }, deadline),
+    true,
+  );
 });

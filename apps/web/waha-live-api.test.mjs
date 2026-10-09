@@ -23,15 +23,15 @@ for (const name of ["connection-api", "waha-live-api", "waha-sync-api"]) {
     .replaceAll('"./waha-live-api"', '"./waha-live-api.mjs"');
   await writeFile(join(directory, name + ".mjs"), code);
 }
-const { liveConnectionApi, ConnectionError } = await import(
-  pathToFileURL(join(directory, "connection-api.mjs"))
-);
+const { liveConnectionApi, ConnectionError, clearConnectionAttempts } =
+  await import(pathToFileURL(join(directory, "connection-api.mjs")));
 const original = globalThis.fetch;
 const { synchronizationApi } = await import(
   pathToFileURL(join(directory, "waha-sync-api.mjs"))
 );
 afterEach(() => {
   globalThis.fetch = original;
+  delete globalThis.sessionStorage;
 });
 after(async () => {
   if (
@@ -316,4 +316,379 @@ test("readiness refresh and pause/resume use session/CSRF without profile files"
       (x) => x.body.expected_version === 7 && x.csrf === "synthetic-csrf",
     ),
   );
+});
+
+test("paused or unavailable setup reads authorization without queuing provider inspection", async () => {
+  for (const extra of [
+    { enabled: false, provider_sample_stale: true },
+    { available: false },
+  ]) {
+    const routes = [];
+    globalThis.fetch = async (url, init) => {
+      routes.push([url, init.method]);
+      if (url.endsWith("/setup")) return json(setup(extra));
+      if (url.endsWith("/chats"))
+        return json([
+          { id: choice, label: "已授权会话", selected: true, expires_at: null },
+        ]);
+      throw new Error("unexpected mutation");
+    };
+    const api = liveConnectionApi("synthetic-csrf");
+    const p = await api.pairing(id, true);
+    if (extra.enabled === false) assert.equal(p.qr_available, false);
+    assert.equal((await api.selection(id)).selected.length, 1);
+    assert.ok(routes.every(([, method]) => method === "GET"));
+  }
+});
+
+test("configuration-free withdrawal rereads persistent selection and keeps paused reception", async () => {
+  let selected = true,
+    version = 7;
+  globalThis.fetch = async (url, init) => {
+    if (url.endsWith("/setup"))
+      return json(
+        setup({ available: false, enabled: false, control_version: version }),
+      );
+    if (init.method === "PUT") {
+      assert.deepEqual(JSON.parse(init.body), {
+        expected_version: 7,
+        selected_ids: [],
+        consent: true,
+      });
+      selected = false;
+      version++;
+      return json(
+        setup({ available: false, enabled: false, control_version: version }),
+      );
+    }
+    if (url.endsWith("/chats"))
+      return json(
+        selected
+          ? [
+              {
+                id: choice,
+                label: "已授权会话",
+                selected: true,
+                expires_at: null,
+              },
+            ]
+          : [],
+      );
+    throw new Error("unexpected route");
+  };
+  const api = liveConnectionApi("synthetic-csrf");
+  const saved = await api.save(id, await api.selection(id), [], "unused");
+  assert.equal(saved.selected.length, 0);
+  assert.equal(saved.control_version, 8);
+  assert.equal((await api.pairing(id)).enabled, false);
+});
+
+test("last terminal failure remains visible without blocking new user intention", async () => {
+  globalThis.fetch = async (url) =>
+    url.endsWith("/setup")
+      ? json(setup({ last_operation_id: opid }))
+      : json(
+          op({
+            state: "failed",
+            action: "recover",
+            error_code: "WAHA_UNAVAILABLE",
+          }),
+        );
+  const value = await liveConnectionApi("synthetic-csrf").pairing(id);
+  assert.equal(value.operation_id, null);
+  assert.equal(value.operation_state, "failed");
+  assert.equal(value.operation_action, "recover");
+  assert.equal(value.operation_error, "WAHA_UNAVAILABLE");
+});
+
+function memoryStorage() {
+  const rows = new Map();
+  return {
+    get length() {
+      return rows.size;
+    },
+    key: (i) => [...rows.keys()][i] ?? null,
+    getItem: (key) => rows.get(key) ?? null,
+    setItem: (key, value) => rows.set(key, value),
+    removeItem: (key) => rows.delete(key),
+  };
+}
+
+test("lost discovery page survives reload and restores the exact offset, limit, version, key and next cursor", async () => {
+  globalThis.sessionStorage = memoryStorage();
+  const posts = [];
+  globalThis.fetch = async (url, init) => {
+    if (url.endsWith("/setup"))
+      return json(setup({ control_version: posts.length ? 99 : 7 }));
+    if (url.endsWith("/chats"))
+      return json([
+        {
+          id: choice,
+          label: "Synthetic later page",
+          selected: false,
+          expires_at: null,
+        },
+      ]);
+    assert.equal(url, base + "/operations");
+    posts.push({
+      body: JSON.parse(init.body),
+      key: init.headers["Idempotency-Key"],
+    });
+    if (posts.length === 1) throw new TypeError("Synthetic lost page response");
+    return json(
+      op({
+        action: "discover",
+        control_version: posts.at(-1).body.expected_version,
+        next_offset: posts.at(-1).body.offset + 100,
+      }),
+      202,
+    );
+  };
+  await assert.rejects(
+    liveConnectionApi("synthetic-csrf").chats(id, 200),
+    (e) => e.code === "OPERATION_RESULT_UNKNOWN",
+  );
+  const reloaded = liveConnectionApi("synthetic-csrf");
+  assert.equal((await reloaded.pairing(id, true)).retry_available, true);
+  await assert.rejects(
+    reloaded.chats(id, 0),
+    (e) => e.code === "OPERATION_RESULT_UNKNOWN",
+  );
+  assert.equal(posts.length, 1);
+  const restored = await reloaded.retry(id);
+  assert.deepEqual(posts[0], posts[1]);
+  assert.deepEqual(posts[1].body, {
+    action: "discover",
+    expected_version: 7,
+    offset: 200,
+    limit: 100,
+  });
+  assert.equal(restored.next_offset, 300);
+  assert.equal(restored.items[0].id, choice);
+  assert.equal(sessionStorage.length, 0);
+  assert.equal(
+    (await reloaded.chats(id, restored.next_offset)).next_offset,
+    400,
+  );
+  assert.equal(posts[2].body.expected_version, 99);
+  assert.notEqual(posts[2].key, posts[1].key);
+});
+
+test("restored discovery retains an explicitly stored page size and rejects malformed pagination metadata", async () => {
+  globalThis.sessionStorage = memoryStorage();
+  const stored = {
+    key: "synthetic-page-key",
+    body: { action: "discover", expected_version: 4, offset: 80, limit: 40 },
+  };
+  sessionStorage.setItem(
+    "gigmate-control-attempt:" + id,
+    JSON.stringify(stored),
+  );
+  globalThis.fetch = async (url, init) => {
+    if (url.endsWith("/operations")) {
+      assert.deepEqual(JSON.parse(init.body), stored.body);
+      assert.equal(init.headers["Idempotency-Key"], stored.key);
+      return json(op({ action: "discover", next_offset: 120 }));
+    }
+    if (url.endsWith("/chats")) return json([]);
+    return json(setup());
+  };
+  assert.equal(
+    (await liveConnectionApi("synthetic-csrf").retry(id)).next_offset,
+    120,
+  );
+  for (const body of [
+    { ...stored.body, offset: -1 },
+    { ...stored.body, offset: 10001 },
+    { ...stored.body, limit: 101 },
+    { ...stored.body, offset: "80" },
+    { ...stored.body, action: "connect" },
+  ]) {
+    sessionStorage.setItem(
+      "gigmate-control-attempt:" + id,
+      JSON.stringify({ ...stored, body }),
+    );
+    assert.equal(
+      (await liveConnectionApi("synthetic-csrf").pairing(id)).retry_available,
+      false,
+    );
+  }
+});
+test("lost response survives adapter recreation and only explicit original-key retry submits", async () => {
+  globalThis.sessionStorage = memoryStorage();
+  const posts = [];
+  globalThis.fetch = async (url, init) => {
+    if (url.endsWith("/setup"))
+      return json(
+        setup({
+          provider_sample_stale: true,
+          control_version: posts.length ? 99 : 0,
+        }),
+      );
+    assert.equal(init.method, "POST");
+    posts.push([JSON.parse(init.body), init.headers["Idempotency-Key"]]);
+    if (posts.length === 1) throw new TypeError("lost");
+    return json(op());
+  };
+  const before = liveConnectionApi("synthetic-csrf");
+  await assert.rejects(
+    before.start(id, "original-key"),
+    (e) => e.code === "OPERATION_RESULT_UNKNOWN",
+  );
+  const after = liveConnectionApi("synthetic-csrf");
+  assert.equal((await after.pairing(id, true)).retry_available, true);
+  await assert.rejects(
+    after.restart(id, "new-key"),
+    (e) => e.code === "OPERATION_RESULT_UNKNOWN",
+  );
+  assert.equal(posts.length, 1);
+  await after.retry(id);
+  assert.deepEqual(posts[0], posts[1]);
+  assert.equal(posts[1][0].expected_version, 0);
+  assert.equal(globalThis.sessionStorage.length, 0);
+});
+
+test("logout removes only request-attempt metadata", () => {
+  globalThis.sessionStorage = memoryStorage();
+  sessionStorage.setItem("gigmate-control-attempt:" + id, "synthetic");
+  sessionStorage.setItem("unrelated-setting", "keep");
+  clearConnectionAttempts();
+  assert.equal(sessionStorage.length, 1);
+  assert.equal(sessionStorage.getItem("unrelated-setting"), "keep");
+});
+
+test("partial JSON or gateway failure after submission remains unknown without another write", async () => {
+  for (const reply of [
+    () => new Response("{"),
+    () => json(null),
+    () => new Response("gateway", { status: 502 }),
+  ]) {
+    let writes = 0;
+    globalThis.fetch = async (url, init) => {
+      if (url.endsWith("/setup")) return json(setup());
+      writes++;
+      return reply();
+    };
+    const api = liveConnectionApi("synthetic-csrf");
+    await assert.rejects(
+      api.start(id, "original"),
+      (e) => e.code === "OPERATION_RESULT_UNKNOWN",
+    );
+    assert.equal((await api.pairing(id, true)).retry_available, true);
+    assert.equal(writes, 1);
+  }
+});
+
+test("definite rejected operation permits a fresh intention but never retries automatically", async () => {
+  let writes = 0;
+  globalThis.fetch = async (url) => {
+    if (url.endsWith("/setup")) return json(setup());
+    writes++;
+    return error("WAHA_SETUP_VERSION_CONFLICT", 409);
+  };
+  const api = liveConnectionApi("synthetic-csrf");
+  await assert.rejects(
+    api.start(id, "first"),
+    (e) => e.code === "WAHA_SETUP_VERSION_CONFLICT",
+  );
+  assert.equal((await api.pairing(id)).retry_available, false);
+  assert.equal(writes, 1);
+  await assert.rejects(
+    api.start(id, "second"),
+    (e) => e.code === "WAHA_SETUP_VERSION_CONFLICT",
+  );
+  assert.equal(writes, 2);
+});
+
+test("selection save adopts server persistent IDs rather than expired discovery IDs", async () => {
+  let saved = false;
+  const persistent = "00000000-0000-4000-8000-000000000073";
+  globalThis.fetch = async (url, init) => {
+    if (url.endsWith("/setup"))
+      return json(setup({ control_version: saved ? 8 : 7 }));
+    if (init.method === "PUT") {
+      assert.deepEqual(JSON.parse(init.body).selected_ids, [choice]);
+      saved = true;
+      return json(setup());
+    }
+    return json([
+      {
+        id: saved ? persistent : choice,
+        label: "Synthetic participant",
+        selected: saved,
+        expires_at: saved ? null : "2026-10-09T00:00:00Z",
+      },
+    ]);
+  };
+  const api = liveConnectionApi("synthetic-csrf");
+  const before = await api.selection(id);
+  const result = await api.save(id, before, before.choices, "unused");
+  assert.equal(result.selected[0].id, persistent);
+  assert.equal(result.selected[0].expires_at, null);
+  assert.equal(result.control_version, 8);
+});
+
+test("connector and issue pagination encodes cursors and denies stale login", async () => {
+  const paths = [];
+  globalThis.fetch = async (url) => {
+    paths.push(url);
+    return new Response(
+      JSON.stringify({
+        items: [{ id: paths.length }],
+        next_cursor: paths.length % 2 ? "next/+=" : null,
+      }),
+    );
+  };
+  const api = liveConnectionApi("synthetic-csrf");
+  assert.equal((await api.connectors()).length, 2);
+  assert.equal((await api.issues(id)).length, 2);
+  assert.ok(paths[1].endsWith("cursor=next%2F%2B%3D"));
+  globalThis.fetch = async () => error("UNAUTHENTICATED", 401);
+  await assert.rejects(api.connectors(), (e) => e.code === "UNAUTHENTICATED");
+});
+
+test("malformed or cyclic pages and non-PNG QR fail clearly", async () => {
+  const api = liveConnectionApi("synthetic-csrf");
+  for (const page of [{ items: [], next_cursor: "same" }, { data: [] }]) {
+    globalThis.fetch = async () => new Response(JSON.stringify(page));
+    await assert.rejects(
+      api.connectors(),
+      (e) => e.code === "INVALID_RESPONSE",
+    );
+  }
+  globalThis.fetch = async () =>
+    new Response("html", { headers: { "Content-Type": "text/html" } });
+  await assert.rejects(api.qr(id), (e) => e.code === "WAHA_INVALID_QR");
+});
+
+test("a cancelled accepted operation remains definite, with no original request to retry", async () => {
+  globalThis.fetch = async (url) =>
+    url.endsWith("/setup") ? json(setup()) : json(op({ state: "cancelled" }));
+  const api = liveConnectionApi("synthetic-csrf");
+  await assert.rejects(
+    api.start(id, "cancelled"),
+    (e) => e.code === "WAHA_OPERATION_CANCELLED",
+  );
+  assert.equal((await api.pairing(id)).retry_available, false);
+});
+
+test("initial version-zero setup retains connect entry without a failed automatic inspection", async () => {
+  let writes = 0;
+  globalThis.fetch = async (url, init) => {
+    if (url.endsWith("/setup"))
+      return json(
+        setup({
+          control_version: 0,
+          provider_state: null,
+          provider_sample_stale: true,
+        }),
+      );
+    writes++;
+    return error("WAHA_RESOURCE_NOT_FOUND", 404);
+  };
+  const api = liveConnectionApi("synthetic-csrf");
+  assert.equal((await api.pairing(id)).available, true);
+  assert.equal(writes, 0);
+  assert.equal((await api.pairing(id, true)).available, true);
+  assert.equal(writes, 1);
 });

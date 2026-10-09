@@ -11,7 +11,11 @@ import {
   type Selection,
 } from "./connection-api";
 import "./connection.css";
-import { connectionState, pendingIssues } from "./connection-state";
+import {
+  choiceExpired,
+  connectionState,
+  pendingIssues,
+} from "./connection-state";
 
 const states: Record<string, string> = {
   unknown: "状态未知",
@@ -34,7 +38,14 @@ const errors: Record<string, string> = {
   WAHA_OPERATION_NEEDS_RECONCILIATION:
     "连接操作结果未知，请明确核对；不要重复重连。",
   OPERATION_RESULT_UNKNOWN: "请求结果待确认，请刷新状态或使用原请求重试。",
+  INVALID_RESPONSE: "服务响应未能完整读取，请刷新并核对状态。",
+  CONNECTOR_PAUSED: "消息接收已暂停，可撤销已有授权；恢复后再发现新会话。",
+  WAHA_DISCOVERY_REISSUE_REQUIRED:
+    "上次会话发现未完成，核对后可重新发现最近会话。",
+  WAHA_OPERATION_IN_PROGRESS: "已有操作正在处理，请刷新状态，暂勿重复提交。",
   OPERATION_PENDING: "操作仍在处理中，请刷新状态，暂勿重复提交。",
+  WAHA_OPERATION_CANCELLED: "操作已取消，请刷新并核对后再决定下一步。",
+  WAHA_OPERATION_FAILED: "操作未完成，请检查接入服务并核对状态。",
   WAHA_CONTROL_DISABLED: "接入后端未配置，请先准备本地接入服务。",
   WAHA_CONTROL_CONFIG_INVALID: "接入配置不匹配，请检查后端私有配置。",
   CONNECTOR_DISABLED: "尚未配置扫码服务，请按联调文档初始化本机环境。",
@@ -88,10 +99,12 @@ export function ConnectionWorkspace({
   demo = false,
   csrf = "",
   onSessionExpired,
+  onBusyChange,
 }: {
   demo?: boolean;
   csrf?: string;
   onSessionExpired?: () => void;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const simulator = useMemo(() => (demo ? demoConnectionApi() : null), [demo]);
   const api = useMemo(
@@ -105,6 +118,8 @@ export function ConnectionWorkspace({
   const [id, setId] = useState("");
   const [pairing, setPairing] = useState<Pairing | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
+  const [selectionNeedsReload, setSelectionNeedsReload] = useState(false);
+  const [clock, setClock] = useState(Date.now());
   const [choices, setChoices] = useState<Choice[]>([]);
   const [search, setSearch] = useState("");
   const [chatKind, setChatKind] = useState("all");
@@ -126,14 +141,15 @@ export function ConnectionWorkspace({
   const qrRef = useRef<string | null>(null);
   const qrRequest = useRef(0);
   const qrLoading = useRef(false);
-  const saveAttempt = useRef<{ signature: string; key: string } | null>(null);
-  const restartAttempt = useRef<string | null>(null);
+  const acting = useRef(false);
+  const statusRequest = useRef(0);
   const connector = connectors.find((c) => c.id === id);
   const uncertain =
     !!connector?.stale ||
     statusFetchFailed ||
     pairingFetchFailed ||
     !!pairing?.provider_sample_stale ||
+    !!pairing?.retry_available ||
     pairing?.operation_state === "result_unknown" ||
     (api.capabilities.pairing && !pairing);
   const connected =
@@ -156,6 +172,37 @@ export function ConnectionWorkspace({
     reviewSnapshot.every((value) => reviewIds.includes(value)) &&
     reviewSnapshot.length === reviewIds.length;
   const dirty = !!selection && !sameSelection(picked, selection.selected);
+  const selectionStale =
+    selectionNeedsReload ||
+    (!!selection &&
+      !!pairing &&
+      selection.control_version !== pairing.control_version);
+  const canDiscover =
+    connected &&
+    pairing?.available &&
+    !pairing.operation_id &&
+    !pairing.retry_available;
+  const expiredPicked = choices.some(
+    (choice) =>
+      picked.includes(choice.id) &&
+      !choice.selected &&
+      choiceExpired(choice, clock),
+  );
+  const operationLabels = {
+    connect: "连接",
+    recover: "重连",
+    inspect: "状态核对",
+    discover: "会话发现",
+  };
+  const operationStates = {
+    pending: "已排队",
+    running: "正在处理",
+    checking: "正在核对",
+    succeeded: "已完成",
+    failed: "失败",
+    result_unknown: "结果未知",
+    cancelled: "已取消",
+  };
   const clearQr = useCallback(() => {
     qrRequest.current++;
     if (qrRef.current) URL.revokeObjectURL(qrRef.current);
@@ -185,11 +232,14 @@ export function ConnectionWorkspace({
   const refreshStatus = useCallback(
     async (force = false) => {
       const stamp = epoch.current;
+      const request = ++statusRequest.current;
+      const currentRequest = () =>
+        stamp === epoch.current && request === statusRequest.current;
       let list: Connector[];
       try {
         list = await api.connectors();
       } catch (e) {
-        if (stamp === epoch.current) {
+        if (currentRequest()) {
           statusFailure.current = true;
           setStatusFetchFailed(true);
           setPairing(null);
@@ -197,7 +247,7 @@ export function ConnectionWorkspace({
         }
         throw e;
       }
-      if (stamp !== epoch.current) return;
+      if (!currentRequest()) return;
       if (statusFailure.current) {
         setNotice("连接状态查询已恢复。");
         setFailure(false);
@@ -211,13 +261,12 @@ export function ConnectionWorkspace({
         setId(current);
         setPairing(null);
         setSelection(null);
+        setSelectionNeedsReload(false);
         setChoices([]);
         setPicked([]);
         setIssues([]);
         setIssuesLoaded(false);
         setNextOffset(null);
-        saveAttempt.current = null;
-        restartAttempt.current = null;
         setReviewSnapshot([]);
         clearQr();
         return;
@@ -227,18 +276,16 @@ export function ConnectionWorkspace({
       if (api.capabilities.pairing) {
         try {
           const p = await api.pairing(current, force);
-          if (stamp !== epoch.current) return;
+          if (!currentRequest()) return;
           setPairing(p);
           setPairingFetchFailed(false);
-          if (!p.operation_id && ["SCAN_QR_CODE", "WORKING"].includes(p.state))
-            restartAttempt.current = null;
           if (
             !p.qr_available ||
             list.find((item) => item.id === current)?.stale
           )
             clearQr();
         } catch (e) {
-          if (stamp === epoch.current) {
+          if (currentRequest()) {
             setPairing(null);
             setPairingFetchFailed(true);
             clearQr();
@@ -248,13 +295,13 @@ export function ConnectionWorkspace({
       }
       try {
         const records = await api.issues(current);
-        if (stamp === epoch.current) {
+        if (currentRequest()) {
           setIssues(records);
           setIssuesFetchFailed(false);
           setIssuesLoaded(true);
         }
       } catch (error) {
-        if (stamp === epoch.current) setIssuesFetchFailed(true);
+        if (currentRequest()) setIssuesFetchFailed(true);
         throw error;
       }
     },
@@ -297,6 +344,11 @@ export function ConnectionWorkspace({
   }, [api, id, clearQr, refreshStatus]);
 
   useEffect(() => {
+    onBusyChange?.(busy);
+    return () => onBusyChange?.(false);
+  }, [busy, onBusyChange]);
+
+  useEffect(() => {
     let active = true,
       running = false;
     const update = async () => {
@@ -323,10 +375,10 @@ export function ConnectionWorkspace({
   }, [refreshStatus, report, clearQr]);
 
   useEffect(() => {
-    const timer = setInterval(
-      () => setQrAge(qrTime ? Math.floor((Date.now() - qrTime) / 1000) : 0),
-      1000,
-    );
+    const timer = setInterval(() => {
+      setClock(Date.now());
+      setQrAge(qrTime ? Math.floor((Date.now() - qrTime) / 1000) : 0);
+    }, 1000);
     return () => clearInterval(timer);
   }, [qrTime]);
 
@@ -341,7 +393,11 @@ export function ConnectionWorkspace({
     )
       return;
     const update = () => {
-      if (!document.hidden) void loadQr().catch(report);
+      const stamp = epoch.current;
+      if (!document.hidden)
+        void loadQr().catch((error) => {
+          if (stamp === epoch.current) report(error);
+        });
     };
     update();
     const timer = setInterval(update, 20000);
@@ -371,27 +427,29 @@ export function ConnectionWorkspace({
   }, [qrTime, clearQr]);
 
   async function act(task: () => Promise<void>) {
+    if (acting.current) return;
+    acting.current = true;
+    const stamp = epoch.current;
     setBusy(true);
     setNotice("");
     setFailure(false);
     try {
       await task();
     } catch (e) {
-      report(e);
+      if (stamp === epoch.current) report(e);
     } finally {
-      setBusy(false);
+      acting.current = false;
+      if (stamp === epoch.current) setBusy(false);
     }
   }
   async function reconnect() {
     clearQr();
-    restartAttempt.current ??= crypto.randomUUID();
     try {
-      await api.restart(id, restartAttempt.current);
+      await api.restart(id, crypto.randomUUID());
     } catch (error) {
       await refreshStatus().catch(() => {});
       throw error;
     }
-    restartAttempt.current = null;
     await refreshStatus();
     setNotice(
       demo
@@ -409,47 +467,65 @@ export function ConnectionWorkspace({
   }
   async function loadSelection() {
     const stamp = epoch.current;
-    const value = await api.selection(id);
+    let value: Selection;
+    try {
+      value = await api.selection(id);
+    } catch (error) {
+      if (stamp === epoch.current) setSelectionNeedsReload(true);
+      throw error;
+    }
     if (stamp !== epoch.current) return;
     setSelection(value);
+    setSelectionNeedsReload(false);
     setPicked(value.selected.map((c) => c.id));
     setChoices(value.choices);
     setNextOffset(null);
     setLoaded(false);
-    saveAttempt.current = null;
-    if (pairing?.connected) {
-      const discovery = await api.chats(id, 0);
-      if (stamp !== epoch.current) return;
-      setChoices(mergeChoices(value.selected, discovery.items));
-      setNextOffset(discovery.next_offset);
-      setLoaded(true);
-    }
+    await refreshStatus();
     setNotice(
       demo
         ? "已载入演示授权；取消勾选后保存即可模拟撤销。"
         : "已载入服务端授权；取消勾选后保存即可撤销。",
     );
   }
+  async function discover() {
+    const stamp = epoch.current;
+    try {
+      const discovery = await api.chats(id, 0);
+      const value = await api.selection(id);
+      if (stamp !== epoch.current) return;
+      setSelection(value);
+      setSelectionNeedsReload(false);
+      setPicked(value.selected.map((c) => c.id));
+      setChoices(mergeChoices(value.selected, discovery.items));
+      setNextOffset(discovery.next_offset);
+      setLoaded(true);
+      setNotice(
+        "已发现最近会话，请勾选并保存处理授权。每页最多读取 100 个会话，可加载更多；列表可能不完整。新选项按服务端原到期时间失效。",
+      );
+    } finally {
+      await refreshStatus();
+    }
+  }
   async function save(next: string[]) {
-    if (!selection) return;
+    if (!selection || selectionStale) return;
     const stamp = epoch.current;
     const selected = next
       .map((key) => choices.find((c) => c.id === key))
       .filter((c): c is Choice => !!c);
-    const signature = JSON.stringify([
-      id,
-      selection.control_version,
-      selected.map((c) => c.id),
-    ]);
-    if (saveAttempt.current?.signature !== signature)
-      saveAttempt.current = { signature, key: crypto.randomUUID() };
-    await api.save(id, selection, selected, saveAttempt.current.key);
-    const value = await api.selection(id);
+    let value: Selection;
+    try {
+      value = await api.save(id, selection, selected, crypto.randomUUID());
+    } catch (error) {
+      if (stamp === epoch.current) setSelectionNeedsReload(true);
+      throw error;
+    }
     if (stamp !== epoch.current) return;
     setSelection(value);
+    setSelectionNeedsReload(false);
     setPicked(value.selected.map((c) => c.id));
     setChoices(value.choices);
-    saveAttempt.current = null;
+    await refreshStatus();
     setNotice(
       demo
         ? next.length
@@ -557,14 +633,13 @@ export function ConnectionWorkspace({
               setId(e.target.value);
               setPairing(null);
               setSelection(null);
+              setSelectionNeedsReload(false);
               setChoices([]);
               setPicked([]);
               setIssues([]);
               setIssuesLoaded(false);
               setReviewSnapshot([]);
-              restartAttempt.current = null;
               setNextOffset(null);
-              saveAttempt.current = null;
               setNotice("");
               setFailure(false);
             }}
@@ -616,6 +691,32 @@ export function ConnectionWorkspace({
                 </span>
               </div>
               <p className="connection-guidance">{presentation.help}</p>
+              {pairing && !pairing.available && (
+                <p className="connection-notice error">
+                  本机接入配置不可用，请联系接入负责人检查。仍可载入已有授权并撤销。
+                </p>
+              )}
+              {pairing?.operation_state && (
+                <p role="status">
+                  最近
+                  {pairing.operation_action
+                    ? operationLabels[pairing.operation_action]
+                    : "连接"}
+                  操作：
+                  {operationStates[pairing.operation_state] ??
+                    pairing.operation_state}
+                  {pairing.operation_error &&
+                    ` · ${errors[pairing.operation_error] ?? "请核对服务后刷新。"}`}
+                  {pairing.operation_error && (
+                    <small>错误编号：{pairing.operation_error}</small>
+                  )}
+                </p>
+              )}
+              {pairing?.retry_available && (
+                <p className="connection-notice error">
+                  上次请求响应丢失，暂不创建新的连接操作。使用原请求核对会保留原版本和请求键。
+                </p>
+              )}
               <div className={`qr-stage ${connected ? "qr-connected" : ""}`}>
                 {!api.capabilities.pairing ? (
                   <>
@@ -696,6 +797,8 @@ export function ConnectionWorkspace({
                 {!connected &&
                   connector.enabled &&
                   !pairing?.operation_id &&
+                  pairing?.available &&
+                  !pairing.retry_available &&
                   !["SCAN_QR_CODE", "STARTING"].includes(
                     pairing?.state ?? "",
                   ) &&
@@ -704,10 +807,8 @@ export function ConnectionWorkspace({
                       disabled={busy || !api.capabilities.start}
                       onClick={() =>
                         void act(async () => {
-                          restartAttempt.current ??= crypto.randomUUID();
                           try {
-                            await api.start(id, restartAttempt.current);
-                            restartAttempt.current = null;
+                            await api.start(id, crypto.randomUUID());
                           } finally {
                             await refreshStatus();
                           }
@@ -723,12 +824,40 @@ export function ConnectionWorkspace({
                     onClick={() =>
                       void act(async () => {
                         await api.reconcile(id);
-                        restartAttempt.current = null;
                         await refreshStatus();
                       })
                     }
                   >
                     核对未知操作（不重发）
+                  </button>
+                )}
+                {pairing?.retry_available && (
+                  <button
+                    disabled={busy || !api.capabilities.start}
+                    onClick={() =>
+                      void act(async () => {
+                        try {
+                          const stamp = epoch.current;
+                          const discovery = await api.retry(id);
+                          if (discovery && stamp === epoch.current) {
+                            if (!selection) {
+                              const value = await api.selection(id);
+                              if (stamp !== epoch.current) return;
+                              setSelection(value);
+                              setSelectionNeedsReload(false);
+                              setPicked(value.selected.map((c) => c.id));
+                            }
+                            setChoices((c) => mergeChoices(c, discovery.items));
+                            setNextOffset(discovery.next_offset);
+                            setLoaded(true);
+                          }
+                        } finally {
+                          await refreshStatus();
+                        }
+                      })
+                    }
+                  >
+                    使用原请求核对
                   </button>
                 )}
                 <button
@@ -750,6 +879,8 @@ export function ConnectionWorkspace({
                     disabled={
                       busy ||
                       !!pairing?.operation_id ||
+                      !pairing?.available ||
+                      !!pairing.retry_available ||
                       !api.capabilities.recovery
                     }
                     onClick={() => void act(reconnect)}
@@ -932,10 +1063,23 @@ export function ConnectionWorkspace({
             <div className="conversation-toolbar">
               <button
                 className="secondary"
-                disabled={busy || dirty || !api.capabilities.selection}
+                disabled={busy || !api.capabilities.selection}
                 onClick={() => void act(loadSelection)}
               >
-                {selection ? "重新载入会话" : "载入会话与授权"}
+                {selection
+                  ? dirty
+                    ? "放弃勾选并重新载入"
+                    : "重新载入会话"
+                  : "载入会话与授权"}
+              </button>
+              <button
+                className="secondary"
+                disabled={
+                  busy || dirty || !canDiscover || !api.capabilities.selection
+                }
+                onClick={() => void act(discover)}
+              >
+                发现最近会话
               </button>
               {selection && (
                 <small>
@@ -944,6 +1088,20 @@ export function ConnectionWorkspace({
                 </small>
               )}
             </div>
+            <p className="subtle">
+              已有授权可在断线、暂停或接入配置不可用时读取及撤销。发现新会话需要有效连接；最多读取
+              每页 100 个会话，可加载更多。
+            </p>
+            {selectionStale && (
+              <p className="connection-notice error" role="alert">
+                授权版本已变化、读取失败或保存结果待确认。请重新载入并核对后再保存；不会自动重试。
+              </p>
+            )}
+            {expiredPicked && (
+              <p className="connection-notice error" role="alert">
+                勾选的新会话已过期。请放弃勾选并重新发现，再核对后保存。
+              </p>
+            )}
             {!selection ? (
               <div className="conversation-empty">
                 <span aria-hidden="true">☷</span>
@@ -954,7 +1112,7 @@ export function ConnectionWorkspace({
                 </h3>
                 <p>
                   {api.capabilities.selection
-                    ? "连接后载入会话。已有授权在断线时也可以撤销。"
+                    ? "先载入已有授权。连接后点击「发现最近会话」，勾选后明确保存。"
                     : "目前无法查询或更改会话授权。可在演示预览中体验选择流程。"}
                 </p>
                 {!api.capabilities.selection && (
@@ -973,8 +1131,12 @@ export function ConnectionWorkspace({
                     <h3>暂无会话</h3>
                     <p>
                       {loaded
-                        ? "可在手机创建测试聊天后重新载入。"
-                        : "尚未连接；当前没有已授权会话。"}
+                        ? "可在手机创建测试聊天后重新发现最近会话。"
+                        : !pairing?.available
+                          ? "当前没有已授权会话。接入配置恢复后可发现新会话。"
+                          : connected
+                            ? "尚未发现会话，请点击「发现最近会话」。"
+                            : "尚未连接；当前没有已授权会话。"}
                     </p>
                   </div>
                 )}
@@ -1016,7 +1178,10 @@ export function ConnectionWorkspace({
                           checked={picked.includes(c.id)}
                           disabled={
                             busy ||
-                            (!picked.includes(c.id) && picked.length >= 100)
+                            (!picked.includes(c.id) &&
+                              (picked.length >= 100 ||
+                                (!c.selected &&
+                                  (!canDiscover || choiceExpired(c, clock)))))
                           }
                           onChange={(e) => {
                             setPicked((p) =>
@@ -1043,6 +1208,9 @@ export function ConnectionWorkspace({
                                 ? "演示已授权"
                                 : "服务端已授权"
                               : "尚未授权"}
+                            {!c.selected && choiceExpired(c, clock)
+                              ? " · 选项已过期"
+                              : ""}
                           </small>
                         </span>
                       </label>
@@ -1051,10 +1219,12 @@ export function ConnectionWorkspace({
                 {nextOffset !== null && (
                   <button
                     className="secondary"
-                    disabled={busy}
+                    disabled={busy || !canDiscover}
                     onClick={() =>
                       void act(async () => {
+                        const stamp = epoch.current;
                         const discovery = await api.chats(id, nextOffset);
+                        if (stamp !== epoch.current) return;
                         setChoices((c) => mergeChoices(c, discovery.items));
                         setNextOffset(discovery.next_offset);
                       })
@@ -1077,14 +1247,22 @@ export function ConnectionWorkspace({
                 </div>
                 <div className="connection-actions">
                   <button
-                    disabled={busy || !dirty}
+                    disabled={
+                      busy ||
+                      !dirty ||
+                      selectionStale ||
+                      expiredPicked ||
+                      statusFetchFailed
+                    }
                     onClick={() => void act(() => save(picked))}
                   >
                     {busy ? "处理中…" : "保存会话授权"}
                   </button>
                   <button
                     className="secondary"
-                    disabled={busy || !selection.selected.length}
+                    disabled={
+                      busy || selectionStale || !selection.selected.length
+                    }
                     onClick={() => void act(() => save([]))}
                   >
                     撤销全部授权
