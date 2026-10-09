@@ -1,5 +1,6 @@
 """Owned product setup, durable intent and explicit unknown-result reconciliation."""
 
+import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -14,12 +15,15 @@ from gigmate.db import (
     Account,
     ConversationRow,
     WahaCandidate,
+    WahaChat,
     WahaConnection,
     WahaControl,
     WahaRecoveryIssue,
 )
 from gigmate.waha_adapter import AdapterError
 from gigmate.waha_client import LocalWahaConfig
+
+REAL_SETTINGS = controls.settings
 
 
 class FakeProvider:
@@ -463,3 +467,163 @@ def test_completed_legacy_restart_does_not_create_controller_intent(setup):
         row = db.get(WahaConnection, setup[3].connection_id)
         assert controls.import_legacy_restart(db, row, {"state": "submitted"}) is None
         assert row.control_version == 0
+
+
+@pytest.mark.parametrize("invalid", ["missing", "mismatch"])
+@pytest.mark.parametrize("withdraw_all", [False, True])
+def test_broken_config_allows_reduction_but_not_new_grants(
+    setup, monkeypatch, tmp_path, invalid, withdraw_all
+):
+    client, factory, headers, binding, _ = setup
+    command(setup, "discover")
+    work(setup)
+    candidate = next(
+        x for x in client.get(path(setup, "chats")).json()["data"] if not x["selected"]
+    )
+    original = next(x for x in client.get(path(setup, "chats")).json()["data"] if x["selected"])
+    assert (
+        client.put(
+            path(setup, "chats"),
+            json={
+                "expected_version": 0,
+                "selected_ids": [original["id"], candidate["id"]],
+                "consent": True,
+            },
+            headers=headers,
+        ).status_code
+        == 200
+    )
+    monkeypatch.setattr(controls, "settings", REAL_SETTINGS)
+    if invalid == "missing":
+        monkeypatch.delenv("WAHA_CONTROL_CONFIG", raising=False)
+    else:
+        config = tmp_path / "synthetic-config.json"
+        config.write_text(
+            json.dumps(
+                {
+                    "base_url": "http://127.0.0.1:18700",
+                    "account_id": ACCOUNT,
+                    "session": "default",
+                    "api_key": "synthetic-" + "a" * 40,
+                    "webhook_secret": "synthetic-mismatch-" + "b" * 40,
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("WAHA_CONTROL_CONFIG", str(config))
+    kept = [] if withdraw_all else [original["id"]]
+    response = client.put(
+        path(setup, "chats"),
+        json={"expected_version": 1, "selected_ids": kept, "consent": True},
+        headers=headers,
+    )
+    assert response.status_code == 200 and response.json()["data"]["available"] is False
+    with factory() as db:
+        assert db.get(WahaConnection, binding.connection_id).control_version == 2
+        assert db.scalar(
+            select(func.count())
+            .select_from(ConversationRow)
+            .join(WahaChat, WahaChat.conversation_id == ConversationRow.id)
+            .where(
+                WahaChat.connection_id == binding.connection_id,
+                ConversationRow.allowlisted.is_(True),
+            )
+        ) == len(kept)
+    # Reauthorization is a new grant, even though the chat already exists.
+    assert (
+        client.put(
+            path(setup, "chats"),
+            json={"expected_version": 2, "selected_ids": [candidate["id"], *kept], "consent": True},
+            headers=headers,
+        ).status_code
+        == 503
+    )
+    assert (
+        client.put(
+            path(setup, "chats"),
+            json={"expected_version": 1, "selected_ids": [], "consent": True},
+            headers=headers,
+        ).status_code
+        == 409
+    )
+    assert (
+        client.put(
+            path(setup, "chats"),
+            json={"expected_version": 2, "selected_ids": [], "consent": True},
+        ).status_code
+        == 403
+    )
+
+
+def test_two_windows_refresh_preserves_choice_id_and_original_expiry(setup):
+    from fastapi.testclient import TestClient
+
+    from gigmate.api import app
+
+    command(setup, "discover", key="window-a")
+    work(setup)
+    choice = next(x for x in setup[0].get(path(setup, "chats")).json()["data"] if not x["selected"])
+    setup[4].recent_chats = lambda **kwargs: [
+        {"id": "synthetic:peer-new@lid", "name": "Updated label"}
+    ]
+    with TestClient(app) as second:
+        csrf = second.post(
+            "/api/v1/auth/login", json={"username": "merchant", "password": "demo-only-change-me"}
+        ).json()["data"]["csrf_token"]
+        assert (
+            second.post(
+                path(setup, "operations"),
+                json={"action": "discover", "expected_version": 0},
+                headers={"X-CSRF-Token": csrf, "Idempotency-Key": "window-b"},
+            ).status_code
+            == 202
+        )
+        work(setup)
+        refreshed = next(
+            x for x in second.get(path(setup, "chats")).json()["data"] if not x["selected"]
+        )
+        assert refreshed["id"] == choice["id"] and refreshed["expires_at"] == choice["expires_at"]
+        assert refreshed["label"] == "Updated label"
+    assert (
+        setup[0]
+        .put(
+            path(setup, "chats"),
+            json={"expected_version": 0, "selected_ids": [choice["id"]], "consent": True},
+            headers=setup[2],
+        )
+        .status_code
+        == 200
+    )
+
+
+def test_discovery_does_not_revive_expired_choice_or_remove_other_valid_pages(setup):
+    command(setup, "discover", key="first")
+    work(setup)
+    old = next(x for x in setup[0].get(path(setup, "chats")).json()["data"] if not x["selected"])
+    other = str(uuid4())
+    with setup[1].begin() as db:
+        db.get(WahaCandidate, old["id"]).expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        db.add(
+            WahaCandidate(
+                id=other,
+                connection_id=setup[3].connection_id,
+                provider_chat_id="synthetic:other-page@lid",
+                label="Other page",
+                expires_at=datetime.now(UTC) + timedelta(minutes=2),
+            )
+        )
+    command(setup, "discover", key="refresh")
+    work(setup)
+    choices = setup[0].get(path(setup, "chats")).json()["data"]
+    assert other in {x["id"] for x in choices}
+    assert old["id"] not in {x["id"] for x in choices}
+    assert (
+        setup[0]
+        .put(
+            path(setup, "chats"),
+            json={"expected_version": 0, "selected_ids": [old["id"]], "consent": True},
+            headers=setup[2],
+        )
+        .status_code
+        == 422
+    )

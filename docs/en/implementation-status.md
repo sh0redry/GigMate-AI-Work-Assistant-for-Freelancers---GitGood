@@ -1,5 +1,9 @@
 # Implementation status and validation
 
+## Setup review corrections — 2026-10-09
+
+Prepared uncommitted fixes on Andy_WAHA_upgrade: configuration-free authorization reduction and stable unexpired discovery IDs/expiry across windows. New/repeated grants retain configuration checks; ownership, CSRF and version checks remain. Targeted control suite **27 passed / 1 PostgreSQL-only skipped**, Ruff and whitespace checks passed. Equivalent fixes plus sync cancellation/exclusion regression were verified on Andy_WAHA_message_sync with **347 PostgreSQL-configured tests** and **10 disposable HTTP checkpoints**; this is downstream evidence, not a full upstream rerun. No API/migration change, real authorization change, commit, push or PR update.
+
 ## PR #9 synchronization and unified compatibility acceptance — 2026-10-09
 
 Latest main d6e70eb is included in Andy_WAHA_upgrade via f166084; local main now matches origin/main. User-authorized prior integration checkpoint **0e22486** committed after restoring all pending files from retained stash c2d6d15. Follow-up fixes are included in this PR; real-account acceptance remains pending: added 0007_merge_waha_extraction with both existing parent heads (no shared migration rewrites); Windows extraction fixtures now use pytest-owned files and guaranteed engine disposal; bilingual A/B handoff and exact legacy/team manual steps updated. Generated contracts remain synchronized after the real merge.

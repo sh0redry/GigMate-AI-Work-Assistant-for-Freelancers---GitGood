@@ -1,5 +1,7 @@
 # WAHA local product setup API: delivery and unified acceptance
 
+2026-10-09 review fixes: PUT /chats checks login, ownership, CSRF, choices and control_version. Keeping or reducing the current allowlist works when private WAHA configuration is missing or mismatched; adding or reauthorizing a conversation still requires valid configuration. Successful withdrawal may return available=false. Discovery preserves unexpired choice IDs and original expiry, updates labels, and keeps valid options from other pages/windows. Expired choices receive new IDs; actual authorization changes still reject stale versions. Refresh setup/chats after saving to obtain persistent selected IDs. No API shape or migration changed.
+
 2026-10-08 extension: [merged integration](role-a-integration-acceptance.md) adds the implemented D screens, recovered-issue review, migration 0006 provider samples and legacy journal adoption. `inspect`/`discover` do not advance control_version. The dated initial scope/evidence below is retained; frontend screens are no longer pending.
 
 Date: 2026-10-07; branch Andy_WAHA_upgrade, based on main 0cd7e3f. [Chinese](../zh/role-a-setup-api-acceptance.md). Scope: backend setup for one privately configured local Core/WEBJS session. No frontend screens, production identity, arbitrary multi-merchant/session provisioning, AI, history import, sending or Cloud API.
