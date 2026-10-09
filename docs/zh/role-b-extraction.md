@@ -26,7 +26,9 @@ Role B 拥有 AI 抽取流水线：Provider 接口、提示词/模型版本注�
 
 真实模型接入（Anthropic、OpenAI 或其他具体供应商）是后续单独授权批次。
 接缝已经预留好，新增真实 provider 时不必改 worker、合约或既有 Replay
-逻辑。
+逻辑。本批次交付一个不发请求的 `llm` provider 骨架：注册表选择、
+配置、prompt 版本与调用形态都已接好，下一批次只需补全
+`gigmate.extraction.llm.LLMProvider._invoke_model` 即可。
 
 ## 边界
 
@@ -93,10 +95,42 @@ class Provider(Protocol):
 | --- | --- |
 | `GIGMATE_EXTRACTION_PROVIDER=deterministic`（默认） | 只识别两条合成样例的默认 provider。 |
 | `GIGMATE_EXTRACTION_PROVIDER=disabled` | 所有请求返回 `needs_review`，不写变更。 |
+| `GIGMATE_EXTRACTION_PROVIDER=llm` | 真实模型骨架；接缝补全前始终返回 `needs_review`，并在 `unresolved_questions` 中写明原因。 |
 | 未知名称 | 启动时直接报错，绝不悄悄回落。 |
 
 测试通过 `gigmate.extraction.registry._reset_provider_for_testing` 注入
 provider，不污染进程级缓存。
+
+### `llm` provider 骨架
+
+`gigmate.extraction.llm.LLMProvider` 是后续单独授权真实模型批次的非发请求
+接缝。它同样遵守 `ExtractionRequest.origin` 信任边界，读取
+`gigmate/extraction/prompts/` 下的版本化 prompt 文件，并把配置好的模型
+与 prompt 版本写入 `ModelCallTrace`，便于人工核对为何被拒绝。
+
+配置（环境变量，骨架阶段全部可选）：
+
+| 变量 | 用途 |
+| --- | --- |
+| `GIGMATE_LLM_PROVIDER` | 供应商名（`openai`、`anthropic` 等），写入 `model_version`。 |
+| `GIGMATE_LLM_MODEL` | 模型标识。未配置时记为 `skeleton:pending`。 |
+| `GIGMATE_LLM_API_KEY` | 仅服务端使用，下一批次补全接缝时被读取。 |
+| `GIGMATE_LLM_ENDPOINT` | 可选 base URL 覆盖（测试用）。 |
+| `GIGMATE_LLM_PROMPT_PATH` | 可选 prompt 文件覆盖。 |
+| `GIGMATE_LLM_LIVE=1` | 真实调用闸门。开启且接缝未补全时返回 `needs_review`，并写 `llm:seam-pending` 备注与详细 `refused_reason`，让生产环境配置错误立即在 trace 中可见，绝不悄悄回落。 |
+
+默认 prompt 来自
+`apps/backend/src/gigmate/extraction/prompts/role_b_extraction_v1.txt`，第一行
+`prompt_version: X.Y.Z` 会被读入 `prompt_version`；文件缺失或格式异常时
+回退到 `0.0.0-skeleton`，trace 中仍可看出占位状态。文件正文固化了几条
+硬规则（不得把字段标为 `confirmed`、不得授予执行权限、遵守来源信任边界），
+下一批次只需改这一个文件与两个接缝方法。
+
+评测清单里的 `case-008-llm-skeleton-needs-review` 在使用
+`--provider llm` 跑清单时通过；通用 needs_review 用例（3、4、5、6、7）
+在 `llm` 下同样通过，因为骨架一律拒绝。matched 用例（1、2）在 `llm` 下
+预期失败——骨架没有真实模型可以调用；它们在默认 deterministic provider
+下通过。
 
 该开关同时作用于两条路径：Worker 的 WAHA 分支与 legacy Replay 入口
 `gigmate.understanding.extract` 都通过 `gigmate.extraction.provider()`
@@ -181,8 +215,12 @@ PostgreSQL 测试是有意义的运行；SQLite 不证明行锁，只验证条�
 
 ## 待办
 
-- 真实模型 provider 接入（Anthropic、OpenAI 或其他单独授权供应商），
-  配套 prompt-injection 回归与延迟预算。
+- 真实模型 provider 接入：用真实 SDK 调用替换
+  `gigmate.extraction.llm.LLMProvider._invoke_model` 与 `_parse_response`，
+  把凭据接到服务端，移除 live 闸门，并补上 prompt-injection 回归与延迟
+  预算。接缝、注册表项、prompt 版本、`llm:seam-pending` trace 备注与
+  `case-008-llm-skeleton-needs-review` 评测用例都已就位，这一批只需补
+  两个方法。
 - D 前端面向真实 provider 输出的 `pending_change_ids` 展示；当前
   Replay 卡片已能呈现，但真实 provider 来回之前不更新前端。
 - 真实 provider 上线后细化 `unresolved_questions` 给商户的人工核对呈现。

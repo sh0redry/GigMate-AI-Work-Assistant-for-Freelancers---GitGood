@@ -38,6 +38,7 @@ from gigmate.extraction import (
 from gigmate.extraction.deterministic import DeterministicProvider
 from gigmate.extraction.disabled import DisabledProvider
 from gigmate.extraction.evaluator import evaluate_case, evaluate_manifest
+from gigmate.extraction.llm import LLMProvider
 from gigmate.extraction.registry import (
     _reset_provider_for_testing,
     registered_providers,
@@ -101,7 +102,122 @@ def _build_reschedule_request(
 
 
 def test_registered_providers_includes_deterministic_and_disabled():
-    assert {"deterministic", "disabled"} <= set(registered_providers())
+    assert {"deterministic", "disabled", "llm"} <= set(registered_providers())
+
+
+# ---------------------------------------------------------------------------
+# LLM provider skeleton
+# ---------------------------------------------------------------------------
+
+
+def _clear_llm_env(monkeypatch):
+    for name in (
+        "GIGMATE_LLM_PROVIDER",
+        "GIGMATE_LLM_MODEL",
+        "GIGMATE_LLM_API_KEY",
+        "GIGMATE_LLM_ENDPOINT",
+        "GIGMATE_LLM_PROMPT_PATH",
+        "GIGMATE_LLM_LIVE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_llm_provider_returns_needs_review_without_configuration(monkeypatch):
+    """The skeleton never emits a proposal until the real-model batch is wired in."""
+    _clear_llm_env(monkeypatch)
+    req = _build_reschedule_request(text="今天天气不错")
+    outcome = LLMProvider().propose(req)
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert outcome.proposal.changes == []
+    assert outcome.refused_reason and "GIGMATE_LLM_PROVIDER" in outcome.refused_reason
+    assert outcome.proposal.model_version == "skeleton:pending"
+    # Prompt version is read from the bundled file by default.
+    assert outcome.proposal.prompt_version == "0.1.0"
+    assert outcome.notes == ("llm:not-configured",)
+
+
+def test_llm_provider_refuses_live_origin_even_with_configuration(monkeypatch):
+    """Live-origin input must never reach matched under the skeleton."""
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("GIGMATE_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("GIGMATE_LLM_MODEL", "gpt-4o-mini")
+    req = _build_reschedule_request(
+        text=load_fixture("message-reschedule")["payload"]["text"],
+        origin="live",
+    )
+    outcome = LLMProvider().propose(req)
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert outcome.proposal.changes == []
+    assert outcome.refused_reason and "live-origin" in outcome.refused_reason
+    assert outcome.proposal.model_version == "openai:gpt-4o-mini"
+    assert outcome.notes == ("llm:origin-live-refused",)
+
+
+def test_llm_provider_live_gate_returns_seam_pending_without_calling(monkeypatch):
+    """The live gate must never silently fall back to a real call.
+
+    With the live gate on and the seam unimplemented, the provider records a
+    needs_review outcome with a clear ``llm:seam-pending`` note and an
+    explanatory ``refused_reason``; the worker still records the trace row.
+    """
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("GIGMATE_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("GIGMATE_LLM_MODEL", "gpt-4o-mini")
+    monkeypatch.setenv("GIGMATE_LLM_LIVE", "1")
+    req = _build_reschedule_request(text="改下星期四下午三点，地址我晚些发")
+    outcome = LLMProvider().propose(req)
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert outcome.proposal.changes == []
+    assert outcome.refused_reason and "_invoke_model is not implemented" in outcome.refused_reason
+    assert outcome.proposal.model_version == "openai:gpt-4o-mini"
+    assert outcome.notes == ("llm:seam-pending",)
+
+
+def test_llm_provider_reads_prompt_version_from_bundled_file():
+    """The first `prompt_version:` line wins; missing or malformed files fall back to the skeleton marker."""
+    import importlib
+
+    from gigmate.extraction import llm as llm_module
+
+    importlib.reload(llm_module)
+    provider = llm_module.LLMProvider()
+    assert provider._read_prompt_version() == "0.1.0"
+
+
+def test_llm_provider_registry_selects_llm(monkeypatch):
+    """`GIGMATE_EXTRACTION_PROVIDER=llm` must resolve to the LLMProvider class."""
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("GIGMATE_EXTRACTION_PROVIDER", "llm")
+    _reset_provider_for_testing(None)
+    try:
+        assert provider().name == "llm"
+    finally:
+        _reset_provider_for_testing(None)
+
+
+def test_evaluation_manifest_runs_case_008_under_llm_provider(memory_account):
+    """The LLM-targeted case must pass when the manifest is run with the llm provider.
+
+    Only the LLM-targeted case is checked here. Universal cases 1 and 2 expect
+    ``matched`` for the synthetic fixture text and require a real LLM
+    integration to pass; the skeleton keeps them in needs_review by design.
+    """
+    with memory_account.begin() as db:
+        summary = evaluate_manifest(db, "contracts/evaluation/manifest.json", provider_name="llm")
+    by_id = {outcome.case_id: outcome for outcome in summary.cases}
+    assert "case-008-llm-skeleton-needs-review" in by_id
+    case_008 = by_id["case-008-llm-skeleton-needs-review"]
+    assert case_008.status == "pass"
+    # Universal needs_review cases (3, 4, 5, 6, 7) must still pass under llm.
+    for cid in (
+        "case-003-unknown-waha-text",
+        "case-004-no-order-linkage",
+        "case-005-multiple-order-linkage",
+        "case-006-prompt-injection-attempt",
+        "case-007-live-origin-with-fixture-text",
+    ):
+        assert cid in by_id
+        assert by_id[cid].status == "pass", f"{cid}: {by_id[cid].message}"
 
 
 def test_build_provider_rejects_unknown_name():

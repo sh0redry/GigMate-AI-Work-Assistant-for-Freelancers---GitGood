@@ -18,11 +18,13 @@ from typing import Iterable
 
 from .deterministic import DeterministicProvider
 from .disabled import DisabledProvider
+from .llm import LLMProvider
 from .types import ExtractionRequest, Provider
 
 _REGISTRY: dict[str, type[Provider]] = {
     "deterministic": DeterministicProvider,
     "disabled": DisabledProvider,
+    "llm": LLMProvider,
 }
 
 _lock = threading.Lock()

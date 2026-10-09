@@ -202,3 +202,17 @@ PR #3 的 backend run 37432110763 在 test_waha_team.py 收集阶段报 `ModuleN
 - 小项：`scripts/run_evaluation.py` 导入补 `# noqa: E402`，并把该脚本纳入 `.github/workflows/skeleton.yml` 的 `ruff check`/`ruff format --check` 范围。
 
 验证：`ruff check`/`ruff format --check`（ruff 0.15.6，CI 范围含 `run_evaluation.py`）通过；`pytest apps/backend/tests -q`：268 通过、5 跳过（PostgreSQL 套件需要真实 PG 实例；两条新的外键敏感测试在 SQLite 上执行同一代码路径）；`export_contracts.py --check` 同步；`check_baseline.py` 通过；评测 7/7 通过。本轮无迁移改动（`0005` 已随 PR 交付）。
+
+## Role B llm provider 骨架 — 2026-10-09
+
+本地分支 `william/role-b-llm-skeleton`（未推送）基于 `d6e70eb`，把真实模型 provider 的接缝作为不发请求的骨架交付。下一授权批次只需补齐两个接缝方法，不必动 worker、合约、注册表选择或 Replay 路径。
+
+- 新增 `gigmate.extraction.llm`：`LLMProvider`（注册表名 `llm`）与 `LLMIntegrationPending`。Provider 遵守 `ExtractionRequest.origin` 信任边界（live 来源在真实模型批次放宽前一律拒绝），从 `gigmate/extraction/prompts/role_b_extraction_v1.txt` 读版本化 prompt，并把配置的模型与 prompt 版本写入 `ModelCallTrace`。配置通过 `GIGMATE_LLM_PROVIDER`、`GIGMATE_LLM_MODEL`、`GIGMATE_LLM_API_KEY`、`GIGMATE_LLM_ENDPOINT`、`GIGMATE_LLM_PROMPT_PATH`。`GIGMATE_LLM_LIVE=1` 是显式的“离开骨架”闸门：开启且接缝未补全时返回 `needs_review`，写 `llm:seam-pending` 备注与详细 `refused_reason`；生产环境配置错误会立即在 trace 中暴露，不会悄悄回落。
+- 新增清单用例 `case-008-llm-skeleton-needs-review`（`provider` 字段为 `llm`）固化骨架行为。评测器现在跳过 `provider` 字段与当前 provider 不匹配的用例，所以默认 deterministic 运行仍 7/7 通过。用 `--provider llm` 跑清单会执行这条定向用例加五条通用 needs_review 用例（3、4、5、6、7）；matched 用例（1、2）在 `llm` 下预期失败，文档中已说明。
+- `EvaluationCase` Pydantic 模型新增可选字段 `provider: Text | None`；通过 `python scripts/export_contracts.py` 重新生成 `contracts/domain/models.schema.json`，`--check` 同步。
+- 测试：新增 6 个用例覆盖注册表选择、无配置拒绝、live 来源拒绝、`LIVE` 闸门、prompt 版本解析与 `case-008` 在 `llm` provider 下通过。extraction 全套 25/25；后端全套在 SQLite 上 274 通过、5 跳过（PostgreSQL 锁测试）。
+- `scripts/run_evaluation.py --provider llm` 端到端运行生成的 JSON 报告：6 通过（用例 3-8）、2 失败（用例 1-2 符合预期）——骨架行为如设计。
+- CI：`.github/workflows/skeleton.yml` 的 `ruff check` 与 `ruff format --check` 范围已恢复包含 `scripts/run_evaluation.py`（上次合并因网页上传绕过被去掉）。
+- 双语文档：`docs/{en,zh}/role-b-extraction.md` 新增 `llm provider 骨架` 章节，provider 选择表新增 `llm` 行，“待办”条目改为指向下一批次需要替换的两个接缝方法。
+
+验证（ruff 0.15.6，锁定版本见 `apps/backend/requirements.lock`）：`ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py` 通过；`ruff format --check` 通过；`export_contracts.py --check` 同步；`check_baseline.py` 通过；`pytest apps/backend/tests -q` 274 通过、5 跳过；LLM 评测 6/8（两条 matched 用例按预期失败）。无迁移改动；合约仅新增 `EvaluationCase.provider` 可选字段。分支尚未提交或推送，等用户选择上传方式。
