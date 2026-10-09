@@ -1,5 +1,7 @@
 # WAHA 当前实现与团队交接总览
 
+评审修正（2026-10-09）：撤销授权不再依赖 provider 配置；新增/重新授权仍会检查配置。不同窗口及分页刷新会保留有效候选 ID，不延长到期时间。D 保存后应刷新选项，并明确处理真正过期或授权版本冲突。A 的消息同步分支在配置失效撤权时仍取消活动同步并记录禁止读取区间。见[接入规则](role-a-setup-api-acceptance.md)。本批修复位于本地 Andy_WAHA_message_sync，尚未更新 PR #11。
+
 更新：2026-10-09。本页说明 GigMate 实际实现，不把 WAHA 自身全部能力当作项目功能。[英文对应](../en/role-a-waha-handoff.md)，[验证证据与故障历史](role-a-recovery-acceptance.md)，最新[消息同步批次](role-a-message-sync-acceptance.md)。
 
 ## 目前已经能做什么

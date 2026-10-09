@@ -19,6 +19,7 @@ from gigmate.db import (
     WahaChat,
     WahaConnection,
     WahaControl,
+    WahaExclusion,
     WahaObservationReceipt,
     WahaSnapshot,
     WahaSourceGap,
@@ -59,6 +60,32 @@ def enqueue(s, body=None, key="sync-1"):
     return s[0].post(
         path(s, "sync-jobs"), json=body or payload(s), headers={**s[2], "Idempotency-Key": key}
     )
+
+
+def test_config_free_withdrawal_cancels_sync_and_records_exclusion(setup, monkeypatch):
+    from test_waha_controls import REAL_SETTINGS
+
+    from gigmate import waha_controls
+
+    identifier = enqueue(setup).json()["data"]["id"]
+    monkeypatch.setattr(waha_controls, "settings", REAL_SETTINGS)
+    monkeypatch.delenv("WAHA_CONTROL_CONFIG", raising=False)
+    response = setup[0].put(
+        path(setup, "chats"),
+        json={"expected_version": 0, "selected_ids": [], "consent": True},
+        headers=setup[2],
+    )
+    assert response.status_code == 200
+    with setup[1]() as db:
+        assert db.get(WahaSyncJob, identifier).state == "cancelled"
+        assert (
+            db.scalar(
+                select(WahaExclusion).where(WahaExclusion.connection_id == setup[3].connection_id)
+            ).ended_at
+            is None
+        )
+        chat = db.get(WahaChat, chat_id(setup))
+        assert db.get(ConversationRow, chat.conversation_id).allowlisted is False
 
 
 def item(ref="synthetic:history", **changes):

@@ -280,7 +280,6 @@ def choices(db, row):
 
 def select_chats(db, row, command):
     version(row, command.expected_version)
-    settings(row)
     if len(set(command.selected_ids)) != len(command.selected_ids):
         fail("DUPLICATE_CHAT_SELECTION", 422)
     now = datetime.now(UTC)
@@ -303,10 +302,19 @@ def select_chats(db, row, command):
             fail("CHAT_CHOICE_EXPIRED_OR_UNAVAILABLE", 422)
         selected.add(item.provider_chat_id)
     peers = {item.provider_chat_id: item for item in existing.values()}
+    conversations = {}
     for peer, chat in peers.items():
         conv = db.get(ConversationRow, chat.conversation_id)
         if conv.account_id != row.account_id:
             fail("CONVERSATION_OWNERSHIP_CONFLICT", 403)
+        conversations[peer] = conv
+    authorized = {peer for peer, conv in conversations.items() if conv.allowlisted}
+    # Withdrawal must remain possible when private provider configuration is broken.
+    # New grants (including reauthorization) still require valid configuration.
+    if selected - authorized:
+        settings(row)
+    for peer, chat in peers.items():
+        conv = conversations[peer]
         allow = peer in selected
         if conv.allowlisted != allow:
             from gigmate.waha_sync import authorization_changed
@@ -517,8 +525,13 @@ def run_once(factory=Session, *, make_client=client_for):
                     ),
                 )
             if action == "discover":
-                if parameters.get("offset", 0) == 0:
-                    db.execute(delete(WahaCandidate).where(WahaCandidate.connection_id == row.id))
+                refreshed_at = datetime.now(UTC)
+                db.execute(
+                    delete(WahaCandidate).where(
+                        WahaCandidate.connection_id == row.id,
+                        WahaCandidate.expires_at <= refreshed_at,
+                    )
+                )
                 for chat in discovered:
                     current = db.scalar(
                         select(WahaCandidate).where(
@@ -527,10 +540,9 @@ def run_once(factory=Session, *, make_client=client_for):
                         )
                     )
                     if current:
-                        current.label, current.expires_at = (
-                            chat["name"],
-                            datetime.now(UTC) + timedelta(minutes=10),
-                        )
+                        # Other windows may still hold this valid choice. Refreshing
+                        # its label must neither replace its ID nor extend consent TTL.
+                        current.label = chat["name"]
                         continue
                     db.add(
                         WahaCandidate(
@@ -538,7 +550,7 @@ def run_once(factory=Session, *, make_client=client_for):
                             connection_id=row.id,
                             provider_chat_id=chat["id"],
                             label=chat["name"],
-                            expires_at=datetime.now(UTC) + timedelta(minutes=10),
+                            expires_at=refreshed_at + timedelta(minutes=10),
                         )
                     )
         if op.state != "result_unknown":

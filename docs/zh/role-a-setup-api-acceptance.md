@@ -1,5 +1,7 @@
 # WAHA 本地产品接入后端：交付与统一验收
 
+2026-10-09 评审修复：PUT /chats 保留登录、归属、CSRF、候选和 control_version 校验。私有 WAHA 配置缺失或不匹配时，仍可保留或缩减当前白名单；新增和重新授权仍要求有效配置。撤权成功可返回 available=false。会话发现保留尚未过期的候选 ID 和原到期时间，刷新名称，并保留其他分页/窗口的有效选项。过期选项生成新 ID；真正修改授权后，旧版本仍会被拒绝。保存后刷新 setup/chats 获取持久选中 ID。没有更改接口结构或迁移。
+
 2026-10-08 扩展：[统一适配](role-a-integration-acceptance.md)已接入 D 页面，新增故障审阅、0006 provider 采样和旧操作记录承接。inspect/discover 不推进 control_version。下方初期范围和证据按日期保留，前端页面已不再待做。
 
 日期：2026-10-07；Andy_WAHA_upgrade，基于 main 0cd7e3f。[英文对应](../en/role-a-setup-api-acceptance.md)。范围为一个私有配置的本地 Core/WEBJS session 的后端接入，不做页面、生产身份、任意多商户/session 注册、AI、历史导入、发送或 Cloud API。

@@ -1,5 +1,7 @@
 # WAHA implementation and team handoff
 
+Review correction (2026-10-09): withdrawal no longer depends on provider configuration; new/repeated grants still do. Discovery across windows/pages preserves valid choice IDs without extending their expiry. D should refresh after successful selection and handle real expiry/version conflicts explicitly. A's message-sync branch also cancels active sync and records exclusion intervals during configuration-free withdrawal. See [setup rules](role-a-setup-api-acceptance.md). These fixes are local on Andy_WAHA_message_sync; PR #11 has not been updated by this batch.
+
 Updated: 2026-10-09. This is the current capability summary, not a claim that every feature in WAHA itself is implemented in GigMate. [Chinese counterpart](../zh/role-a-waha-handoff.md). [Evidence and incident history](role-a-recovery-acceptance.md). Latest batch: [message synchronization](role-a-message-sync-acceptance.md).
 
 ## What works now
