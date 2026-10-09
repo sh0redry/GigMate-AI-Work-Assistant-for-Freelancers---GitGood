@@ -60,3 +60,12 @@ export function pendingIssues<
     (issue) => !issue.acknowledged_at || issue.resolution === "needs_followup",
   );
 }
+
+export function choiceExpired(
+  choice: { expires_at: string | null },
+  now = Date.now(),
+) {
+  return (
+    choice.expires_at !== null && new Date(choice.expires_at).getTime() <= now
+  );
+}
