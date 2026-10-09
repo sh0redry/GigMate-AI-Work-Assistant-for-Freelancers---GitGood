@@ -306,6 +306,9 @@ def main():
 
             try:
                 control_once()
+                from gigmate.waha_sync import run_once as sync_once
+
+                sync_once()
             except SQLAlchemyError:
                 log.error("control_poll_failed code=DATABASE_UNAVAILABLE")
         if not poll():

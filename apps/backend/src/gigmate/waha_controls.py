@@ -107,6 +107,7 @@ def import_legacy_restart(db, row, record):
         active_key=row.id,
         created_at=at,
         result={},
+        parameters={},
         error_code="WAHA_LEGACY_RESTART_UNRESOLVED",
     )
     db.add(op)
@@ -124,6 +125,7 @@ def operation_view(op):
         error_code=op.error_code,
         provider_state=op.result.get("provider_state"),
         provider_observed_at=op.result.get("provider_observed_at"),
+        next_offset=op.result.get("next_offset"),
     )
 
 
@@ -181,8 +183,11 @@ def enqueue(db, row, command, key):
     )
     if previous:
         advances = command.action in {"connect", "recover"}
-        if previous.action != command.action or previous.version != command.expected_version + int(
-            advances
+        if (
+            previous.action != command.action
+            or (previous.parameters or {"offset": 0, "limit": 100})
+            != {"offset": command.offset, "limit": command.limit}
+            or previous.version != command.expected_version + int(advances)
         ):
             fail("IDEMPOTENCY_CONFLICT")
         return operation_view(previous)
@@ -205,6 +210,7 @@ def enqueue(db, row, command, key):
         active_key=row.id,
         created_at=datetime.now(UTC),
         result={},
+        parameters={"offset": command.offset, "limit": command.limit},
     )
     db.add(op)
     db.flush()
@@ -215,6 +221,10 @@ def pause_resume(db, row, command, enabled):
     version(row, command.expected_version)
     if enabled:
         settings(row)
+    from gigmate.waha_sync import authorization_changed
+
+    if row.enabled != enabled:
+        authorization_changed(db, row, None, not enabled)
     row.enabled = enabled
     row.control_version += 1
     if not enabled:
@@ -250,13 +260,20 @@ def choices(db, row):
                     label=labels.get(chat.provider_chat_id) or "Authorized conversation",
                     selected=True,
                     expires_at=None,
+                    kind="group" if chat.provider_chat_id.endswith("@g.us") else "direct",
                 )
             )
     for item in candidates:
         if item.provider_chat_id in selected_peers:
             continue
         result.append(
-            dict(id=item.id, label=item.label, selected=False, expires_at=stamp(item.expires_at))
+            dict(
+                id=item.id,
+                label=item.label,
+                selected=False,
+                expires_at=stamp(item.expires_at),
+                kind="group" if item.provider_chat_id.endswith("@g.us") else "direct",
+            )
         )
     return result
 
@@ -292,6 +309,9 @@ def select_chats(db, row, command):
             fail("CONVERSATION_OWNERSHIP_CONFLICT", 403)
         allow = peer in selected
         if conv.allowlisted != allow:
+            from gigmate.waha_sync import authorization_changed
+
+            authorization_changed(db, row, chat.id, not allow)
             conv.allowlisted = allow
             conv.context_version += 1  # Old proposals remain stale even after reauthorization.
     for peer in selected - peers.keys():
@@ -340,7 +360,7 @@ def client_for(row):
     )
 
 
-def provider_action(client, binding, action, checking):
+def provider_action(client, binding, action, checking, *, parameters=None):
     if checking:
         if action in {"connect", "recover"}:
             result = client.inspect_business_session(binding.connection_id)
@@ -372,7 +392,10 @@ def provider_action(client, binding, action, checking):
             client.restart_failed_session()
         return client.inspect_business_session(binding.connection_id), []
     if action == "discover":
-        return client.status(), client.recent_chats(limit=100)
+        parameters = parameters or {}
+        return client.status(), client.recent_chats(
+            limit=parameters.get("limit", 100), offset=parameters.get("offset", 0)
+        )
     return client.status(), []
 
 
@@ -430,6 +453,7 @@ def run_once(factory=Session, *, make_client=client_for):
         token = str(uuid4())
         op.state, op.lease_until, op.lease_token = "running", now + timedelta(seconds=120), token
         identifier, account_id, connection_id, action = op.id, op.account_id, row.id, op.action
+        parameters = op.parameters
         # Resolve config only after ownership checks; commit the lease before network I/O.
         try:
             client = make_client(row)
@@ -440,11 +464,15 @@ def run_once(factory=Session, *, make_client=client_for):
     result, discovered, error = {}, [], None
     sampled_at = datetime.now(UTC)
     try:
-        observed, discovered = provider_action(client, binding, action, checking)
+        observed, discovered = provider_action(
+            client, binding, action, checking, parameters=parameters
+        )
         result = {
             "provider_state": observed["state"],
             "provider_observed_at": stamp(sampled_at),
         }
+        if action == "discover" and len(discovered) == parameters.get("limit", 100):
+            result["next_offset"] = parameters.get("offset", 0) + parameters.get("limit", 100)
     except (AdapterError, BusinessError) as exc:
         error = exc.code
     except Exception:
@@ -489,8 +517,21 @@ def run_once(factory=Session, *, make_client=client_for):
                     ),
                 )
             if action == "discover":
-                db.execute(delete(WahaCandidate).where(WahaCandidate.connection_id == row.id))
+                if parameters.get("offset", 0) == 0:
+                    db.execute(delete(WahaCandidate).where(WahaCandidate.connection_id == row.id))
                 for chat in discovered:
+                    current = db.scalar(
+                        select(WahaCandidate).where(
+                            WahaCandidate.connection_id == row.id,
+                            WahaCandidate.provider_chat_id == chat["id"],
+                        )
+                    )
+                    if current:
+                        current.label, current.expires_at = (
+                            chat["name"],
+                            datetime.now(UTC) + timedelta(minutes=10),
+                        )
+                        continue
                     db.add(
                         WahaCandidate(
                             id=str(uuid4()),

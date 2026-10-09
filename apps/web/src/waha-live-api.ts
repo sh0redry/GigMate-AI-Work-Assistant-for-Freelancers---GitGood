@@ -8,7 +8,10 @@ import type { components } from "./generated/api";
 
 type Setup = components["schemas"]["WahaSetup"];
 type Operation = components["schemas"]["WahaControlResult"];
-type Command = components["schemas"]["WahaControlCommand"];
+type CommandShape = components["schemas"]["WahaControlCommand"];
+// Defaulted pagination is optional on the wire; retain compact legacy commands.
+type Command = Omit<CommandShape, "offset" | "limit"> &
+  Partial<Pick<CommandShape, "offset" | "limit">>;
 type Detail<T> = { data: T };
 type Page<T> = { items: T[]; next_cursor: string | null };
 
@@ -88,14 +91,21 @@ export function liveConnectionApi(csrf: string): ConnectionApi {
     }
     return op;
   }
-  async function operate(id: string, action: Command["action"], key: string) {
+  async function operate(
+    id: string,
+    action: Command["action"],
+    key: string,
+    offset = 0,
+  ) {
     const cacheKey = `${id}:${key}`;
     let body = attempts.get(cacheKey);
     if (!body) {
       body = { action, expected_version: (await setup(id)).control_version };
+      if (action === "discover" && offset > 0)
+        body = { ...body, offset, limit: 100 };
       attempts.set(cacheKey, body); // Preserve the exact body if the response is lost.
     }
-    if (body.action !== action)
+    if (body.action !== action || (body.offset ?? 0) !== offset)
       throw new ConnectionError(
         "IDEMPOTENCY_CONFLICT",
         "请求键已用于其他操作。",
@@ -224,9 +234,9 @@ export function liveConnectionApi(csrf: string): ConnectionApi {
       return image;
     },
     selection,
-    async chats(id) {
-      await operate(id, "discover", crypto.randomUUID());
-      return { items: await catalog(id), next_offset: null };
+    async chats(id, offset) {
+      const op = await operate(id, "discover", crypto.randomUUID(), offset);
+      return { items: await catalog(id), next_offset: op.next_offset ?? null };
     },
     async save(id, value, choices) {
       await request(base(id) + "/chats", "PUT", {

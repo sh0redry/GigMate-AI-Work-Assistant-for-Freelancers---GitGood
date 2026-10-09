@@ -73,6 +73,7 @@ export function demoConnectionApi(): ConnectionApi & {
     expires_at: null,
     label: name,
     selected: false,
+    kind: i === 2 ? "group" : "direct",
   }));
   let connected = false,
     enabled = true,

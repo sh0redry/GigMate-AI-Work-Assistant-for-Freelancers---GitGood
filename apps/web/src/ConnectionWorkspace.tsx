@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { WahaMessages } from "./WahaMessages";
 import {
   ConnectionError,
   demoConnectionApi,
@@ -105,6 +106,8 @@ export function ConnectionWorkspace({
   const [pairing, setPairing] = useState<Pairing | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [choices, setChoices] = useState<Choice[]>([]);
+  const [search, setSearch] = useState("");
+  const [chatKind, setChatKind] = useState("all");
   const [picked, setPicked] = useState<string[]>([]);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -976,44 +979,74 @@ export function ConnectionWorkspace({
                   </div>
                 )}
                 <div className="chat-choices">
-                  {choices.map((c, i) => (
-                    <label className="chat-choice" key={c.id}>
-                      <input
-                        type="checkbox"
-                        checked={picked.includes(c.id)}
-                        disabled={
-                          busy ||
-                          (!picked.includes(c.id) && picked.length >= 100)
-                        }
-                        onChange={(e) => {
-                          setPicked((p) =>
-                            e.target.checked
-                              ? [...p, c.id]
-                              : p.filter((k) => k !== c.id),
-                          );
-                          setNotice("");
-                        }}
-                      />
-                      <span className="chat-avatar" aria-hidden="true">
-                        {c.label.slice(0, 1) || "聊"}
-                      </span>
-                      <span className="chat-title">
-                        <strong>
-                          {c.label === "已授权会话"
-                            ? `已授权会话 ${i + 1}`
-                            : c.label}
-                        </strong>
-                        <small>
-                          {"聊天"} ·{" "}
-                          {selection.selected.some((s) => s.id === c.id)
-                            ? demo
-                              ? "演示已授权"
-                              : "服务端已授权"
-                            : "尚未授权"}
-                        </small>
-                      </span>
-                    </label>
-                  ))}
+                  <label>
+                    搜索已载入聊天
+                    <input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="聊天名称"
+                    />
+                  </label>
+                  <label>
+                    聊天类型
+                    <select
+                      value={chatKind}
+                      onChange={(e) => setChatKind(e.target.value)}
+                    >
+                      <option value="all">全部</option>
+                      <option value="direct">个人聊天</option>
+                      <option value="group">群聊</option>
+                      <option value="selected">已授权</option>
+                    </select>
+                  </label>
+                  {choices
+                    .filter(
+                      (c) =>
+                        c.label
+                          .toLocaleLowerCase()
+                          .includes(search.toLocaleLowerCase()) &&
+                        (chatKind === "all" ||
+                          (chatKind === "selected" && c.selected) ||
+                          c.kind === chatKind),
+                    )
+                    .map((c, i) => (
+                      <label className="chat-choice" key={c.id}>
+                        <input
+                          type="checkbox"
+                          checked={picked.includes(c.id)}
+                          disabled={
+                            busy ||
+                            (!picked.includes(c.id) && picked.length >= 100)
+                          }
+                          onChange={(e) => {
+                            setPicked((p) =>
+                              e.target.checked
+                                ? [...p, c.id]
+                                : p.filter((k) => k !== c.id),
+                            );
+                            setNotice("");
+                          }}
+                        />
+                        <span className="chat-avatar" aria-hidden="true">
+                          {c.label.slice(0, 1) || "聊"}
+                        </span>
+                        <span className="chat-title">
+                          <strong>
+                            {c.label === "已授权会话"
+                              ? `已授权会话 ${i + 1}`
+                              : c.label}
+                          </strong>
+                          <small>
+                            {"聊天"} ·{" "}
+                            {selection.selected.some((s) => s.id === c.id)
+                              ? demo
+                                ? "演示已授权"
+                                : "服务端已授权"
+                              : "尚未授权"}
+                          </small>
+                        </span>
+                      </label>
+                    ))}
                 </div>
                 {nextOffset !== null && (
                   <button
@@ -1071,6 +1104,16 @@ export function ConnectionWorkspace({
             )}
           </section>
         </div>
+      )}
+      {!demo && id && (
+        <WahaMessages
+          key={`${id}:${csrf}`}
+          connection={id}
+          csrf={csrf}
+          enabled={!!connector?.enabled}
+          issues={issues}
+          onSessionExpired={onSessionExpired}
+        />
       )}
     </section>
   );

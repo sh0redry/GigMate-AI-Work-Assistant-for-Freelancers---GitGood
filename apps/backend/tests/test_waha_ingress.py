@@ -181,6 +181,7 @@ def test_rejection_writes_no_content_mapping_or_job(ingress, mutation, status):
         event["payload"]["from"] = "synthetic:unallowed@lid"
     if mutation == "media":
         event["payload"]["hasMedia"] = True
+        event["payload"]["media"] = {"mimetype": ["invalid"]}
     if mutation == "missing_id":
         event.pop("id")
     if mutation == "timestamp":

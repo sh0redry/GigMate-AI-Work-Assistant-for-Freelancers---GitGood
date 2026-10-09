@@ -181,6 +181,14 @@ def receive(db, binding, raw, *, now=None):
         )
         if not conversation or not conversation.allowlisted:
             fail("CONVERSATION_NOT_ALLOWED", 403)
+        from gigmate.waha_sync import receive_media
+
+        try:
+            media_result = receive_media(db, connection, chat, conversation, raw, now=now)
+        except AdapterError as exc:
+            fail(exc.code, 422)
+        if media_result is not None:
+            return media_result
         target = bounded_id(
             payload.get(
                 "editedMessageId"
@@ -335,6 +343,13 @@ def receive(db, binding, raw, *, now=None):
     if duplicate:
         connection.duplicates += 1
     db.flush()
+    if event_type in {"message.created", "message.edited"} and not duplicate:
+        from gigmate.waha_sync import observe_text
+
+        try:
+            observe_text(db, chat, raw, now)
+        except AdapterError as exc:
+            fail(exc.code, 422)
     return {
         "event_id": identity,
         "duplicate": duplicate,
@@ -388,6 +403,9 @@ def purge_expired(db, connection_id, *, now=None):
         select(WahaConnection).where(WahaConnection.id == connection_id).with_for_update()
     )
     cutoff = now - timedelta(days=30)
+    from gigmate.waha_sync import purge
+
+    purge(db, connection_id, cutoff)
     old_events = select(Inbox.id).where(
         Inbox.connection_id == connection_id, Inbox.received_at < cutoff
     )
