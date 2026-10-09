@@ -532,3 +532,70 @@ def test_media_short_ack_and_caption_update_preserve_attachment_without_extra_jo
         assert snap.data["delivery_status"] == "read"
         assert snap.data["kind"] == "image" and snap.data["text"] == "Updated synthetic caption"
         assert db.scalar(select(func.count()).select_from(Job)) == 0
+
+
+@pytest.mark.parametrize("short_target", [False, True])
+def test_media_revoke_keeps_canonical_identity_on_replay_and_history(setup, ingress, short_target):
+    canonical = "false_synthetic:peer@lid_AABB1234"
+    created = raw(event_id="synthetic:media-original")
+    created["payload"].update(
+        id=canonical,
+        hasMedia=True,
+        body="Synthetic caption",
+        media={"mimetype": "image/png", "filename": "synthetic.png"},
+    )
+    assert post(ingress, created).status_code == 200
+    chat = chat_id(setup)
+    timeline_path = path(setup, f"chats/{chat}/timeline")
+    display_id = setup[0].get(timeline_path).json()["items"][0]["id"]
+    revoked = raw(
+        "message.revoked", event_id="synthetic:media-revoked", timestamp=created["timestamp"] + 1000
+    )
+    revoked["payload"]["revokedMessageId"] = "AABB1234" if short_target else canonical
+    assert post(ingress, revoked).status_code == 200
+    with setup[1]() as db:
+        snapshots = list(db.scalars(select(WahaSnapshot)))
+        assert len(snapshots) == 1
+        assert snapshots[0].provider_message_id == canonical
+        assert snapshots[0].revoked and snapshots[0].data["text"] is None
+        revoked_context = db.get(ConversationRow, ingress[5]).context_version
+    assert post(ingress, revoked).json()["data"]["duplicate"] is True
+    alias_replay = {
+        **revoked,
+        "payload": {
+            **revoked["payload"],
+            "revokedMessageId": canonical if short_target else "AABB1234",
+        },
+    }
+    assert post(ingress, alias_replay).json()["data"]["duplicate"] is True
+    repeated = {
+        **revoked,
+        "id": "synthetic:media-revoked-again",
+        "timestamp": revoked["timestamp"] + 1000,
+    }
+    assert post(ingress, repeated).json()["data"]["duplicate"] is True
+    # A real read job must not restore stale media captions into a live tombstone.
+    assert enqueue(setup).status_code == 202
+    provider = Provider(
+        [
+            item(
+                canonical,
+                hasMedia=True,
+                body="Synthetic old history caption",
+                media={"mimetype": "image/png"},
+            )
+        ]
+    )
+    assert work(setup, provider)
+    assert work(setup, provider)
+    rows = setup[0].get(timeline_path).json()["items"]
+    assert len(rows) == 1 and rows[0]["id"] == display_id
+    assert rows[0]["revoked"] is True and rows[0]["text"] is None
+    with setup[1]() as db:
+        assert db.scalar(select(func.count()).select_from(WahaSnapshot)) == 1
+        assert {r.snapshot_id for r in db.scalars(select(WahaObservationReceipt))} == {
+            sync.uid("snapshot", chat, canonical)
+        }
+        assert db.get(ConversationRow, ingress[5]).context_version == revoked_context
+        assert db.scalar(select(func.count()).select_from(Job)) == 0
+        assert db.scalar(select(WahaSyncJob)).state == "succeeded"

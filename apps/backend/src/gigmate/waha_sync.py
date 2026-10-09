@@ -250,7 +250,7 @@ def receive_media(db, connection, chat, conversation, raw, *, now):
             }
     if kind == "message.revoked" and existing:
         normalized = dict(
-            id=target,
+            id=existing.provider_message_id,
             fromMe=existing.data["direction"] == "outgoing",
             hasMedia=True,
             body=None,

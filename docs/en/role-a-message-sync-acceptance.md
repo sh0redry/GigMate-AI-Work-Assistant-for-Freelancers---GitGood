@@ -20,6 +20,8 @@
 
 ## Safety and consumer contract
 
+2026-10-10 review correction: a short media revoke target resolves to the existing canonical snapshot identity and must not create another timeline row. Repeated revoke delivery, full/short alias replay and later history reads preserve the tombstone and cannot restore its caption. This corrects reception, not already affected private databases; inspect/reconcile existing affected records separately without guessing ambiguous targets. Scope, migrations and deferred original-file reading are unchanged.
+
 Authenticate and resolve installation/account/chat ownership before each read and write. Recheck active account, enabled reception and captured control_version after network I/O. Pause/removal cancels work and records exclusion intervals; queries skip those recorded intervals even after restoration. Permission/version changes suppress in-flight results. Earlier pre-upgrade authorization intervals are not reconstructed: no claim that all past denials are known.
 
 Live text continues through the existing 0.1 normalized event/revision/worker pipeline. Metadata-only media acceptance uses durable observation receipts with `acceptance_kind=observation`; it creates no normalized Inbox/Job. Normal text/status/ACK responses retain `acceptance_kind=normalized_event`. accepted includes both categories, while pending/timed business jobs exclude synchronization and media-only observations. Consumers must not assume every accepted receipt is an extraction job.

@@ -1,5 +1,11 @@
 # Implementation status and validation
 
+## PR #14 media-revoke correction — 2026-10-10
+
+Independent P2 review against 59b8e14 was reproduced on current 691567b: revoke normalization replaced the resolved canonical provider ID with a short alias, leaving the original caption visible. Before correction the full-reference control passed and short-reference case failed (two rows). Revoke now keeps existing.provider_message_id. No schema/API/migration changes. Parametrized regressions verify one revoked snapshot, stable single HTTP timeline entry, no caption restoration by a later bounded history job, duplicate receipts/revokes without context advancement or business jobs. Additional alias-replay assertions verify full/short references for the same receipt resolve to one snapshot.
+
+Evidence: PostgreSQL-configured suite **349 passed**, disposable HTTP/worker **10 checkpoints**, evaluation **7/7**, Alembic check and dedicated cleanup passed. SQLite sync module **30 passed / 1 PG-only skipped**; final additional alias-replay assertions **2 passed** in SQLite. Some B fixtures remain SQLite; no new locking claim. Applicable backend Ruff/format, source contract export, bilingual baseline and whitespace checks passed. Frontend unchanged; preceding compatibility evidence remains **45 passed** with build/type/API/format checks. No real media/history/authorization/QR/deployment changes or private database repair performed. This prevents new revoke events from creating alias tombstones; already affected installations need separately scoped reconciliation. PR #14 stays Draft for own-account acceptance and independent review.
+
 ## D01 / message-sync compatibility — 2026-10-10
 
 Publication: PR #15 passed normal protected-main approval/checks and merged as 1336c60. Verified compatibility commit 33ebacd is retained on Andy_WAHA_message_sync; latest main is included without replacing its message-sync features. Local main is fast-forwarded to origin/main. PR #14 is retargeted to main after synchronization, retaining only additional message-sync/compatibility work. Earlier dependency-branch references below are dated publication history.
