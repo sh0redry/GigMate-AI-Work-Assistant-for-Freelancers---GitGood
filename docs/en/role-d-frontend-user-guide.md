@@ -1,5 +1,15 @@
 # GigMate frontend user guide
 
+## Chat types, names and pages — 2026-10-10
+
+The chat-list follow-up is based on Andy's [PR #14](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/pull/14), on `codex/d01-chat-list`, with `Andy_WAHA_message_sync` as the PR base. It depends on that branch's canonical chat-kind metadata. PR #15's October 9 delivery below has already merged into main; the original `Kyrie_Frontend` / `c702f0c` remains separate.
+
+Rows show **个人聊天** (direct), **群聊** (group) or **类型未提供** (missing type). Search applies to loaded names/numbers. **会话类型 → 已授权** filters saved server authorization; pending checkbox changes are counted separately. Page controls offer 8/16/24 rows with previous/next and result counts. Filtering, paging or changing the page size retains all pending selections, including hidden ones. **保存会话授权** saves the full pending selection; **撤销全部授权** includes all pages. **放弃更改** reloads saved authorization. Search is local to the loaded catalog. If more server choices are available, explicitly use **载入更多会话（每批最多 100 个）**, then browse the expanded catalog with the page controls.
+
+Names come from the integration service. A phone-only direct label shows **未提供昵称**; the frontend does not manufacture a nickname. **发现最近会话** refreshes labels provided by the server and may be unavailable while disconnected/paused. In the current upstream adapter, only provider `name` is used, so an available nickname elsewhere is not necessarily returned. The integration owner must fix that server mapping; rediscovery alone is not guaranteed to restore nicknames. Saved authorization may show an explicit unnamed/authorized fallback after candidate metadata expires. Neither paging nor discovering grants processing permission until you save.
+
+For a safe preview, choose **D-01 演示预览 → 模拟扫码成功 → 发现最近会话**: 24 fictional choices cover three default pages. It does not connect a real account; leaving/reloading clears demo state. Native Windows and real nickname acceptance remain unverified in this batch.
+
 Role D, 2026-10-09. [中文版](../zh/role-d-frontend-user-guide.md). D-01 uses main `5f9df37` / Andy's PR #11. Work in the attached `d01-pr11` worktree; the original `Kyrie_Frontend` / `c702f0c` checkout has not been merged. Replay still needs independent review; do not merge this batch yet.
 
 ## Environments and startup

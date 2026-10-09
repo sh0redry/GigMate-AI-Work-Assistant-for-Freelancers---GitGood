@@ -8,7 +8,7 @@
     "npm": "11.12.x"
   },
   "scripts": {
-    "test": "node --test connection-state.test.mjs waha-live-api.test.mjs replay-store.test.mjs workspace-api.test.mjs",
+    "test": "node --test chat-choices.test.mjs connection-state.test.mjs waha-live-api.test.mjs replay-store.test.mjs workspace-api.test.mjs",
     "dev": "vite --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "build": "npm run test && npm run typecheck && vite build",
