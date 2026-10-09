@@ -1,5 +1,7 @@
 # D-01: frontend connection and conversation selection
 
+**Historical acceptance record.** The local bridge, its commands, proposed shapes and bridge test files below were retired by the 2026-10-08 [merged integration batch](role-a-integration-acceptance.md). Do not use the old bridge setup commands. Current screens use A's generated backend API; the dated verification below describes the earlier implementation only.
+
 Owner: Kyrie. Prepared on 2026-10-06 on `Kyrie_Frontend`, based on `main` merge commit `0cd7e3f`. The user requested a local commit with message `还没测试`; no push. Real WhatsApp pairing was attempted on 2026-10-07 but has not succeeded; user acceptance remains pending. Verification evidence is recorded below. [Chinese counterpart](../zh/role-d-stage1-acceptance.md).
 
 ## Scope and current result

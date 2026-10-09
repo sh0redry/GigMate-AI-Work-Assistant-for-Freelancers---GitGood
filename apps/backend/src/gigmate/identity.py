@@ -43,7 +43,8 @@ def authenticate(db, token: str | None, csrf: str | None = None, mutation=False)
         raise BusinessError(401, "UNAUTHENTICATED", "Sign in first")
     if mutation and (not csrf or not hmac.compare_digest(session.csrf_hash, digest(csrf))):
         raise BusinessError(403, "CSRF_REJECTED", "Invalid CSRF token")
-    account = db.scalar(select(Account).where(Account.id == session.account_id).with_for_update())
+    query = select(Account).where(Account.id == session.account_id)
+    account = db.scalar(query.with_for_update() if mutation else query)
     if not account or not account.active:
         raise BusinessError(403, "CONSENT_REVOKED", "Account processing is paused")
     return account

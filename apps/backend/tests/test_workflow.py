@@ -58,6 +58,56 @@ def count(factory, model):
         return db.scalar(select(func.count()).select_from(model))
 
 
+@pytest.mark.parametrize(
+    "start,end,zone,ready,label",
+    [
+        (
+            "2026-03-08T07:30:00Z",
+            "2026-03-08T08:30:00Z",
+            "America/New_York",
+            "2026-03-08T06:30:00Z",
+            "03/08 01:30",
+        ),
+        (
+            "2026-11-01T06:30:00Z",
+            "2026-11-01T07:30:00Z",
+            "America/New_York",
+            "2026-11-01T05:30:00Z",
+            "11/01 01:30",
+        ),
+        (
+            "2026-10-08T16:30:00Z",
+            "2026-10-08T17:30:00Z",
+            "Asia/Hong_Kong",
+            "2026-10-08T15:30:00Z",
+            "10/08 23:30",
+        ),
+    ],
+)
+def test_task_title_matches_absolute_due_across_dst_and_midnight(
+    signed_in, start, end, zone, ready, label
+):
+    client, factory, _, headers = signed_in
+    change = proposal(client, factory, headers)
+    with factory.begin() as db:
+        row = db.get(ChangeRow, change["id"])
+        value = copy.deepcopy(row.data)
+        value["new_value"].update(start_at=start, end_at=end, timezone=zone)
+        row.data = value
+    result = confirm(client, headers, change)
+    assert result.status_code == 200
+    with factory() as db:
+        task = db.scalar(
+            select(TaskRow).where(
+                TaskRow.work_order_id == ORDER,
+                TaskRow.generated.is_(True),
+                TaskRow.data["state"].as_string() == "pending",
+            )
+        )
+        assert task.data["due"]["at"] == ready
+        assert task.data["title"].startswith(label + " ")
+
+
 def test_available_flow_is_explicit_atomic_and_persistent(signed_in):
     client, factory, engine, headers = signed_in
     change = proposal(client, factory, headers)

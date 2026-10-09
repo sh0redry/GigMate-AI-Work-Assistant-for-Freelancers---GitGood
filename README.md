@@ -43,7 +43,7 @@ A proposal is not a confirmed commitment. AI produces suggestions; server-side r
 
 React and TypeScript for the workspace; FastAPI/Pydantic for the API; PostgreSQL for state and jobs; SQLAlchemy/Alembic for migrations; an independent worker; Docker Compose. Python 3.12.10, Node 24.15.0 and PostgreSQL 17.9 are pinned, with backend and frontend dependency locks.
 
-The prototype connector is planned as a WAHA adapter alongside a replay adapter. WAHA is unofficial and does not guarantee protection from account blocking. Live integration must be verified separately from replay; commercial integration is a separate decision. See the [WAHA disclaimer](https://waha.devlike.pro/docs/overview/introduction/).
+The optional local WAHA connector is implemented alongside replay, with durable ingestion, authenticated local connection/QR/chat authorization screens and recovery monitoring. See [current integration and team acceptance](docs/en/role-a-integration-acceptance.md). General live AI extraction, external sending and production onboarding remain pending. WAHA is unofficial and does not guarantee protection from account blocking. Each developer verifies their own consenting test account; commercial integration is a separate decision. See the [WAHA disclaimer](https://waha.devlike.pro/docs/overview/introduction/).
 
 ## Contributing
 

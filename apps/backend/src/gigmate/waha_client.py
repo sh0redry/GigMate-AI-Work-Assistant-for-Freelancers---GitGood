@@ -165,6 +165,20 @@ class LocalWahaClient:
         engine = result.get("engine", {})
         if not isinstance(state, str) or state not in SESSION_STATES:
             raise AdapterError("WAHA_UNKNOWN_STATE")
+        if state == "STOPPED" and (engine is None or engine == {}):
+            # Stopped sessions have no runtime engine. Verify the pinned server,
+            # never assume that missing metadata means the expected engine.
+            declared = result.get("config") or {}
+            if not isinstance(declared, dict) or declared.get("engine") not in {None, ENGINE}:
+                raise AdapterError("WAHA_ENGINE_MISMATCH")
+            server = self._request("GET", "/api/server/version")
+            if (
+                not isinstance(server, dict)
+                or server.get("engine") != ENGINE
+                or server.get("version") != VERSION
+            ):
+                raise AdapterError("WAHA_ENGINE_MISMATCH")
+            engine = {"engine": ENGINE}
         if not isinstance(engine, dict) or engine.get("engine") != ENGINE:
             raise AdapterError("WAHA_ENGINE_MISMATCH")
         # Never return config/credentials/me/profile to generic command output.
@@ -224,6 +238,57 @@ class LocalWahaClient:
         if not isinstance(result, dict) or result.get("name") != "default":
             raise AdapterError("WAHA_SESSION_MISMATCH")
         return {"business_webhook_configured": True, "session_restart_possible": True}
+
+    def create_business_session(self, connection_id):
+        if str(UUID(connection_id)) != connection_id:
+            raise AdapterError("INVALID_TRUSTED_MAPPING")
+        result = self._request(
+            "POST",
+            "/api/sessions",
+            body={
+                "name": "default",
+                "start": True,
+                "config": {
+                    "debug": False,
+                    "webjs": {"tagsEventsOn": True},
+                    "webhooks": [
+                        {
+                            "url": f"http://ingress:8000/api/v1/connectors/waha/{connection_id}/events",
+                            "events": [
+                                "session.status",
+                                "message.any",
+                                "message.edited",
+                                "message.revoked",
+                                "message.ack",
+                            ],
+                            "hmac": {"key": self.config.webhook_secret},
+                            "retries": {"policy": "constant", "delaySeconds": 2, "attempts": 3},
+                        }
+                    ],
+                },
+            },
+        )
+        if not isinstance(result, dict) or result.get("name") != "default":
+            raise AdapterError("WAHA_RESULT_UNKNOWN")
+        return {"session_created": True}
+
+    def inspect_business_session(self, connection_id):
+        status = self.status()
+        session = self._request("GET", "/api/sessions/default")
+        config = session.get("config") if isinstance(session, dict) else None
+        hooks = config.get("webhooks") if isinstance(config, dict) else None
+        expected = f"http://ingress:8000/api/v1/connectors/waha/{connection_id}/events"
+        matches = bool(
+            isinstance(hooks, list)
+            and len(hooks) == 1
+            and isinstance(hooks[0], dict)
+            and hooks[0].get("url") == expected
+            and isinstance(hooks[0].get("hmac"), dict)
+            and hooks[0]["hmac"].get("key") == self.config.webhook_secret
+            and set(hooks[0].get("events", []))
+            >= {"session.status", "message.any", "message.edited", "message.revoked", "message.ack"}
+        )
+        return {**status, "business_webhook_matches": matches}
 
     def qr(self):
         if self.status()["state"] != "SCAN_QR_CODE":

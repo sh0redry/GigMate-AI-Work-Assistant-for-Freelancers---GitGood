@@ -84,6 +84,7 @@ def provision(db, config, instance):
         db.add(row)
         db.flush()
     row.enabled = True
+    row.control_version += 1
     existing = {
         chat.provider_chat_id: chat
         for chat in db.scalars(select(WahaChat).where(WahaChat.connection_id == row.id))
@@ -92,7 +93,10 @@ def provision(db, config, instance):
         conversation = db.get(ConversationRow, chat.conversation_id)
         if conversation.account_id != account.id:
             raise AdapterError("CONVERSATION_OWNERSHIP_CONFLICT")
-        conversation.allowlisted = peer in config.allowlisted_chats
+        allowed = peer in config.allowlisted_chats
+        if conversation.allowlisted != allowed:
+            conversation.allowlisted = allowed
+            conversation.context_version += 1
     for peer in sorted(config.allowlisted_chats - existing.keys()):
         if not 1 <= len(peer) <= 256 or any(ord(char) < 32 for char in peer):
             raise AdapterError("INVALID_CHAT_ID")
@@ -344,6 +348,7 @@ def main(argv=None):
                     raise AdapterError("TRUSTED_ACCOUNT_REQUIRED")
                 if args.command == "pause":
                     row.enabled = False
+                    row.control_version += 1
                     result = {"paused": True}
                 elif args.command == "migrate-binding":
                     save_binding(binding)

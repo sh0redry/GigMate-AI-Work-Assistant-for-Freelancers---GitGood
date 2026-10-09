@@ -106,6 +106,109 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/connectors/{connection_id}/chats": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Connector Chats */
+    get: operations["connector_chats_api_v1_connectors__connection_id__chats_get"];
+    /** Connector Select */
+    put: operations["connector_select_api_v1_connectors__connection_id__chats_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/operations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Connector Command */
+    post: operations["connector_command_api_v1_connectors__connection_id__operations_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/operations/{operation_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Connector Operation */
+    get: operations["connector_operation_api_v1_connectors__connection_id__operations__operation_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/operations/{operation_id}/reconcile": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Connector Reconcile */
+    post: operations["connector_reconcile_api_v1_connectors__connection_id__operations__operation_id__reconcile_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/pause": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Connector Pause */
+    post: operations["connector_pause_api_v1_connectors__connection_id__pause_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/qr": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Connector Qr */
+    get: operations["connector_qr_api_v1_connectors__connection_id__qr_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/connectors/{connection_id}/recovery-issues": {
     parameters: {
       query?: never;
@@ -115,6 +218,57 @@ export interface paths {
     };
     /** Recovery Issues */
     get: operations["recovery_issues_api_v1_connectors__connection_id__recovery_issues_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/recovery-issues/review": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Review Recovered Issues */
+    post: operations["review_recovered_issues_api_v1_connectors__connection_id__recovery_issues_review_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/resume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Connector Resume */
+    post: operations["connector_resume_api_v1_connectors__connection_id__resume_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/setup": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Connector Setup */
+    get: operations["connector_setup_api_v1_connectors__connection_id__setup_get"];
     put?: never;
     post?: never;
     delete?: never;
@@ -648,9 +802,46 @@ export interface components {
        */
       request_id: string;
     };
+    /** Detail[WahaControlResult] */
+    Detail_WahaControlResult_: {
+      data: components["schemas"]["WahaControlResult"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[WahaIssueReviewResult] */
+    Detail_WahaIssueReviewResult_: {
+      data: components["schemas"]["WahaIssueReviewResult"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[WahaSetup] */
+    Detail_WahaSetup_: {
+      data: components["schemas"]["WahaSetup"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
     /** Detail[WorkOrder] */
     Detail_WorkOrder_: {
       data: components["schemas"]["WorkOrder"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[list[WahaChoice]] */
+    Detail_list_WahaChoice__: {
+      /** Data */
+      data: components["schemas"]["WahaChoice"][];
       /**
        * Request Id
        * Format: uuid
@@ -938,6 +1129,121 @@ export interface components {
       /** Error Type */
       type: string;
     };
+    /** WahaChoice */
+    WahaChoice: {
+      /** Expires At */
+      expires_at: string | null;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Label */
+      label: string;
+      /** Selected */
+      selected: boolean;
+    };
+    /** WahaControlCommand */
+    WahaControlCommand: {
+      /**
+       * Action
+       * @enum {string}
+       */
+      action: "connect" | "recover" | "inspect" | "discover";
+      /** Expected Version */
+      expected_version: number;
+    };
+    /** WahaControlResult */
+    WahaControlResult: {
+      /**
+       * Action
+       * @enum {string}
+       */
+      action: "connect" | "recover" | "inspect" | "discover";
+      /**
+       * Connection Id
+       * Format: uuid
+       */
+      connection_id: string;
+      /** Control Version */
+      control_version: number;
+      /** Error Code */
+      error_code: string | null;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Provider Observed At */
+      provider_observed_at: string | null;
+      /** Provider State */
+      provider_state: string | null;
+      /**
+       * State
+       * @enum {string}
+       */
+      state:
+        | "pending"
+        | "checking"
+        | "running"
+        | "succeeded"
+        | "failed"
+        | "result_unknown"
+        | "cancelled";
+    };
+    /** WahaIssueReviewCommand */
+    WahaIssueReviewCommand: {
+      /** Confirmed No Import */
+      confirmed_no_import: boolean;
+      /** Issue Ids */
+      issue_ids: string[];
+    };
+    /** WahaIssueReviewResult */
+    WahaIssueReviewResult: {
+      /** Reviewed */
+      reviewed: number;
+    };
+    /** WahaSelectionCommand */
+    WahaSelectionCommand: {
+      /**
+       * Consent
+       * @constant
+       */
+      consent: true;
+      /** Expected Version */
+      expected_version: number;
+      /** Selected Ids */
+      selected_ids: string[];
+    };
+    /** WahaSetup */
+    WahaSetup: {
+      /** Active Operation Id */
+      active_operation_id: string | null;
+      /** Available */
+      available: boolean;
+      /**
+       * Connection Id
+       * Format: uuid
+       */
+      connection_id: string;
+      /** Control Version */
+      control_version: number;
+      /** Enabled */
+      enabled: boolean;
+      /** Last Operation Id */
+      last_operation_id: string | null;
+      /** Provider Observed At */
+      provider_observed_at: string | null;
+      /** Provider Sample Stale */
+      provider_sample_stale: boolean;
+      /** Provider State */
+      provider_state: string | null;
+    };
+    /** WahaVersionCommand */
+    WahaVersionCommand: {
+      /** Expected Version */
+      expected_version: number;
+    };
     /** WorkOrder */
     WorkOrder: {
       /**
@@ -1160,6 +1466,243 @@ export interface operations {
       };
     };
   };
+  connector_chats_api_v1_connectors__connection_id__chats_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_list_WahaChoice__"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  connector_select_api_v1_connectors__connection_id__chats_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WahaSelectionCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaSetup_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  connector_command_api_v1_connectors__connection_id__operations_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WahaControlCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaControlResult_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  connector_operation_api_v1_connectors__connection_id__operations__operation_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+        operation_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaControlResult_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  connector_reconcile_api_v1_connectors__connection_id__operations__operation_id__reconcile_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+        operation_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WahaVersionCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaControlResult_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  connector_pause_api_v1_connectors__connection_id__pause_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WahaVersionCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaSetup_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  connector_qr_api_v1_connectors__connection_id__qr_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "image/png": string;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   recovery_issues_api_v1_connectors__connection_id__recovery_issues_get: {
     parameters: {
       query?: {
@@ -1181,6 +1724,107 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Page_RecoveryIssue_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  review_recovered_issues_api_v1_connectors__connection_id__recovery_issues_review_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WahaIssueReviewCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaIssueReviewResult_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  connector_resume_api_v1_connectors__connection_id__resume_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WahaVersionCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaSetup_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  connector_setup_api_v1_connectors__connection_id__setup_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaSetup_"];
         };
       };
       /** @description Validation Error */

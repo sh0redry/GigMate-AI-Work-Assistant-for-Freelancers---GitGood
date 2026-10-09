@@ -109,11 +109,14 @@ def test_dependency_errors_do_not_echo_secrets(monkeypatch):
 
 
 def test_clean_bootstrap_and_restart_preserves_pause(tmp_path, monkeypatch):
+    from datetime import UTC, datetime
+    from uuid import uuid4
+
     from scripts import waha_ingress, waha_local
     from sqlalchemy import create_engine, func, select
     from sqlalchemy.orm import sessionmaker
 
-    from gigmate.db import Account, Base, ConversationRow, Job, WahaConnection
+    from gigmate.db import Account, Base, ConversationRow, Job, WahaConnection, WahaControl
 
     private = tmp_path / "local-data/waha-a02"
     monkeypatch.setattr(team, "ROOT", tmp_path)
@@ -138,6 +141,8 @@ def test_clean_bootstrap_and_restart_preserves_pause(tmp_path, monkeypatch):
 
     def run(args, env=None):
         calls.append(args)
+        if "{{.Architecture}}" in args:
+            return "x86_64"
         return ""
 
     monkeypatch.setattr(team, "run", run)
@@ -163,10 +168,30 @@ def test_clean_bootstrap_and_restart_preserves_pause(tmp_path, monkeypatch):
         assert db.scalar(select(func.count()).select_from(Job)) == 0
         connection = db.scalar(select(WahaConnection))
         connection.enabled = False
+        connection_id = connection.id
+    journal = tmp_path / "local-data/d01-operations" / ("restart-" + connection_id + ".json")
+    journal.parent.mkdir()
+    old_key = str(uuid4())
+    journal.write_text(
+        json.dumps({"key": old_key, "state": "unknown", "at": datetime.now(UTC).isoformat()}),
+        encoding="utf-8",
+    )
     team.startup(env)
     with factory.begin() as db:
         assert db.scalar(select(WahaConnection)).enabled is False
         assert db.scalar(select(func.count()).select_from(Account)) == 1
+        operation = db.scalar(select(WahaControl))
+        assert operation.state == "result_unknown" and operation.active_key == connection_id
+        assert operation.request_key == "legacy-restart:" + old_key
+    migrated = json.loads(journal.read_text(encoding="utf-8"))
+    assert migrated["state"] == "migrated" and migrated["legacy_state"] == "unknown"
+    assert migrated["key"] == old_key
+    assert team.migrate_legacy_restart(synced[-1]) == {
+        "legacy_imported": False,
+        "reconciliation_required": False,
+    }
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(WahaControl)) == 1
     assert len(synced) == 2
     assert any("alembic" in args for args in calls)
     assert not any("create_session" in args for args in calls)
@@ -176,3 +201,18 @@ def test_clean_bootstrap_and_restart_preserves_pause(tmp_path, monkeypatch):
         team.startup(env)
     assert (private / "bindings/ingress.json").read_bytes() == before
     engine.dispose()
+
+
+@pytest.mark.parametrize("architecture", ["amd64", "x86_64", "arm64", "aarch64"])
+def test_compose_chooses_daemon_architecture_not_host_python(monkeypatch, architecture):
+    monkeypatch.setattr(team, "run", lambda args: architecture)
+    args = team.compose("up", "-d")
+    arm = any("waha-arm64.compose.yaml" in item for item in args)
+    assert arm is (architecture in {"arm64", "aarch64"})
+    assert args[-2:] == ["up", "-d"]
+
+
+def test_unknown_daemon_architecture_fails_clearly(monkeypatch):
+    monkeypatch.setattr(team, "run", lambda args: "unknown")
+    with pytest.raises(team.TeamError, match="UNSUPPORTED_DOCKER_ARCHITECTURE"):
+        team.compose("up")

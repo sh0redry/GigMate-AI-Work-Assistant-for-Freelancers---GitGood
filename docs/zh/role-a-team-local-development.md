@@ -1,5 +1,7 @@
 # 团队本地 WAHA 联调与后续开发框架
 
+2026-10-08：完成下方本机启动后，按[统一适配验收](role-a-integration-acceptance.md)使用已实现的页面连接/授权并升级旧操作记录。D 已接入 A 的统一后端，无需本机桥接。
+
 更新：2026-10-06。[英文对应](../en/role-a-team-local-development.md)，[当前能力](role-a-waha-handoff.md)。本批提供开发工具，不实现生产接入、AI 或发送；Cloud API 不纳入计划。
 
 ## 环境归属
@@ -13,6 +15,30 @@
 自动测试的模块路径由 apps/backend/pyproject.toml 明确包含后端 src 和仓库根目录，pytest 与 python -m pytest 均可导入共享 scripts 工具，不依赖某一种启动入口碰巧加入根目录。
 
 安装 Python 3.12.10 与 Docker Desktop/Linux 引擎，启动 Docker，在仓库根目录执行：
+
+### macOS（Intel 或 Apple Silicon）
+
+安装 Python 3.12 和对应芯片的 Docker Desktop。主机工具是 Python 脚本，不是 Windows 可执行程序：
+
+```bash
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r apps/backend/requirements.lock
+.venv/bin/python scripts/waha_team.py init
+.venv/bin/python scripts/waha_team.py up
+.venv/bin/python scripts/waha_team.py doctor
+.venv/bin/python scripts/waha_team.py run local create
+.venv/bin/python scripts/waha_team.py run local status
+.venv/bin/python scripts/waha_team.py run local qr
+open local-data/waha-a02/qr.png
+```
+
+后续命令把 `.venv\Scripts\python.exe` 换成 `.venv/bin/python`，不需要 PowerShell。每台机器重建环境，不复制 Windows .venv、私有 profile/配置或 Docker 会话；已有安装使用原流程，不重复 init。
+
+team up/stop 读取 Docker 引擎架构，不按主机 Python 架构猜测（Python 可能运行在 Rosetta 下）。arm64/aarch64 自动追加 `infra/waha-arm64.compose.yaml`，固定原生 arm-2026.9.1、摘要 b4216daddb7d5c1eb3ab99e608b76a005ec7523e766f923939d229718df4aafb，继续 WEBJS；x86 保留此前已测镜像。手动 Compose 在 ARM 也须追加该覆盖文件，并保留正确数据库环境。不能随意换未固定的 :arm 或引擎解决 manifest 报错。已核对镜像架构及配置，尚未在实体 Mac 上验证账号扫码。
+
+Docker 不等于自动 CPU 转换：原固定镜像索引只有 linux/amd64（另一个是证明材料），Apple Silicon 缺少 ARM 覆盖/模拟时可能拉取失败。WAHA 提供独立 [ARM 镜像](https://waha.devlike.pro/docs/how-to/engines/)，[Docker 多平台说明](https://docs.docker.com/build/building/multi-platform/)区分原生与模拟。后端/配置助手 Python 镜像支持多平台。本地路径要求 Docker Desktop，其他 Docker 引擎的宿主网络不默认算已验证。
+
+### Windows PowerShell
 
 ```powershell
 py -3.12 -m venv .venv
@@ -41,7 +67,7 @@ WORKING 后只选择获同意的测试聊天：
 .venv\Scripts\python.exe scripts/waha_team.py run smoke http
 ```
 
-聊天选择的名称/真实 ID 仅在自己的终端显示，不分享输出。provision 更新数据库权威白名单并启用连接，只在明确授权时执行。up 复用已有绑定，保留暂停和白名单状态；同步主机私有配置并重建服务。configure-live 从易失探测切换持久回调，可能重启 provider，之后查状态。单改本地 consent 标记不能暂停权威连接，暂停用 `run ingress pause`；移除授权先编辑私有白名单，再 provision。尚无产品同意页面。
+聊天选择的名称/真实 ID 仅在自己的终端显示，不分享输出。provision 更新数据库权威白名单并启用连接，只在明确授权时执行。up 复用已有绑定，保留暂停和白名单状态；同步主机私有配置并重建服务。configure-live 从易失探测切换持久回调，可能重启 provider，之后查状态。单改本地 consent 标记不能暂停权威连接。上方 CLI 保留为操作者替代路径；已实现的[本地产品页面](role-a-integration-acceptance.md)直接保存数据库授权并暂停/恢复。页面选择后不要随意 provision，本机配置会替换授权。当前迁移 head 为 0007_merge_waha_extraction，汇合 A/B 分支且不重编号。
 
 ## 自助真实验收
 
@@ -74,7 +100,7 @@ WORKING 后只选择获同意的测试聊天：
 
 ## 后续开发的具体入口
 
-运行服务使用构建镜像，不自动挂载主机代码。修改后端后 team up 重建/重新创建，再 diagnose/smoke 并用新消息验收，不能拿旧 completed 任务代替。前端开发先在 apps/web 执行 npm ci，检查 check:api/format:check/build；可用 ingress API 登录/查询状态，但二维码/选择接口尚不存在。各组员从约定的 main 提交建立功能分支，与 A/C 协调共享契约；工具不自动合并或发送。
+运行服务使用构建镜像，不自动挂载主机代码。修改后端后 team up 重建/重新创建，再 diagnose/smoke 并用新消息验收，不能拿旧 completed 任务代替。前端开发先在 apps/web 执行 npm ci，检查 check:api/format:check/build；现可使用[归属隔离的 setup/二维码/聊天接口](role-a-setup-api-acceptance.md)，操作对象由本地操作者预先准备，页面仍由 D 开发。各组员从约定的 main 提交建立功能分支，与 A/C 协调共享契约；工具不自动合并或发送。
 
 入口链路：`api.waha_events` → HMAC → `waha_ingress.receive` → `messaging.ingest` → Inbox/MessageRow/ConversationRow/Job → `worker.run_once`。Pydantic/领域/OpenAPI 从源生成，事件 schema 独立版本。归属来自服务端绑定，不接受 provider 自报账号；不能跳过入口直接调用模型。
 
@@ -82,7 +108,7 @@ WORKING 后只选择获同意的测试聊天：
 | --- | --- | --- |
 | B | live WAHA Job 现已路由到 `gigmate.extraction.provider()`，落库 `proposals` + `model_call_traces`；未知内容以 `EXTRACTION_NEEDS_REVIEW` 完成，取代原先的 `LIVE_EXTRACTION_PENDING`。范围、合约和评测见 [Role B 抽取子系统](role-b-extraction.md)。沿用 Inbox 标准事件、`MessageRow` 来源修订和 `ConversationRow.context_version`；`gigmate.understanding.extract` 仍是 Replay 入口。 | 多工单归属歧义需复核；仅当前上下文/来源可写提议；模型密钥留服务端。旧 completed 任务不会自动重新抽取，重处理需显式幂等设计。真实模型接入是后续单独授权批次。 |
 | C | messaging.ingest 推进上下文并使旧提议失效，workorders.confirm 管现有内部确认。先设计 actions/outbox/执行器/未知结果核对，再要求 WAHA 发送。 | 客户提议/确认/商户批准分开；批准快照、版本、有效期复核；未知结果不盲重发，当前没有外部 adapter。 |
-| D | GET /api/v1/connectors、隔离 recovery-issues、api.d.ts 中 ConnectorStatus/RecoveryIssue。Vite 当前代理 Replay API，切换 ingress 必须显式修改并验证 origin/鉴权；暂无产品二维码/选择接口。 | connected、pipeline_ready、stale、review_required 分开展示；采样不保证送达。与 A 先补服务端归属的接入 API，前端不得直接管理 WAHA。 |
+| D | connectors/recovery-issues，加本地 setup/二维码/不透明聊天/控制操作及 api.d.ts 类型。Vite 当前代理 Replay API，切换 ingress 明确验证 origin/鉴权。 | 就绪/核对/操作结果分开展示；轮询 202 意图，保留请求键、刷新 control_version，按接入协议调用，不直接管理 WAHA。 |
 | E | team checkpoint/verify、smoke_waha_ingress、check_waha_recovery --run，记录干净克隆 SHA、版本、实际输出与缺陷。 | 独立评审；不提交真实正文/密钥/二维码，SQLite 不证明 PG 锁；Internet/注销/遗漏历史恢复另验。 |
 
 每个已授权里程碑整批完成实现、迁移/契约、测试和双语文档后统一验收；不改共享旧迁移、不手改生成文件。合 main 前独立组员仍需走一次干净环境自己的账号流程，开发者自测不能替代。Cloud API 排除，本页不授权发送、通用 AI 或生产部署。

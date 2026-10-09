@@ -16,8 +16,10 @@
 | [验收要求](acceptance.md) | 当前文档验收与后续业务验收 |
 | [阶段任务](roadmap.md) | 工作顺序、依赖与完成证据 |
 | [A 的职责](role-a-responsibilities.md) | 消息接入、鉴权、可靠任务、监控和角色交接 |
+| [WAHA 合并适配验收](role-a-integration-acceptance.md) | 统一前后端、升级迁移及团队整批验收步骤 |
 | [WAHA 当前实现与交接](role-a-waha-handoff.md) | 当前能力矩阵、限制、组员对接与剩余计划 |
 | [团队本地 WAHA 联调](role-a-team-local-development.md) | 自己账号的启动、自助验收及 B/C/D/E 具体开发框架 |
+| [WAHA 接入后端验收](role-a-setup-api-acceptance.md) | 本地连接/扫码/聊天控制接口、异步意图和 D/E 交接 |
 | [WhatsApp 连接与消息获取](whatsapp-connection-flow.md) | 用户扫码、会话白名单、实时事件和历史同步 |
 | [A 的技术开发演进](role-a-development-roadmap.md) | 完整批次开发、依赖、异常测试和统一验收 |
 | [A 的异常恢复验收](role-a-recovery-acceptance.md) | 分组件健康、故障恢复、遗漏人工核对与 E 可复现测试 |
