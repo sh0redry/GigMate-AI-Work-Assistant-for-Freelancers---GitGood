@@ -1,5 +1,13 @@
 # 已完成工作与验证记录
 
+## PR #9 同步及整批兼容验收 — 2026-10-09
+
+main d6e70eb 已通过 f166084 合入 Andy_WAHA_upgrade，本地 main 与 origin/main 一致。保留 stash c2d6d15 并恢复原修改后，按用户要求提交此前成果检查点 **0e22486**。后续修复随本次 PR 提交，真实账号人工验收仍待完成：新增 0007_merge_waha_extraction，依赖两条现有迁移终点，不重写已共享迁移；Windows 提取夹具使用 pytest 管理文件并保证关闭引擎；同步 A/B 双语交接及旧安装/团队人工步骤。实际合并后生成契约仍一致。
+
+自动证据：TEST_DATABASE_URL 指向临时 PostgreSQL 17.9 的全套 **310 通过**；迁移测试在三个隔离 PG schema 中验证从 0004、B 的 0005 证据分支、A 的 0006 采样分支升级，保留回放行、暂停连接/计数、A 控制版本/采样和 B 评估记录。SQLite 全套 **304 通过/6 跳过**；Windows 提取+迁移针对性 **22 通过**。B 提取单测在 PG 配置全套中仍用独立 SQLite 夹具，不当作锁证据。八个 HTTP/worker/评估流程检查点通过，含 HMAC live-origin 接收→持久待复核提案/调用证据且不写业务、暂停拒绝、worker 重启、归属隔离及评估 CLI **7/7 合成案例**落库。Alembic check 通过，只清理测试资源。前端 **9 通过**，接口类型/格式/TypeScript/构建通过；Ruff、契约导出、基线、空白检查通过。
+
+起初 Windows 错误已确认是未关闭且默认关闭即删除的 NamedTemporaryFile 文件锁，不是 WAHA 运行失败。首次 PG 复测发现迁移测试沿用 SQLite JSON 字符串断言，PG 实际返回对象；改为语义相等后全套通过，没有修改应用数据。已为测试启动 Docker Desktop；没有升级用户真实安装、接管 provider、获取真实二维码/发送、变更授权或确认故障。真实手机扫码/消息变更、真实撤权/暂停恢复、Apple Silicon 配对和 E 独立评审仍需人工。[准备及整批人工步骤](role-a-integration-acceptance.md)。
+
 ## 合并 PR 后统一适配 — 2026-10-08
 
 在 Andy_WAHA_upgrade、main d31aa7d/合并 20611ce 基础上，D 页面已接入持久鉴权后端，完成连接/二维码/聊天发现与授权/暂停恢复/故障审阅；删除第二条 Vite/Python 控制路径，旧未知重启记录通过持久迁移承接。新增 0006 provider 采样迁移，只读控制不再推进授权版本；STOPPED 缺少引擎时仅在固定版本/WEBJS 二次校验后接受。C 的任务准备标题和截止时刻在夏令时及跨午夜保持一致。已同步生成契约/类型和双语交接，保留原有人工证据修改。本批尚未 commit/push。

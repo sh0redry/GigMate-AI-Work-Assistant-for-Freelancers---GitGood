@@ -65,7 +65,7 @@ After WORKING, select ONLY the consenting test chat:
 .venv\Scripts\python.exe scripts/waha_team.py run smoke http
 ```
 
-Selection prints names/IDs only to your terminal; do not share this output. Provision updates authoritative allowlists and enables the connection, so use it only when explicitly granting access. Up reuses an existing binding and preserves paused state/allowlists; after changing host settings it synchronizes private volumes and rebuilds services. Configure-live switches from volatile probe to durable ingress and may restart the provider; inspect status afterward. Setting a local consent flag alone does not pause the database-owned connection. Pause with `run ingress pause`; remove selected chats in your private config and run provision to update authorization. No product consent UI exists yet.
+Selection prints names/IDs only to your terminal; do not share this output. Provision updates authoritative allowlists and enables the connection, so use it only when explicitly granting access. Up reuses an existing binding and preserves paused state/allowlists; after changing host settings it synchronizes private volumes and rebuilds services. Configure-live switches from volatile probe to durable ingress and may restart the provider; inspect status afterward. Setting a local consent flag alone does not pause the database-owned connection. The CLI path above remains an operator alternative: the implemented [local product page](role-a-integration-acceptance.md) saves database authorization and pause/resume directly. Do not casually run provision after browser selection: host config can replace it. Current migration head is 0007_merge_waha_extraction, joining A/B branches without renumbering.
 
 ## Self-service live acceptance
 

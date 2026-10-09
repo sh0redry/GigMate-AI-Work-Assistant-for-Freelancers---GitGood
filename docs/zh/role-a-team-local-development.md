@@ -67,7 +67,7 @@ WORKING 后只选择获同意的测试聊天：
 .venv\Scripts\python.exe scripts/waha_team.py run smoke http
 ```
 
-聊天选择的名称/真实 ID 仅在自己的终端显示，不分享输出。provision 更新数据库权威白名单并启用连接，只在明确授权时执行。up 复用已有绑定，保留暂停和白名单状态；同步主机私有配置并重建服务。configure-live 从易失探测切换持久回调，可能重启 provider，之后查状态。单改本地 consent 标记不能暂停权威连接，暂停用 `run ingress pause`；移除授权先编辑私有白名单，再 provision。尚无产品同意页面。
+聊天选择的名称/真实 ID 仅在自己的终端显示，不分享输出。provision 更新数据库权威白名单并启用连接，只在明确授权时执行。up 复用已有绑定，保留暂停和白名单状态；同步主机私有配置并重建服务。configure-live 从易失探测切换持久回调，可能重启 provider，之后查状态。单改本地 consent 标记不能暂停权威连接。上方 CLI 保留为操作者替代路径；已实现的[本地产品页面](role-a-integration-acceptance.md)直接保存数据库授权并暂停/恢复。页面选择后不要随意 provision，本机配置会替换授权。当前迁移 head 为 0007_merge_waha_extraction，汇合 A/B 分支且不重编号。
 
 ## 自助真实验收
 

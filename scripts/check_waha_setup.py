@@ -3,6 +3,8 @@
 import argparse
 import base64
 import json
+import hashlib
+import hmac
 import os
 import socket
 import subprocess
@@ -95,6 +97,14 @@ def command(args, env=None):
         args, cwd=ROOT, env=env, capture_output=True, text=True, timeout=180
     )
     if result.returncode:
+        if "pytest" in args:
+            # Synthetic test diagnostics stay in ignored local-data, not console traces.
+            (ROOT / "local-data/waha-setup-check/pytest-failure.txt").write_text(
+                result.stdout + result.stderr, encoding="utf-8"
+            )
+            for line in result.stdout.splitlines():
+                if line.startswith(("FAILED ", "ERROR ")):
+                    print(line.split(" - ")[0], flush=True)
         raise RuntimeError("SETUP_CHECK_COMMAND_FAILED")
     return result.stdout
 
@@ -311,6 +321,69 @@ def main():
                 == 409
             )
             checkpoint("opaque_chat_selection_versioning")
+            # Real HTTP reception and separate worker route into B's evidence seam.
+            from sqlalchemy import select, func
+            from gigmate.db import Job, Proposal, ModelCallTrace, ChangeRow
+
+            def signed_message(event_id):
+                body = json.dumps(
+                    {
+                        "id": event_id,
+                        "event": "message.any",
+                        "session": "default",
+                        "timestamp": int(time.time() * 1000),
+                        "payload": {
+                            "id": event_id + ":message",
+                            "fromMe": False,
+                            "from": "synthetic:peer-new@lid",
+                            "hasMedia": False,
+                            "body": "Synthetic integration text requiring review",
+                            "ack": 1,
+                        },
+                    },
+                    separators=(",", ":"),
+                ).encode()
+                return client.post(
+                    f"/api/v1/connectors/waha/{CONNECTION}/events",
+                    content=body,
+                    headers={
+                        "Content-Type": "application/json",
+                        "X-Webhook-Hmac-Algorithm": "sha512",
+                        "X-Webhook-Hmac": hmac.new(
+                            SECRET.encode(), body, hashlib.sha512
+                        ).hexdigest(),
+                    },
+                )
+
+            receipt = signed_message("synthetic:http-extraction")
+            assert receipt.status_code == 200
+            event_id = receipt.json()["data"]["event_id"]
+
+            def evidence_completed():
+                with Session() as db:
+                    job = db.scalar(select(Job).where(Job.event_id == event_id))
+                    return job is not None and job.state == "completed"
+
+            wait(evidence_completed)
+            with Session() as db:
+                assert (
+                    db.scalar(select(Job).where(Job.event_id == event_id)).error_code
+                    == "EXTRACTION_NEEDS_REVIEW"
+                )
+                proposal = db.scalar(
+                    select(Proposal).where(Proposal.event_id == event_id)
+                )
+                assert proposal.assignment == "needs_review" and proposal.changes == []
+                assert (
+                    db.scalar(
+                        select(func.count())
+                        .select_from(ModelCallTrace)
+                        .where(ModelCallTrace.proposal_id == proposal.id)
+                    )
+                    == 1
+                )
+                assert db.scalar(select(func.count()).select_from(ChangeRow)) == 0
+            checkpoint("signed_live_origin_evidence_without_business_write")
             paused = client.post(
                 base + "/pause",
                 json={"expected_version": setup()["control_version"]},
@@ -318,6 +391,13 @@ def main():
             )
             assert paused.status_code == 200 and not setup()["enabled"]
             assert client.get(base + "/qr").status_code == 403
+            denied = signed_message("synthetic:http-paused")
+            assert (
+                denied.status_code == 403
+                and denied.json()["error"]["code"] == "CONSENT_REVOKED"
+            )
+            with Session() as db:
+                assert db.scalar(select(func.count()).select_from(Proposal)) == 1
             assert (
                 client.post(
                     base + "/resume",
@@ -361,6 +441,22 @@ def main():
             assert client.get(base + "/qr").status_code == 404
             assert client.get(base + "/setup").status_code == 404
             checkpoint("account_isolation")
+        result = command(
+            [
+                sys.executable,
+                "scripts/run_evaluation.py",
+                "--manifest",
+                "contracts/evaluation/manifest.json",
+                "--database-url",
+                URL,
+                "--provider",
+                "deterministic",
+            ],
+            env,
+        )
+        report = json.loads(result)
+        assert report["case_count"] == 7 and report["failed"] == 0
+        checkpoint("evaluation_cli_persisted_seven_synthetic_cases")
         if args.suite:
             test_env = {**env, "TEST_DATABASE_URL": URL}
             for name in (
