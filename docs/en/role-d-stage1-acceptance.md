@@ -1,5 +1,15 @@
 # D-01: frontend connection and conversation selection
 
+## PR #16 review follow-up — 2026-10-10
+
+The user authorized shared progress updates and merging dependency PR #14. Its exact head `56e482e` passed independent code/test re-review and merged as `ab52d3e`; PR #16 now targets main and incorporates that merge without conflicts. Original Kyrie sources remain intact. Current shared evidence is in [implementation status](implementation-status.md); the October 10 initial-delivery entry below is the pre-merge publication history.
+
+New `connection-workspace.test.mjs` mounts the actual workspace, child controls and live HTTP adapter in a local DOM with a stateful synthetic response fixture. Three regressions cover (1) cross-page/filter selection → complete version-bound PUT → reread/remount retaining both → global withdrawal, (2) pagination/filter/size causing no provider discovery and explicit load-more preserving next offset/hidden picks, and (3) real IDs behind missing-name fallbacks, withdrawal, clean dirty state and explicit phone-only hints. `jsdom` is a pinned development-only dependency. This is automated DOM/API-fixture integration, not a real browser/backend or disk-persistence test.
+
+Review clarification: the row text is “个人聊天”; missing display names do not create fake or empty choice IDs. Existing authorization must remain withdrawable when unnamed. Supplied phone-only labels remain visible with “未提供昵称”; masking is not implemented and restoring missing nicknames still needs upstream mapping. Shared progress documents were previously excluded by the user's scope, and are now synchronized under the new authorization. Native Windows and real nickname acceptance remain pending. The earlier 24-choice browser-preview evidence remains supplementary.
+
+Actual follow-up verification: **53 frontend tests passed**, API drift, source and all six test-file format checks, TypeScript/build, locked dependency audit, contract export/baseline and Git whitespace/scope passed. PR #14's separate pre-merge recheck completed 349 PostgreSQL-configured tests and 10 disposable HTTP/worker checkpoints with evaluation 7/7 and cleanup; some B fixtures use SQLite. Independent approval of PR #16 is still pending; neither a discussion comment nor passing CI is an approval.
+
 ## Conversation-list follow-up — 2026-10-10
 
 This D-only batch uses `codex/d01-chat-list`, based on Andy's open [PR #14](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/pull/14), commit `56e482e`. The screenshot's search/filter UI and canonical `WahaChoice.kind` originate there. The PR targets `Andy_WAHA_message_sync` so Andy's backend/contracts do not appear in this frontend diff. PR #15's earlier D-01 delivery has merged into main (`1336c60`); the October 9 entries below describe that earlier delivery. Original `Kyrie_Frontend` / `c702f0c` remains intact. No merge is performed in this follow-up.

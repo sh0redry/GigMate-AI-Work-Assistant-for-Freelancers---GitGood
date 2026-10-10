@@ -1,5 +1,9 @@
 # GigMate frontend user guide
 
+## Review and main integration update — 2026-10-10
+
+Andy PR #14 is merged into main (`ab52d3e`). PR #16 now targets main and preserves the chat-type/pagination behavior described below; earlier references to its dependency branch describe the initial publication. Shared status and D acceptance documents are synchronized. The new three-case DOM/API-fixture regression runs with `npm test` / `npm run build`, giving **53 frontend tests**; use `npm ci` for the updated development lock, including test-only `jsdom`. This does not change production dependencies or startup commands. Automated reread/remount uses synthetic API memory and is not proof of real backend disk persistence. Real nicknames and native Windows acceptance remain pending; PR #16 requires independent approval before merge.
+
 ## Chat types, names and pages — 2026-10-10
 
 The chat-list follow-up is based on Andy's [PR #14](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/pull/14), on `codex/d01-chat-list`, with `Andy_WAHA_message_sync` as the PR base. It depends on that branch's canonical chat-kind metadata. PR #15's October 9 delivery below has already merged into main; the original `Kyrie_Frontend` / `c702f0c` remains separate.

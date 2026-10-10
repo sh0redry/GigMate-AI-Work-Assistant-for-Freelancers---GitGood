@@ -1,5 +1,9 @@
 # GigMate 前端使用说明
 
+## 评审与 main 集成更新 — 2026-10-10
+
+Andy PR #14 已合入 main（`ab52d3e`），PR #16 现以 main 为目标，保留下文聊天类型／分页行为；依赖分支描述属于最初发布历史。共享进度及 D 验收文档已同步。新增三项 DOM／API 夹具回归由 `npm test`／`npm run build` 执行，前端共 **53 项测试**；使用 `npm ci` 安装更新的开发依赖锁，含仅测试用 `jsdom`。生产依赖和启动命令不变。自动重读／重新挂载基于合成 API 内存，不证明真实后端磁盘持久化。真实昵称、Windows 原生验收仍待完成，PR #16 合并前需独立批准。
+
 ## 聊天类型、名称和分页 — 2026-10-10
 
 本次列表补充修复位于 `codex/d01-chat-list`，基于 Andy 的 [PR #14](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/pull/14)，PR 目标分支为 `Andy_WAHA_message_sync`，依赖该分支提供的规范聊天类型。下方 10 月 9 日交付已通过 PR #15 进入 main，原 `Kyrie_Frontend`／`c702f0c` 仍独立保留。
