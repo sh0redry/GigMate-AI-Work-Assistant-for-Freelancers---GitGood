@@ -92,3 +92,7 @@ The last private restart override exists on this operator's machine only. Other 
 Automatic synthetic checks validate A plumbing and injected B result schemas, not real OCR/ASR/model accuracy. Full evidence, actual counts and remaining physical/B gates are in [implementation status](implementation-status.md).
 
 This operator's installation is already migrated to 0009 with media API/worker/storage enabled and processor unset; no real file has been read automatically. The browser automation helper failed to start its Node runtime on both attempts, so page visual/real audio/PDF behavior remains manual. Automatic audio/PDF HTTP fixtures verify transport/signature handling only, not valid decoding/parsing. For batch 2, upgrade to 0010 as described above before rebuilding the API/worker; never provision solely for acceptance.
+
+## Processor factory review correction
+
+The trusted factory must return an object with callable `process` and `reconcile` methods. A missing or non-callable method is rejected as `ProcessingUnavailable` before submission. Invalid configuration, unavailable imports and missing/non-callable factory symbols are configuration failures. Exceptions raised by the factory constructor propagate unchanged from `processor()` so B can diagnose implementation defects; the worker still records unexpected processing exceptions conservatively and never blindly resubmits. Validation does not call either method.

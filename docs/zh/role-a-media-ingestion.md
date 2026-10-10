@@ -92,3 +92,7 @@ docker compose --env-file local-data/waha-a02/.env -f infra/waha.compose.yaml -f
 自动合成检查验证 A 管道和注入的 B 结果结构，不证明真实 OCR/ASR/模型准确率。实际次数、运行证据及 B/真机门槛见[进度](progress.md)。
 
 本机已升级 0009，媒体 API/worker/存储已启用，处理器未设置；没有自动读取真实文件。浏览器自动化助手两次都无法启动 Node runtime，故页面视觉/真实音频/PDF 行为留人工验证。自动音频/PDF HTTP 夹具仅验证传输/签名门槛，不证明有效解码/解析。第二批须先按上方说明升级到 0010 再重建 API/worker，不为验收重新 provision。
+
+## 处理器工厂评审修复
+
+服务端工厂返回的对象必须同时具备可调用的 `process` 和 `reconcile`。缺少方法或方法不可调用时，在提交前以 `ProcessingUnavailable` 拒绝。配置格式错误、模块无法导入、工厂名称缺失或不可调用属于配置错误。工厂构造函数抛出的异常由 `processor()` 原样透传，方便 B 排查实现缺陷；worker 仍保守记录意外处理异常，不会盲目重新提交。接口校验不会调用上述两个方法。

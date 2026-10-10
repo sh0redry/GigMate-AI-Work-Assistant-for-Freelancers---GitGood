@@ -1,5 +1,9 @@
 # Implementation status and validation
 
+## PR #21 processor factory review correction — 2026-10-10
+
+Factory loading now requires callable process/reconcile methods before model submission and preserves constructor exceptions separately from configuration errors. Validation: 20 isolated factory tests passed; 52 media/evidence tests passed, with one PostgreSQL concurrency test skipped without a configured test database. Ruff check/format, contract export check, baseline and whitespace checks passed. No live model request, real media read, deployment or frontend change was performed.
+
 ## A media batch 2: time evidence and reviewed handoff — 2026-10-10
 
 Built on `cb11935` with latest merged main/PR #16 retained. A implemented separate provider message sending time (never backfilled from event/observation), merchant-selected validated per-request IANA timezone, frozen durable processing context and B DTO additions; additive 0010 follows unchanged 0009. Added version/hash/result-bound source review and a protected read-only WahaMediaEvidence 0.1.0 endpoint. Suggestions link to source segments; the page explains unknown dates and exposes business handoff only after review, suppressing mismatched/expired context displays. Old unbound reviews require rereview, not model resubmission. Source receipt identity/fingerprint semantics remain intact. B real OCR/ASR/parsing/GenAI and C work-order promotion/sending remain pending; no PR #18 implementation or authority was imported. [Protocol and one-batch manual steps](role-a-media-ingestion.md).

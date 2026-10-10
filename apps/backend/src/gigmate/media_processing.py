@@ -53,9 +53,20 @@ def processor() -> MediaProcessor:
         raise ProcessingUnavailable
     try:
         module, name = factory.split(":", 1)
-        result = getattr(importlib.import_module(module), name)()
-        if not callable(getattr(result, "process", None)):
-            raise TypeError
-        return result
-    except (ImportError, AttributeError, ValueError, TypeError):
+    except ValueError:
         raise ProcessingUnavailable from None
+    if not module or not name or ":" in name:
+        raise ProcessingUnavailable
+    try:
+        loaded_module = importlib.import_module(module)
+    except ImportError:
+        raise ProcessingUnavailable from None
+    make_processor = getattr(loaded_module, name, None)
+    if not callable(make_processor):
+        raise ProcessingUnavailable
+    # Construction failures belong to B's implementation, not configuration parsing.
+    # Preserve them for callers; the worker still treats unknown outcomes conservatively.
+    result = make_processor()
+    if not all(callable(getattr(result, method, None)) for method in ("process", "reconcile")):
+        raise ProcessingUnavailable
+    return result
