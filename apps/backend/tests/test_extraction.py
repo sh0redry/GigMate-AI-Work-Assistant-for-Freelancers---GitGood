@@ -36,6 +36,7 @@ from gigmate.extraction import (
 from gigmate.extraction.deterministic import DeterministicProvider
 from gigmate.extraction.disabled import DisabledProvider
 from gigmate.extraction.evaluator import evaluate_case, evaluate_manifest
+from gigmate.extraction.llm import LLMProvider
 from gigmate.extraction.registry import (
     _reset_provider_for_testing,
     registered_providers,
@@ -100,7 +101,228 @@ def _build_reschedule_request(
 
 
 def test_registered_providers_includes_deterministic_and_disabled():
-    assert {"deterministic", "disabled"} <= set(registered_providers())
+    assert {"deterministic", "disabled", "llm"} <= set(registered_providers())
+
+
+# ---------------------------------------------------------------------------
+# LLM provider skeleton
+# ---------------------------------------------------------------------------
+
+
+def _clear_llm_env(monkeypatch):
+    for name in (
+        "GIGMATE_LLM_PROVIDER",
+        "GIGMATE_LLM_MODEL",
+        "GIGMATE_LLM_API_KEY",
+        "GIGMATE_LLM_ENDPOINT",
+        "GIGMATE_LLM_PROMPT_PATH",
+        "GIGMATE_LLM_LIVE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_llm_provider_returns_needs_review_without_configuration(monkeypatch):
+    """The skeleton never emits a proposal until the real-model batch is wired in."""
+    _clear_llm_env(monkeypatch)
+    req = _build_reschedule_request(text="今天天气不错")
+    outcome = LLMProvider().propose(req)
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert outcome.proposal.changes == []
+    assert outcome.refused_reason and "GIGMATE_LLM_PROVIDER" in outcome.refused_reason
+    assert outcome.proposal.model_version == "skeleton:pending"
+    # Prompt version is read from the bundled file by default.
+    assert outcome.proposal.prompt_version == "0.1.0"
+    assert outcome.notes == ("llm:not-configured",)
+
+
+def test_llm_provider_refuses_live_origin_even_with_configuration(monkeypatch):
+    """Live-origin input must never reach matched under the skeleton."""
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("GIGMATE_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("GIGMATE_LLM_MODEL", "gpt-4o-mini")
+    req = _build_reschedule_request(
+        text=load_fixture("message-reschedule")["payload"]["text"],
+        origin="live",
+    )
+    outcome = LLMProvider().propose(req)
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert outcome.proposal.changes == []
+    assert outcome.refused_reason and "live-origin" in outcome.refused_reason
+    assert outcome.proposal.model_version == "openai:gpt-4o-mini"
+    assert outcome.notes == ("llm:origin-live-refused",)
+
+
+def test_llm_provider_live_gate_returns_seam_pending_without_calling(monkeypatch):
+    """The live gate must never silently fall back to a real call.
+
+    With the live gate on and the seam unimplemented, the provider records a
+    needs_review outcome with a clear ``llm:seam-pending`` note and an
+    explanatory ``refused_reason``; the worker still records the trace row.
+    """
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("GIGMATE_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("GIGMATE_LLM_MODEL", "gpt-4o-mini")
+    monkeypatch.setenv("GIGMATE_LLM_LIVE", "1")
+    req = _build_reschedule_request(text="改下星期四下午三点，地址我晚些发")
+    outcome = LLMProvider().propose(req)
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert outcome.proposal.changes == []
+    assert outcome.refused_reason and "_invoke_model is not implemented" in outcome.refused_reason
+    assert outcome.proposal.model_version == "openai:gpt-4o-mini"
+    assert outcome.notes == ("llm:seam-pending",)
+
+
+def test_llm_provider_reads_prompt_version_from_bundled_file():
+    """The first `prompt_version:` line wins; missing or malformed files fall back to the skeleton marker."""
+    import importlib
+
+    from gigmate.extraction import llm as llm_module
+
+    importlib.reload(llm_module)
+    provider = llm_module.LLMProvider()
+    assert provider._read_prompt_version() == "0.1.0"
+
+
+def test_llm_provider_reads_prompt_version_from_override_file(monkeypatch, tmp_path):
+    """``GIGMATE_LLM_PROMPT_PATH`` replaces the bundled prompt file."""
+    _clear_llm_env(monkeypatch)
+    prompt_file = tmp_path / "override.txt"
+    prompt_file.write_text(
+        "prompt_version: 9.9.9-override\nSynthetic instruction\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("GIGMATE_LLM_PROMPT_PATH", str(prompt_file))
+    instance = LLMProvider()
+    assert instance._read_prompt_version() == "9.9.9-override"
+    assert instance._prompt_load_error is None
+
+
+def test_llm_provider_missing_prompt_file_falls_back(monkeypatch, tmp_path):
+    """A missing prompt file is auditable, not a crash."""
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("GIGMATE_LLM_PROMPT_PATH", str(tmp_path / "absent.txt"))
+    outcome = LLMProvider().propose(_build_reschedule_request(text="今天天气不错"))
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert outcome.proposal.prompt_version == "0.0.0-skeleton"
+    assert outcome.notes == ("llm:prompt-malformed",)
+    assert outcome.refused_reason and "could not be opened" in outcome.refused_reason
+
+
+def test_llm_provider_empty_prompt_version_falls_back(monkeypatch, tmp_path):
+    """Regression: an empty header used to raise ``ValidationError`` out of ``propose``."""
+    _clear_llm_env(monkeypatch)
+    prompt_file = tmp_path / "empty.txt"
+    prompt_file.write_text("prompt_version:\nSynthetic instruction\n", encoding="utf-8")
+    monkeypatch.setenv("GIGMATE_LLM_PROMPT_PATH", str(prompt_file))
+    outcome = LLMProvider().propose(_build_reschedule_request(text="今天天气不错"))
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert outcome.proposal.prompt_version == "0.0.0-skeleton"
+    assert outcome.notes == ("llm:prompt-malformed",)
+    assert outcome.refused_reason and "empty" in outcome.refused_reason
+
+
+def test_llm_provider_prompt_file_without_header_falls_back(monkeypatch, tmp_path):
+    """A prompt file with no ``prompt_version:`` line falls back to the marker."""
+    _clear_llm_env(monkeypatch)
+    prompt_file = tmp_path / "no-header.txt"
+    prompt_file.write_text("Synthetic instruction only\n", encoding="utf-8")
+    monkeypatch.setenv("GIGMATE_LLM_PROMPT_PATH", str(prompt_file))
+    outcome = LLMProvider().propose(_build_reschedule_request(text="今天天气不错"))
+    assert outcome.proposal.prompt_version == "0.0.0-skeleton"
+    assert outcome.notes == ("llm:prompt-malformed",)
+    assert outcome.refused_reason and "no prompt_version:" in outcome.refused_reason
+
+
+def test_llm_provider_non_utf8_prompt_file_falls_back(monkeypatch, tmp_path):
+    """Regression: a non-UTF-8 file used to raise ``UnicodeDecodeError`` out of ``propose``."""
+    _clear_llm_env(monkeypatch)
+    prompt_file = tmp_path / "latin1.txt"
+    prompt_file.write_bytes(b"prompt_version: 0.1.0\xff\xfe\nSynthetic instruction\n")
+    monkeypatch.setenv("GIGMATE_LLM_PROMPT_PATH", str(prompt_file))
+    outcome = LLMProvider().propose(_build_reschedule_request(text="今天天气不错"))
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert outcome.proposal.prompt_version == "0.0.0-skeleton"
+    assert outcome.notes == ("llm:prompt-malformed",)
+    assert outcome.refused_reason and "not valid UTF-8" in outcome.refused_reason
+
+
+def test_llm_provider_live_gate_off_blocks_before_seam(monkeypatch):
+    """With the live gate off the seam is never reached, even when configured."""
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("GIGMATE_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("GIGMATE_LLM_MODEL", "gpt-4o-mini")
+    calls: list = []
+    original = LLMProvider._invoke_model
+
+    def _spy(self, *args, **kwargs):
+        calls.append(args)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(LLMProvider, "_invoke_model", _spy)
+    outcome = LLMProvider().propose(
+        _build_reschedule_request(text="改下星期四下午三点，地址我晚些发")
+    )
+    assert calls == []
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert outcome.notes == ("llm:live-gate-off",)
+    assert outcome.refused_reason and "GIGMATE_LLM_LIVE" in outcome.refused_reason
+
+
+def test_llm_provider_live_gate_on_reaches_seam(monkeypatch):
+    """With the live gate on and configuration complete the seam is reached once."""
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("GIGMATE_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("GIGMATE_LLM_MODEL", "gpt-4o-mini")
+    monkeypatch.setenv("GIGMATE_LLM_LIVE", "1")
+    calls: list = []
+    original = LLMProvider._invoke_model
+
+    def _spy(self, *args, **kwargs):
+        calls.append(args)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(LLMProvider, "_invoke_model", _spy)
+    outcome = LLMProvider().propose(
+        _build_reschedule_request(text="改下星期四下午三点，地址我晚些发")
+    )
+    assert len(calls) == 1
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert outcome.notes == ("llm:seam-pending",)
+
+
+def test_llm_provider_registry_selects_llm(monkeypatch):
+    """`GIGMATE_EXTRACTION_PROVIDER=llm` must resolve to the LLMProvider class."""
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("GIGMATE_EXTRACTION_PROVIDER", "llm")
+    _reset_provider_for_testing(None)
+    try:
+        assert provider().name == "llm"
+    finally:
+        _reset_provider_for_testing(None)
+
+
+def test_evaluation_manifest_runs_case_008_under_llm_provider(memory_account):
+    """The LLM-targeted case must pass when the manifest is run with the llm provider.
+
+    Only the LLM-targeted case is checked here. Universal cases 1 and 2 expect
+    ``matched`` for the synthetic fixture text and require a real LLM
+    integration to pass; the skeleton keeps them in needs_review by design.
+    """
+    with memory_account.begin() as db:
+        summary = evaluate_manifest(db, "contracts/evaluation/manifest.json", provider_name="llm")
+    by_id = {outcome.case_id: outcome for outcome in summary.cases}
+    assert "case-008-llm-skeleton-needs-review" in by_id
+    case_008 = by_id["case-008-llm-skeleton-needs-review"]
+    assert case_008.status == "pass"
+    # Universal needs_review cases (3, 4, 5, 6, 7) must still pass under llm.
+    for cid in (
+        "case-003-unknown-waha-text",
+        "case-004-no-order-linkage",
+        "case-005-multiple-order-linkage",
+        "case-006-prompt-injection-attempt",
+        "case-007-live-origin-with-fixture-text",
+    ):
+        assert cid in by_id
+        assert by_id[cid].status == "pass", f"{cid}: {by_id[cid].message}"
 
 
 def test_build_provider_rejects_unknown_name():
@@ -315,6 +537,52 @@ def test_waha_job_with_fixture_text_from_live_source_needs_review(memory_account
     assert proposal_row.assignment == "needs_review"
     assert proposal_row.changes == []
     assert change_rows == []
+
+
+def test_waha_job_with_malformed_prompt_records_evidence_instead_of_failing(
+    monkeypatch, tmp_path, memory_account
+):
+    """Regression for the PR #18 P2 finding.
+
+    A malformed prompt file used to raise out of ``propose`` (``ValidationError``
+    for an empty version, ``UnicodeDecodeError`` for a non-UTF-8 file), pushing
+    the job into the worker's ``PROCESSING_FAILED`` retry path with no evidence.
+    It now falls back to ``0.0.0-skeleton`` and persists a ``needs_review``
+    proposal plus a trace carrying the ``llm:prompt-malformed`` note.
+    """
+    _clear_llm_env(monkeypatch)
+    prompt_file = tmp_path / "broken_prompt.txt"
+    prompt_file.write_text("prompt_version:\nSynthetic instruction\n", encoding="utf-8")
+    monkeypatch.setenv("GIGMATE_EXTRACTION_PROVIDER", "llm")
+    monkeypatch.setenv("GIGMATE_LLM_PROMPT_PATH", str(prompt_file))
+    _reset_provider_for_testing(None)
+    try:
+        message = deepcopy(replay_event("reschedule"))
+        message["connector"] = "waha"
+        message["source"] = "app"
+        message["provider_message_id"] = "synthetic:waha-prompt-malformed"
+        message["message_revision"] = 1
+        with memory_account.begin() as db:
+            account = db.scalar(select(Account).where(Account.username == "merchant"))
+        with memory_account.begin() as db:
+            ingest(db, account, message, trusted_waha=True)
+        assert run_once(memory_account) is True
+        with memory_account.begin() as db:
+            job = db.scalar(select(Job).order_by(Job.id.desc()))
+            inbox = db.get(Inbox, job.event_id)
+            proposal_row = db.scalar(select(Proposal).where(Proposal.event_id == inbox.id))
+            trace_row = db.scalar(
+                select(ModelCallTrace).where(ModelCallTrace.proposal_id == proposal_row.id)
+            )
+            change_rows = list(db.scalars(select(ChangeRow)))
+        assert job.error_code == EXTRACTION_NEEDS_REVIEW
+        assert proposal_row.assignment == "needs_review"
+        assert proposal_row.prompt_version == "0.0.0-skeleton"
+        assert trace_row.notes == ["llm:prompt-malformed"]
+        assert trace_row.refused_reason and "empty" in trace_row.refused_reason
+        assert change_rows == []
+    finally:
+        _reset_provider_for_testing(None)
 
 
 def test_matched_waha_proposal_persists_evidence_then_merchant_confirms(signed_in):

@@ -34,6 +34,10 @@ This batch delivers:
 Real-model integration (Anthropic, OpenAI or other concrete providers) is a
 separately authorized batch. The seam exists so that adding a real provider
 does not touch the worker, the contracts or the existing Replay behaviour.
+This batch ships the `llm` provider as a non-emitting skeleton: registry
+selection, configuration, prompt versioning and the call shape are wired in
+place, so the next batch only has to fill in
+`gigmate.extraction.llm.LLMProvider._invoke_model`.
 
 ## Boundaries
 
@@ -110,11 +114,50 @@ Provider selection goes through `gigmate.extraction.provider()`:
 | --- | --- |
 | `GIGMATE_EXTRACTION_PROVIDER=deterministic` (default) | Default provider; recognizes only the two canonical Replay fixtures. |
 | `GIGMATE_EXTRACTION_PROVIDER=disabled` | All extraction requests return `needs_review` with empty changes. |
+| `GIGMATE_EXTRACTION_PROVIDER=llm` | Real-model skeleton; returns `needs_review` with a clear reason until the seam is filled in. |
 | Unknown name | Raise at startup; never silently fall back. |
 
 Tests inject providers through
 `gigmate.extraction.registry._reset_provider_for_testing` to avoid touching
 process-level state.
+
+### `llm` provider skeleton
+
+`gigmate.extraction.llm.LLMProvider` is the non-emitting seam for the
+separately authorized real-model batch. It honours the same
+`ExtractionRequest.origin` trust boundary as the deterministic provider, reads
+a versioned prompt file from `gigmate/extraction/prompts/`, and persists the
+configured model and prompt versions in `ModelCallTrace` so reviewers can see
+why a request was refused.
+
+Configuration (environment variables, all optional until the seam is filled):
+
+| Variable | Purpose |
+| --- | --- |
+| `GIGMATE_LLM_PROVIDER` | Vendor name (`openai`, `anthropic`, ...). Used in `model_version`. |
+| `GIGMATE_LLM_MODEL` | Model identifier. Default marker `skeleton:pending` until configured. |
+| `GIGMATE_LLM_API_KEY` | Server-side only. Read by the seam when the next batch lands. |
+| `GIGMATE_LLM_ENDPOINT` | Optional base URL override (testing). |
+| `GIGMATE_LLM_PROMPT_PATH` | Optional override of the bundled prompt file. |
+| `GIGMATE_LLM_LIVE=1` | The live gate, a positive opt-in. While it is off the provider refuses every call at the provider layer with `llm:live-gate-off`, even when the vendor and model are configured. Only when it is on does control reach `_invoke_model`; the unimplemented seam there returns `needs_review` with `llm:seam-pending`. Either way a misconfiguration surfaces immediately in the trace rather than silently falling back to a real model. |
+
+The prompt is loaded from
+`apps/backend/src/gigmate/extraction/prompts/role_b_extraction_v1.txt` by
+default. The first line `prompt_version: X.Y.Z` is read into
+`prompt_version`; a missing file, an OS error, a non-UTF-8 file, a missing
+header line or an empty header value all fall back to `0.0.0-skeleton` and
+surface an auditable `llm:prompt-malformed` outcome (the empty-version and
+non-UTF-8 cases used to raise out of `propose`), so the trace still shows the
+placeholder state and the cause. The bundled file encodes the
+hard rules (never emit `confirmed`, never grant execution authority, respect
+the origin trust boundary) and is the single seam the next batch edits.
+
+`case-008-llm-skeleton-needs-review` in the evaluation manifest pins the
+skeleton behaviour when the manifest is run with `--provider llm`. Universal
+needs_review cases (3, 4, 5, 6, 7) also pass under `llm` because the skeleton
+refuses everything. The matched cases (1, 2) are expected to fail under `llm`
+because the skeleton has no real model to call yet; they pass under the
+default deterministic provider.
 
 The switch applies to **both** paths: the worker's WAHA branch and the legacy
 Replay `gigmate.understanding.extract` entry point both resolve the provider
@@ -211,9 +254,13 @@ traffic is out of scope for this batch.
 
 ## Open follow-ups
 
-- Real-model provider integration (Anthropic, OpenAI or another separately
-  authorized provider), including prompt-injection regression suite and
-  latency budget.
+- Real-model provider integration: replace
+  `gigmate.extraction.llm.LLMProvider._invoke_model` and `_parse_response`
+  with a real SDK call, wire credentials server-side, remove the live gate,
+  and add the prompt-injection regression suite + latency budget. The seam,
+  registry entry, prompt versioning, `llm:seam-pending` trace notes and
+  `case-008-llm-skeleton-needs-review` evaluation case are all in place so
+  this batch only has to fill in the two seam methods.
 - D frontend review surface for `pending_change_ids` produced by real
   providers; current Replay cards already accept them but a real provider
   round-trip is required before frontend changes ship.

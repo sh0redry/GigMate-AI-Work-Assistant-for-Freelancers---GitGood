@@ -1,5 +1,15 @@
 # 已完成工作与验证记录
 
+## PR #18 llm 骨架评审跟进 — 2026-10-10
+
+负责人对 PR #18（`WillW27/role-b-llm-skeleton`，head `78151a6`）的审查要求合并前修正两处代码并校正 PR 描述。两处代码修正已落在 PR 分支上；PR 正文属于 GitHub 侧编辑，仍需作者自行更新。
+
+- **提示词配置回退（P2）：** `LLMProvider._read_prompt_version` 现在在文件缺失、`OSError`、非 UTF-8 字节、缺少 `prompt_version:` 头部行或头部值为空时统一回退 `0.0.0-skeleton`，并把可读原因记入 `_prompt_load_error`；`propose` 以 `llm:prompt-malformed` 备注返回 `needs_review`。此前空版本（`ValidationError`）与非 UTF-8（`UnicodeDecodeError`）会逃逸到 worker 的 `PROCESSING_FAILED` 重试路径且无证据；新增 worker 回归断言任务以 `EXTRACTION_NEEDS_REVIEW` 结束并持久化 proposal/trace。
+- **真实调用闸门反转：** 闸门改为正向开关。`GIGMATE_LLM_LIVE` 关闭时 Provider 层直接拒绝并写 `llm:live-gate-off`（即便已配置供应商与模型）；只有闸门开启才会进入 `_invoke_model`（仍是 stub，返回 `llm:seam-pending`）。此前开启闸门被提前拒绝、关闭闸门反而进入接缝，仅补全 `_invoke_model` 会在闸门关闭时调用模型。来源信任边界改为最先校验，效果不变。
+- 内置提示词仍读取 `prompt_version: 0.1.0`；`case-007-live-origin-with-fixture-text` 与评测清单语义不变。
+
+实际证据（`78151a6` 的独立 worktree）：`pytest apps/backend/tests/test_extraction.py` **33 项通过**（原 25，新增 8 项回归：覆盖/缺失/空值/缺头/非 UTF-8 提示词、闸门关与开两个 spy、畸形提示词的 worker 证据）；完整 `pytest apps/backend/tests` **356 项通过、7 项跳过**。Ruff check/format、`scripts/export_contracts.py --check`、`scripts/check_baseline.py` 通过。测试运行在 SQLite 上，7 项跳过为仅 PostgreSQL 的锁测试，故此处不能证明 PostgreSQL 锁。未调用真实模型、未读取真实密钥、未触碰真实流量。PR 描述修正在 git 差异之外。
+
 ## D01 会话列表评审跟进 — 2026-10-10
 
 Kyrie 明确授权合并 Andy PR #14，并将 D 文档范围扩展到这两份共享中英文进度记录。以 D 账号独立复查并批准 PR #14 的 `56e482e` 后，它已合入 main，合并提交 `ab52d3e`；本地 main 已快进。下方 Draft 描述属于历史记录。PR #16 现以 main 为目标，同步该 main 没有冲突；差异只含前端测试／依赖锁、D 文档及本进度记录，不改 Andy/WAHA、B/C、生成文件或契约。原 `Kyrie_Frontend`／`c702f0c` 保持完整。
@@ -270,3 +280,16 @@ PR #3 的 backend run 37432110763 在 test_waha_team.py 收集阶段报 `ModuleN
 - 小项：`scripts/run_evaluation.py` 导入补 `# noqa: E402`，并把该脚本纳入 `.github/workflows/skeleton.yml` 的 `ruff check`/`ruff format --check` 范围。
 
 验证：`ruff check`/`ruff format --check`（ruff 0.15.6，CI 范围含 `run_evaluation.py`）通过；`pytest apps/backend/tests -q`：268 通过、5 跳过（PostgreSQL 套件需要真实 PG 实例；两条新的外键敏感测试在 SQLite 上执行同一代码路径）；`export_contracts.py --check` 同步；`check_baseline.py` 通过；评测 7/7 通过。本轮无迁移改动（`0005` 已随 PR 交付）。
+## Role B llm provider 骨架 — 2026-10-09
+
+本地分支 `william/role-b-llm-skeleton`（未推送）基于 `d6e70eb`，把真实模型 provider 的接缝作为不发请求的骨架交付。下一授权批次只需补齐两个接缝方法，不必动 worker、合约、注册表选择或 Replay 路径。
+
+- 新增 `gigmate.extraction.llm`：`LLMProvider`（注册表名 `llm`）与 `LLMIntegrationPending`。Provider 遵守 `ExtractionRequest.origin` 信任边界（live 来源在真实模型批次放宽前一律拒绝），从 `gigmate/extraction/prompts/role_b_extraction_v1.txt` 读版本化 prompt，并把配置的模型与 prompt 版本写入 `ModelCallTrace`。配置通过 `GIGMATE_LLM_PROVIDER`、`GIGMATE_LLM_MODEL`、`GIGMATE_LLM_API_KEY`、`GIGMATE_LLM_ENDPOINT`、`GIGMATE_LLM_PROMPT_PATH`。`GIGMATE_LLM_LIVE=1` 是显式的“离开骨架”闸门：开启且接缝未补全时返回 `needs_review`，写 `llm:seam-pending` 备注与详细 `refused_reason`；生产环境配置错误会立即在 trace 中暴露，不会悄悄回落。
+- 新增清单用例 `case-008-llm-skeleton-needs-review`（`provider` 字段为 `llm`）固化骨架行为。评测器现在跳过 `provider` 字段与当前 provider 不匹配的用例，所以默认 deterministic 运行仍 7/7 通过。用 `--provider llm` 跑清单会执行这条定向用例加五条通用 needs_review 用例（3、4、5、6、7）；matched 用例（1、2）在 `llm` 下预期失败，文档中已说明。
+- `EvaluationCase` Pydantic 模型新增可选字段 `provider: Text | None`；通过 `python scripts/export_contracts.py` 重新生成 `contracts/domain/models.schema.json`，`--check` 同步。
+- 测试：新增 6 个用例覆盖注册表选择、无配置拒绝、live 来源拒绝、`LIVE` 闸门、prompt 版本解析与 `case-008` 在 `llm` provider 下通过。extraction 全套 25/25；后端全套在 SQLite 上 274 通过、5 跳过（PostgreSQL 锁测试）。
+- `scripts/run_evaluation.py --provider llm` 端到端运行生成的 JSON 报告：6 通过（用例 3-8）、2 失败（用例 1-2 符合预期）——骨架行为如设计。
+- CI：`.github/workflows/skeleton.yml` 的 `ruff check` 与 `ruff format --check` 范围已恢复包含 `scripts/run_evaluation.py`（上次合并因网页上传绕过被去掉）。
+- 双语文档：`docs/{en,zh}/role-b-extraction.md` 新增 `llm provider 骨架` 章节，provider 选择表新增 `llm` 行，“待办”条目改为指向下一批次需要替换的两个接缝方法。
+
+验证（ruff 0.15.6，锁定版本见 `apps/backend/requirements.lock`）：`ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py` 通过；`ruff format --check` 通过；`export_contracts.py --check` 同步；`check_baseline.py` 通过；`pytest apps/backend/tests -q` 274 通过、5 跳过；LLM 评测 6/8（两条 matched 用例按预期失败）。无迁移改动；合约仅新增 `EvaluationCase.provider` 可选字段。分支尚未提交或推送，等用户选择上传方式。

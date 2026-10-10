@@ -127,8 +127,19 @@ def evaluate_manifest(
         raise ValueError(f"Manifest {path} has no cases; refusing to record an empty run.")
     started = datetime.now(UTC)
     per_case: list[EvaluationOutcome] = []
+    skipped = 0
     for case in cases:
+        case_provider = case.get("provider") if isinstance(case, dict) else None
+        if case_provider and case_provider != provider.name:
+            skipped += 1
+            continue
         per_case.append(evaluate_case(provider, case))
+    if not per_case:
+        names = sorted({case.get("provider") for case in cases if isinstance(case, dict)})
+        raise ValueError(
+            f"Manifest {path} has no cases targeting provider {provider.name!r}; "
+            f"manifest only targets {names}."
+        )
     finished = datetime.now(UTC)
     account_id = "00000000-0000-4000-8000-000000000eee"
     run_id = str(uuid4())
