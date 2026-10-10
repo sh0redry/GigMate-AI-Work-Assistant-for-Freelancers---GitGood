@@ -1,5 +1,15 @@
 # Implementation status and validation
 
+## PR #18 llm-skeleton review follow-up — 2026-10-10
+
+Owner review of PR #18 (`WillW27/role-b-llm-skeleton`, head `78151a6`) asked for two code corrections before merge plus a PR-description fix. Both code corrections are applied on the PR branch; the PR body is a GitHub-side edit the author must still make.
+
+- **Prompt-config fallback (P2):** `LLMProvider._read_prompt_version` now falls back to `0.0.0-skeleton` on a missing file, `OSError`, non-UTF-8 bytes, a missing `prompt_version:` header line or an empty header value, recording a human-readable cause in `_prompt_load_error`; `propose` surfaces it as a `needs_review` outcome with the `llm:prompt-malformed` note. The empty-version (`ValidationError`) and non-UTF-8 (`UnicodeDecodeError`) cases previously escaped into the worker's `PROCESSING_FAILED` retry path with no evidence; a worker regression now asserts the job ends `EXTRACTION_NEEDS_REVIEW` with a persisted proposal/trace.
+- **Live-gate inversion:** the gate is now a positive opt-in. With `GIGMATE_LLM_LIVE` off the provider refuses at the provider layer with `llm:live-gate-off` even when the vendor/model are configured; only with the gate on does control reach `_invoke_model` (still a stub, returning `llm:seam-pending`). Previously the gate-on path refused early and the gate-off path reached the seam, so filling `_invoke_model` alone would have called the model with the gate closed. The origin trust boundary is now checked first, unchanged in effect.
+- The bundled prompt still reads `prompt_version: 0.1.0`; `case-007-live-origin-with-fixture-text` and the evaluation-manifest semantics are unchanged.
+
+Actual evidence (isolated worktree of `78151a6`): `pytest apps/backend/tests/test_extraction.py` **33 passed** (was 25; +8 regressions: override/missing/empty/missing-header/non-UTF-8 prompt, gate-off and gate-on spies, malformed-prompt worker evidence); full `pytest apps/backend/tests` **356 passed, 7 skipped**. Ruff check and format, `scripts/export_contracts.py --check` and `scripts/check_baseline.py` passed. Tests ran on SQLite; the 7 skips are PostgreSQL-only locking tests, so no PostgreSQL locking is proven here. No real model was invoked, no real key read, no live traffic touched. The PR description correction is not part of the git diff.
+
 ## D01 chat-list review follow-up — 2026-10-10
 
 Kyrie explicitly authorized merging Andy's PR #14 and extending D documentation edits to these shared bilingual progress records. PR #14 head `56e482e` was independently rechecked and approved from the D account, then merged into main as `ab52d3e`; local main was fast-forwarded. Earlier Draft references below are historical. PR #16 now targets main, with that main included without conflicts. Its diff contains only frontend tests/dependency lock plus D documentation and these progress records; Andy/WAHA, B/C, generated files and contracts are unchanged. Original `Kyrie_Frontend` / `c702f0c` remains intact.
@@ -314,3 +324,28 @@ Verification on the same disposable SQLite database after the Branch A-03 migrat
 - `bash -c "GIGMATE_LLM_PROVIDER=deepseek GIGMATE_LLM_MODEL=deepseek-chat GIGMATE_LLM_API_KEY=sk-fake GIGMATE_LLM_LIVE=1 python scripts/smoke_deepseek.py >/dev/null 2>&1; echo $?"`: prints `1` (seam-pending → infra failure).
 
 The skeleton lock, the operator gate and the live-origin opt-in remain in place. No real model is invoked, no real API key is read, no real traffic is touched.
+
+## Merge of latest main into PR #20 — 2026-10-10
+
+After PR #18 (`llm:live-gate-off` + malformed-prompt/evidence fixes) merged to main as `cc2ac8e`, merging latest main into the PR #20 head `fb7f4db` produced text conflicts in `apps/backend/src/gigmate/extraction/llm.py` and `docs/{en,zh}/role-b-extraction.md` — a genuine fork between the two fix batches, not a #20 defect. Resolution keeps **both** sides:
+
+- The always-closed skeleton gate stays first: while `_SKELETON_SEAM=True` every call — operator gate on or off, configured or not — returns `llm:seam-pending` and no HTTP client is constructed (the #20 semantics; the production flag was **not** opened to make the conflict disappear).
+- Once the flag is lifted, #18's semantics are preserved: missing vendor/model/key (or an unknown vendor) → `llm:not-configured`, closed operator gate → `llm:live-gate-off`, live-origin input without `GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1` → `llm:origin-live-refused`.
+- All #18 malformed-prompt/evidence fixes stay: every prompt failure mode records `llm:prompt-malformed` with the `_prompt_load_error` cause; the worker persists `Proposal` + `ModelCallTrace` instead of failing.
+- The #20 inactive HTTP implementation (`_invoke_model` / `_call_chat_completion` / `_parse_response`, 30 s timeout, one retry) stays behind the gates. `_refusal_reason` now returns `(note, reason)` tuples uniformly instead of mixing raise/tuple styles; `_parse_response` additionally defaults `candidates` on LLM-driven `needs_review` replies so a minimal review response validates instead of surfacing `llm:response-schema-failed`.
+
+Combined test adjustments in `apps/backend/tests/test_extraction.py` (now 42 tests, up from 36; #18's four duplicate prompt-malformed unit tests are superseded by the stronger #20 versions, noted in-file):
+
+- Skeleton gate on: both operator-gate states (on/off) assert `llm:seam-pending` with a booby-trapped `_client_factory` proving no client is ever constructed.
+- Isolated test subclasses flip `_SKELETON_SEAM=False` only: gate-off still refuses with `llm:live-gate-off` and no client; gate-on issues the documented fake-client request (URL, bearer header, `json_object`, temperature 0) and the canned response parses; live-origin is refused without the opt-in and allowed with it.
+
+`scripts/smoke_deepseek.py` now also classifies `llm:live-gate-off` and `llm:origin-live-refused` as infra failures (exit 1) for post-flip correctness; the skeleton-lock comment attribution was corrected to #20.
+
+Verification (repo `.venv`, SQLite — conditional compatibility, not locking proof; no real model, credentials, WhatsApp traffic or deployment touched):
+
+- `python -m ruff check ...` / `ruff format --check ...` (incl. `scripts/smoke_deepseek.py`): clean.
+- `python scripts/export_contracts.py --check`: synchronized.
+- `python -m pytest apps/backend/tests -q`: 365 passed, 7 skipped (PostgreSQL row-locking tests).
+- `python scripts/check_baseline.py`: PASS.
+- Frontend: `npm run check:api`, `format:check`, `build` all pass (dependencies installed with `npm ci` in this environment).
+- `run_evaluation.py` (disposable SQLite): deterministic 9/9 exit 0; `--provider llm` 7 pass, 2 expected fail (cases 1-2 need a real model).

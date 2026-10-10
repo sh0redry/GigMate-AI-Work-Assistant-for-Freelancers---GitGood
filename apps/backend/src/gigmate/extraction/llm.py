@@ -3,18 +3,19 @@
 This module is the non-emitting seam for the separately authorized real-model
 integration batch. The default vendor is DeepSeek, but any OpenAI-compatible
 vendor (``deepseek``/``openai``/``custom``) is supported in the call shape
-so the next batch only has to flip :attr:`LLMProvider._SKELETON_SEAM` and
-fill in :meth:`LLMProvider._invoke_model`. The provider never makes an
-outbound network call until both gates are open:
+so the next batch only has to flip :attr:`LLMProvider._SKELETON_SEAM`.
+The provider never makes an outbound network call until both gates are open:
 
 1. The class flag :attr:`LLMProvider._SKELETON_SEAM` is ``False`` (the next
    batch sets it once the seam is no longer a stub).
 2. ``GIGMATE_LLM_LIVE=1`` is exported (the explicit operator switch).
 
-Both gates must be open. Turning the operator switch on while the skeleton
-flag is still ``True`` is refused with ``needs_review`` and an
-``llm:seam-pending`` note so a misconfigured production deployment cannot
-silently route real customer messages through an LLM. Live-origin input is
+Both gates must be open. While the skeleton flag is ``True`` every call —
+operator gate on or off, configured or not — is refused with ``needs_review``
+and an ``llm:seam-pending`` note so a misconfigured production deployment
+cannot silently route real customer messages through an LLM. Once the flag
+is lifted, a missing configuration surfaces as ``llm:not-configured`` and a
+closed operator gate as ``llm:live-gate-off``. Live-origin input is
 additionally refused unless ``GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1`` is exported.
 
 Configuration (environment variables):
@@ -30,10 +31,16 @@ Configuration (environment variables):
   ``https://api.deepseek.com``).
 - ``GIGMATE_LLM_PROMPT_PATH`` - optional override of the bundled prompt
   file (defaults to the versioned file in this package).
-- ``GIGMATE_LLM_LIVE=1`` - the explicit live gate. Required to actually
-  invoke the model once the skeleton flag is flipped.
+- ``GIGMATE_LLM_LIVE=1`` - the explicit operator gate. Required to reach
+  :meth:`_invoke_model` once the skeleton flag is flipped.
 - ``GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1`` - opt-in switch that lets
   ``request.origin == "live"`` traffic reach the model. Defaults to off.
+
+The prompt header is read on every call. A missing file, an OS error, a
+non-UTF-8 file, a missing header line or an empty header value all fall back
+to ``0.0.0-skeleton`` and surface an auditable ``llm:prompt-malformed``
+outcome so a bad prompt configuration can never raise out of ``propose`` into
+the worker's failure path.
 
 Test seam: ``self._client_factory`` is an instance attribute pointing at
 ``httpx.Client``. Tests replace it with a fake client to verify the request
@@ -82,8 +89,9 @@ _KNOWN_VENDORS = frozenset({"deepseek", "openai", "custom"})
 # documented DeepSeek API base URL.
 _DEEPSEEK_DEFAULT_ENDPOINT = "https://api.deepseek.com"
 
-# Network hygiene: bound the request time and retry once on transient errors
-# so a flaky network does not hang the worker thread.
+# Network hygiene: bound the request time and retry once on HTTP/transport
+# or response-parse errors so a flaky network does not hang the worker
+# thread.
 _REQUEST_TIMEOUT_S = 30.0
 _MAX_RETRIES = 1
 
@@ -91,35 +99,47 @@ _log = logging.getLogger(__name__)
 
 
 class LLMIntegrationPending(RuntimeError):
-    """Raised when a request must be refused at the provider layer.
+    """Raised when :meth:`_invoke_model` is still an unimplemented seam.
 
-    The provider raises this when the skeleton seam is still in place, when
-    the live gate is off, when required configuration is missing or when the
-    origin trust boundary blocks the input. :meth:`LLMProvider.propose`
-    catches it and returns a ``needs_review`` outcome with the
-    ``llm:seam-pending`` note so the worker still records evidence.
+    The real :meth:`_invoke_model` in this batch returns typed
+    ``needs_review`` outcomes instead of raising, so this exception is
+    unreachable from this module. It is kept — and still caught by
+    :meth:`LLMProvider.propose` — so a deployment that flips
+    ``_SKELETON_SEAM=False`` on a build whose ``_invoke_model`` has been
+    replaced by a stub still gets an auditable ``llm:seam-pending`` refusal
+    instead of a crash or a silent network call.
     """
 
 
 class LLMProvider:
-    """Real-model extraction provider (DeepSeek / OpenAI-compatible skeleton).
+    """Real-model extraction provider (DeepSeek / OpenAI-compatible seam).
 
-    The class flag :attr:`_SKELETON_SEAM` is the second gate in front of
-    :meth:`_invoke_model`: while it is ``True``, the provider refuses every
-    request with ``assignment: needs_review`` and an ``llm:seam-pending``
-    note, regardless of which environment variables are exported. This is
-    what keeps the next batch from silently flipping into "real call" mode
-    by only filling in :meth:`_invoke_model` — both the skeleton flag and
-    ``GIGMATE_LLM_LIVE=1`` must be open. The provider never makes outbound
-    network calls until then; it only reads configuration and the bundled
-    prompt file.
+    Two gates run in front of :meth:`_invoke_model`, in order:
+
+    1. The class flag :attr:`_SKELETON_SEAM` — the always-closed skeleton
+       gate. While it is ``True`` the provider refuses every request with
+       ``assignment: needs_review`` and an ``llm:seam-pending`` note,
+       regardless of which environment variables are exported. This is what
+       keeps this batch from making outbound network calls no matter how the
+       operator configures it, and keeps the next batch from silently
+       flipping into "real call" mode by only filling in
+       :meth:`_invoke_model`.
+    2. ``GIGMATE_LLM_LIVE=1`` — the operator gate. Once the skeleton flag is
+       lifted, a closed operator gate still refuses every call with
+       ``llm:live-gate-off`` and a missing or unsupported configuration with
+       ``llm:not-configured``.
+
+    Only when both gates are open and the configuration is complete does
+    control reach the origin check and :meth:`_invoke_model`, which performs
+    the real OpenAI-compatible chat-completions call through
+    ``self._client_factory``.
     """
 
     # Safety gate #1. The next authorized batch flips this to ``False``
     # together with the real implementation of ``_invoke_model``; until
     # then it stays ``True`` so the off-switch (``GIGMATE_LLM_LIVE``) and
-    # the on-switch-but-unimplemented case both refuse at the provider
-    # layer rather than entering the network call path.
+    # the on-switch cases both refuse at the provider layer rather than
+    # entering the network call path.
     _SKELETON_SEAM: bool = True
 
     name = "llm"
@@ -151,10 +171,11 @@ class LLMProvider:
         began = time.monotonic()
         prompt_version = self._read_prompt_version()
         model_version = self._model_version()
-        # Surface malformed/missing prompt files as a refused outcome BEFORE
-        # the gate checks. ``_read_prompt_version`` never raises (it returns
-        # the placeholder), but it records a descriptive cause so the worker
-        # can persist an auditable ``ModelCallTrace``.
+
+        # A malformed prompt configuration must still produce an auditable
+        # needs_review outcome rather than escaping as a ValidationError
+        # (empty version) or UnicodeDecodeError into the worker's failure
+        # path. Checked before the gates so the cause is always recorded.
         if self._prompt_load_error is not None:
             return self._needs_review(
                 request,
@@ -164,26 +185,23 @@ class LLMProvider:
                 model_version=model_version,
                 notes=("llm:prompt-malformed",),
             )
-        try:
-            reason = self._refusal_reason(request)
-        except LLMIntegrationPending as exc:
-            return self._needs_review(
-                request,
-                reason=str(exc),
-                latency_ms=self._elapsed(began),
-                prompt_version=prompt_version,
-                model_version=model_version,
-                notes=("llm:seam-pending",),
-            )
-        if reason is not None:
+
+        refusal = self._refusal_reason(request)
+        if refusal is not None:
+            note, reason = refusal
             return self._needs_review(
                 request,
                 reason=reason,
                 latency_ms=self._elapsed(began),
                 prompt_version=prompt_version,
                 model_version=model_version,
-                notes=("llm:not-configured",),
+                notes=(note,),
             )
+
+        # Origin trust boundary: live-origin input is refused unless the
+        # operator explicitly opted in. Reachable only when the skeleton
+        # gate is open, so live traffic can never reach the model while
+        # this batch ships with the gate closed.
         if request.origin != "synthetic" and not self._allow_live_origin:
             return self._needs_review(
                 request,
@@ -198,6 +216,10 @@ class LLMProvider:
                 model_version=model_version,
                 notes=("llm:origin-live-refused",),
             )
+
+        # Reachable only with both gates open *and* a complete
+        # configuration; the real implementation returns typed
+        # needs_review outcomes on failure instead of raising.
         try:
             return self._invoke_model(request, began, prompt_version, model_version)
         except LLMIntegrationPending as exc:
@@ -212,61 +234,56 @@ class LLMProvider:
 
     # ------------------------------------------------------------- helpers
 
-    def _refusal_reason(self, request: ExtractionRequest) -> str | None:
-        """Decide whether the call may proceed to :meth:`_invoke_model`.
+    def _refusal_reason(self, request: ExtractionRequest) -> tuple[str, str] | None:
+        """Return ``(note, reason)`` when the call is refused at the provider layer.
 
-        The two gates below run **before** :meth:`_invoke_model` is reached:
-
-        1. :attr:`_SKELETON_SEAM` — class-level safety gate. While ``True``,
-           the provider refuses every call regardless of the environment.
-           This is what keeps the next batch from accidentally flipping into
-           real-call mode by only filling in ``_invoke_model``.
-        2. ``GIGMATE_LLM_LIVE=1`` — operator switch. Required to leave the
-           skeleton state once the seam flag is open.
-
-        Configuration mistakes (missing API key, unknown vendor) raise so the
-        trace records a distinct cause. The function returns ``None`` only
-        when both gates are open AND the configuration is complete; in this
-        skeleton batch that branch is unreachable because gate 1 is closed.
+        Gate 1 — the always-closed skeleton seam — runs first: while
+        :attr:`_SKELETON_SEAM` is ``True`` every call (operator gate on or
+        off, configured or not) is refused with ``llm:seam-pending`` so no
+        outbound network request can happen in this batch. Once the flag is
+        lifted, configuration is checked before the operator gate so an
+        unconfigured deployment keeps the descriptive ``llm:not-configured``
+        reason, and the operator gate is a positive opt-in: while
+        ``GIGMATE_LLM_LIVE`` is off the provider refuses every call with
+        ``llm:live-gate-off``, even when the vendor and model are
+        configured. Only when the configuration is complete *and* both
+        gates are open does ``propose`` continue to the origin check and
+        :meth:`_invoke_model`.
         """
         if self._SKELETON_SEAM:
-            raise LLMIntegrationPending(
+            return (
+                "llm:seam-pending",
                 "gigmate.extraction.llm.LLMProvider is still the skeleton "
                 "seam (_SKELETON_SEAM=True). The next authorized batch must "
                 "set _SKELETON_SEAM=False together with the real "
                 "_invoke_model implementation. Until then every call — gate "
                 "on or off, configured or not — returns needs_review with "
-                "llm:seam-pending so no outbound network request is made."
-            )
-        if not self._configured_live:
-            raise LLMIntegrationPending(
-                "GIGMATE_LLM_LIVE=1 is required to actually invoke the model. "
-                "The provider refuses every call while the live gate is off, "
-                "even when GIGMATE_LLM_PROVIDER/GIGMATE_LLM_MODEL are "
-                "configured, so a misconfigured deployment cannot silently "
-                "fall back to a real model call."
-            )
-        if not self._is_wired_for_live():
-            raise LLMIntegrationPending(
-                "GIGMATE_LLM_LIVE=1 is set but gigmate.extraction.llm is not "
-                "wired for live calls (missing GIGMATE_LLM_API_KEY, or the "
-                "vendor GIGMATE_LLM_PROVIDER is not supported by this build). "
-                "Refusing the call instead of silently falling back."
+                "llm:seam-pending so no outbound network request is made.",
             )
         if not self._configured_provider or not self._configured_model:
             return (
-                "LLM provider is not configured; set GIGMATE_LLM_PROVIDER, "
-                "GIGMATE_LLM_MODEL and GIGMATE_LLM_API_KEY before live calls."
+                "llm:not-configured",
+                "LLM provider is not configured; set GIGMATE_LLM_PROVIDER and "
+                "GIGMATE_LLM_MODEL (and GIGMATE_LLM_API_KEY) before live "
+                "calls are allowed.",
             )
-        if self._configured_provider not in _KNOWN_VENDORS:
+        if not self._configured_live:
             return (
-                f"LLM vendor {self._configured_provider!r} is not supported by "
-                f"this build; known vendors: {sorted(_KNOWN_VENDORS)}."
+                "llm:live-gate-off",
+                "GIGMATE_LLM_LIVE=1 is required before the LLM seam is "
+                "invoked; the provider refuses every call while the live "
+                "gate is off - even when GIGMATE_LLM_PROVIDER/GIGMATE_LLM_MODEL "
+                "are configured - so a misconfigured deployment cannot "
+                "silently fall back to a real model call once _invoke_model "
+                "is implemented.",
             )
-        if not os.environ.get(_API_KEY_ENV):
-            raise LLMIntegrationPending(
-                f"GIGMATE_LLM_LIVE=1 is set but {_API_KEY_ENV} is not exported. "
-                "Refusing the call instead of silently falling back."
+        if not self._is_wired_for_live():
+            return (
+                "llm:not-configured",
+                "GIGMATE_LLM_LIVE=1 is set but gigmate.extraction.llm is not "
+                "wired for live calls (missing GIGMATE_LLM_API_KEY, or the "
+                "vendor GIGMATE_LLM_PROVIDER is not supported by this build). "
+                "Refusing the call instead of silently falling back.",
             )
         return None
 
@@ -458,10 +475,11 @@ class LLMProvider:
     ) -> str:
         """POST to ``{endpoint}/v1/chat/completions`` and return the raw assistant text.
 
-        Retries once on transient HTTP errors so a flaky network does not
-        cause a missed extraction. The :class:`httpx.Client` is created
-        through ``self._client_factory`` so tests can inject a fake client
-        without monkeypatching ``httpx`` globally.
+        Retries once on HTTP/transport or response-parse errors so a flaky
+        network does not cause a missed extraction. The
+        :class:`httpx.Client` is created through ``self._client_factory`` so
+        tests can inject a fake client without monkeypatching ``httpx``
+        globally.
         """
         url = endpoint.rstrip("/") + "/v1/chat/completions"
         body = {
@@ -561,6 +579,7 @@ class LLMProvider:
         data.setdefault("draft_text", None)
         if data.get("assignment") == "needs_review":
             data.setdefault("changes", [])
+            data.setdefault("candidates", [])
             if not data.get("unresolved_questions"):
                 reason_text = data.get("reason")
                 data["unresolved_questions"] = [

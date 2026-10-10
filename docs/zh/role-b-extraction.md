@@ -2,7 +2,8 @@
 
 2026-10-09 联调更新：[WAHA/提取统一验收](role-a-integration-acceptance.md)记录控制与 worker 交接。当前 Alembic head 是 `0007_merge_waha_extraction`，汇合未改动的 B 证据迁移和 A 控制/采样分支。Windows 测试使用 pytest 管理临时文件；默认 provider 仍拒绝真实提取，没有增加真实模型或网络调用。
 
-更新：2026-10-08。[英文对应](../en/role-b-extraction.md)。基于
+更新：2026-10-10（合并 #18 的闸门/prompt 修复与 #20 的未激活 HTTP 实现
+及常闭骨架标志）。[英文对应](../en/role-b-extraction.md)。基于
 [团队本地开发](role-a-team-local-development.md)与[交接总览](role-a-waha-handoff.md)。
 
 ## 范围
@@ -28,9 +29,11 @@ Role B 拥有 AI 抽取流水线：Provider 接口、提示词/模型版本注�
 
 真实模型接入（Anthropic、OpenAI 或其他具体供应商）是后续单独授权批次。
 接缝已经预留好，新增真实 provider 时不必改 worker、合约或既有 Replay
-逻辑。本批次交付一个不发请求的 `llm` provider 骨架：注册表选择、
-配置、prompt 版本与调用形态都已接好，下一批次只需补全
-`gigmate.extraction.llm.LLMProvider._invoke_model` 即可。
+逻辑。本批次交付**未激活调用实现**的 `llm` provider：注册表选择、
+配置、prompt 版本与 OpenAI 兼容的 HTTP/解析调用形态都已接好，但常闭的
+`LLMProvider._SKELETON_SEAM` 标志把它们全部挡在网络之外；激活真实模型
+只需清空下文"真实启用前验收门槛"并翻转该标志（连同运维闸门），不改
+worker、合约或注册表。
 
 ## 边界
 
@@ -97,7 +100,7 @@ class Provider(Protocol):
 | --- | --- |
 | `GIGMATE_EXTRACTION_PROVIDER=deterministic`（默认） | 只识别两条合成样例的默认 provider。 |
 | `GIGMATE_EXTRACTION_PROVIDER=disabled` | 所有请求返回 `needs_review`，不写变更。 |
-| `GIGMATE_EXTRACTION_PROVIDER=llm` | 真实模型骨架；接缝补全前始终返回 `needs_review`，并在 `unresolved_questions` 中写明原因。 |
+| `GIGMATE_EXTRACTION_PROVIDER=llm` | 未激活调用实现的真实模型接缝；`_SKELETON_SEAM=True` 期间始终返回带 `llm:seam-pending` 的 `needs_review`。 |
 | 未知名称 | 启动时直接报错，绝不悄悄回落。 |
 
 测试通过 `gigmate.extraction.registry._reset_provider_for_testing` 注入
@@ -110,9 +113,11 @@ provider，不污染进程级缓存。
 `gigmate/extraction/prompts/` 下的版本化 prompt 文件，并把配置好的模型
 与 prompt 版本写入 `ModelCallTrace`，便于人工核对为何被拒绝。
 
-本批次刻意把它交付为骨架：下一批次替换 `_invoke_model` 与
-`_parse_response` 的同时，必须把类标志 `LLMProvider._SKELETON_SEAM` 置为
-`False`，否则仍然不发网络请求。期间模块只读 `GIGMATE_LLM_API_KEY`，
+本批次刻意交付**未激活的调用实现**：`_invoke_model` 已能发起真实的
+OpenAI 兼容 chat-completions POST（30 秒超时、重试 1 次），`_parse_response`
+会把 JSON 严格校验成 `ChangeProposal`，但常闭类标志
+`LLMProvider._SKELETON_SEAM` 让所有请求都到不了网络，直到"真实启用前
+验收门槛"在各自授权批次清空。期间模块只读 `GIGMATE_LLM_API_KEY`，
 刻意忽略 `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`，让模型密钥继续留在运维
 显式控制之下。
 
@@ -125,7 +130,7 @@ provider，不污染进程级缓存。
 | `GIGMATE_LLM_API_KEY` | 仅服务端使用；provider 每次调用都重新读取，绝不存到实例上，也绝不写日志。 |
 | `GIGMATE_LLM_ENDPOINT` | 可选 base URL 覆盖（默认 `https://api.deepseek.com`）。 |
 | `GIGMATE_LLM_PROMPT_PATH` | 可选 prompt 文件覆盖。 |
-| `GIGMATE_LLM_LIVE=1` | 显式 live 闸门。`_SKELETON_SEAM` 翻开后还必须开它才能真的发起调用；本批次它是骨架标志之后第二道防线。 |
+| `GIGMATE_LLM_LIVE=1` | 显式运维闸门。`_SKELETON_SEAM` 翻开后还必须开它才能真的发起调用；在此之前骨架标志先拒绝。翻开之后，闸门关闭时 Provider 层仍直接拒绝所有调用并写 `llm:live-gate-off`（即便已配置供应商与模型），两种情形都在 trace 中可见，绝不悄悄回落。 |
 | `GIGMATE_LLM_ALLOW_LIVE_ORIGIN` | 显式允许 `request.origin == "live"` 进入模型的开关，默认关闭。 |
 
 #### 双闸门安全网
@@ -133,14 +138,21 @@ provider，不污染进程级缓存。
 调用 `_invoke_model` 前必须同时打开两道闸门：
 
 1. **类标志 `LLMProvider._SKELETON_SEAM`**——本批次为 `True`。只要是
-   `True`，无论环境变量如何配置都直接返回 `llm:seam-pending`。这是
-   防止"下一批次只填 `_invoke_model` 就意外进入真实调用模式"的兜底。
+   `True`，无论环境变量如何配置、运维闸门开关与否，都直接返回
+   `llm:seam-pending`，连 HTTP 客户端都不会构造。这是防止"下一批次只填
+   `_invoke_model` 就意外进入真实调用模式"的兜底。
 2. **`GIGMATE_LLM_LIVE=1`**——运维开关。即便类标志已翻为 `False`，
-   没设这个变量时仍然拒绝。
+   没设这个变量时仍以 `llm:live-gate-off` 拒绝。
 
-执行顺序：骨架标志 → live 闸门 → 配置完整性（vendor 已知、key 已设）→
-live 来源 gating 门 → `_invoke_model`。骨架标志为 `True` 时调用在读取
-环境变量前就被拒绝，因此配置错误的生产环境不可能发出真实网络请求。
+执行顺序：prompt 异常检查 → 骨架标志 → 配置完整性（vendor/model/key
+缺失或 vendor 未知 → `llm:not-configured`）→ live 闸门
+（`llm:live-gate-off`）→ 接线检查（vendor 已知、key 已设）→ live 来源
+gating 门（未开 `GIGMATE_LLM_ALLOW_LIVE_ORIGIN` 时
+`llm:origin-live-refused`）→ `_invoke_model`。骨架标志为 `True` 时所有
+调用都先以 `llm:seam-pending` 拒绝，配置错误的生产环境不可能发出真实
+网络请求。翻开骨架标志之后的 `llm:live-gate-off`、`llm:origin-live-refused`
+与假客户端请求形态，由仅在测试子类上翻转 `_SKELETON_SEAM=False` 的隔离
+测试固化；生产标志保持关闭。
 
 #### prompt 加载失败模式
 
@@ -158,14 +170,11 @@ prompt 默认从
 以上每一种 outcome 都带 `notes=("llm:prompt-malformed",)` 与可定位的
 `refused_reason`，`Proposal` 行记 `prompt_version = "0.0.0-skeleton"`，而
 `ModelCallTrace` 行保留描述性原因——worker 不会让 prompt 错误冒到宽口径
-`except Exception`，也不会触发 `PROCESSING_FAILED` 重试风暴。
-
-默认 prompt 来自
-`apps/backend/src/gigmate/extraction/prompts/role_b_extraction_v1.txt`，第一行
-`prompt_version: X.Y.Z` 会被读入 `prompt_version`；文件缺失或格式异常时
-回退到 `0.0.0-skeleton`，trace 中仍可看出占位状态。文件正文固化了几条
-硬规则（不得把字段标为 `confirmed`、不得授予执行权限、遵守来源信任边界），
-下一批次只需改这一个文件与两个接缝方法。
+`except Exception`，也不会触发 `PROCESSING_FAILED` 重试风暴（空版本与非
+UTF-8 原先会直接抛出 `ValidationError` / `UnicodeDecodeError` 进入 worker
+失败路径）。prompt 文件正文固化了几条硬规则——不得把字段标为
+`confirmed`、不得授予执行权限、遵守来源信任边界——下一批次只需与闸门
+翻转一起编辑这一个文件。
 
 评测清单里的 `case-008-llm-skeleton-needs-review` 在使用
 `--provider llm` 跑清单时通过；通用 needs_review 用例（3、4、5、6、7）
@@ -321,13 +330,14 @@ PostgreSQL 测试是有意义的运行；SQLite 不证明行锁，只验证条�
 
 ## 待办
 
-- 真实模型 provider 接入：下一单独授权批次必须完成三件事——(a) 用真实 SDK
-  替换 `gigmate.extraction.llm.LLMProvider._invoke_model` 与
-  `_parse_response`；(b) 把 `LLMProvider._SKELETON_SEAM` 翻为
+- 真实模型 provider 激活：下一单独授权批次必须完成三件事——(a) 清空上文
+  "真实启用前验收门槛"（出处重绑定、vendor/endpoint 语义、重试与租约
+  设计、日期依据、诊断脱敏）；(b) 把 `LLMProvider._SKELETON_SEAM` 翻为
   `False`；(c) 把真实授权与 live-origin 通道接入独立的授权审查（当前
   live-origin guard 已经在该 provider 中实现，但骨架标志为 `True` 时
-  不可达）。同时补上 prompt-injection 回归与延迟预算。接缝、prompt 版本
-  兜底链、`llm:prompt-malformed` 与 `llm:seam-pending` trace 备注、
+  不可达；其 `GIGMATE_LLM_ALLOW_LIVE_ORIGIN` 开关由仅测试子类的隔离
+  测试固化）。同时补上 prompt-injection 回归与延迟预算。接缝、prompt
+  版本兜底链、`llm:prompt-malformed` 与 `llm:seam-pending` trace 备注、
   `case-008-llm-skeleton-needs-review` 评测用例，以及
   `_prompt_load_error` 审计字段均已就位。
 - D 前端面向真实 provider 输出的 `pending_change_ids` 展示；当前

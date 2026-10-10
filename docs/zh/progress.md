@@ -1,5 +1,15 @@
 # 已完成工作与验证记录
 
+## PR #18 llm 骨架评审跟进 — 2026-10-10
+
+负责人对 PR #18（`WillW27/role-b-llm-skeleton`，head `78151a6`）的审查要求合并前修正两处代码并校正 PR 描述。两处代码修正已落在 PR 分支上；PR 正文属于 GitHub 侧编辑，仍需作者自行更新。
+
+- **提示词配置回退（P2）：** `LLMProvider._read_prompt_version` 现在在文件缺失、`OSError`、非 UTF-8 字节、缺少 `prompt_version:` 头部行或头部值为空时统一回退 `0.0.0-skeleton`，并把可读原因记入 `_prompt_load_error`；`propose` 以 `llm:prompt-malformed` 备注返回 `needs_review`。此前空版本（`ValidationError`）与非 UTF-8（`UnicodeDecodeError`）会逃逸到 worker 的 `PROCESSING_FAILED` 重试路径且无证据；新增 worker 回归断言任务以 `EXTRACTION_NEEDS_REVIEW` 结束并持久化 proposal/trace。
+- **真实调用闸门反转：** 闸门改为正向开关。`GIGMATE_LLM_LIVE` 关闭时 Provider 层直接拒绝并写 `llm:live-gate-off`（即便已配置供应商与模型）；只有闸门开启才会进入 `_invoke_model`（仍是 stub，返回 `llm:seam-pending`）。此前开启闸门被提前拒绝、关闭闸门反而进入接缝，仅补全 `_invoke_model` 会在闸门关闭时调用模型。来源信任边界改为最先校验，效果不变。
+- 内置提示词仍读取 `prompt_version: 0.1.0`；`case-007-live-origin-with-fixture-text` 与评测清单语义不变。
+
+实际证据（`78151a6` 的独立 worktree）：`pytest apps/backend/tests/test_extraction.py` **33 项通过**（原 25，新增 8 项回归：覆盖/缺失/空值/缺头/非 UTF-8 提示词、闸门关与开两个 spy、畸形提示词的 worker 证据）；完整 `pytest apps/backend/tests` **356 项通过、7 项跳过**。Ruff check/format、`scripts/export_contracts.py --check`、`scripts/check_baseline.py` 通过。测试运行在 SQLite 上，7 项跳过为仅 PostgreSQL 的锁测试，故此处不能证明 PostgreSQL 锁。未调用真实模型、未读取真实密钥、未触碰真实流量。PR 描述修正在 git 差异之外。
+
 ## D01 会话列表评审跟进 — 2026-10-10
 
 Kyrie 明确授权合并 Andy PR #14，并将 D 文档范围扩展到这两份共享中英文进度记录。以 D 账号独立复查并批准 PR #14 的 `56e482e` 后，它已合入 main，合并提交 `ab52d3e`；本地 main 已快进。下方 Draft 描述属于历史记录。PR #16 现以 main 为目标，同步该 main 没有冲突；差异只含前端测试／依赖锁、D 文档及本进度记录，不改 Andy/WAHA、B/C、生成文件或契约。原 `Kyrie_Frontend`／`c702f0c` 保持完整。
@@ -329,3 +339,28 @@ PR #3 的 backend run 37432110763 在 test_waha_team.py 收集阶段报 `ModuleN
 - `bash -c "GIGMATE_LLM_PROVIDER=deepseek GIGMATE_LLM_MODEL=deepseek-chat GIGMATE_LLM_API_KEY=sk-fake GIGMATE_LLM_LIVE=1 python scripts/smoke_deepseek.py >/dev/null 2>&1; echo $?"`：输出 `1`（seam-pending → infra failure）。
 
 骨架锁、操作员闸、live-origin opt-in 全部保留。**未调用任何真实模型、未读取任何真实 API key、未接触任何真实流量。**
+
+## PR #20 合并最新 main（#18 之后）——2026-10-10
+
+PR #18（`llm:live-gate-off` + malformed-prompt/证据修复）以 `cc2ac8e` 合入 main 后，把最新 main 合入 PR #20 head `fb7f4db` 时在 `apps/backend/src/gigmate/extraction/llm.py` 与 `docs/{en,zh}/role-b-extraction.md` 出现文本冲突——这是两次修复批次之间的真实分叉，不是 #20 的缺陷。解决方案**两侧都保留**：
+
+- 常闭骨架门仍然在最前：`_SKELETON_SEAM=True` 期间所有调用（运维闸门开或关、配置与否）一律返回 `llm:seam-pending`，且绝不构造 HTTP 客户端（#20 语义；**没有**为了让冲突消失而打开生产骨架锁）。
+- 骨架标志翻开之后，#18 语义完整保留：vendor/model/key 缺失或 vendor 未知 → `llm:not-configured`；运维闸门关闭 → `llm:live-gate-off`；未开 `GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1` 的 live 来源 → `llm:origin-live-refused`。
+- #18 的全部 malformed-prompt/证据修复保留：每种 prompt 失败模式都记录带 `_prompt_load_error` 原因的 `llm:prompt-malformed`；worker 持久化 `Proposal` + `ModelCallTrace` 而不是失败。
+- #20 的未激活 HTTP 实现（`_invoke_model` / `_call_chat_completion` / `_parse_response`，30 秒超时、重试 1 次）保留在门后。`_refusal_reason` 统一改为返回 `(note, reason)` 元组，不再混用 raise/元组两种风格；`_parse_response` 对模型主动 `needs_review` 的回复补默认 `candidates`，最小化回复不再误报 `llm:response-schema-failed`。
+
+`apps/backend/tests/test_extraction.py` 组合调整（现 42 项，此前 36 项；#18 的四个重复 prompt-malformed 单测由更强的 #20 版本取代，文件内已注明）：
+
+- 骨架门开启：运维闸门开/关两种状态都断言 `llm:seam-pending`，并用陷阱式 `_client_factory` 证明从未构造客户端。
+- 仅隔离测试子类翻转 `_SKELETON_SEAM=False`：闸门关仍以 `llm:live-gate-off` 拒绝且无客户端；闸门开发出文档化的假客户端请求（URL、bearer 头、`json_object`、temperature 0）并解析罐头响应；live 来源未开 opt-in 时拒绝、开启后放行。
+
+`scripts/smoke_deepseek.py` 现在也把 `llm:live-gate-off` 与 `llm:origin-live-refused` 归类为 infra 失败（退出 1），覆盖翻门之后的正确性；骨架锁注释归属更正为 #20。
+
+验证（仓库 `.venv`，SQLite——仅条件兼容性、不证明行锁；未调用真实模型、未读取真实密钥、未接触真实流量或部署）：
+
+- `python -m ruff check ...` / `ruff format --check ...`（含 `scripts/smoke_deepseek.py`）：通过。
+- `python scripts/export_contracts.py --check`：同步。
+- `python -m pytest apps/backend/tests -q`：365 通过、7 跳过（PostgreSQL 行锁测试）。
+- `python scripts/check_baseline.py`：PASS。
+- 前端：`npm run check:api`、`format:check`、`build` 全部通过（本环境用 `npm ci` 安装依赖）。
+- `run_evaluation.py`（一次性 SQLite）：deterministic 9/9 退出 0；`--provider llm` 7 通过、2 预期失败（用例 1-2 需真实模型）。

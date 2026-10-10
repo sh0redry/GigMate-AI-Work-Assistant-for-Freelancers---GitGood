@@ -40,12 +40,18 @@ _REQUIRED = ("GIGMATE_LLM_PROVIDER", "GIGMATE_LLM_MODEL", "GIGMATE_LLM_API_KEY")
 # Treat these as smoke-script failures (non-zero exit) so the script can
 # be wired into operator-side alerting.
 #
-# ``llm:seam-pending``          – the skeleton lock is still on (PR #18).
-# ``llm:not-configured``         – a required env var (live gate, vendor,
-#                                  model) is missing.
-# ``llm:prompt-load-failed``     – the bundled prompt could not be read.
-# ``llm:http-failed``            – all retry attempts returned an HTTP error.
-# ``llm:response-malformed``     – the response was not parseable JSON / the
+# ``llm:seam-pending``          – the skeleton lock is still on (PR #20).
+# ``llm:not-configured``        – a required env var (vendor, model, API
+#                                  key) is missing or the vendor is
+#                                  unsupported.
+# ``llm:live-gate-off``         – GIGMATE_LLM_LIVE=1 is not set (only
+#                                  reachable once the skeleton lock is
+#                                  lifted).
+# ``llm:origin-live-refused``   – live-origin input without
+#                                  GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1.
+# ``llm:prompt-load-failed``    – the bundled prompt could not be read.
+# ``llm:http-failed``           – all retry attempts returned an HTTP error.
+# ``llm:response-malformed``    – the response was not parseable JSON / the
 #                                  expected choices/message/content shape.
 # ``llm:response-schema-failed`` – the parsed JSON did not satisfy
 #                                  ChangeProposal.
@@ -53,6 +59,8 @@ _INFRA_FAILURE_NOTES = frozenset(
     {
         "llm:seam-pending",
         "llm:not-configured",
+        "llm:live-gate-off",
+        "llm:origin-live-refused",
         "llm:prompt-load-failed",
         "llm:http-failed",
         "llm:response-malformed",

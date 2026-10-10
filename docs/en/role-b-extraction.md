@@ -2,7 +2,9 @@
 
 2026-10-09 integration update: [WAHA/extraction acceptance](role-a-integration-acceptance.md) records the merged control/worker handoff. Current Alembic head is `0007_merge_waha_extraction`, joining the unchanged B evidence migration and A's controls/provider-sample branch. Windows tests use pytest-owned temporary files; the default provider still refuses live extraction and no real-model/network integration was added.
 
-Updated: 2026-10-08. [Chinese](../zh/role-b-extraction.md). Builds on
+Updated: 2026-10-10 (merge of the #18 gate-off/prompt-malformed fixes with
+the #20 inactive HTTP implementation and always-closed skeleton gate).
+[Chinese](../zh/role-b-extraction.md). Builds on
 [team local development](role-a-team-local-development.md) and the
 [handoff summary](role-a-waha-handoff.md).
 
@@ -34,10 +36,13 @@ This batch delivers:
 Real-model integration (Anthropic, OpenAI or other concrete providers) is a
 separately authorized batch. The seam exists so that adding a real provider
 does not touch the worker, the contracts or the existing Replay behaviour.
-This batch ships the `llm` provider as a non-emitting skeleton: registry
-selection, configuration, prompt versioning and the call shape are wired in
-place, so the next batch only has to fill in
-`gigmate.extraction.llm.LLMProvider._invoke_model`.
+This batch ships the `llm` provider with the **inactive call implementation**:
+registry selection, configuration, prompt versioning and the
+OpenAI-compatible HTTP/parse call shape are wired in place behind the
+always-closed `LLMProvider._SKELETON_SEAM` flag, so activating the real
+model only has to clear the pre-activation acceptance gates below and flip
+that flag (plus the operator gate) — no worker, contract or registry
+changes.
 
 ## Boundaries
 
@@ -114,7 +119,7 @@ Provider selection goes through `gigmate.extraction.provider()`:
 | --- | --- |
 | `GIGMATE_EXTRACTION_PROVIDER=deterministic` (default) | Default provider; recognizes only the two canonical Replay fixtures. |
 | `GIGMATE_EXTRACTION_PROVIDER=disabled` | All extraction requests return `needs_review` with empty changes. |
-| `GIGMATE_EXTRACTION_PROVIDER=llm` | Real-model skeleton; returns `needs_review` with a clear reason until the seam is filled in. |
+| `GIGMATE_EXTRACTION_PROVIDER=llm` | Real-model seam with the inactive call implementation; returns `needs_review` with `llm:seam-pending` while `_SKELETON_SEAM=True`. |
 | Unknown name | Raise at startup; never silently fall back. |
 
 Tests inject providers through
@@ -130,13 +135,17 @@ a versioned prompt file from `gigmate/extraction/prompts/`, and persists the
 configured model and prompt versions in `ModelCallTrace` so reviewers can see
 why a request was refused.
 
-This batch ships the provider as a skeleton on purpose: the next authorized
-batch must replace `_invoke_model` and `_parse_response` *and* flip the
-class flag `LLMProvider._SKELETON_SEAM` to `False`. Until then the module
-performs no real network calls regardless of which environment variables are
-exported, and only `GIGMATE_LLM_API_KEY` is read; `OPENAI_API_KEY` /
-`ANTHROPIC_API_KEY` are deliberately not consulted so model credentials stay
-under the operator's explicit control.
+This batch ships the provider with an **inactive call implementation** on
+purpose: `_invoke_model` performs the real OpenAI-compatible
+chat-completions POST (30 s timeout, one retry) and `_parse_response`
+validates the JSON against `ChangeProposal`, but the always-closed class
+flag `LLMProvider._SKELETON_SEAM` keeps every request away from the
+network until the pre-activation acceptance gates below are cleared on
+their own authorized batch. Until then the module performs no real
+network calls regardless of which environment variables are exported, and
+only `GIGMATE_LLM_API_KEY` is read; `OPENAI_API_KEY` /
+`ANTHROPIC_API_KEY` are deliberately not consulted so model credentials
+stay under the operator's explicit control.
 
 Configuration (environment variables, all optional until the seam is filled):
 
@@ -147,7 +156,7 @@ Configuration (environment variables, all optional until the seam is filled):
 | `GIGMATE_LLM_API_KEY` | Server-side only. The provider reads this on every call; it is never stored on the instance or logged. |
 | `GIGMATE_LLM_ENDPOINT` | Optional base URL override (defaults to `https://api.deepseek.com`). |
 | `GIGMATE_LLM_PROMPT_PATH` | Optional override of the bundled prompt file. |
-| `GIGMATE_LLM_LIVE=1` | The explicit live gate. Required to actually invoke the model once `_SKELETON_SEAM` is flipped; until then it is the second line of defence after the class flag. |
+| `GIGMATE_LLM_LIVE=1` | The explicit operator gate. Required to actually invoke the model once `_SKELETON_SEAM` is flipped. Until then the skeleton gate refuses first; after the flip, a closed operator gate still refuses every call at the provider layer with `llm:live-gate-off`, even when the vendor and model are configured. Either way a misconfiguration surfaces immediately in the trace rather than silently falling back to a real model call. |
 | `GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1` | Opt-in switch that lets `request.origin == "live"` traffic reach the model once the skeleton flag is open. Defaults to off. |
 
 #### Two-gate safety net
@@ -156,19 +165,26 @@ Two gates must be open before `_invoke_model` runs:
 
 1. **Class flag `LLMProvider._SKELETON_SEAM`** — `True` in this batch.
    While `True` the provider refuses every call with `llm:seam-pending` no
-   matter which environment variables are exported. This is the safety
-   net that prevents a future implementation of `_invoke_model` from
-   silently flipping into "real call" mode if the next batch only fills
-   in the seam method.
+   matter which environment variables are exported, and no HTTP client is
+   even constructed. This is the safety net that prevents a future
+   implementation of `_invoke_model` from silently flipping into "real
+   call" mode if the next batch only fills in the seam method.
 2. **`GIGMATE_LLM_LIVE=1`** — operator switch. Even after the class flag
-   is flipped to `False`, the provider still refuses every call unless
-   `GIGMATE_LLM_LIVE=1` is exported.
+   is flipped to `False`, the provider still refuses every call with
+   `llm:live-gate-off` unless `GIGMATE_LLM_LIVE=1` is exported.
 
-The two are checked in order: skeleton flag → live gate → wire check
-(vendor known, key set) → live-origin guard → `_invoke_model`. With the
-skeleton flag `True` the call is refused before configuration is even
-read, so a misconfigured deployment cannot accidentally emit a real
-network request.
+The checks run in order: malformed-prompt check → skeleton flag →
+configuration (missing vendor/model or API key → `llm:not-configured`) →
+live gate (`llm:live-gate-off`) → wire check (vendor known, key set) →
+live-origin guard (`llm:origin-live-refused` unless
+`GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1`) → `_invoke_model`. With the skeleton
+flag `True` every call — operator gate on or off, configured or not — is
+refused with `llm:seam-pending` before any client is constructed, so a
+misconfigured deployment cannot accidentally emit a real network request.
+The post-flip behaviour (`llm:live-gate-off`, `llm:origin-live-refused`
+and the fake-client request shape) is pinned by isolated tests that flip
+`_SKELETON_SEAM=False` on a test-only subclass; the production flag stays
+closed.
 
 #### Prompt loading failure modes
 
@@ -189,7 +205,12 @@ descriptive `refused_reason`, the `Proposal` row records
 `prompt_version = "0.0.0-skeleton"` and the `ModelCallTrace` row keeps
 the descriptive cause — the worker never raises into its broad
 `except Exception` handler, so a malformed prompt file cannot cause a
-`PROCESSING_FAILED` retry storm.
+`PROCESSING_FAILED` retry storm. (The empty-version and non-UTF-8 cases
+used to raise `ValidationError` / `UnicodeDecodeError` straight out of
+`propose`.) The bundled file encodes the hard rules — never emit
+`confirmed`, never grant execution authority, respect the origin trust
+boundary — and is the single seam the next batch edits together with the
+gate flip.
 
 `case-008-llm-skeleton-needs-review` in the evaluation manifest pins the
 skeleton behaviour when the manifest is run with `--provider llm`. Universal
@@ -382,13 +403,16 @@ piece of work with its own batch and review.
 
 ## Open follow-ups
 
-- Real-model provider integration: the next authorized batch must
-  (a) replace `gigmate.extraction.llm.LLMProvider._invoke_model` and
-  `_parse_response` with a real SDK call, (b) flip
+- Real-model provider activation: the next authorized batch must
+  (a) clear the pre-activation acceptance gates above (provenance
+  re-binding, vendor/endpoint semantics, retry/lease design, date basis,
+  sanitised diagnostics), (b) flip
   `LLMProvider._SKELETON_SEAM` to `False`, and (c) gate real
   authorization + live-origin flow with their own dedicated review
   (the live-origin guard currently lives in this provider but is
-  unreachable while the seam flag is `True`). Adding the
+  unreachable while the seam flag is `True`; its
+  `GIGMATE_LLM_ALLOW_LIVE_ORIGIN` opt-in is pinned by isolated
+  test-only-subclass tests). Adding the
   prompt-injection regression suite + latency budget is also part of
   that batch. The seam, prompt-versioning fallback chain,
   `llm:prompt-malformed` and `llm:seam-pending` trace notes, the

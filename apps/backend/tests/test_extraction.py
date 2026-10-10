@@ -117,6 +117,7 @@ def _clear_llm_env(monkeypatch):
         "GIGMATE_LLM_ENDPOINT",
         "GIGMATE_LLM_PROMPT_PATH",
         "GIGMATE_LLM_LIVE",
+        "GIGMATE_LLM_ALLOW_LIVE_ORIGIN",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -173,15 +174,23 @@ def test_llm_provider_live_gate_returns_seam_pending_without_calling(monkeypatch
     With the seam flag still ``True`` the provider records a
     ``needs_review`` outcome with a clear ``llm:seam-pending`` note and an
     explanatory ``refused_reason``; the worker still records the trace row.
-    A separate test (``test_llm_provider_off_gate_blocks_at_provider_layer``)
-    proves the off-switch also refuses after the seam flag is flipped.
+    No HTTP client may even be constructed, and a separate test
+    (``test_llm_provider_live_gate_off_blocks_before_seam``) proves the
+    off-switch also refuses after the seam flag is flipped.
     """
     _clear_llm_env(monkeypatch)
     monkeypatch.setenv("GIGMATE_LLM_PROVIDER", "openai")
     monkeypatch.setenv("GIGMATE_LLM_MODEL", "gpt-4o-mini")
     monkeypatch.setenv("GIGMATE_LLM_LIVE", "1")
+
+    class _BoomClient:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("client must not be constructed while the skeleton gate is closed")
+
+    provider = LLMProvider()
+    provider._client_factory = _BoomClient
     req = _build_reschedule_request(text="改下星期四下午三点，地址我晚些发")
-    outcome = LLMProvider().propose(req)
+    outcome = provider.propose(req)
     assert outcome.proposal.assignment.value == "needs_review"
     assert outcome.proposal.changes == []
     assert outcome.refused_reason and "_SKELETON_SEAM" in outcome.refused_reason
@@ -316,40 +325,43 @@ def test_llm_provider_worker_evidence_when_prompt_malformed(monkeypatch, tmp_pat
 # ---------------------------------------------------------------------------
 
 
-def test_llm_provider_off_gate_blocks_at_provider_layer(monkeypatch):
-    """Gate off + configured + origin=synthetic must NOT enter _invoke_model.
+def test_llm_provider_off_gate_returns_seam_pending_without_calling(monkeypatch):
+    """Skeleton gate on + operator gate off must not reach ``_invoke_model``.
 
-    Regression for the P2 review finding: the original gate logic returned
-    ``None`` from ``_refusal_reason`` when the provider was configured and
-    the live gate was off, so a future implementation of ``_invoke_model``
-    could have silently routed real content to the network. The
-    ``_SKELETON_SEAM`` class flag is the second line of defence that holds
-    even after the next batch flips the on-switch open.
+    Regression for the P2 review finding that a configured provider with the
+    live gate off must refuse at the provider layer instead of letting a
+    future ``_invoke_model`` implementation route real content to the
+    network. With the always-closed skeleton gate still in place, the
+    off-switch case refuses with ``llm:seam-pending`` and no HTTP client is
+    constructed. The post-flip behaviour (``llm:live-gate-off``) is covered
+    by ``test_llm_provider_live_gate_off_blocks_before_seam``.
     """
     _clear_llm_env(monkeypatch)
     monkeypatch.setenv("GIGMATE_LLM_PROVIDER", "openai")
     monkeypatch.setenv("GIGMATE_LLM_MODEL", "gpt-4o-mini")
     monkeypatch.setenv("GIGMATE_LLM_API_KEY", "sk-spy-test")
 
+    class _BoomClient:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("client must not be constructed while the skeleton gate is closed")
+
     class _Spy(LLMProvider):
-        _SKELETON_SEAM = False  # pretend the next batch already lifted the skeleton
         invocations: list[str] = []
 
         def _invoke_model(self, request, began, prompt_version, model_version):
             type(self).invocations.append(request.message_text or "")
-            raise AssertionError("_invoke_model must not be reached while the gate is off")
+            raise AssertionError(
+                "_invoke_model must not be reached while the skeleton gate is closed"
+            )
 
-    try:
-        provider = _Spy()
-        req = _build_reschedule_request(text="改下星期四下午三点，地址我晚些发")
-        outcome = provider.propose(req)
-        assert outcome.proposal.assignment.value == "needs_review"
-        assert outcome.notes == ("llm:seam-pending",)
-        assert outcome.refused_reason and "GIGMATE_LLM_LIVE=1 is required" in outcome.refused_reason
-        assert _Spy.invocations == []
-    finally:
-        _Spy._SKELETON_SEAM = True
-        _Spy.invocations = []
+    provider = _Spy()
+    provider._client_factory = _BoomClient
+    req = _build_reschedule_request(text="改下星期四下午三点，地址我晚些发")
+    outcome = provider.propose(req)
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert outcome.notes == ("llm:seam-pending",)
+    assert outcome.refused_reason and "_SKELETON_SEAM" in outcome.refused_reason
+    assert _Spy.invocations == []
 
 
 def test_llm_provider_on_gate_blocks_at_provider_layer_when_seam_unimplemented(monkeypatch):
@@ -367,6 +379,10 @@ def test_llm_provider_on_gate_blocks_at_provider_layer_when_seam_unimplemented(m
     monkeypatch.setenv("GIGMATE_LLM_API_KEY", "sk-spy-test")
     monkeypatch.setenv("GIGMATE_LLM_LIVE", "1")
 
+    class _BoomClient:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("client must not be constructed while the skeleton gate is closed")
+
     class _Spy(LLMProvider):
         invocations: list[str] = []
 
@@ -376,17 +392,15 @@ def test_llm_provider_on_gate_blocks_at_provider_layer_when_seam_unimplemented(m
                 "_invoke_model must not be reached while the seam is unimplemented"
             )
 
-    try:
-        provider = _Spy()
-        assert provider._SKELETON_SEAM is True
-        req = _build_reschedule_request(text="改下星期四下午三点，地址我晚些发")
-        outcome = provider.propose(req)
-        assert outcome.proposal.assignment.value == "needs_review"
-        assert outcome.notes == ("llm:seam-pending",)
-        assert outcome.refused_reason and "_SKELETON_SEAM" in outcome.refused_reason
-        assert _Spy.invocations == []
-    finally:
-        _Spy.invocations = []
+    provider = _Spy()
+    provider._client_factory = _BoomClient
+    assert provider._SKELETON_SEAM is True
+    req = _build_reschedule_request(text="改下星期四下午三点，地址我晚些发")
+    outcome = provider.propose(req)
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert outcome.notes == ("llm:seam-pending",)
+    assert outcome.refused_reason and "_SKELETON_SEAM" in outcome.refused_reason
+    assert _Spy.invocations == []
 
 
 def test_llm_provider_skeleton_flag_is_required_to_reach_invocation(monkeypatch):
@@ -449,6 +463,231 @@ def test_deterministic_provider_prompt_version_handles_malformed_files(tmp_path,
             property(lambda self: "0.0.0-unknown"),
         )
         assert DeterministicProvider().prompt_version == "0.0.0-unknown"
+
+
+def test_llm_provider_reads_prompt_version_from_override_file(monkeypatch, tmp_path):
+    """``GIGMATE_LLM_PROMPT_PATH`` replaces the bundled prompt file."""
+    _clear_llm_env(monkeypatch)
+    prompt_file = tmp_path / "override.txt"
+    prompt_file.write_text(
+        "prompt_version: 9.9.9-override\nSynthetic instruction\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("GIGMATE_LLM_PROMPT_PATH", str(prompt_file))
+    instance = LLMProvider()
+    assert instance._read_prompt_version() == "9.9.9-override"
+    assert instance._prompt_load_error is None
+
+
+# NOTE: the four PR #18 unit tests for the malformed-prompt fallbacks
+# (missing file / empty header / no header / non-UTF-8) are superseded here by
+# the PR #20 versions in the "Prompt file failure modes" section above, which
+# assert the same ``llm:prompt-malformed`` behaviour *and* the recorded
+# ``_prompt_load_error`` cause. The worker-level WAHA regression
+# (``test_waha_job_with_malformed_prompt_records_evidence_instead_of_failing``)
+# from #18 is kept below.
+
+
+def test_llm_provider_live_gate_off_blocks_before_seam(monkeypatch):
+    """With the skeleton gate lifted, a closed operator gate still blocks.
+
+    The isolated test subclass flips ``_SKELETON_SEAM=False`` to simulate the
+    next authorized batch; the operator gate stays off, so the provider must
+    refuse with ``llm:live-gate-off`` — even though provider, model and API
+    key are all configured — and must not reach ``_invoke_model`` or
+    construct an HTTP client.
+    """
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("GIGMATE_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("GIGMATE_LLM_MODEL", "gpt-4o-mini")
+    monkeypatch.setenv("GIGMATE_LLM_API_KEY", "sk-spy-test")
+
+    class _BoomClient:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("client must not be constructed while the operator gate is off")
+
+    class _GateOffSpy(LLMProvider):
+        _SKELETON_SEAM = False
+
+    provider = _GateOffSpy()
+    provider._client_factory = _BoomClient
+    outcome = provider.propose(_build_reschedule_request(text="改下星期四下午三点，地址我晚些发"))
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert outcome.notes == ("llm:live-gate-off",)
+    assert outcome.refused_reason and "GIGMATE_LLM_LIVE" in outcome.refused_reason
+
+
+def test_llm_provider_live_gate_on_sends_fake_client_request(monkeypatch):
+    """With both gates open the real call path issues the documented request.
+
+    The isolated test subclass flips ``_SKELETON_SEAM=False`` and the fake
+    client factory records the request: URL, Authorization header, model,
+    ``json_object`` response format and temperature must match the documented
+    OpenAI-compatible call shape, and the canned response is parsed into a
+    proposal without touching the network.
+    """
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("GIGMATE_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("GIGMATE_LLM_MODEL", "gpt-4o-mini")
+    monkeypatch.setenv("GIGMATE_LLM_API_KEY", "sk-fake-test")
+    monkeypatch.setenv("GIGMATE_LLM_LIVE", "1")
+    monkeypatch.setenv("GIGMATE_LLM_ENDPOINT", "https://fake.example.test")
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "assignment": "needs_review",
+                                    "unresolved_questions": ["fake response"],
+                                }
+                            )
+                        }
+                    }
+                ]
+            }
+
+    class _FakeClient:
+        requests: list[dict] = []
+
+        def __init__(self, **kwargs):
+            self.timeout = kwargs.get("timeout")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def post(self, url, json=None, headers=None):
+            type(self).requests.append({"url": url, "json": json, "headers": headers})
+            return _FakeResponse()
+
+    class _GateOnSpy(LLMProvider):
+        _SKELETON_SEAM = False
+
+    provider = _GateOnSpy()
+    provider._client_factory = _FakeClient
+    outcome = provider.propose(_build_reschedule_request(text="改下星期四下午三点，地址我晚些发"))
+    assert len(_FakeClient.requests) == 1
+    sent = _FakeClient.requests[0]
+    assert sent["url"] == "https://fake.example.test/v1/chat/completions"
+    assert sent["headers"]["Authorization"] == "Bearer sk-fake-test"
+    assert sent["json"]["model"] == "gpt-4o-mini"
+    assert sent["json"]["response_format"] == {"type": "json_object"}
+    assert sent["json"]["temperature"] == 0
+    assert sent["json"]["messages"][0]["role"] == "system"
+    assert sent["json"]["messages"][1]["role"] == "user"
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert outcome.notes == ("llm:needs-review",)
+    assert outcome.refused_reason == "llm:needs-review"
+
+
+def test_llm_provider_live_origin_refused_once_gates_open(monkeypatch):
+    """After both gates open, live-origin input is still refused without opt-in.
+
+    The isolated test subclass flips ``_SKELETON_SEAM=False`` so the origin
+    trust boundary is actually reachable (with the skeleton gate closed the
+    seam note fires first). Live-origin input must still be refused with
+    ``llm:origin-live-refused`` and no client construction.
+    """
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("GIGMATE_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("GIGMATE_LLM_MODEL", "gpt-4o-mini")
+    monkeypatch.setenv("GIGMATE_LLM_API_KEY", "sk-spy-test")
+    monkeypatch.setenv("GIGMATE_LLM_LIVE", "1")
+
+    class _BoomClient:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError(
+                "client must not be constructed for live-origin input without opt-in"
+            )
+
+    class _GateOnSpy(LLMProvider):
+        _SKELETON_SEAM = False
+
+    provider = _GateOnSpy()
+    provider._client_factory = _BoomClient
+    outcome = provider.propose(
+        _build_reschedule_request(
+            text=load_fixture("message-reschedule")["payload"]["text"],
+            origin="live",
+        )
+    )
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert outcome.notes == ("llm:origin-live-refused",)
+    assert outcome.refused_reason and "GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1" in (outcome.refused_reason)
+
+
+def test_llm_provider_live_origin_opt_in_reaches_fake_client(monkeypatch):
+    """``GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1`` lets live-origin traffic through.
+
+    With both gates open and the origin opt-in exported, a live-origin
+    request reaches the fake client, proving the opt-in switch is honoured
+    end-to-end instead of being dead configuration.
+    """
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("GIGMATE_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("GIGMATE_LLM_MODEL", "gpt-4o-mini")
+    monkeypatch.setenv("GIGMATE_LLM_API_KEY", "sk-fake-test")
+    monkeypatch.setenv("GIGMATE_LLM_LIVE", "1")
+    monkeypatch.setenv("GIGMATE_LLM_ENDPOINT", "https://fake.example.test")
+    monkeypatch.setenv("GIGMATE_LLM_ALLOW_LIVE_ORIGIN", "1")
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "assignment": "needs_review",
+                                    "unresolved_questions": ["fake response"],
+                                }
+                            )
+                        }
+                    }
+                ]
+            }
+
+    class _FakeClient:
+        requests: list[dict] = []
+
+        def __init__(self, **kwargs):
+            self.timeout = kwargs.get("timeout")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def post(self, url, json=None, headers=None):
+            type(self).requests.append({"url": url, "json": json, "headers": headers})
+            return _FakeResponse()
+
+    class _GateOnSpy(LLMProvider):
+        _SKELETON_SEAM = False
+
+    provider = _GateOnSpy()
+    provider._client_factory = _FakeClient
+    outcome = provider.propose(
+        _build_reschedule_request(
+            text=load_fixture("message-reschedule")["payload"]["text"],
+            origin="live",
+        )
+    )
+    assert len(_FakeClient.requests) == 1
+    assert outcome.notes == ("llm:needs-review",)
 
 
 def test_llm_provider_registry_selects_llm(monkeypatch):
@@ -701,6 +940,52 @@ def test_waha_job_with_fixture_text_from_live_source_needs_review(memory_account
     assert change_rows == []
 
 
+def test_waha_job_with_malformed_prompt_records_evidence_instead_of_failing(
+    monkeypatch, tmp_path, memory_account
+):
+    """Regression for the PR #18 P2 finding.
+
+    A malformed prompt file used to raise out of ``propose`` (``ValidationError``
+    for an empty version, ``UnicodeDecodeError`` for a non-UTF-8 file), pushing
+    the job into the worker's ``PROCESSING_FAILED`` retry path with no evidence.
+    It now falls back to ``0.0.0-skeleton`` and persists a ``needs_review``
+    proposal plus a trace carrying the ``llm:prompt-malformed`` note.
+    """
+    _clear_llm_env(monkeypatch)
+    prompt_file = tmp_path / "broken_prompt.txt"
+    prompt_file.write_text("prompt_version:\nSynthetic instruction\n", encoding="utf-8")
+    monkeypatch.setenv("GIGMATE_EXTRACTION_PROVIDER", "llm")
+    monkeypatch.setenv("GIGMATE_LLM_PROMPT_PATH", str(prompt_file))
+    _reset_provider_for_testing(None)
+    try:
+        message = deepcopy(replay_event("reschedule"))
+        message["connector"] = "waha"
+        message["source"] = "app"
+        message["provider_message_id"] = "synthetic:waha-prompt-malformed"
+        message["message_revision"] = 1
+        with memory_account.begin() as db:
+            account = db.scalar(select(Account).where(Account.username == "merchant"))
+        with memory_account.begin() as db:
+            ingest(db, account, message, trusted_waha=True)
+        assert run_once(memory_account) is True
+        with memory_account.begin() as db:
+            job = db.scalar(select(Job).order_by(Job.id.desc()))
+            inbox = db.get(Inbox, job.event_id)
+            proposal_row = db.scalar(select(Proposal).where(Proposal.event_id == inbox.id))
+            trace_row = db.scalar(
+                select(ModelCallTrace).where(ModelCallTrace.proposal_id == proposal_row.id)
+            )
+            change_rows = list(db.scalars(select(ChangeRow)))
+        assert job.error_code == EXTRACTION_NEEDS_REVIEW
+        assert proposal_row.assignment == "needs_review"
+        assert proposal_row.prompt_version == "0.0.0-skeleton"
+        assert trace_row.notes == ["llm:prompt-malformed"]
+        assert trace_row.refused_reason and "empty" in trace_row.refused_reason
+        assert change_rows == []
+    finally:
+        _reset_provider_for_testing(None)
+
+
 def test_matched_waha_proposal_persists_evidence_then_merchant_confirms(signed_in):
     """Regression for the P1 persistence bug: matched input must persist
     proposal/trace/change rows with JSON-serializable payloads, and the
@@ -950,6 +1235,8 @@ def test_smoke_classify_exit_code_marks_infra_failures_as_nonzero():
     for note in (
         "llm:seam-pending",
         "llm:not-configured",
+        "llm:live-gate-off",
+        "llm:origin-live-refused",
         "llm:prompt-load-failed",
         "llm:http-failed",
         "llm:response-malformed",
