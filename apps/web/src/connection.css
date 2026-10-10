@@ -543,3 +543,27 @@
   border-radius: 8px;
   margin: 12px 0;
 }
+
+.send-panel {
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid #dbe8e2;
+  border-radius: 8px;
+}
+.send-panel label {
+  display: block;
+  margin: 10px 0;
+}
+.send-panel pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.send-preview {
+  max-width: 100%;
+  max-height: 320px;
+}
+.send-review {
+  padding: 12px;
+  background: #f4f8f6;
+  border-radius: 8px;
+}

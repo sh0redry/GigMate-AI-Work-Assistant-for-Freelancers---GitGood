@@ -106,6 +106,9 @@ def run_once(factory=Session):
                 or latest.data["revoked"]
             ):
                 job.state, job.error_code = "completed", "SOURCE_SUPERSEDED"
+            elif event["source"] == "api" and event["direction"] == "outgoing":
+                # API echoes update context in ingress, never trigger another reply/model.
+                job.state, job.error_code = "completed", "API_SEND_ECHO"
             elif event["connector"] == "waha":
                 linked = list(
                     db.scalars(
@@ -313,6 +316,9 @@ def main():
                 from gigmate.waha_media import run_once as media_once
 
                 media_once()
+                from gigmate.waha_send import run_once as send_once
+
+                send_once()
             except BusinessError as error:
                 log.error("media_poll_failed code=%s", error.code)
             except SQLAlchemyError:
@@ -345,6 +351,10 @@ def maintain(factory=Session):
         from gigmate.waha_media import purge as purge_media
 
         purge_media(factory)
+        if os.environ.get("WAHA_SEND_ENABLED") == "true":
+            from gigmate.waha_send import purge as purge_sends
+
+            purge_sends(factory)
         return True
     except SQLAlchemyError:
         log.error("worker_maintenance_failed code=DATABASE_UNAVAILABLE")

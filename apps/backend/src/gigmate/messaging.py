@@ -169,6 +169,10 @@ def ingest(db, account, event, *, trusted_waha=False):
         )
     )
     conversation.context_version += 1
+    if trusted_waha:
+        from gigmate.waha_send import invalidate_context
+
+        invalidate_context(db, conversation)
     for change in db.scalars(
         select(ChangeRow).where(
             ChangeRow.conversation_id == conversation.id, ChangeRow.account_id == account.id

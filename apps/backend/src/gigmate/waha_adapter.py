@@ -219,6 +219,22 @@ def _message_payload(event_type, payload, context):
     }
 
 
+def event_source(raw, details):
+    """Pinned WAMessage source is in payload; retain the old explicit A-01 profile."""
+    payload = raw.get("payload", {})
+    outer = [obj["source"] for obj in (raw, payload) if isinstance(obj, dict) and "source" in obj]
+    values = outer or ([details["source"]] if "source" in details else ["app"])
+    if (
+        any(not isinstance(value, str) or value not in {"app", "api"} for value in values)
+        or len(set(values)) != 1
+    ):
+        raise AdapterError("SOURCE_MAPPING_MISMATCH")
+    source = values[0]
+    if source == "api" and details.get("fromMe") is not True:
+        raise AdapterError("SOURCE_MAPPING_MISMATCH")
+    return source
+
+
 def normalize_event(raw: dict, context: NormalizationContext, *, received_at: datetime) -> dict:
     """Normalize the explicit A-01 profile after trusted source/ownership checks.
 
@@ -272,7 +288,8 @@ def normalize_event(raw: dict, context: NormalizationContext, *, received_at: da
         )
     else:
         event.update(_message_payload(event_type, payload, context))
-        if "source" in raw and raw["source"] != event["source"]:
+        details = payload.get("after", {}) if event_type == "message.revoked" else payload
+        if event_source(raw, details) != event["source"]:
             raise AdapterError("SOURCE_MAPPING_MISMATCH")
     validate_event(event)
     return event

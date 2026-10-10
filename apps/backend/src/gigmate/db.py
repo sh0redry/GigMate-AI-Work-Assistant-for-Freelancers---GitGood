@@ -255,6 +255,84 @@ class WahaMediaJob(Base):
     __table_args__ = (UniqueConstraint("connection_id", "request_key", name="uq_waha_media_key"),)
 
 
+class WahaSendRequestFence(Base):
+    __tablename__ = "waha_send_request_fences"
+    connection_id: Mapped[str] = mapped_column(ForeignKey("waha_connections.id"), primary_key=True)
+    request_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    cancelled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class WahaSendPermission(Base):
+    __tablename__ = "waha_send_permissions"
+    connection_id: Mapped[str] = mapped_column(ForeignKey("waha_connections.id"), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer)
+    enabled: Mapped[bool] = mapped_column(Boolean)
+    chat_ids: Mapped[list] = mapped_column(JSON)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WahaSendUpload(Base):
+    __tablename__ = "waha_send_uploads"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    connection_id: Mapped[str] = mapped_column(ForeignKey("waha_connections.id"), index=True)
+    filename: Mapped[str] = mapped_column(String(128))
+    mimetype: Mapped[str] = mapped_column(String(100))
+    blob_key: Mapped[str | None] = mapped_column(String(40))
+    sha256: Mapped[str] = mapped_column(String(64))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class WahaSendPolicy(Base):
+    __tablename__ = "waha_send_policies"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    connection_id: Mapped[str] = mapped_column(ForeignKey("waha_connections.id"), index=True)
+    chat_id: Mapped[str] = mapped_column(ForeignKey("waha_chats.id"))
+    version: Mapped[int] = mapped_column(Integer)
+    enabled: Mapped[bool] = mapped_column(Boolean)
+    payload: Mapped[dict] = mapped_column(JSON)
+    bindings: Mapped[dict] = mapped_column(JSON)
+    permission_version: Mapped[int] = mapped_column(Integer)
+    control_version: Mapped[int] = mapped_column(Integer)
+    approved_by: Mapped[str] = mapped_column(ForeignKey("accounts.id"))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    maximum_uses: Mapped[int] = mapped_column(Integer)
+    uses: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class WahaSendAction(Base):
+    """Immutable send snapshot and transactional outbox entry in one row."""
+
+    __tablename__ = "waha_send_actions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    connection_id: Mapped[str] = mapped_column(ForeignKey("waha_connections.id"), index=True)
+    chat_id: Mapped[str] = mapped_column(ForeignKey("waha_chats.id"), index=True)
+    request_key: Mapped[str] = mapped_column(String(128))
+    command: Mapped[dict] = mapped_column(JSON)
+    bindings: Mapped[dict] = mapped_column(JSON)
+    snapshot_hash: Mapped[str] = mapped_column(String(64))
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    state: Mapped[str] = mapped_column(String(24))
+    approved_by: Mapped[str | None] = mapped_column(ForeignKey("accounts.id"))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    dispatch_token: Mapped[str | None] = mapped_column(String(36))
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_token: Mapped[str | None] = mapped_column(String(36))
+    dispatch_key: Mapped[str | None] = mapped_column(String(36), unique=True)
+    provider_message_id: Mapped[str | None] = mapped_column(String(256))
+    delivery_rank: Mapped[int] = mapped_column(Integer, default=0)
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    unknown_review: Mapped[dict | None] = mapped_column(JSON)
+    __table_args__ = (
+        UniqueConstraint("connection_id", "request_key", name="uq_waha_send_request"),
+        UniqueConstraint("connection_id", "provider_message_id", name="uq_waha_send_message"),
+    )
+
+
 class MessageRow(Base):
     __tablename__ = "message_revisions"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)

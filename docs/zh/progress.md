@@ -1,5 +1,19 @@
 # 已完成工作与验证记录
 
+## PR #20 复核合并与发送分支兼容同步 — 2026-10-10
+
+独立复核 PR #20 的 `1dc716f`：42 项提取测试通过，覆盖合并后的 #18 提示词/证据修复、常闭 skeleton 锁、隔离的 operator/live-origin 开关、假客户端请求、smoke 退出码及元数据序列化。GitHub 必需检查全绿。批准后合入 main，提交为 `bbb0074`；实现仍未启用，来源、endpoint、重试/租约、日期及诊断方面的启用门槛仍需完成。
+
+当前 `Andy_WAHA_multitype_sending` 通过合并 `e7cdcfb` 包含该 main；解决冲突时保留双方中英文进度历史。同步前 48 个开发文件均已备份并恢复，发送批次仍未提交、未推送。组合验证：**后端 490 通过、9 项 PostgreSQL 依赖测试跳过**，**前端 63 通过**，TypeScript/Vite 构建、前端契约/格式、适用 Ruff 检查/格式、契约导出、基线及空白检查通过。隔离 SQLite 升级到 0011 并 check 无漂移；保留一项已有 Starlette/httpx 警告。未调用真实模型、发送真实 WhatsApp 消息、修改部署或验证 PostgreSQL 锁。本地备份及安全 stash 保留。
+
+## WAHA 多类型发送第一批 — 2026-10-10
+
+从媒体 PR #21 的 `a5aa0a1` 新建 `Andy_WAHA_multitype_sending`；独立复核 PR #20 后，已通过兼容合并 `e7cdcfb` 包含最新 main `bbb0074`。实现独立发送授权、11 种发送适配、请求头传递文件名的私有上传/预览、不可变审批/outbox、固定内容自动政策及商户批准的工单关联、所有关联工单版本/引用修订绑定、队列/频率/存储限制、原请求取消记录、未知结果核对与回执。不可变提交标识保留租约回收后原尝试晚到的成功响应。已兼容真实 payload.source、SDK ID 对象及表情空响应；Chromium 视频在提交前拒绝。固定 Chrome 覆盖需明确选择，Apple Silicon 使用模拟，不自动改变环境。完整步骤见[发送协议与统一验收](role-a-waha-sending.md)。
+
+最终自动证据：后端 **467 通过、9 跳过**（SQLite，未执行 PostgreSQL 依赖检查）；前端 **63 通过**，TypeScript/Vite 构建、前端契约/格式、适用 Ruff 检查/格式、契约导出、基线（**69 个 Markdown / 408 个本地链接 / 13 正例 / 7 反例 / 12 合成场景**）及空白检查通过。隔离 SQLite 升级到 0011 并 check 无漂移。仅只读查验 Chrome 公开镜像清单，没有拉取/运行。合成 HTTP/worker/DOM/MockTransport 覆盖权限、固定审批、上下文/C 版本/来源变化、未知/晚到回执、不重发/不循环及重载后恢复；媒体签名不是编码器或手机证明。保留一项已有 Starlette/httpx 弃用警告。
+
+Docker Desktop Linux engine 当前不可用，当前版本的隔离 PostgreSQL、真实 socket/WAHA、浏览器/Apple Silicon 及 E 独立验收待完成。没有真实模型、自主 Agent 触发或 WhatsApp 实际发送。B 负责真实生成/触发，C 的业务确认独立处理。本批没有升级或启用原私有安装、数据库、会话、白名单及容器。重建 API/worker 前需要迁移 0011，并明确授予发送权限。本开发批次未 commit/push/提 PR，媒体 PR #21 保持独立。
+
 ## PR #21 处理器工厂评审修复 — 2026-10-10
 
 工厂加载在模型提交前校验 process/reconcile 均可调用，并将构造函数异常与配置错误分开，保留原始构造异常。验证：20 项工厂隔离测试通过；52 项媒体及证据测试通过，未配置测试数据库，跳过 1 项 PostgreSQL 并发测试。Ruff 检查及格式、契约导出检查、基线和空白检查通过。没有真实模型请求、真实媒体读取、部署或前端修改。
