@@ -8,25 +8,26 @@
     "npm": "11.12.x"
   },
   "scripts": {
-    "test": "node --test connection-state.test.mjs waha-live-api.test.mjs replay-store.test.mjs workspace-api.test.mjs",
+    "test": "node --test connection-workspace.test.mjs chat-choices.test.mjs connection-state.test.mjs waha-live-api.test.mjs replay-store.test.mjs workspace-api.test.mjs",
     "dev": "vite --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "build": "npm run test && npm run typecheck && vite build",
     "generate:api": "openapi-typescript ../../contracts/openapi.json -o src/generated/api.d.ts && prettier --write src/generated/api.d.ts",
     "check:api": "node ../../scripts/check_web_contracts.mjs",
-    "format": "prettier --write src index.html package.json tsconfig.json vite.config.ts",
-    "format:check": "prettier --check src index.html package.json tsconfig.json vite.config.ts"
+    "format": "prettier --write src index.html package.json tsconfig.json vite.config.ts *.test.mjs",
+    "format:check": "prettier --check src index.html package.json tsconfig.json vite.config.ts *.test.mjs"
   },
   "dependencies": {
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
   "devDependencies": {
-    "vite": "8.3.1",
-    "typescript": "5.9.3",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
+    "jsdom": "30.1.2",
     "openapi-typescript": "7.13.0",
-    "prettier": "3.8.1"
+    "prettier": "3.8.1",
+    "typescript": "5.9.3",
+    "vite": "8.3.1"
   }
 }

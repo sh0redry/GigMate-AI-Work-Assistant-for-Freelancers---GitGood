@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChatChoices } from "./ChatChoices";
+import { WahaMessages } from "./WahaMessages";
 import {
   ConnectionError,
   demoConnectionApi,
@@ -498,7 +500,7 @@ export function ConnectionWorkspace({
       setNextOffset(discovery.next_offset);
       setLoaded(true);
       setNotice(
-        "已发现最近会话，请勾选并保存处理授权。最多读取 100 个最近会话，列表可能不完整。新选项 10 分钟后过期。",
+        "已发现最近会话，请勾选并保存处理授权。每批最多读取 100 个会话，可载入更多；列表可能不完整。新选项按服务端原到期时间失效。",
       );
     } finally {
       await refreshStatus();
@@ -834,7 +836,20 @@ export function ConnectionWorkspace({
                     onClick={() =>
                       void act(async () => {
                         try {
-                          await api.retry(id);
+                          const stamp = epoch.current;
+                          const discovery = await api.retry(id);
+                          if (discovery && stamp === epoch.current) {
+                            if (!selection) {
+                              const value = await api.selection(id);
+                              if (stamp !== epoch.current) return;
+                              setSelection(value);
+                              setSelectionNeedsReload(false);
+                              setPicked(value.selected.map((c) => c.id));
+                            }
+                            setChoices((c) => mergeChoices(c, discovery.items));
+                            setNextOffset(discovery.next_offset);
+                            setLoaded(true);
+                          }
                         } finally {
                           await refreshStatus();
                         }
@@ -1073,8 +1088,8 @@ export function ConnectionWorkspace({
               )}
             </div>
             <p className="subtle">
-              已有授权可在断线、暂停或接入配置不可用时读取及撤销。发现新会话需要有效连接；最多读取
-              100 个最近会话。
+              已有授权可在断线、暂停或接入配置不可用时读取及撤销。发现新会话需要有效连接，每批最多读取
+              100 个会话，可载入更多。下方分页用于浏览已载入会话。
             </p>
             {selectionStale && (
               <p className="connection-notice error" role="alert">
@@ -1124,65 +1139,36 @@ export function ConnectionWorkspace({
                     </p>
                   </div>
                 )}
-                <div className="chat-choices">
-                  {choices.map((c, i) => (
-                    <label className="chat-choice" key={c.id}>
-                      <input
-                        type="checkbox"
-                        checked={picked.includes(c.id)}
-                        disabled={
-                          busy ||
-                          (!picked.includes(c.id) &&
-                            (picked.length >= 100 ||
-                              (!c.selected &&
-                                (!canDiscover || choiceExpired(c, clock)))))
-                        }
-                        onChange={(e) => {
-                          setPicked((p) =>
-                            e.target.checked
-                              ? [...p, c.id]
-                              : p.filter((k) => k !== c.id),
-                          );
-                          setNotice("");
-                        }}
-                      />
-                      <span className="chat-avatar" aria-hidden="true">
-                        {c.label.slice(0, 1) || "聊"}
-                      </span>
-                      <span className="chat-title">
-                        <strong>
-                          {c.label === "已授权会话"
-                            ? `已授权会话 ${i + 1}`
-                            : c.label}
-                        </strong>
-                        <small>
-                          {"聊天"} ·{" "}
-                          {selection.selected.some((s) => s.id === c.id)
-                            ? demo
-                              ? "演示已授权"
-                              : "服务端已授权"
-                            : "尚未授权"}
-                          {!c.selected && choiceExpired(c, clock)
-                            ? " · 选项已过期"
-                            : ""}
-                        </small>
-                      </span>
-                    </label>
-                  ))}
-                </div>
+                <ChatChoices
+                  key={id}
+                  choices={choices}
+                  picked={picked}
+                  busy={busy}
+                  canDiscover={!!canDiscover}
+                  clock={clock}
+                  demo={demo}
+                  onToggle={(key, checked) => {
+                    setPicked((p) =>
+                      checked ? [...p, key] : p.filter((k) => k !== key),
+                    );
+                    setNotice("");
+                  }}
+                />
                 {nextOffset !== null && (
                   <button
                     className="secondary"
-                    disabled={busy}
+                    disabled={busy || !canDiscover}
                     onClick={() =>
                       void act(async () => {
+                        const stamp = epoch.current;
                         const discovery = await api.chats(id, nextOffset);
+                        if (stamp !== epoch.current) return;
                         setChoices((c) => mergeChoices(c, discovery.items));
                         setNextOffset(discovery.next_offset);
                       })
                     }
                   >
-                    加载更多会话
+                    载入更多会话（每批最多 100 个）
                   </button>
                 )}
                 <div className="authorization-summary">
@@ -1234,6 +1220,16 @@ export function ConnectionWorkspace({
             )}
           </section>
         </div>
+      )}
+      {!demo && id && (
+        <WahaMessages
+          key={`${id}:${csrf}`}
+          connection={id}
+          csrf={csrf}
+          enabled={!!connector?.enabled}
+          issues={issues}
+          onSessionExpired={onSessionExpired}
+        />
       )}
     </section>
   );

@@ -124,6 +124,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/connectors/{connection_id}/chats/{chat_id}/timeline": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Connector Timeline */
+    get: operations["connector_timeline_api_v1_connectors__connection_id__chats__chat_id__timeline_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/connectors/{connection_id}/operations": {
     parameters: {
       query?: never;
@@ -271,6 +288,75 @@ export interface paths {
     get: operations["connector_setup_api_v1_connectors__connection_id__setup_get"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/source-gaps": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Connector Source Gaps */
+    get: operations["connector_source_gaps_api_v1_connectors__connection_id__source_gaps_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/sync-jobs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Connector Sync Jobs */
+    get: operations["connector_sync_jobs_api_v1_connectors__connection_id__sync_jobs_get"];
+    put?: never;
+    /** Connector Sync */
+    post: operations["connector_sync_api_v1_connectors__connection_id__sync_jobs_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/sync-jobs/{job_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Connector Sync Job */
+    get: operations["connector_sync_job_api_v1_connectors__connection_id__sync_jobs__job_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/sync-jobs/{job_id}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Connector Cancel Sync */
+    post: operations["connector_cancel_sync_api_v1_connectors__connection_id__sync_jobs__job_id__cancel_post"];
     delete?: never;
     options?: never;
     head?: never;
@@ -607,6 +693,12 @@ export interface components {
     };
     /** ConnectorReceipt */
     ConnectorReceipt: {
+      /**
+       * Acceptance Kind
+       * @default normalized_event
+       * @enum {string}
+       */
+      acceptance_kind: "normalized_event" | "observation";
       /** Context Version */
       context_version: number;
       /** Duplicate */
@@ -829,6 +921,15 @@ export interface components {
        */
       request_id: string;
     };
+    /** Detail[WahaSyncResult] */
+    Detail_WahaSyncResult_: {
+      data: components["schemas"]["WahaSyncResult"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
     /** Detail[WorkOrder] */
     Detail_WorkOrder_: {
       data: components["schemas"]["WorkOrder"];
@@ -958,6 +1059,42 @@ export interface components {
     Page_Task_: {
       /** Items */
       items: components["schemas"]["Task"][];
+      /** Next Cursor */
+      next_cursor: string | null;
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Page[WahaSourceGapView] */
+    Page_WahaSourceGapView_: {
+      /** Items */
+      items: components["schemas"]["WahaSourceGapView"][];
+      /** Next Cursor */
+      next_cursor: string | null;
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Page[WahaSyncResult] */
+    Page_WahaSyncResult_: {
+      /** Items */
+      items: components["schemas"]["WahaSyncResult"][];
+      /** Next Cursor */
+      next_cursor: string | null;
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Page[WahaTimelineMessage] */
+    Page_WahaTimelineMessage_: {
+      /** Items */
+      items: components["schemas"]["WahaTimelineMessage"][];
       /** Next Cursor */
       next_cursor: string | null;
       /**
@@ -1138,6 +1275,12 @@ export interface components {
        * Format: uuid
        */
       id: string;
+      /**
+       * Kind
+       * @default direct
+       * @enum {string}
+       */
+      kind: "direct" | "group";
       /** Label */
       label: string;
       /** Selected */
@@ -1152,6 +1295,16 @@ export interface components {
       action: "connect" | "recover" | "inspect" | "discover";
       /** Expected Version */
       expected_version: number;
+      /**
+       * Limit
+       * @default 100
+       */
+      limit: number;
+      /**
+       * Offset
+       * @default 0
+       */
+      offset: number;
     };
     /** WahaControlResult */
     WahaControlResult: {
@@ -1174,6 +1327,8 @@ export interface components {
        * Format: uuid
        */
       id: string;
+      /** Next Offset */
+      next_offset?: number | null;
       /** Provider Observed At */
       provider_observed_at: string | null;
       /** Provider State */
@@ -1238,6 +1393,203 @@ export interface components {
       provider_sample_stale: boolean;
       /** Provider State */
       provider_state: string | null;
+    };
+    /** WahaSourceGapView */
+    WahaSourceGapView: {
+      /**
+       * Chat Id
+       * Format: uuid
+       */
+      chat_id: string;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Observed At
+       * Format: date-time
+       */
+      observed_at: string;
+      /**
+       * State
+       * @enum {string}
+       */
+      state: "needs_lookup" | "snapshot_found" | "unavailable";
+    };
+    /** WahaSyncCommand */
+    WahaSyncCommand: {
+      /** Chat Ids */
+      chat_ids: string[];
+      /** Consent */
+      consent: boolean;
+      /** Expected Version */
+      expected_version: number;
+      /** Issue Id */
+      issue_id?: string | null;
+      /**
+       * Max Records
+       * @default 500
+       */
+      max_records: number;
+      /**
+       * Since
+       * Format: date-time
+       */
+      since: string;
+      /** Source Gap Id */
+      source_gap_id?: string | null;
+      /**
+       * Until
+       * Format: date-time
+       */
+      until: string;
+    };
+    /** WahaSyncResult */
+    WahaSyncResult: {
+      /** Attempts */
+      attempts: number;
+      /** Chat Ids */
+      chat_ids: string[];
+      /**
+       * Complete History
+       * @default false
+       * @constant
+       */
+      complete_history: false;
+      /**
+       * Connection Id
+       * Format: uuid
+       */
+      connection_id: string;
+      /**
+       * Coverage
+       * @enum {string}
+       */
+      coverage:
+        | "in_progress"
+        | "provider_exhausted"
+        | "limit_reached"
+        | "incomplete";
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /** Duplicates */
+      duplicates: number;
+      /** Error Code */
+      error_code: string | null;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Imported */
+      imported: number;
+      /** Issue Id */
+      issue_id: string | null;
+      /** Max Records */
+      max_records: number;
+      /** Pages */
+      pages: number;
+      /**
+       * Since
+       * Format: date-time
+       */
+      since: string;
+      /** Skipped */
+      skipped: number;
+      /** Source Gap Id */
+      source_gap_id: string | null;
+      /**
+       * State
+       * @enum {string}
+       */
+      state: "pending" | "running" | "succeeded" | "failed" | "cancelled";
+      /**
+       * Until
+       * Format: date-time
+       */
+      until: string;
+      /**
+       * Updated At
+       * Format: date-time
+       */
+      updated_at: string;
+    };
+    /** WahaTimelineMessage */
+    WahaTimelineMessage: {
+      /**
+       * Attachment Reading
+       * @enum {string}
+       */
+      attachment_reading: "deferred" | "not_applicable";
+      /**
+       * Chat Id
+       * Format: uuid
+       */
+      chat_id: string;
+      /**
+       * Conversation Id
+       * Format: uuid
+       */
+      conversation_id: string;
+      /** Delivery Status */
+      delivery_status: ("unknown" | "sent" | "delivered" | "read") | null;
+      /**
+       * Direction
+       * @enum {string}
+       */
+      direction: "incoming" | "outgoing";
+      /**
+       * Evidence
+       * @enum {string}
+       */
+      evidence: "revision" | "snapshot";
+      /** Filename */
+      filename: string | null;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "text" | "image" | "audio" | "document" | "video" | "other";
+      /** Mimetype */
+      mimetype: string | null;
+      /**
+       * Observed At
+       * Format: date-time
+       */
+      observed_at: string;
+      /**
+       * Occurred At
+       * Format: date-time
+       */
+      occurred_at: string;
+      /**
+       * Origin
+       * @enum {string}
+       */
+      origin: "live" | "history";
+      /** Processing State */
+      processing_state: string | null;
+      /** Reply To Id */
+      reply_to_id: string | null;
+      /** Revision */
+      revision: number | null;
+      /** Revoked */
+      revoked: boolean;
+      /** Sender Id */
+      sender_id: string | null;
+      /** Source Message Id */
+      source_message_id: string | null;
+      /** Text */
+      text: string | null;
     };
     /** WahaVersionCommand */
     WahaVersionCommand: {
@@ -1519,6 +1871,41 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Detail_WahaSetup_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  connector_timeline_api_v1_connectors__connection_id__chats__chat_id__timeline_get: {
+    parameters: {
+      query?: {
+        cursor?: string | null;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        connection_id: string;
+        chat_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Page_WahaTimelineMessage_"];
         };
       };
       /** @description Validation Error */
@@ -1825,6 +2212,179 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Detail_WahaSetup_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  connector_source_gaps_api_v1_connectors__connection_id__source_gaps_get: {
+    parameters: {
+      query?: {
+        cursor?: string | null;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Page_WahaSourceGapView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  connector_sync_jobs_api_v1_connectors__connection_id__sync_jobs_get: {
+    parameters: {
+      query?: {
+        cursor?: string | null;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Page_WahaSyncResult_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  connector_sync_api_v1_connectors__connection_id__sync_jobs_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WahaSyncCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaSyncResult_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  connector_sync_job_api_v1_connectors__connection_id__sync_jobs__job_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+        job_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaSyncResult_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  connector_cancel_sync_api_v1_connectors__connection_id__sync_jobs__job_id__cancel_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+        job_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WahaVersionCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaSyncResult_"];
         };
       };
       /** @description Validation Error */

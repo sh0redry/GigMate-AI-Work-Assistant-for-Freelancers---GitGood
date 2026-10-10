@@ -383,3 +383,123 @@
   background: #176a52;
   color: white;
 }
+.synchronization-panel {
+  margin-top: 24px;
+}
+.synchronization-panel label {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 10px 0;
+}
+.synchronization-panel select,
+.chat-choices select,
+.chat-choices input:not([type="checkbox"]) {
+  font: inherit;
+  border: 1px solid #c8dbd0;
+  border-radius: 8px;
+  background: white;
+  padding: 8px 12px;
+  max-width: 100%;
+  min-width: 0;
+}
+.synchronization-panel fieldset {
+  border: 1px solid #dce7df;
+  border-radius: 10px;
+  padding: 16px;
+  margin: 20px 0;
+}
+.message-timeline {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.message-timeline li {
+  border-left: 3px solid #8fbaa6;
+  border-radius: 8px;
+  padding: 14px 18px;
+  background: #f3f7f4;
+  overflow-wrap: anywhere;
+}
+.message-timeline p {
+  white-space: pre-wrap;
+  margin: 6px 0;
+}
+.synchronization-panel li button {
+  margin: 8px;
+}
+
+.chat-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+}
+.chat-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 160px;
+}
+.chat-filters input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.chat-page-summary {
+  font-size: 13px;
+  color: #48695c;
+  margin: 14px 0;
+}
+.chat-kind {
+  font-weight: 600;
+}
+.chat-kind-group {
+  color: #176a52;
+}
+.chat-kind-unknown {
+  color: #795014;
+}
+.chat-avatar-group {
+  background: #d7ece0;
+}
+.chat-choice-page .chat-choice {
+  padding: 14px 0;
+}
+.chat-choice-page .chat-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.chat-no-results {
+  padding: 16px;
+  border-radius: 8px;
+  background: #f3f7f4;
+}
+.chat-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid #dce7df;
+  font-size: 14px;
+}
+.chat-pagination label,
+.chat-page-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.chat-pagination select {
+  font: inherit;
+  border: 1px solid #c8dbd0;
+  border-radius: 8px;
+  padding: 8px;
+  background: white;
+}
+.chat-page-buttons button {
+  padding: 10px 16px;
+}

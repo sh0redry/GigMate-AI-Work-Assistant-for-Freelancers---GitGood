@@ -77,6 +77,15 @@ def environment():
             raise TeamError("DATABASE_ENV_CONFLICT")
         env["DATABASE_URL"] = DATABASE
         env["WAHA_DATABASE_URL"] = INTERNAL_DATABASE
+    elif (PRIVATE / "database.json").exists():
+        saved = json.loads(
+            private_path(PRIVATE / "database.json").read_text(encoding="utf-8")
+        )
+        if saved.get("workspace") != str(ROOT.resolve()):
+            raise TeamError("DATABASE_PROFILE_WORKSPACE_MISMATCH")
+        if env.get("DATABASE_URL") not in (None, saved.get("database_url")):
+            raise TeamError("DATABASE_ENV_CONFLICT")
+        env["DATABASE_URL"] = saved["database_url"]
     if not env.get("DATABASE_URL", "").startswith("postgresql+psycopg://"):
         raise TeamError("SET_POSTGRES_DATABASE_URL_OR_TEAM_INIT")
     from sqlalchemy.engine import make_url
@@ -86,6 +95,46 @@ def environment():
         raise TeamError("LOCAL_DATABASE_REQUIRED")
     env["PYTHONPATH"] = str(ROOT / "apps/backend/src")
     return env
+
+
+def remember_database(env):
+    """Explicitly remember a verified legacy installation URL, never infer a database."""
+    if PROFILE.exists():
+        raise TeamError("TEAM_PROFILE_ALREADY_MANAGES_DATABASE")
+    from sqlalchemy import create_engine, text
+    from scripts.waha_ingress import local_binding
+    from scripts.waha_local import load_config
+
+    binding = local_binding(load_config())
+    with create_engine(
+        env["DATABASE_URL"], connect_args={"connect_timeout": 3}
+    ).connect() as db:
+        db.execute(text("SET TRANSACTION READ ONLY"))
+        if not db.execute(
+            text("SELECT id FROM waha_connections WHERE id=:cid AND account_id=:aid"),
+            {"cid": binding.connection_id, "aid": binding.account_id},
+        ).scalar():
+            raise TeamError("BINDING_DATABASE_MISMATCH")
+    target = private_path(PRIVATE / "database.json")
+    import tempfile
+
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=PRIVATE, delete=False
+        ) as file:
+            temporary = Path(file.name)
+            json.dump(
+                {"workspace": str(ROOT.resolve()), "database_url": env["DATABASE_URL"]},
+                file,
+            )
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temporary, target)
+    finally:
+        if temporary:
+            temporary.unlink(missing_ok=True)
+    return {"database_profile_saved": True, "credentials_printed": False}
 
 
 def initialize():
@@ -443,6 +492,7 @@ def main(argv=None):
             "run",
             "stop",
             "import-legacy",
+            "remember-database",
         ],
     )
     parser.add_argument("args", nargs=argparse.REMAINDER)
@@ -455,6 +505,8 @@ def main(argv=None):
             result = startup(env)
         elif args.command == "doctor":
             result = doctor(env)
+        elif args.command == "remember-database":
+            result = remember_database(env)
         elif args.command == "import-legacy":
             os.environ["DATABASE_URL"] = env["DATABASE_URL"]
             from scripts.waha_local import load_config

@@ -36,6 +36,10 @@ from gigmate.contracts import (
     WahaIssueReviewResult,
     WahaSelectionCommand,
     WahaSetup,
+    WahaSourceGapView,
+    WahaSyncCommand,
+    WahaSyncResult,
+    WahaTimelineMessage,
     WahaVersionCommand,
     WorkOrder,
 )
@@ -163,6 +167,9 @@ async def record_webhook_failure(request, code):
         try:
             with Session.begin() as db:
                 record_rejection(db, binding, code)
+                from gigmate.waha_sync import capture_gap
+
+                capture_gap(db, binding, getattr(request.state, "raw_provider_event", None), code)
         except (SQLAlchemyError, BusinessError):
             # A database outage cannot durably count its own failed writes.
             # The independent monitor records the uncertain window after recovery.
@@ -606,6 +613,165 @@ def connector_select(
     return detail(request, controls.select_chats(db, row, command))
 
 
+@app.post(
+    "/api/v1/connectors/{connection_id}/sync-jobs",
+    status_code=202,
+    response_model=Detail[WahaSyncResult],
+)
+def connector_sync(
+    connection_id: UUID,
+    command: WahaSyncCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    from gigmate import waha_sync
+
+    row = controls.owned(db, account, str(connection_id), lock=True)
+    return detail(request, waha_sync.enqueue(db, row, command, idempotency_key))
+
+
+@app.get("/api/v1/connectors/{connection_id}/sync-jobs", response_model=Page[WahaSyncResult])
+def connector_sync_jobs(
+    connection_id: UUID,
+    request: Request,
+    cursor: str | None = None,
+    limit: int = Query(20, ge=1, le=100),
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    from gigmate import waha_sync
+    from gigmate.db import WahaSyncJob
+
+    row = controls.owned(db, account, str(connection_id))
+    return page(
+        request,
+        db.scalars(select(WahaSyncJob).where(WahaSyncJob.connection_id == row.id)),
+        cursor,
+        limit,
+        waha_sync.job_view,
+    )
+
+
+@app.get(
+    "/api/v1/connectors/{connection_id}/sync-jobs/{job_id}", response_model=Detail[WahaSyncResult]
+)
+def connector_sync_job(
+    connection_id: UUID,
+    job_id: UUID,
+    request: Request,
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    from gigmate import waha_sync
+    from gigmate.db import WahaSyncJob
+
+    row = controls.owned(db, account, str(connection_id))
+    job = db.get(WahaSyncJob, str(job_id))
+    if not job or job.connection_id != row.id:
+        controls.fail("NOT_FOUND", 404)
+    return detail(request, waha_sync.job_view(job))
+
+
+@app.post(
+    "/api/v1/connectors/{connection_id}/sync-jobs/{job_id}/cancel",
+    response_model=Detail[WahaSyncResult],
+)
+def connector_cancel_sync(
+    connection_id: UUID,
+    job_id: UUID,
+    command: WahaVersionCommand,
+    request: Request,
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    from gigmate import waha_sync
+
+    row = controls.owned(db, account, str(connection_id), lock=True)
+    controls.version(row, command.expected_version)
+    return detail(request, waha_sync.cancel(db, row, str(job_id)))
+
+
+@app.get("/api/v1/connectors/{connection_id}/source-gaps", response_model=Page[WahaSourceGapView])
+def connector_source_gaps(
+    connection_id: UUID,
+    request: Request,
+    cursor: str | None = None,
+    limit: int = Query(20, ge=1, le=100),
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    from gigmate.db import WahaSourceGap
+
+    row = controls.owned(db, account, str(connection_id))
+    return page(
+        request,
+        db.scalars(
+            select(WahaSourceGap)
+            .join(WahaChat)
+            .join(ConversationRow, ConversationRow.id == WahaChat.conversation_id)
+            .where(WahaChat.connection_id == row.id, ConversationRow.allowlisted.is_(True))
+        ),
+        cursor,
+        limit,
+        lambda x: dict(
+            id=x.id, chat_id=x.chat_id, observed_at=stamp_sync(x.observed_at), state=x.state
+        ),
+    )
+
+
+def stamp_sync(value):
+    from gigmate.waha_recovery import stamp
+
+    return stamp(value)
+
+
+@app.get(
+    "/api/v1/connectors/{connection_id}/chats/{chat_id}/timeline",
+    response_model=Page[WahaTimelineMessage],
+)
+def connector_timeline(
+    connection_id: UUID,
+    chat_id: UUID,
+    request: Request,
+    cursor: str | None = None,
+    limit: int = Query(50, ge=1, le=100),
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    from gigmate import waha_sync
+
+    row = controls.owned(db, account, str(connection_id))
+    values = waha_sync.timeline(db, row, str(chat_id))
+    from datetime import datetime
+
+    values.sort(key=lambda x: (datetime.fromisoformat(x["occurred_at"]), x["id"]), reverse=True)
+    if cursor:
+        try:
+            c = json.loads(base64.urlsafe_b64decode(cursor.encode()).decode())
+            if c[0] != row.id or c[1] != str(chat_id) or len(c) != 4:
+                raise ValueError
+            values = [
+                v
+                for v in values
+                if (datetime.fromisoformat(v["occurred_at"]), v["id"])
+                < (datetime.fromisoformat(c[2]), c[3])
+            ]
+        except (ValueError, IndexError, TypeError, UnicodeDecodeError):
+            controls.fail("INVALID_CURSOR", 422)
+    current = values[:limit]
+    last = current[-1] if current else None
+    next_cursor = (
+        base64.urlsafe_b64encode(
+            json.dumps([row.id, str(chat_id), last["occurred_at"], last["id"]]).encode()
+        ).decode()
+        if len(values) > limit
+        else None
+    )
+    return dict(items=current, next_cursor=next_cursor, request_id=request.state.request_id)
+
+
 @app.post("/api/v1/connectors/waha/{connection_id}/events", response_model=Detail[ConnectorReceipt])
 async def waha_events(
     connection_id: UUID, request: Request, db=Depends(database, scope="function")
@@ -635,6 +801,7 @@ async def waha_events(
         raw = json.loads(body, object_pairs_hook=_pairs, parse_constant=_non_json_constant)
     except (ValueError, UnicodeDecodeError, RecursionError):
         raise BusinessError(422, "INVALID_WEBHOOK_JSON", "Invalid webhook JSON") from None
+    request.state.raw_provider_event = raw
     # Row-lock waits must not block the event loop that schedules transaction exit.
     result = await run_in_threadpool(receive, db, binding, raw)
     return detail(request, result)

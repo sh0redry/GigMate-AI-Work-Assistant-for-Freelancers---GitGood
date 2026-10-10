@@ -803,6 +803,15 @@
     "ConnectorReceipt": {
       "additionalProperties": false,
       "properties": {
+        "acceptance_kind": {
+          "default": "normalized_event",
+          "enum": [
+            "normalized_event",
+            "observation"
+          ],
+          "title": "Acceptance Kind",
+          "type": "string"
+        },
         "context_version": {
           "minimum": 0,
           "title": "Context Version",
@@ -2102,6 +2111,15 @@
           "title": "Id",
           "type": "string"
         },
+        "kind": {
+          "default": "direct",
+          "enum": [
+            "direct",
+            "group"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
         "label": {
           "title": "Label",
           "type": "string"
@@ -2136,6 +2154,20 @@
         "expected_version": {
           "minimum": 0,
           "title": "Expected Version",
+          "type": "integer"
+        },
+        "limit": {
+          "default": 100,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "maximum": 10000,
+          "minimum": 0,
+          "title": "Offset",
           "type": "integer"
         }
       },
@@ -2184,6 +2216,19 @@
           "format": "uuid",
           "title": "Id",
           "type": "string"
+        },
+        "next_offset": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Offset"
         },
         "provider_observed_at": {
           "anyOf": [
@@ -2393,6 +2438,497 @@
         "provider_sample_stale"
       ],
       "title": "WahaSetup",
+      "type": "object"
+    },
+    "WahaSourceGapView": {
+      "additionalProperties": false,
+      "properties": {
+        "chat_id": {
+          "format": "uuid",
+          "title": "Chat Id",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "needs_lookup",
+            "snapshot_found",
+            "unavailable"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "chat_id",
+        "observed_at",
+        "state"
+      ],
+      "title": "WahaSourceGapView",
+      "type": "object"
+    },
+    "WahaSyncCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "chat_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Chat Ids",
+          "type": "array"
+        },
+        "consent": {
+          "title": "Consent",
+          "type": "boolean"
+        },
+        "expected_version": {
+          "minimum": 0,
+          "title": "Expected Version",
+          "type": "integer"
+        },
+        "issue_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Issue Id"
+        },
+        "max_records": {
+          "default": 500,
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Max Records",
+          "type": "integer"
+        },
+        "since": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Since",
+          "type": "string"
+        },
+        "source_gap_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Gap Id"
+        },
+        "until": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Until",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_version",
+        "chat_ids",
+        "since",
+        "until",
+        "consent"
+      ],
+      "title": "WahaSyncCommand",
+      "type": "object"
+    },
+    "WahaSyncResult": {
+      "additionalProperties": false,
+      "properties": {
+        "attempts": {
+          "minimum": 0,
+          "title": "Attempts",
+          "type": "integer"
+        },
+        "chat_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Chat Ids",
+          "type": "array"
+        },
+        "complete_history": {
+          "const": false,
+          "default": false,
+          "title": "Complete History",
+          "type": "boolean"
+        },
+        "connection_id": {
+          "format": "uuid",
+          "title": "Connection Id",
+          "type": "string"
+        },
+        "coverage": {
+          "enum": [
+            "in_progress",
+            "provider_exhausted",
+            "limit_reached",
+            "incomplete"
+          ],
+          "title": "Coverage",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Created At",
+          "type": "string"
+        },
+        "duplicates": {
+          "minimum": 0,
+          "title": "Duplicates",
+          "type": "integer"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Code"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "imported": {
+          "minimum": 0,
+          "title": "Imported",
+          "type": "integer"
+        },
+        "issue_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Issue Id"
+        },
+        "max_records": {
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Max Records",
+          "type": "integer"
+        },
+        "pages": {
+          "minimum": 0,
+          "title": "Pages",
+          "type": "integer"
+        },
+        "since": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Since",
+          "type": "string"
+        },
+        "skipped": {
+          "minimum": 0,
+          "title": "Skipped",
+          "type": "integer"
+        },
+        "source_gap_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Gap Id"
+        },
+        "state": {
+          "enum": [
+            "pending",
+            "running",
+            "succeeded",
+            "failed",
+            "cancelled"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "until": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Until",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "connection_id",
+        "state",
+        "chat_ids",
+        "since",
+        "until",
+        "max_records",
+        "issue_id",
+        "source_gap_id",
+        "imported",
+        "duplicates",
+        "skipped",
+        "pages",
+        "attempts",
+        "coverage",
+        "error_code",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "WahaSyncResult",
+      "type": "object"
+    },
+    "WahaTimelineMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "attachment_reading": {
+          "enum": [
+            "deferred",
+            "not_applicable"
+          ],
+          "title": "Attachment Reading",
+          "type": "string"
+        },
+        "chat_id": {
+          "format": "uuid",
+          "title": "Chat Id",
+          "type": "string"
+        },
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "delivery_status": {
+          "anyOf": [
+            {
+              "enum": [
+                "unknown",
+                "sent",
+                "delivered",
+                "read"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Delivery Status"
+        },
+        "direction": {
+          "enum": [
+            "incoming",
+            "outgoing"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "evidence": {
+          "enum": [
+            "revision",
+            "snapshot"
+          ],
+          "title": "Evidence",
+          "type": "string"
+        },
+        "filename": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Filename"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "text",
+            "image",
+            "audio",
+            "document",
+            "video",
+            "other"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "mimetype": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mimetype"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "occurred_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "origin": {
+          "enum": [
+            "live",
+            "history"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "processing_state": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Processing State"
+        },
+        "reply_to_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To Id"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Revision"
+        },
+        "revoked": {
+          "title": "Revoked",
+          "type": "boolean"
+        },
+        "sender_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sender Id"
+        },
+        "source_message_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Message Id"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Text"
+        }
+      },
+      "required": [
+        "id",
+        "chat_id",
+        "conversation_id",
+        "source_message_id",
+        "occurred_at",
+        "observed_at",
+        "origin",
+        "evidence",
+        "revision",
+        "direction",
+        "text",
+        "revoked",
+        "kind",
+        "mimetype",
+        "filename",
+        "sender_id",
+        "reply_to_id",
+        "attachment_reading",
+        "processing_state",
+        "delivery_status"
+      ],
+      "title": "WahaTimelineMessage",
       "type": "object"
     },
     "WahaVersionCommand": {

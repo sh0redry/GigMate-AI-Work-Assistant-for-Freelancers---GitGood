@@ -1,5 +1,7 @@
 # Role A technical evolution and unified acceptance
 
+2026-10-09 authorized extension: [message-sync delivery](role-a-message-sync-acceptance.md) implements bounded history snapshots, owned timeline, explicit gap/source lookup, group/media metadata and durable GET-only jobs. Original media reading/GenAI is deferred by the owner. Next gate is one own-account batch acceptance and independent E review, followed by separately scoped multi-session/deployment or approved sending work. Earlier stage labels below remain planning history.
+
 2026-10-08 batch: [merged integration](role-a-integration-acceptance.md) connects D's local product screens to A's [setup APIs](role-a-setup-api-acceptance.md), retires the alternate bridge, and adds safe recovery review/provider sampling. Independent real-account acceptance and production onboarding remain separate gates. No Cloud API work.
 
 Current extension: A-01/A-02 and durable A-03 ingress have implementation evidence; [recovery acceptance](role-a-recovery-acceptance.md) adds component health, fault verification and manual gap review. This remains A-03 work. A-04 sending still depends on C's approval/outbox/reconciliation services. Earlier baseline descriptions below are planning history; see implementation status for actual current behavior.

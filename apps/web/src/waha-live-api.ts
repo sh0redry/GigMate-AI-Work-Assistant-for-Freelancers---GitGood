@@ -8,7 +8,10 @@ import type { components } from "./generated/api";
 
 type Setup = components["schemas"]["WahaSetup"];
 type Operation = components["schemas"]["WahaControlResult"];
-type Command = components["schemas"]["WahaControlCommand"];
+type CommandShape = components["schemas"]["WahaControlCommand"];
+// Defaulted pagination is optional on the wire; retain compact legacy commands.
+type Command = Omit<CommandShape, "offset" | "limit"> &
+  Partial<Pick<CommandShape, "offset" | "limit">>;
 type Detail<T> = { data: T };
 type Page<T> = { items: T[]; next_cursor: string | null };
 type Attempt = { key: string; body: Command };
@@ -49,13 +52,29 @@ export function liveConnectionApi(csrf: string): ConnectionApi {
             value?.body?.action,
           ) &&
           Number.isInteger(value?.body?.expected_version) &&
-          value.body.expected_version >= 0
+          value.body.expected_version >= 0 &&
+          (value.body.offset === undefined ||
+            (value.body.action === "discover" &&
+              Number.isInteger(value.body.offset) &&
+              value.body.offset >= 0 &&
+              value.body.offset <= 10000)) &&
+          (value.body.limit === undefined ||
+            (value.body.action === "discover" &&
+              Number.isInteger(value.body.limit) &&
+              value.body.limit >= 1 &&
+              value.body.limit <= 100))
         )
           attempts.set(id, {
             key: value.key,
             body: {
               action: value.body.action,
               expected_version: value.body.expected_version,
+              ...(value.body.offset === undefined
+                ? {}
+                : { offset: value.body.offset }),
+              ...(value.body.limit === undefined
+                ? {}
+                : { limit: value.body.limit }),
             },
           });
       } catch {
@@ -163,9 +182,19 @@ export function liveConnectionApi(csrf: string): ConnectionApi {
     }
     return op;
   }
-  async function operate(id: string, action: Command["action"], key: string) {
+  async function operate(
+    id: string,
+    action: Command["action"],
+    key: string,
+    offset = 0,
+  ) {
     let value = attempt(id);
-    if (value && (value.key !== key || value.body.action !== action)) {
+    if (
+      value &&
+      (value.key !== key ||
+        value.body.action !== action ||
+        (value.body.offset ?? 0) !== offset)
+    ) {
       throw new ConnectionError(
         "OPERATION_RESULT_UNKNOWN",
         "上次请求结果待确认，请使用原请求核对。",
@@ -176,6 +205,8 @@ export function liveConnectionApi(csrf: string): ConnectionApi {
         key,
         body: { action, expected_version: (await setup(id)).control_version },
       };
+      if (action === "discover" && offset > 0)
+        value.body = { ...value.body, offset, limit: 100 };
       remember(id, value);
     }
     let op: Operation;
@@ -348,7 +379,17 @@ export function liveConnectionApi(csrf: string): ConnectionApi {
           "WAHA_RECONCILIATION_NOT_REQUIRED",
           "没有待核对的原请求。",
         );
-      await operate(id, value.body.action, value.key);
+      const op = await operate(
+        id,
+        value.body.action,
+        value.key,
+        value.body.offset ?? 0,
+      );
+      if (value.body.action === "discover")
+        return {
+          items: await catalog(id),
+          next_offset: op.next_offset ?? null,
+        };
     },
     async reconcile(id) {
       const value = await setup(id);
@@ -387,9 +428,9 @@ export function liveConnectionApi(csrf: string): ConnectionApi {
       return image;
     },
     selection,
-    async chats(id) {
-      await operate(id, "discover", crypto.randomUUID());
-      return { items: await catalog(id), next_offset: null };
+    async chats(id, offset) {
+      const op = await operate(id, "discover", crypto.randomUUID(), offset);
+      return { items: await catalog(id), next_offset: op.next_offset ?? null };
     },
     async save(id, value, choices) {
       await request(base(id) + "/chats", "PUT", {
