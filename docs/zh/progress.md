@@ -265,3 +265,33 @@ PR #3 的 backend run 37432110763 在 test_waha_team.py 收集阶段报 `ModuleN
 - PostgreSQL 全套、HTTP 集成与完整 Docker 重跑在本轮 reviewer 环境中未跑（Docker Desktop Linux engine 不可用）；上述 SQLite 结果仅作为条件兼容性证据，不作锁证据。
 
 验证（ruff 0.15.6，锁定版本见 `apps/backend/requirements.lock`）：`ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py` 通过；`ruff format --check` 通过；`export_contracts.py --check` 同步；`check_baseline.py` 通过；`pytest apps/backend/tests -q` 325 通过、6 跳过；LLM 评测 6/8（两条 matched 用例按预期失败）。无迁移改动；合约仅新增 `EvaluationCase.provider` 可选字段。分支尚未提交或推送，等用户选择上传方式。
+
+## Role B 独立复核修复 — 2026-10-10
+
+本批次对 PR head `e44d8ec`（远端 `WillW27/role-b-deepseek-integration`）的独立复核作出响应。复核者明确区分了**有意设计**（保持原样）、**当前可复现缺陷**（在本 PR 修复）、**真实启用前验收门槛**（仅在 role-b-extraction 文档中记录，本 PR 不实现）。骨架锁、操作员闸、live-origin opt-in、空 prompt 兜底、UTF-8 兜底、活门行为、有限模型调用重试均被认可为设计选择，**未改动**。
+
+当前可复现缺陷（P2）已修复：
+
+- **smoke 退出码。** `scripts/smoke_deepseek.py` 此前对所有 `needs_review` 输出都返回 0，除非 `notes == ("llm:not-configured",)`。配置 / 传输 / 解析 / Schema / 锁失败（`llm:seam-pending`、`llm:http-failed`、`llm:response-malformed`、`llm:response-schema-failed`、`llm:prompt-load-failed`）全部静默返回绿色。现通过 `_classify_exit_code` 分类：matched → 0；模型主动的 `llm:needs-review` → 0；任何 infra-failure note → 1；其他 `needs_review` note → 1（保守）。复测：默认骨架锁 + 活门开时脚本退出 1；活门关时脚本在到达模型前就退出 2（env check）。
+- **registry 元数据 JSON 序列化。** `gigmate.extraction.registry.list_provider_metadata()` 此前读 `cls.prompt_version`。`DeterministicProvider` 把 `prompt_version` 改为实例级 `@property`（让 deterministic 与 LLM provider 与 prompt 文件锁步）后，从类上读这个 property 会返回 `property` 对象本身，`json.dumps(...)` 抛 `TypeError: Object of type property is not JSON serializable`。现在该 helper 构造一次 provider 读 `instance.prompt_version`；若构造失败（未来 provider 可能要运行时配置）则回落到类属性。新增回归测试验证可往返。
+
+新增回归测试（合成，无网络）：
+
+- `test_list_provider_metadata_is_json_serialisable` —— 断言 helper 对三个注册 provider 都返回纯字符串并能 `json.dumps` 往返。
+- `test_smoke_classify_exit_code_marks_infra_failures_as_nonzero` —— 用 `importlib` 加载 `scripts/smoke_deepseek.py`，逐个传入文档化的 notes 元组，断言退出码。
+
+启用前验收门槛（仅文档化、不实现）：复核者列出的 5 项（可信身份与出处重新绑定、vendor / endpoint 语义、与 worker 锁和租约一起设计的重试、带真实时间依据的日期解释、稳定脱敏的错误码）记入 `docs/{en,zh}/role-b-extraction.md` 新增的"Pre-activation acceptance gates / 真实启用前验收门槛"小节。每一项都是独立批次、独立评审，不在本 PR 范围。
+
+验证（沿用上一批次的可丢弃 SQLite 库，A-03 分支迁移已升级至 head）：
+
+- `python -m ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py scripts/smoke_deepseek.py`：0 错误。
+- `python -m ruff format --check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py scripts/smoke_deepseek.py`：53 files already formatted。
+- `python scripts/export_contracts.py --check`：同步。
+- `python -m pytest apps/backend/tests/test_extraction.py -q --basetemp=/tmp/extraction_full`：36 通过。
+- `python -m pytest apps/backend/tests -q --basetemp=/tmp/extraction_full`：327 通过、6 跳过（PostgreSQL 行锁测试）。
+- `python scripts/run_evaluation.py --manifest contracts/evaluation/manifest.json`：7/7 通过（deterministic 默认）。
+- `python scripts/run_evaluation.py --manifest contracts/evaluation/manifest.json --provider llm`：7 通过（用例 3-9）、2 失败（用例 1-2 预期失败；matched 合成 fixture 需真实模型）。
+- `python -c "import json; from gigmate.extraction.registry import list_provider_metadata; json.dumps(list_provider_metadata())"`：往返正常。
+- `bash -c "GIGMATE_LLM_PROVIDER=deepseek GIGMATE_LLM_MODEL=deepseek-chat GIGMATE_LLM_API_KEY=sk-fake GIGMATE_LLM_LIVE=1 python scripts/smoke_deepseek.py >/dev/null 2>&1; echo $?"`：输出 `1`（seam-pending → infra failure）。
+
+骨架锁、操作员闸、live-origin opt-in 全部保留。**未调用任何真实模型、未读取任何真实 API key、未接触任何真实流量。**

@@ -254,6 +254,71 @@ provider 对 live 来源一律拒绝（与文本无关），因此当前真实 W
 PostgreSQL 测试是有意义的运行；SQLite 不证明行锁，只验证条件兼容性。
 本批次不合成真实 WhatsApp 流量。
 
+## 真实启用前验收门槛
+
+本批次只交付**未激活的调用实现**：HTTP / 解析 / Schema 路径已经就位，
+但 `_SKELETON_SEAM = True` 且活门默认关，所有请求都不会触达网络。
+接缝、prompt 版本链、live-origin 守门已落地为可测试代码；下列验收门槛
+**不在本 PR 范围内**，必须在接缝打开、真实流量被允许经过真实模型 provider
+**之前**（每一项独立批次、独立评审）逐项完成：
+
+- **可信身份与出处不能交给模型决定。** 现行 `_parse_response` 只做
+  结构校验，对 LLM 返回的 `work_order_id` / `base_work_order_version` /
+  `conversation_id` / `sources` 不会重新绑定到 worker 实际发起的请求。
+  启用前必须：
+  (a) 把 `work_order_id` 重新绑定到 `request.candidate_work_order_ids`
+      之一（若模型一个都没选则为 `None`）；
+  (b) 把 `base_work_order_version` 重新绑定到 worker 解析出的版本号；
+  (c) 把每条 `source.message_id` / `source.message_revision` 重新绑定到
+      请求的 `message_id` / `message_revision`；
+  (d) 把 `conversation_id` 重新绑定到请求的 `conversation_id`。
+  不一致必须以 `llm:response-schema-failed` + 稳定错误码上报，绝不能
+  当作 `matched` 通过。这一项不需要再向模型多发任何 UUID，只需要更严的
+  校验后处理。
+- **vendor 与 endpoint 语义必须显式。** 现行代码把
+  `GIGMATE_LLM_PROVIDER=openai`（或任何 vendor 名）一律视作"使用
+  DeepSeek 默认 endpoint，除非操作员另行设置 `GIGMATE_LLM_ENDPOINT`"。
+  接缝打开后这是脚枪：为一个 vendor 配置的 worker 可能静默调用另一个
+  vendor 的服务。启用前 provider 必须：
+  - 拒绝未知的 `GIGMATE_LLM_PROVIDER` 取值；
+  - 把每个已知 vendor 与各自文档化的默认 endpoint 绑定；
+  - vendor 为 `custom` 时强制要求 `GIGMATE_LLM_ENDPOINT`。
+  如果 `openai` 指"任何 OpenAI 兼容协议"而非"OpenAI 这家供应商"，需要
+  在配置面和文档里写清楚，避免评审者按较窄含义误读。
+- **重试必须与 worker 锁、租约一起设计。** 现行 `_call_chat_completion`
+  对所有 `httpx.HTTPError` 及所有 `KeyError` / `IndexError` / `ValueError`
+  各重试 1 次。30 秒超时 + 1 次重试，单次抽取可能持有同账号 / 同工单
+  行锁直到完整退避结束；若租约在请求飞行中过期，worker 可能完成并丢弃
+  结果，再次执行，费用翻倍、`model_call_traces` 也可能重复。启用前重试
+  策略必须：
+  - 限定**总**墙钟与上报费用；
+  - 仅对明确 transient 类（连接重置、带 `Retry-After` 的 5xx 等）重试，
+    不对解析 / Schema / 4xx 错误重试；
+  - 签发**持久 request id**，便于与上游供应商日志对账；
+  - 把 I/O **放在行锁外**；
+  - 调用返回后重新校验候选工单 / context version，避免陈旧重试把老
+    数据升级。
+  本 PR 不实现上述任何一项；现有测试只断言当前形状（任意错误都重试
+  1 次），因此行为不会在无声中漂移。
+- **日期解释需要真实时间依据；输出格式必须符合契约。** 现行 prompt 要
+  求模型把"今天 / 明天 / 下星期X / next Thursday"等相对日期相对于
+  一个未指定的"现在"解析，并输出 `Asia/Hong_Kong` 锚定的 ISO-8601
+  字符串。`ExtractionRequest` 不携带原始消息时间戳与工作区时区，而
+  契约里的 `TimedSchedule` 要求 `start_at` / `end_at` 为 UTC `Z` 格式。
+  启用前请求必须携带服务端附上的 `message_received_at`（或等价字段）
+  与 `workspace_timezone`；prompt 必须以此时间戳为相对日期的参照；输出
+  必须为 UTC `Z`；provider 必须对任何无法无损解析为 UTC 的 `start_at`
+  / `end_at` 以类型化备注拒绝。媒体处理器（OCR / ASR / PDF）批次会
+  提供缺失的时间戳来源；本 PR 仅是纯文本抽取接缝，因此不包含。
+- **错误码需稳定、脱敏。** 现行 `refused_reason` 字段直接嵌入 Python
+  异常类名与原始异常消息。开发时有用，但私有 endpoint 路径 / 供应商
+  名称 / 密钥片段可能借下游日志泄漏。启用前错误码必须是稳定字符串
+  （例如 `llm:http-failed:timeout`），任何自由文本部分都必须脱敏
+  endpoint、vendor、API key 前缀。
+
+上述门槛写在这里是为了让评审者确认本 PR 不会静默打开接缝；每一项都
+是独立批次、独立评审。
+
 ## 待办
 
 - 真实模型 provider 接入：下一单独授权批次必须完成三件事——(a) 用真实 SDK

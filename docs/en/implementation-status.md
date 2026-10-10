@@ -250,3 +250,33 @@ What this batch does **not** include (regression to be honest about the scope):
 - No real model integration, no real model credentials (no `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` reads, no typed configuration errors for them), and no media processing adapter. A's attachment link (OCR/ASR/PDF) still needs an independent `MediaProcessor.process/reconcile` implementation; this PR is not evidence that OCR/ASR/PDF is complete.
 - `scripts/smoke_deepseek.py` is a manual operator helper that requires `GIGMATE_LLM_LIVE=1` plus a real API key before it makes any request; the CI suite uses the in-process `httpx.Client` test seam. The helper is not a CI entry point.
 - PostgreSQL suite, HTTP integration and full Docker reruns were not exercised in this round (Docker Desktop Linux engine unavailable in the reviewer's environment); SQLite evidence above is the conditional-compatibility run, not locking proof.
+
+## Role B independent-review fixes — 2026-10-10
+
+Applied on PR head `e44d8ec` (branch `WillW27/role-b-deepseek-integration` on GitHub) in response to the independent review of the same commit. The reviewer distinguished between intentional design (kept as-is), reproducible defects (fixed in this PR), and pre-activation acceptance gates (recorded in the role-b-extraction docs, not in scope here). The skeleton lock, operator gate, live-origin opt-in, empty-prompt fallback, UTF-8 fallback, off-gate behaviour, and bounded model-call retry are accepted design choices and stay untouched.
+
+Reproducible defects (P2) fixed:
+
+- **Smoke-script exit code.** `scripts/smoke_deepseek.py` previously returned 0 for every `needs_review` outcome unless `notes == ("llm:not-configured",)`. Configuration / transport / parse / schema / lock failures (`llm:seam-pending`, `llm:http-failed`, `llm:response-malformed`, `llm:response-schema-failed`, `llm:prompt-load-failed`) all silently produced a green exit. The script now classifies via a `_classify_exit_code` helper: matched → 0; LLM-driven `llm:needs-review` → 0; any infrastructure-failure note → 1; any other `needs_review` note → 1 (conservative). Re-verified: with the skeleton lock on and the live gate open the script exits 1; with the live gate closed the script exits 2 (env check) before reaching the model.
+- **Registry metadata JSON serialisation.** `gigmate.extraction.registry.list_provider_metadata()` previously read `cls.prompt_version`. After the prompt-version was made an instance-level `@property` on `DeterministicProvider` (so deterministic and LLM providers stay in lock-step with the prompt file), reading the property off the class returned the `property` object and `json.dumps(...)` raised `TypeError: Object of type property is not JSON serializable`. The helper now constructs each provider once and reads `instance.prompt_version`; if construction fails (e.g. a future provider needs runtime config) it falls back to the class attribute. Round-trip is verified by a new regression test.
+
+Regression tests added (synthetic, no network):
+
+- `test_list_provider_metadata_is_json_serialisable` — asserts the helper returns plain strings and round-trips through `json.dumps` for all three registered providers.
+- `test_smoke_classify_exit_code_marks_infra_failures_as_nonzero` — loads `scripts/smoke_deepseek.py` via `importlib`, calls `_classify_exit_code` with each documented notes tuple, and asserts exit codes.
+
+Pre-activation acceptance gates (documented, not implemented): five items from the review (trusted identity and provenance re-binding, vendor / endpoint semantics, retry design with the worker lock and lease, date interpretation with a real time basis, stable sanitised error codes) are recorded under `## Pre-activation acceptance gates` in `docs/en/role-b-extraction.md` and the Chinese mirror. Each will ship as its own authorised batch with its own review; none is in scope for this PR.
+
+Verification on the same disposable SQLite database after the Branch A-03 migrations had already been upgraded to head:
+
+- `python -m ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py scripts/smoke_deepseek.py`: 0 errors.
+- `python -m ruff format --check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py scripts/smoke_deepseek.py`: 53 files already formatted.
+- `python scripts/export_contracts.py --check`: synchronized.
+- `python -m pytest apps/backend/tests/test_extraction.py -q --basetemp=/tmp/extraction_full`: 36 passed.
+- `python -m pytest apps/backend/tests -q --basetemp=/tmp/extraction_full`: 327 passed, 6 skipped (PostgreSQL row-locking tests).
+- `python scripts/run_evaluation.py --manifest contracts/evaluation/manifest.json`: 7/7 pass (deterministic, default).
+- `python scripts/run_evaluation.py --manifest contracts/evaluation/manifest.json --provider llm`: 7 pass (cases 3-9), 2 fail (cases 1-2 expected; matched synthetic fixtures need a real model).
+- `python -c "import json; from gigmate.extraction.registry import list_provider_metadata; json.dumps(list_provider_metadata())"`: clean round-trip.
+- `bash -c "GIGMATE_LLM_PROVIDER=deepseek GIGMATE_LLM_MODEL=deepseek-chat GIGMATE_LLM_API_KEY=sk-fake GIGMATE_LLM_LIVE=1 python scripts/smoke_deepseek.py >/dev/null 2>&1; echo $?"`: prints `1` (seam-pending → infra failure).
+
+The skeleton lock, the operator gate and the live-origin opt-in remain in place. No real model is invoked, no real API key is read, no real traffic is touched.

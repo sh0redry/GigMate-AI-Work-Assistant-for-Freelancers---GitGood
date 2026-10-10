@@ -291,6 +291,95 @@ PostgreSQL tests are the meaningful run; SQLite does not prove row-locking
 and only confirms conditional compatibility. Synthesize real WhatsApp
 traffic is out of scope for this batch.
 
+## Pre-activation acceptance gates
+
+The current batch ships the **inactive call implementation**: the
+HTTP / parse / schema paths are present, but `_SKELETON_SEAM = True`
+and the live gate default-off keep every request from reaching the
+network. The seam, prompt-versioning chain and live-origin guard are
+in place as testable code; the following acceptance gates are
+**not** in scope for this PR and must be cleared (each on its own
+authorised batch, with their own review) before the seam is flipped
+and live traffic is allowed through the real-model provider:
+
+- **Trusted identity and provenance must not be decided by the
+  model.** The current `_parse_response` only does structural
+  validation; it accepts an LLM-supplied `work_order_id`,
+  `base_work_order_version`, `conversation_id` and `sources` without
+  re-binding them to the request the server actually issued. Before
+  activation, `_parse_response` must re-bind (a) `work_order_id` to a
+  member of `request.candidate_work_order_ids` (or `None` when the
+  model picks none), (b) `base_work_order_version` to the value the
+  worker resolved, (c) each `source.message_id` / `source.message_revision`
+  to the request's `message_id` / `message_revision`, and (d)
+  `conversation_id` to the request's `conversation_id`. Mismatches
+  must surface as `llm:response-schema-failed` with a stable error
+  code, never as `matched`. This gate does not require sending any
+  more UUIDs to the model; it only needs stricter post-validation.
+- **Vendor / endpoint semantics must be explicit.** Today's code
+  treats `GIGMATE_LLM_PROVIDER=openai` (or any other vendor name) as
+  "use the DeepSeek default endpoint unless the operator overrode
+  `GIGMATE_LLM_ENDPOINT`". Once the seam is open, that is a footgun:
+  a worker configured for one vendor can quietly call another
+  vendor's service. Before activation, the provider must
+  - reject an unknown `GIGMATE_LLM_PROVIDER` value, and
+  - bundle each known vendor with its own documented default
+    endpoint, and
+  - require `GIGMATE_LLM_ENDPOINT` when the vendor is `custom`.
+  If `openai` is meant to denote "any OpenAI-compatible protocol"
+  rather than "OpenAI the vendor", the configuration surface and
+  docs need to say so explicitly so reviewers do not infer the
+  narrower meaning.
+- **Retry must be designed with the worker lock and lease.** The
+  current `_call_chat_completion` retries once on every
+  `httpx.HTTPError` plus every `KeyError` / `IndexError` /
+  `ValueError` from the response shape. With a 30 s timeout and
+  one retry, a single extraction can hold the per-account / per-job
+  lock for the full backoff window; if the lease expires while the
+  request is in flight, the worker may complete and discard the
+  result, then re-run, doubling the cost and the chance of a
+  duplicate trace row. Before activation the retry policy must
+  - bound the **total** wall time and reported cost per call,
+  - restrict retries to clearly transient classes (network reset,
+    5xx with `Retry-After`, etc.) and **not** retry on parse /
+    schema / 4xx errors,
+  - issue a **persistent request id** so the operator can correlate
+    the trace with the upstream vendor's logs,
+  - perform I/O **outside** the row lock, and
+  - revalidate the candidate work order / context version after the
+    call returns so a stale retry does not promote old data.
+  None of this is in scope for this PR; the tests assert the
+  current shape (one retry on any failure) so the behaviour cannot
+  drift without an explicit test change.
+- **Date interpretation needs a real time basis; the output must
+  match the contract.** The current prompt tells the model to
+  resolve relative dates (今天 / 明天 / 下星期X / "next Thursday")
+  against an unspecified "now" and to emit
+  `Asia/Hong_Kong`-anchored ISO-8601 strings. The
+  `ExtractionRequest` does not carry the original message timestamp
+  or a workspace timezone, and the contract's `TimedSchedule` value
+  requires `start_at` / `end_at` in UTC `Z` form. Before activation,
+  the request must carry a server-attached `message_received_at`
+  (or equivalent) and `workspace_timezone`; the prompt must be
+  told to resolve relative dates against that timestamp; the
+  output must be UTC `Z`; and the provider must reject (with a
+  typed note) any response whose `start_at` / `end_at` cannot be
+  losslessly interpreted as UTC. The media-processor (OCR / ASR /
+  PDF) batch lands the missing timestamp source; this PR is the
+  text-only extraction seam, so that work is out of scope here.
+- **Stable, sanitised error codes for diagnostics.** Today the
+  `refused_reason` field embeds Python exception class names and
+  the raw exception message. Useful for development, but private
+  endpoint paths / vendor names / key fragments can leak through a
+  downstream logger. Before activation, error codes must be
+  stable strings (e.g. `llm:http-failed:timeout`) and any free-form
+  portion must be redacted of the endpoint, the vendor and the
+  API key prefix.
+
+These gates are recorded here so reviewers can confirm that the
+current PR does not silently open the seam. Each one is a separate
+piece of work with its own batch and review.
+
 ## Open follow-ups
 
 - Real-model provider integration: the next authorized batch must

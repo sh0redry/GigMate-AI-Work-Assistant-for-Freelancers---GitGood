@@ -36,6 +36,30 @@ from gigmate.extraction.types import ExtractionRequest  # noqa: E402
 
 _REQUIRED = ("GIGMATE_LLM_PROVIDER", "GIGMATE_LLM_MODEL", "GIGMATE_LLM_API_KEY")
 
+# ``notes`` values that mean "the model was never successfully invoked".
+# Treat these as smoke-script failures (non-zero exit) so the script can
+# be wired into operator-side alerting.
+#
+# ``llm:seam-pending``          – the skeleton lock is still on (PR #18).
+# ``llm:not-configured``         – a required env var (live gate, vendor,
+#                                  model) is missing.
+# ``llm:prompt-load-failed``     – the bundled prompt could not be read.
+# ``llm:http-failed``            – all retry attempts returned an HTTP error.
+# ``llm:response-malformed``     – the response was not parseable JSON / the
+#                                  expected choices/message/content shape.
+# ``llm:response-schema-failed`` – the parsed JSON did not satisfy
+#                                  ChangeProposal.
+_INFRA_FAILURE_NOTES = frozenset(
+    {
+        "llm:seam-pending",
+        "llm:not-configured",
+        "llm:prompt-load-failed",
+        "llm:http-failed",
+        "llm:response-malformed",
+        "llm:response-schema-failed",
+    }
+)
+
 
 def _check_env() -> None:
     missing = [name for name in _REQUIRED if not os.environ.get(name)]
@@ -113,12 +137,37 @@ def main() -> int:
         ],
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
-    return (
-        0
-        if outcome.proposal.assignment.value != "needs_review"
-        or outcome.notes != ("llm:not-configured",)
-        else 1
-    )
+    return _classify_exit_code(outcome)
+
+
+def _classify_exit_code(outcome) -> int:  # pragma: no cover - exercised via tests
+    """Map an :class:`ExtractionOutcome` to a shell exit code.
+
+    Exit code semantics:
+
+    * ``0`` – the model was invoked and produced a usable business result
+      (``assignment: matched`` or an LLM-driven ``needs_review`` with the
+      ``llm:needs-review`` note). This is what an operator wants to see
+      when the live call succeeded; the conservative ``needs_review`` is
+      not itself a smoke failure.
+    * ``1`` – the model was **not** successfully invoked, for any
+      configuration / transport / parse / schema / lock reason. Any note
+      listed in :data:`_INFRA_FAILURE_NOTES` triggers this. The full list
+      of reasons is in :mod:`gigmate.extraction.llm`; operators should
+      treat exit 1 as a smoke-script failure even when the printed
+      ``assignment`` is ``needs_review`` – the printed reason explains
+      which guard fired.
+    """
+    if any(note in _INFRA_FAILURE_NOTES for note in outcome.notes):
+        return 1
+    if outcome.proposal.assignment.value == "matched":
+        return 0
+    if outcome.notes == ("llm:needs-review",):
+        return 0
+    # Conservative default: any unrecognised needs_review note is treated
+    # as a smoke failure so the operator notices instead of getting a
+    # silent green.
+    return 1
 
 
 if __name__ == "__main__":  # pragma: no cover

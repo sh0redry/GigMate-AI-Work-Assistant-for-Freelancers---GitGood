@@ -856,3 +856,106 @@ def test_evaluation_run_requires_non_empty_manifest(memory_account, tmp_path):
     with memory_account.begin() as db:
         with pytest.raises(ValueError, match="no cases"):
             evaluate_manifest(db, empty_path)
+
+
+# ---------------------------------------------------------------------------
+# Operator smoke / registry metadata (P2 review regressions)
+# ---------------------------------------------------------------------------
+
+
+def test_list_provider_metadata_is_json_serialisable():
+    """P2 regression: prompt_version is a @property on DeterministicProvider.
+
+    Reading it from the class returned the property object and broke
+    ``json.dumps``. The helper must return plain strings and survive
+    ``json.dumps`` for telemetry / admin endpoints that consume it.
+    """
+    from gigmate.extraction.registry import list_provider_metadata
+
+    rows = list_provider_metadata()
+    assert {row["name"] for row in rows} == {"deterministic", "disabled", "llm"}
+    for row in rows:
+        assert isinstance(row["name"], str)
+        assert isinstance(row["model_version"], str)
+        assert isinstance(row["prompt_version"], str), (
+            f"prompt_version for {row['name']!r} must be a plain string, "
+            f"got {type(row['prompt_version']).__name__}"
+        )
+    # The deterministic provider reads from the bundled prompt file, so
+    # its prompt_version should follow the file's header (1.0.0 today).
+    deterministic_row = next(r for r in rows if r["name"] == "deterministic")
+    assert deterministic_row["prompt_version"] == "1.0.0"
+    # The LLM provider's class attribute is still the placeholder; the
+    # real version is computed per call by ``_read_prompt_version``.
+    llm_row = next(r for r in rows if r["name"] == "llm")
+    assert llm_row["prompt_version"] == "0.0.0-skeleton"
+    # json.dumps must round-trip cleanly.
+    encoded = json.dumps(rows)
+    assert json.loads(encoded) == rows
+
+
+def test_smoke_classify_exit_code_marks_infra_failures_as_nonzero():
+    """P2 regression: smoke_deepseek must surface infra failure as exit 1.
+
+    The earlier logic returned 0 for every notes tuple other than the
+    exact ``("llm:not-configured",)`` pair, so ``llm:seam-pending``,
+    ``llm:http-failed``, ``llm:response-malformed`` and
+    ``llm:response-schema-failed`` all silently produced a green exit.
+    Operators wiring this into alerting would not notice a real failure.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        "smoke_deepseek",
+        Path(__file__).resolve().parents[3] / "scripts" / "smoke_deepseek.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    classify = module._classify_exit_code
+
+    def _outcome(*, assignment: str, notes: tuple[str, ...]):
+        # The helper only reads assignment.value and notes, so the
+        # outcome is constructed with a minimal stub proposal that
+        # supplies those two attributes.
+        proposal = type(
+            "P",
+            (),
+            {
+                "assignment": type("A", (), {"value": assignment})(),
+                "work_order_id": None,
+                "model_version": "stub",
+                "prompt_version": "stub",
+                "unresolved_questions": [],
+                "changes": [],
+            },
+        )()
+        return type(
+            "O",
+            (),
+            {
+                "provider_name": "llm",
+                "proposal": proposal,
+                "latency_ms": 0,
+                "notes": notes,
+                "refused_reason": None,
+            },
+        )()
+
+    # matched → 0
+    assert classify(_outcome(assignment="matched", notes=("llm:matched",))) == 0
+    # LLM-driven needs_review → 0
+    assert classify(_outcome(assignment="needs_review", notes=("llm:needs-review",))) == 0
+    # All infra-failure notes must be non-zero.
+    for note in (
+        "llm:seam-pending",
+        "llm:not-configured",
+        "llm:prompt-load-failed",
+        "llm:http-failed",
+        "llm:response-malformed",
+        "llm:response-schema-failed",
+    ):
+        code = classify(_outcome(assignment="needs_review", notes=(note,)))
+        assert code == 1, f"smoke must exit 1 for infra failure note {note!r}, got {code}"
+    # Unrecognised needs_review note → 1 (conservative default).
+    assert classify(_outcome(assignment="needs_review", notes=("some:unknown",))) == 1
