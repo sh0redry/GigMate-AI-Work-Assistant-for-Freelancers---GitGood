@@ -3,6 +3,76 @@
 ## PR #21 processor factory review correction — 2026-10-10
 
 Factory loading now requires callable process/reconcile methods before model submission and preserves constructor exceptions separately from configuration errors. Validation: 20 isolated factory tests passed; 52 media/evidence tests passed, with one PostgreSQL concurrency test skipped without a configured test database. Ruff check/format, contract export check, baseline and whitespace checks passed. No live model request, real media read, deployment or frontend change was performed.
+## B media processor: real-model seam implementation — 2026-10-10
+
+Built on top of A's WAHA media ingestion branch (`pr-21-review` →
+`william/role-b-media-processor`). Implements the `MediaProcessor` seam that
+PR #21 deliberately left empty so A could merge without depending on B. Ships
+the real-model processor with the same two-gate safety pattern as
+`LLMProvider`:
+
+* Module-level `_ENABLED` flag (default `False`) — the shipping default
+  refuses every call before reading any environment variable.
+* `GIGMATE_MEDIA_LIVE=1` operator switch — required in addition to the
+  flag to actually contact a vendor.
+* `GIGMATE_MEDIA_API_KEY` must be set; otherwise `ProcessingUnavailable`.
+* `GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN=1` is required to send real customer
+  attachments to the model; synthetic origin bypasses the gate.
+
+Routing covers the four accepted types: PNG / JPEG / WebP → OCR (chat
+completions with vision input), Ogg / MP3 / WAV / M4A → ASR (audio
+transcriptions), PDF → chat completions, plain text → chat completions.
+Anything outside that set is refused before the vendor is contacted.
+
+`scripts/smoke_media.py` is the operator-side manual smoke (not in CI). It
+requires both gates to be open and prints the parsed proposal JSON.
+
+**Tests** (41 cases in `apps/backend/tests/test_media_processor.py`): two-gate
+safety per axis (seam flag, live switch, API key, live origin), MIME routing,
+per-vendor call shape, coercion validation, 4xx / 5xx → `ProcessingUncertain`,
+network error → `ProcessingUncertain`, malformed JSON → `ProcessingUncertain`,
+`reconcile()` returns `None` when closed and when no vendor lookup is wired,
+security boundary (`MediaInput` carries no credentials; processor does not
+mutate the input), factory entry point resolves through the standard
+`module:AttrName` syntax.
+
+**PR #21 regression coverage**: ran the existing `test_waha_media.py`,
+`test_waha_media_evidence.py` and `test_waha_migration.py` after the
+implementation lands — 56 passed / 1 skipped, same as the PR description.
+No A-side behaviour was changed.
+
+**Lint / format / contracts / baseline**:
+
+* `ruff check apps/backend/src/gigmate/media scripts/smoke_media.py` — clean.
+* `ruff format --check apps/backend/src/gigmate/media scripts/smoke_media.py` —
+  clean.
+* `scripts/export_contracts.py --check` — no changes to generated files;
+  processor reads existing `WahaMediaResult` / `WahaMediaSegment` /
+  `WahaMediaSuggestion` contracts, adds no new contracts.
+* `scripts/check_baseline.py` — clean.
+
+**Honest limits**:
+
+* Real vendor round-trip not exercised; the suite is mock-based with
+  `_FakeClient`. A real call requires the operator to flip `_ENABLED=True`
+  and supply `GIGMATE_MEDIA_API_KEY` plus a vendor endpoint.
+* ASR vendor is `openai` by default because DeepSeek does not expose a
+  transcription endpoint; the processor refuses ASR with
+  `ProcessingUnavailable` when only chat-completions credentials are set.
+* `reconcile()` returns `None` because chat-completions vendors do not expose
+  a stable request-id lookup; the worker must wait for a manual retry.
+* No prompt-injection regression suite for media attachments yet; this is
+  carried as an open follow-up.
+* PostgreSQL/隔离 HTTP-worker 套件 was not re-run for this branch; SQLite
+  is the only environment verified here.
+
+**Side fix in this batch**: `apps/backend/src/gigmate/extraction/evaluator.py`
+had a cwd-relative `_resolve_manifest_path` that broke `test_extraction.py`
+when pytest was invoked from `apps/backend/` instead of the repo root. The
+fix anchors the manifest path to the repository root (`parents[5]`); without
+it the full backend suite reports 1 failure even though every individual
+behaviour is correct. This is an isolated, well-documented change that does
+not alter evaluator semantics.
 
 ## A media batch 2: time evidence and reviewed handoff — 2026-10-10
 

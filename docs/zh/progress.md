@@ -3,6 +3,67 @@
 ## PR #21 处理器工厂评审修复 — 2026-10-10
 
 工厂加载在模型提交前校验 process/reconcile 均可调用，并将构造函数异常与配置错误分开，保留原始构造异常。验证：20 项工厂隔离测试通过；52 项媒体及证据测试通过，未配置测试数据库，跳过 1 项 PostgreSQL 并发测试。Ruff 检查及格式、契约导出检查、基线和空白检查通过。没有真实模型请求、真实媒体读取、部署或前端修改。
+## B 媒体处理器：真实模型接缝实现 — 2026-10-10
+
+在 A 的 WAHA 媒体摄取分支（`pr-21-review` →
+`william/role-b-media-processor`）之上落地。实现 PR #21 故意留空的
+`MediaProcessor` 接缝，使 A 可独立合并不依赖 B。按 `LLMProvider` 的双闸门
+安全模式交付真实模型处理器：
+
+* 模块级 `_ENABLED` 标志（默认 `False`）—— 默认在读任何环境变量之前
+  拒绝所有调用。
+* `GIGMATE_MEDIA_LIVE=1` 运维开关——除标志外仍必须设置才能联系厂家。
+* 必须设置 `GIGMATE_MEDIA_API_KEY`，否则抛 `ProcessingUnavailable`。
+* 真实客户附件要送达模型需 `GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN=1`；
+  `synthetic` 来源绕过此闸。
+
+路由覆盖四种允许类型：PNG / JPEG / WebP → OCR（视觉输入 chat
+completions）、Ogg / MP3 / WAV / M4A → ASR（音频转写）、PDF → chat
+completions、纯文本 → chat completions。集合外一律在联系厂家前
+拒绝。
+
+`scripts/smoke_media.py` 为运维侧手动 smoke（不在 CI）。需要两闸门
+同时打开，打印解析后的提案 JSON。
+
+**测试**（`apps/backend/tests/test_media_processor.py` 共 41 例）：
+按轴拆分的两闸门（接缝标志、live 开关、API key、live origin）安全、
+MIME 路由、按厂家调用形态、coercion 校验、4xx / 5xx →
+`ProcessingUncertain`、网络异常 → `ProcessingUncertain`、坏 JSON →
+`ProcessingUncertain`、`reconcile()` 在闸门关闭或无厂家查找时返回
+`None`、安全边界（`MediaInput` 不带凭据；处理器不修改入参）、
+工厂入口经标准 `module:AttrName` 解析。
+
+**PR #21 回归覆盖**：落地实现后跑 `test_waha_media.py`、
+`test_waha_media_evidence.py`、`test_waha_migration.py`，56 通过 /
+1 跳过，与 PR 描述一致；A 侧行为未改变。
+
+**Lint / format / 契约 / baseline**：
+
+* `ruff check apps/backend/src/gigmate/media scripts/smoke_media.py` —
+  通过。
+* `ruff format --check apps/backend/src/gigmate/media scripts/smoke_media.py` —
+  通过。
+* `scripts/export_contracts.py --check` —— 未改生成文件；处理器复用
+  既有 `WahaMediaResult` / `WahaMediaSegment` / `WahaMediaSuggestion`
+  契约，未新增契约。
+* `scripts/check_baseline.py` —— 通过。
+
+**如实记录的限制**：
+
+* 真实厂家来回未执行；测试套件基于 `_FakeClient` mock。真实调用需运维
+  把 `_ENABLED` 翻为 `True` 并提供 `GIGMATE_MEDIA_API_KEY` 与厂家端点。
+* ASR 默认厂家是 `openai`，因为 DeepSeek 不暴露转写端点；仅配 chat
+  凭据时 ASR 路径以 `ProcessingUnavailable` 拒绝。
+* `reconcile()` 一律返回 `None`，因为 chat-completions 厂家一般不暴露
+  基于 request-id 的查找；worker 必须等待人工重试。
+* 媒体附件的 prompt-injection 回归套件尚未补齐，列为开放待办。
+* 本分支未重跑 PostgreSQL / 隔离 HTTP-worker 套件；本次只验证 SQLite。
+
+**本批次附带修复**：`apps/backend/src/gigmate/extraction/evaluator.py` 的
+`_resolve_manifest_path` 原本用 cwd 相对路径，从 `apps/backend/` 跑 pytest
+时 `test_extraction.py` 必然失败。修复后 manifest 路径固定到仓库根
+（`parents[5]`），不影响其他语义。这是个隔离的小改动，没有改变
+evaluator 的行为。
 
 ## A 媒体第二批：时间依据与已核对交接 — 2026-10-10
 

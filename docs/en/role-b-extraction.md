@@ -186,6 +186,138 @@ prompt-injection attempts and live-origin input with fixture-equal text.
 The script exits `0` only when all cases pass. Missing or empty manifests
 fail loudly rather than recording an empty run.
 
+## Media processor (Role B for WAHA attachments)
+
+Updated: 2026-10-10. This section ships the real-model processor that fills
+the seam introduced by the [WAHA media ingestion batch](role-a-waha-handoff.md).
+A owns storage, leases, authorization and review; B owns OCR / ASR / parsing
+/ GenAI through this processor. The processor only emits
+`WahaMediaResult` proposals — merchant confirmation is enforced downstream by
+`WahaMediaEvidence.business_confirmation_required`, never on the B side.
+
+### Seam contract
+
+`gigmate.media_processing.MediaProcessor` (Protocol) defines two methods:
+
+* `process(request: MediaInput) -> WahaMediaResult` — B uses `request_id` for
+  vendor-side idempotency and reconciliation; output is proposals only.
+* `reconcile(request_id) -> WahaMediaResult | None` — read-only lookup; never
+  resubmit. `None` means the result is still unknown; the worker must call
+  this on the next tick rather than re-issuing `process()`.
+
+A loads the implementation through the environment variable
+`GIGMATE_MEDIA_PROCESSOR_FACTORY="gigmate.media.processor:MediaProcessorImpl"`.
+`MediaInput` deliberately exposes no `api_key`, `provider_url` or
+`authorization` attribute; the seam test in `test_waha_media.py` and the type
+test in `test_media_processor.py` lock this down.
+
+### Two-gate safety net
+
+Two gates must be open before the processor contacts any vendor:
+
+1. **Module-level `_ENABLED` flag** in
+   `apps/backend/src/gigmate/media/processor.py` — `False` in this batch. While
+   `False` the processor refuses every call with `ProcessingUnavailable`
+   *before* it reads any environment variable. This is the safety net that
+   prevents a future contributor from silently turning the seam on by exporting
+   the operator switch.
+2. **`GIGMATE_MEDIA_LIVE=1`** — operator switch. Even after the class flag is
+   flipped to `True`, the processor still refuses every call unless this
+   variable is exported. The two are checked in order: seam flag → live gate
+   → API key present → live-origin guard → vendor call. With the seam flag
+   `False` the call is refused before any configuration is read, so a
+   misconfigured deployment cannot accidentally emit a real network request.
+
+Additional guards:
+
+* `GIGMATE_MEDIA_API_KEY` must be set, otherwise `ProcessingUnavailable`.
+* `GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN=1` is required to send real customer
+  attachments to the model; without it the processor refuses
+  `request.origin == "live"` and requires synthetic origin.
+* The processor never accepts credentials or model endpoints over HTTP. The
+  factory string comes from a server-side env var and is parsed by
+  `importlib`; no HTTP argument can inject code.
+
+### Vendor routing and configuration
+
+| Variable | Purpose |
+| --- | --- |
+| `GIGMATE_MEDIA_CHAT_VENDOR` | Chat-completions vendor (`deepseek`, `openai`, `custom`). Default `deepseek`. |
+| `GIGMATE_MEDIA_CHAT_MODEL` | Model identifier for chat-completions (e.g. `deepseek-chat`, `gpt-4o-mini`). Default per vendor. |
+| `GIGMATE_MEDIA_AUDIO_VENDOR` | Transcription vendor (`openai`, `custom`). Default `openai`. |
+| `GIGMATE_MEDIA_AUDIO_MODEL` | Model identifier for transcriptions (e.g. `whisper-1`). |
+| `GIGMATE_MEDIA_ENDPOINT` | Optional base URL override for both vendors. |
+| `GIGMATE_MEDIA_PROMPT_PATH` | Optional override of the bundled prompt file. |
+
+MIME routing (in `gigmate.media.routing`):
+
+| MIME | Dispatch | Vendor adapter |
+| --- | --- | --- |
+| `image/png`, `image/jpeg`, `image/webp` | `ocr` | chat-completions with vision input |
+| `audio/ogg`, `audio/mpeg`, `audio/wav`, `audio/mp4`, `audio/x-m4a` | `asr` | `/v1/audio/transcriptions` |
+| `application/pdf` | `pdf` | chat-completions with text extraction |
+| `text/plain` | `text` | chat-completions |
+
+Anything outside this set is refused with `ProcessingUnavailable` before the
+vendor is contacted. A's whitelist remains authoritative; B only consumes
+the canonical types.
+
+### Exception semantics
+
+The processor follows the contract documented in
+`gigmate.media_processing`:
+
+* `ProcessingUnavailable` — no vendor request was submitted. Raised when the
+  gates are closed, the vendor is unknown, the API key is missing, the prompt
+  file is malformed, or the MIME is unsupported. The worker translates this
+  to `MEDIA_PROCESSOR_NOT_CONFIGURED` and the download artefact is preserved
+  for retry.
+* `ProcessingUncertain` — the vendor call may have been submitted (charged).
+  Raised on 4xx, 5xx, timeouts, network errors and vendor-side schema
+  failures. The worker translates this to
+  `MEDIA_PROCESSING_RESULT_UNKNOWN` and uses `reconcile()` rather than
+  automatic resubmission.
+* `MediaIntegrationPending` (private) — raised inside the vendor adapter when
+  configuration is incomplete; the processor translates to
+  `ProcessingUnavailable`.
+* `MediaVendorRejected` (private) — raised inside the vendor adapter on 4xx
+  / 5xx; the processor translates to `ProcessingUncertain`.
+
+`reconcile()` returns `None` in this batch because chat-completions vendors
+do not expose a stable request-id lookup. Operators that need vendor-side
+lookup must extend the processor explicitly; the default never silently
+resubmits.
+
+### Prompt loading failure modes
+
+The prompt is loaded from
+`apps/backend/src/gigmate/media/prompts/role_b_media_v1.txt` by default
+(overridable via `GIGMATE_MEDIA_PROMPT_PATH`). The first line matching
+`prompt_version: X.Y.Z` is read into the `prompt_version` field on the
+result. Every failure mode is caught explicitly:
+
+* File missing / `OSError` → refusal with `ProcessingUnavailable`.
+* Non-UTF-8 bytes (`UnicodeDecodeError`) → refusal with `ProcessingUnavailable`.
+* `prompt_version:` header line absent → refusal with `ProcessingUnavailable`.
+* Header present but value empty → refusal with `ProcessingUnavailable`.
+
+In every case the worker records the refusal as
+`MEDIA_PROCESSOR_NOT_CONFIGURED` rather than retrying into a malformed
+prompt.
+
+### Operator smoke
+
+`scripts/smoke_media.py` is the operator-side manual smoke (not in CI). It
+requires both gates to be open and prints the parsed proposal JSON:
+
+```text
+.venv/bin/python scripts/smoke_media.py --mime image/png --file path/to/sample.png
+.venv/bin/python scripts/smoke_media.py --mime audio/ogg --file path/to/sample.ogg
+```
+
+Without the seam flag the script prints the refusal reason and exits `0`.
+CI does not run this script; a real call requires the operator's vendor key.
+
 ## Synthetic fixtures and privacy
 
 Evaluation cases live under `contracts/evaluation/` and follow the same
@@ -200,12 +332,12 @@ IDs, latency and stable error codes.
 Authoritative checks for this batch:
 
 ```text
-.venv/bin/python -m ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py
-.venv/bin/python -m ruff format --check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py
+.venv/bin/python -m ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/smoke_media.py scripts/run_evaluation.py
+.venv/bin/python -m ruff format --check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/smoke_media.py scripts/run_evaluation.py
 .venv/bin/python scripts/export_contracts.py --check
 .venv/bin/python -m alembic -c apps/backend/alembic.ini upgrade head
 .venv/bin/python -m alembic -c apps/backend/alembic.ini check
-.venv/bin/python -m pytest apps/backend/tests -q --basetemp=local-data/pytest
+.venv/bin/python -m pytest apps/backend/tests/test_media_processor.py apps/backend/tests -q --basetemp=local-data/pytest
 .venv/bin/python scripts/check_baseline.py
 ```
 
@@ -223,3 +355,11 @@ traffic is out of scope for this batch.
   round-trip is required before frontend changes ship.
 - Tighten `unresolved_questions` rendering for merchant review once a real
   provider exists.
+- Vendor-side `reconcile()` for media: chat-completions vendors do not expose
+  a stable request-id lookup, so the current implementation returns `None`
+  and the worker must wait for a manual retry. A future batch can add a
+  vendor-specific lookup once the seam flag is open and operators need it.
+- B-side prompt-injection regression suite for media attachments (image OCR
+  + audio ASR + PDF parsing). The processor trusts the bundled prompt today
+  and refuses the call only on malformed input; a separately authorized batch
+  should add fixtures for adversarial inputs.
