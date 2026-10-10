@@ -386,8 +386,7 @@
 .synchronization-panel {
   margin-top: 24px;
 }
-.synchronization-panel label,
-.chat-choices > label:not(.chat-choice) {
+.synchronization-panel label {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -431,6 +430,80 @@
 .synchronization-panel li button {
   margin: 8px;
 }
+
+.chat-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+}
+.chat-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 160px;
+}
+.chat-filters input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.chat-page-summary {
+  font-size: 13px;
+  color: #48695c;
+  margin: 14px 0;
+}
+.chat-kind {
+  font-weight: 600;
+}
+.chat-kind-group {
+  color: #176a52;
+}
+.chat-kind-unknown {
+  color: #795014;
+}
+.chat-avatar-group {
+  background: #d7ece0;
+}
+.chat-choice-page .chat-choice {
+  padding: 14px 0;
+}
+.chat-choice-page .chat-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.chat-no-results {
+  padding: 16px;
+  border-radius: 8px;
+  background: #f3f7f4;
+}
+.chat-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid #dce7df;
+  font-size: 14px;
+}
+.chat-pagination label,
+.chat-page-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.chat-pagination select {
+  font: inherit;
+  border: 1px solid #c8dbd0;
+  border-radius: 8px;
+  padding: 8px;
+  background: white;
+}
+.chat-page-buttons button {
+  padding: 10px 16px;
+}
+
 .media-panel {
   margin-top: 1rem;
   border-top: 1px solid #dbe8e2;
