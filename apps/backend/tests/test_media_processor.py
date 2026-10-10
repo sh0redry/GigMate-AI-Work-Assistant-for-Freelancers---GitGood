@@ -112,6 +112,7 @@ def test_seam_flag_without_live_switch_refuses(saved_env, saved_seam_flag):
     mp._ENABLED = True
     saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
     saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
     with pytest.raises(ProcessingUnavailable, match="GIGMATE_MEDIA_LIVE"):
         MediaProcessorImpl().process(make_input())
 
@@ -120,6 +121,7 @@ def test_live_switch_without_key_refuses(saved_env, saved_seam_flag):
     mp._ENABLED = True
     saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
     saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
     with pytest.raises(ProcessingUnavailable, match="GIGMATE_MEDIA_API_KEY"):
         MediaProcessorImpl().process(make_input())
 
@@ -136,9 +138,10 @@ def test_unknown_origin_passes_origin_check(saved_env, saved_seam_flag):
     mp._ENABLED = True
     saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
     saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
     # synthetic origin does not require the explicit live-origin opt-in
     fake_client = _FakeClient(chat_payload=_chat_ok())
-    llm.default_client_factory = lambda *, timeout: fake_client  # type: ignore[assignment]
+    saved_env.setattr(llm, "default_client_factory", lambda *, timeout: fake_client)
     result = MediaProcessorImpl().process(make_input(origin="synthetic"))
     assert isinstance(result, WahaMediaResult)
 
@@ -148,6 +151,7 @@ def test_unknown_vendor_refuses(saved_env, saved_seam_flag):
     saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
     saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
     saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
     saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "unknown-vendor")
     with pytest.raises(ProcessingUnavailable, match="Unknown chat vendor"):
         MediaProcessorImpl().process(make_input())
@@ -158,6 +162,7 @@ def test_unsupported_mime_refuses(saved_env, saved_seam_flag):
     saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
     saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
     saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
     with pytest.raises(ProcessingUnavailable, match="not accepted"):
         MediaProcessorImpl().process(make_input(mimetype="image/gif"))
 
@@ -192,7 +197,6 @@ def test_routing_dispatch(saved_env, monkeypatch, mimetype, dispatch):
         ("image/png", "_chat_ok"),
         ("image/jpeg", "_chat_ok"),
         ("image/webp", "_chat_ok"),
-        ("application/pdf", "_chat_ok"),
         ("text/plain", "_chat_ok"),
         ("audio/ogg", "_transcription_ok"),
         ("audio/mpeg", "_transcription_ok"),
@@ -205,14 +209,19 @@ def test_per_mime_call_shape(saved_env, saved_seam_flag, mimetype, factory):
     saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
     saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
     saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
     payload = globals()[factory]()
     fake = (
         _FakeClient(chat_payload=payload)
         if factory == "_chat_ok"
         else _FakeClient(transcription_payload=payload)
     )
-    llm.default_client_factory = lambda *, timeout: fake  # type: ignore[assignment]
-    result = MediaProcessorImpl().process(make_input(mimetype=mimetype))
+    saved_env.setattr(llm, "default_client_factory", lambda *, timeout: fake)
+    result = MediaProcessorImpl().process(
+        make_input(
+            mimetype=mimetype, content=b"synthetic text" if mimetype == "text/plain" else PNG
+        )
+    )
     assert isinstance(result, WahaMediaResult)
     assert fake.calls
     assert result.coverage in {"complete", "partial", "unknown"}
@@ -345,7 +354,7 @@ def test_transcription_coercion_builds_segments():
     payload = {
         "text": "Synthetic transcript",
         "segments": [
-            {"id": 0, "start": 0.0, "end": 1.5, "text": "Synthetic transcript chunk"},
+            {"id": 0, "start": 0.0, "end": 1.5, "text": "Synthetic transcript"},
         ],
     }
     result = coerce_transcription_response(
@@ -375,9 +384,10 @@ def test_5xx_is_uncertain(saved_env, saved_seam_flag):
     saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
     saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
     saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
     fake = _FakeClient(status_code=500, body=b'{"error":"server"}')
-    llm.default_client_factory = lambda *, timeout: fake  # type: ignore[assignment]
-    with pytest.raises(ProcessingUncertain, match="500"):
+    saved_env.setattr(llm, "default_client_factory", lambda *, timeout: fake)
+    with pytest.raises(ProcessingUncertain, match="MEDIA_VENDOR_REJECTED"):
         MediaProcessorImpl().process(make_input())
 
 
@@ -386,9 +396,10 @@ def test_4xx_is_uncertain(saved_env, saved_seam_flag):
     saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
     saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
     saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
     fake = _FakeClient(status_code=400, body=b'{"error":"bad request"}')
-    llm.default_client_factory = lambda *, timeout: fake  # type: ignore[assignment]
-    with pytest.raises(ProcessingUncertain, match="400"):
+    saved_env.setattr(llm, "default_client_factory", lambda *, timeout: fake)
+    with pytest.raises(ProcessingUncertain, match="MEDIA_VENDOR_REJECTED"):
         MediaProcessorImpl().process(make_input())
 
 
@@ -397,9 +408,10 @@ def test_network_error_is_uncertain(saved_env, saved_seam_flag):
     saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
     saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
     saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
     fake = _FakeClient(raise_network=True)
-    llm.default_client_factory = lambda *, timeout: fake  # type: ignore[assignment]
-    with pytest.raises(ProcessingUncertain, match="vendor call failed"):
+    saved_env.setattr(llm, "default_client_factory", lambda *, timeout: fake)
+    with pytest.raises(ProcessingUncertain, match="MEDIA_VENDOR_RESULT_UNKNOWN"):
         MediaProcessorImpl().process(make_input())
 
 
@@ -408,9 +420,10 @@ def test_malformed_json_is_uncertain(saved_env, saved_seam_flag):
     saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
     saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
     saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
     fake = _FakeClient(chat_payload=None, body=b"not json")
-    llm.default_client_factory = lambda *, timeout: fake  # type: ignore[assignment]
-    with pytest.raises(ProcessingUncertain, match="Invalid JSON"):
+    saved_env.setattr(llm, "default_client_factory", lambda *, timeout: fake)
+    with pytest.raises(ProcessingUncertain, match="MEDIA_VENDOR_REJECTED"):
         MediaProcessorImpl().process(make_input())
 
 
@@ -448,8 +461,9 @@ def test_processor_does_not_mutate_input(saved_env, saved_seam_flag):
     saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
     saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
     saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
     fake = _FakeClient(chat_payload=_chat_ok())
-    llm.default_client_factory = lambda *, timeout: fake  # type: ignore[assignment]
+    saved_env.setattr(llm, "default_client_factory", lambda *, timeout: fake)
     request = make_input()
     snapshot_before = request.content
     MediaProcessorImpl().process(request)

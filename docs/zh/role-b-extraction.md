@@ -1,12 +1,22 @@
 # Role B 抽取子系统
 
+## PR #21 ???????? ? 2026-10-11
+
+?????????`_ENABLED=False`???????????????? `a5aa0a1` ???????PDF ????????????? `MEDIA_PDF_PARSER_PENDING`???????????????? DeepSeek ?????? `MEDIA_VISION_VENDOR_UNVERIFIED`??? OpenAI/custom ???????????????????custom ???? endpoint?TXT ??? UTF-8 ???? 90,000 ??????????????????
+
+?????????????????????????????????????????????????????? ASR ???????????????coverage ? unknown???????????/???????????????????????????????? UTF-8 ??????????smoke ??/???????????
+
+????? B ???? PDF ???????????????????????/????????????I/O ???????/??????A ????????/???????????????? request-id ???????reconcile() ????? None????????????????????? C ????????????????????????????
+
+
 2026-10-10 媒体第二批：A 已提供固定的供应商发送时间/商户本次选择时区及已核对只读证据。B 须单独实现 MediaProcessor.process/reconcile，不能把文本提取接口当作媒体实现；C 须约定附件来源并在业务晋升前重新校验。时间不足保留待确认，本批不启用外部发送。见[媒体协议](role-a-media-ingestion.md)。
 
 2026-10-10 媒体对接：[A 的媒体协议](role-a-media-ingestion.md)提供权限范围内字节、不可变请求/来源/哈希标识、绑定来源/上下文的结果存储及核对。真实 OCR/ASR/解析/GenAI 工厂和只读核对由 B 实现。A 没有新增真实适配器，原 deterministic 拒绝 live 输入的边界保留。不能把媒体快照冒充 canonical 消息修订或直接写成已确认工单变化。核对还绑定 expected_result_job_id，防止新结果继承旧核对。
 
 2026-10-09 联调更新：[WAHA/提取统一验收](role-a-integration-acceptance.md)记录控制与 worker 交接。当前 Alembic head 是 `0007_merge_waha_extraction`，汇合未改动的 B 证据迁移和 A 控制/采样分支。Windows 测试使用 pytest 管理临时文件；默认 provider 仍拒绝真实提取，没有增加真实模型或网络调用。
 
-更新：2026-10-08。[英文对应](../en/role-b-extraction.md)。基于
+更新：2026-10-10（合并 #18 的闸门/prompt 修复与 #20 的未激活 HTTP 实现
+及常闭骨架标志）。[英文对应](../en/role-b-extraction.md)。基于
 [团队本地开发](role-a-team-local-development.md)与[交接总览](role-a-waha-handoff.md)。
 
 ## 范围
@@ -32,7 +42,11 @@ Role B 拥有 AI 抽取流水线：Provider 接口、提示词/模型版本注�
 
 真实模型接入（Anthropic、OpenAI 或其他具体供应商）是后续单独授权批次。
 接缝已经预留好，新增真实 provider 时不必改 worker、合约或既有 Replay
-逻辑。
+逻辑。本批次交付**未激活调用实现**的 `llm` provider：注册表选择、
+配置、prompt 版本与 OpenAI 兼容的 HTTP/解析调用形态都已接好，但常闭的
+`LLMProvider._SKELETON_SEAM` 标志把它们全部挡在网络之外；激活真实模型
+只需清空下文"真实启用前验收门槛"并翻转该标志（连同运维闸门），不改
+worker、合约或注册表。
 
 ## 边界
 
@@ -99,10 +113,87 @@ class Provider(Protocol):
 | --- | --- |
 | `GIGMATE_EXTRACTION_PROVIDER=deterministic`（默认） | 只识别两条合成样例的默认 provider。 |
 | `GIGMATE_EXTRACTION_PROVIDER=disabled` | 所有请求返回 `needs_review`，不写变更。 |
+| `GIGMATE_EXTRACTION_PROVIDER=llm` | 未激活调用实现的真实模型接缝；`_SKELETON_SEAM=True` 期间始终返回带 `llm:seam-pending` 的 `needs_review`。 |
 | 未知名称 | 启动时直接报错，绝不悄悄回落。 |
 
 测试通过 `gigmate.extraction.registry._reset_provider_for_testing` 注入
 provider，不污染进程级缓存。
+
+### `llm` provider 骨架
+
+`gigmate.extraction.llm.LLMProvider` 是后续单独授权真实模型批次的非发请求
+接缝。它同样遵守 `ExtractionRequest.origin` 信任边界，读取
+`gigmate/extraction/prompts/` 下的版本化 prompt 文件，并把配置好的模型
+与 prompt 版本写入 `ModelCallTrace`，便于人工核对为何被拒绝。
+
+本批次刻意交付**未激活的调用实现**：`_invoke_model` 已能发起真实的
+OpenAI 兼容 chat-completions POST（30 秒超时、重试 1 次），`_parse_response`
+会把 JSON 严格校验成 `ChangeProposal`，但常闭类标志
+`LLMProvider._SKELETON_SEAM` 让所有请求都到不了网络，直到"真实启用前
+验收门槛"在各自授权批次清空。期间模块只读 `GIGMATE_LLM_API_KEY`，
+刻意忽略 `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`，让模型密钥继续留在运维
+显式控制之下。
+
+配置（环境变量，骨架阶段全部可选）：
+
+| 变量 | 用途 |
+| --- | --- |
+| `GIGMATE_LLM_PROVIDER` | 供应商名（`deepseek` / `openai` / `custom`），写入 `model_version`，并校验该 build 是否真正支持。 |
+| `GIGMATE_LLM_MODEL` | 模型标识（如 `deepseek-chat`、`gpt-4o-mini`）。未配置时记为 `skeleton:pending`。 |
+| `GIGMATE_LLM_API_KEY` | 仅服务端使用；provider 每次调用都重新读取，绝不存到实例上，也绝不写日志。 |
+| `GIGMATE_LLM_ENDPOINT` | 可选 base URL 覆盖（默认 `https://api.deepseek.com`）。 |
+| `GIGMATE_LLM_PROMPT_PATH` | 可选 prompt 文件覆盖。 |
+| `GIGMATE_LLM_LIVE=1` | 显式运维闸门。`_SKELETON_SEAM` 翻开后还必须开它才能真的发起调用；在此之前骨架标志先拒绝。翻开之后，闸门关闭时 Provider 层仍直接拒绝所有调用并写 `llm:live-gate-off`（即便已配置供应商与模型），两种情形都在 trace 中可见，绝不悄悄回落。 |
+| `GIGMATE_LLM_ALLOW_LIVE_ORIGIN` | 显式允许 `request.origin == "live"` 进入模型的开关，默认关闭。 |
+
+#### 双闸门安全网
+
+调用 `_invoke_model` 前必须同时打开两道闸门：
+
+1. **类标志 `LLMProvider._SKELETON_SEAM`**——本批次为 `True`。只要是
+   `True`，无论环境变量如何配置、运维闸门开关与否，都直接返回
+   `llm:seam-pending`，连 HTTP 客户端都不会构造。这是防止"下一批次只填
+   `_invoke_model` 就意外进入真实调用模式"的兜底。
+2. **`GIGMATE_LLM_LIVE=1`**——运维开关。即便类标志已翻为 `False`，
+   没设这个变量时仍以 `llm:live-gate-off` 拒绝。
+
+执行顺序：prompt 异常检查 → 骨架标志 → 配置完整性（vendor/model/key
+缺失或 vendor 未知 → `llm:not-configured`）→ live 闸门
+（`llm:live-gate-off`）→ 接线检查（vendor 已知、key 已设）→ live 来源
+gating 门（未开 `GIGMATE_LLM_ALLOW_LIVE_ORIGIN` 时
+`llm:origin-live-refused`）→ `_invoke_model`。骨架标志为 `True` 时所有
+调用都先以 `llm:seam-pending` 拒绝，配置错误的生产环境不可能发出真实
+网络请求。翻开骨架标志之后的 `llm:live-gate-off`、`llm:origin-live-refused`
+与假客户端请求形态，由仅在测试子类上翻转 `_SKELETON_SEAM=False` 的隔离
+测试固化；生产标志保持关闭。
+
+#### prompt 加载失败模式
+
+prompt 默认从
+`apps/backend/src/gigmate/extraction/prompts/role_b_extraction_v1.txt` 读
+取（可通过 `GIGMATE_LLM_PROMPT_PATH` 覆盖）。匹配 `prompt_version: X.Y.Z`
+的第一行被读入 `prompt_version`。所有失败模式都被显式捕获，并记入
+`LLMProvider._prompt_load_error`：
+
+- 文件缺失 / `OSError` → 占位符 `0.0.0-skeleton` + 拒绝。
+- 非 UTF-8 字节（`UnicodeDecodeError`）→ 占位符 + 拒绝。
+- 没有 `prompt_version:` 头行 → 占位符 + 拒绝。
+- `prompt_version:` 头存在但取值为空 → 占位符 + 拒绝。
+
+以上每一种 outcome 都带 `notes=("llm:prompt-malformed",)` 与可定位的
+`refused_reason`，`Proposal` 行记 `prompt_version = "0.0.0-skeleton"`，而
+`ModelCallTrace` 行保留描述性原因——worker 不会让 prompt 错误冒到宽口径
+`except Exception`，也不会触发 `PROCESSING_FAILED` 重试风暴（空版本与非
+UTF-8 原先会直接抛出 `ValidationError` / `UnicodeDecodeError` 进入 worker
+失败路径）。prompt 文件正文固化了几条硬规则——不得把字段标为
+`confirmed`、不得授予执行权限、遵守来源信任边界——下一批次只需与闸门
+翻转一起编辑这一个文件。
+
+评测清单里的 `case-008-llm-skeleton-needs-review` 在使用
+`--provider llm` 跑清单时通过；通用 needs_review 用例（3、4、5、6、7）
+在 `llm` 下同样通过，因为骨架一律拒绝。matched 用例（1、2）在 `llm` 下
+预期失败——骨架没有真实模型可以调用；它们在默认 deterministic provider
+下通过。
 
 该开关同时作用于两条路径：Worker 的 WAHA 分支与 legacy Replay 入口
 `gigmate.understanding.extract` 都通过 `gigmate.extraction.provider()`
@@ -299,10 +390,83 @@ prompt 重试。
 PostgreSQL 测试是有意义的运行；SQLite 不证明行锁，只验证条件兼容性。
 本批次不合成真实 WhatsApp 流量。
 
+## 真实启用前验收门槛
+
+本批次只交付**未激活的调用实现**：HTTP / 解析 / Schema 路径已经就位，
+但 `_SKELETON_SEAM = True` 且活门默认关，所有请求都不会触达网络。
+接缝、prompt 版本链、live-origin 守门已落地为可测试代码；下列验收门槛
+**不在本 PR 范围内**，必须在接缝打开、真实流量被允许经过真实模型 provider
+**之前**（每一项独立批次、独立评审）逐项完成：
+
+- **可信身份与出处不能交给模型决定。** 现行 `_parse_response` 只做
+  结构校验，对 LLM 返回的 `work_order_id` / `base_work_order_version` /
+  `conversation_id` / `sources` 不会重新绑定到 worker 实际发起的请求。
+  启用前必须：
+  (a) 把 `work_order_id` 重新绑定到 `request.candidate_work_order_ids`
+      之一（若模型一个都没选则为 `None`）；
+  (b) 把 `base_work_order_version` 重新绑定到 worker 解析出的版本号；
+  (c) 把每条 `source.message_id` / `source.message_revision` 重新绑定到
+      请求的 `message_id` / `message_revision`；
+  (d) 把 `conversation_id` 重新绑定到请求的 `conversation_id`。
+  不一致必须以 `llm:response-schema-failed` + 稳定错误码上报，绝不能
+  当作 `matched` 通过。这一项不需要再向模型多发任何 UUID，只需要更严的
+  校验后处理。
+- **vendor 与 endpoint 语义必须显式。** 现行代码把
+  `GIGMATE_LLM_PROVIDER=openai`（或任何 vendor 名）一律视作"使用
+  DeepSeek 默认 endpoint，除非操作员另行设置 `GIGMATE_LLM_ENDPOINT`"。
+  接缝打开后这是脚枪：为一个 vendor 配置的 worker 可能静默调用另一个
+  vendor 的服务。启用前 provider 必须：
+  - 拒绝未知的 `GIGMATE_LLM_PROVIDER` 取值；
+  - 把每个已知 vendor 与各自文档化的默认 endpoint 绑定；
+  - vendor 为 `custom` 时强制要求 `GIGMATE_LLM_ENDPOINT`。
+  如果 `openai` 指"任何 OpenAI 兼容协议"而非"OpenAI 这家供应商"，需要
+  在配置面和文档里写清楚，避免评审者按较窄含义误读。
+- **重试必须与 worker 锁、租约一起设计。** 现行 `_call_chat_completion`
+  对所有 `httpx.HTTPError` 及所有 `KeyError` / `IndexError` / `ValueError`
+  各重试 1 次。30 秒超时 + 1 次重试，单次抽取可能持有同账号 / 同工单
+  行锁直到完整退避结束；若租约在请求飞行中过期，worker 可能完成并丢弃
+  结果，再次执行，费用翻倍、`model_call_traces` 也可能重复。启用前重试
+  策略必须：
+  - 限定**总**墙钟与上报费用；
+  - 仅对明确 transient 类（连接重置、带 `Retry-After` 的 5xx 等）重试，
+    不对解析 / Schema / 4xx 错误重试；
+  - 签发**持久 request id**，便于与上游供应商日志对账；
+  - 把 I/O **放在行锁外**；
+  - 调用返回后重新校验候选工单 / context version，避免陈旧重试把老
+    数据升级。
+  本 PR 不实现上述任何一项；现有测试只断言当前形状（任意错误都重试
+  1 次），因此行为不会在无声中漂移。
+- **日期解释需要真实时间依据；输出格式必须符合契约。** 现行 prompt 要
+  求模型把"今天 / 明天 / 下星期X / next Thursday"等相对日期相对于
+  一个未指定的"现在"解析，并输出 `Asia/Hong_Kong` 锚定的 ISO-8601
+  字符串。`ExtractionRequest` 不携带原始消息时间戳与工作区时区，而
+  契约里的 `TimedSchedule` 要求 `start_at` / `end_at` 为 UTC `Z` 格式。
+  启用前请求必须携带服务端附上的 `message_received_at`（或等价字段）
+  与 `workspace_timezone`；prompt 必须以此时间戳为相对日期的参照；输出
+  必须为 UTC `Z`；provider 必须对任何无法无损解析为 UTC 的 `start_at`
+  / `end_at` 以类型化备注拒绝。媒体处理器（OCR / ASR / PDF）批次会
+  提供缺失的时间戳来源；本 PR 仅是纯文本抽取接缝，因此不包含。
+- **错误码需稳定、脱敏。** 现行 `refused_reason` 字段直接嵌入 Python
+  异常类名与原始异常消息。开发时有用，但私有 endpoint 路径 / 供应商
+  名称 / 密钥片段可能借下游日志泄漏。启用前错误码必须是稳定字符串
+  （例如 `llm:http-failed:timeout`），任何自由文本部分都必须脱敏
+  endpoint、vendor、API key 前缀。
+
+上述门槛写在这里是为了让评审者确认本 PR 不会静默打开接缝；每一项都
+是独立批次、独立评审。
+
 ## 待办
 
-- 真实模型 provider 接入（Anthropic、OpenAI 或其他单独授权供应商），
-  配套 prompt-injection 回归与延迟预算。
+- 真实模型 provider 激活：下一单独授权批次必须完成三件事——(a) 清空上文
+  "真实启用前验收门槛"（出处重绑定、vendor/endpoint 语义、重试与租约
+  设计、日期依据、诊断脱敏）；(b) 把 `LLMProvider._SKELETON_SEAM` 翻为
+  `False`；(c) 把真实授权与 live-origin 通道接入独立的授权审查（当前
+  live-origin guard 已经在该 provider 中实现，但骨架标志为 `True` 时
+  不可达；其 `GIGMATE_LLM_ALLOW_LIVE_ORIGIN` 开关由仅测试子类的隔离
+  测试固化）。同时补上 prompt-injection 回归与延迟预算。接缝、prompt
+  版本兜底链、`llm:prompt-malformed` 与 `llm:seam-pending` trace 备注、
+  `case-008-llm-skeleton-needs-review` 评测用例，以及
+  `_prompt_load_error` 审计字段均已就位。
 - D 前端面向真实 provider 输出的 `pending_change_ids` 展示；当前
   Replay 卡片已能呈现，但真实 provider 来回之前不更新前端。
 - 真实 provider 上线后细化 `unresolved_questions` 给商户的人工核对呈现。

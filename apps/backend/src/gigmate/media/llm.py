@@ -111,6 +111,8 @@ def _resolve_chat_endpoint(vendor: str) -> str:
         return override.rstrip("/")
     if vendor == "openai":
         return _OPENAI_DEFAULT_ENDPOINT
+    if vendor == "custom":
+        raise MediaIntegrationPending("MEDIA_CUSTOM_ENDPOINT_REQUIRED")
     return _DEEPSEEK_DEFAULT_ENDPOINT
 
 
@@ -145,7 +147,7 @@ def read_prompt_version(path: Path) -> str:
                 if stripped.startswith(_PROMPT_VERSION_PREFIX):
                     value = stripped[len(_PROMPT_VERSION_PREFIX) :].strip()
                     return value or _PROMPT_VERSION_PENDING
-    except OSError:
+    except (OSError, UnicodeError):
         return _PROMPT_VERSION_PENDING
     return _PROMPT_VERSION_PENDING
 
@@ -179,14 +181,14 @@ def chat_completions(
             {"type": "image_url", "image_url": {"url": f"data:{mimetype};base64,{encoded}"}}
         )
     else:
-        # PDF / text: ship the raw bytes inline as a text snippet. Real vendors
+        # Plain text only: ship the raw bytes inline as a text snippet. Real vendors
         # accept this for short attachments; long attachments should be
         # uploaded by an upstream batch and referenced by URL.
         try:
-            decoded = content.decode("utf-8", errors="replace")
+            decoded = content.decode("utf-8")
         except Exception as exc:  # pragma: no cover - defensive
             raise MediaVendorRejected(f"Cannot decode {mimetype} bytes: {exc}") from exc
-        user_content.append({"type": "text", "text": decoded[:90000]})
+        user_content.append({"type": "text", "text": decoded})
     if extra_user:
         user_content.append({"type": "text", "text": json.dumps(extra_user, ensure_ascii=False)})
 
@@ -201,7 +203,7 @@ def chat_completions(
     }
     response = client.post(f"{endpoint}/v1/chat/completions", json=payload)
     if response.status_code >= 400:
-        raise MediaVendorRejected(f"Chat completions {response.status_code}: {response.text[:200]}")
+        raise MediaVendorRejected(f"MEDIA_CHAT_HTTP_{response.status_code}")
     try:
         body = response.json()
     except json.JSONDecodeError as exc:
@@ -232,9 +234,7 @@ def audio_transcriptions(
         data["prompt"] = caption
     response = client.post(f"{endpoint}/v1/audio/transcriptions", data=data, files=files)
     if response.status_code >= 400:
-        raise MediaVendorRejected(
-            f"Audio transcriptions {response.status_code}: {response.text[:200]}"
-        )
+        raise MediaVendorRejected(f"MEDIA_AUDIO_HTTP_{response.status_code}")
     try:
         body = response.json()
     except json.JSONDecodeError as exc:

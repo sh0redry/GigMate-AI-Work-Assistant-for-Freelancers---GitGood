@@ -18,7 +18,7 @@ import json
 import logging
 from typing import Any, Mapping
 
-from gigmate.contracts import WahaMediaResult, WahaMediaSegment, WahaMediaSuggestion
+from gigmate.contracts import WahaMediaResult, WahaMediaSegment
 from gigmate.media_processing import ProcessingUncertain
 
 log = logging.getLogger(__name__)
@@ -74,10 +74,12 @@ def coerce_transcription_response(
     if not isinstance(text, str) or not text.strip():
         raise ProcessingUncertain("Transcription response has no text")
 
+    if len(text) > _MAX_RESULT_TEXT:
+        raise ProcessingUncertain("MEDIA_TRANSCRIPT_TOO_LONG")
     segments: list[WahaMediaSegment] = []
     raw_segments = payload.get("segments") or []
     if isinstance(raw_segments, list) and raw_segments:
-        for index, raw in enumerate(raw_segments[:200]):
+        for index, raw in enumerate(raw_segments):
             if not isinstance(raw, dict):
                 continue
             snippet = raw.get("text") or raw.get("no_speech_prob") and ""
@@ -95,22 +97,25 @@ def coerce_transcription_response(
                 start_ms = end_ms = None
             segments.append(
                 WahaMediaSegment(
-                    text=snippet[:_MAX_SEGMENT_TEXT],
+                    text=snippet,
                     page=None,
                     start_ms=start_ms,
                     end_ms=end_ms,
                 )
             )
+    if "".join(segment.text for segment in segments) != text:
+        segments = []
     if not segments:
-        segments.append(
-            WahaMediaSegment(text=text[:_MAX_SEGMENT_TEXT], page=None, start_ms=None, end_ms=None)
+        segments.extend(
+            WahaMediaSegment(text=text[offset : offset + _MAX_SEGMENT_TEXT])
+            for offset in range(0, len(text), _MAX_SEGMENT_TEXT)
         )
 
     proposal: dict[str, Any] = {
         "provider": vendor,
         "model_version": model_version,
         "prompt_version": prompt_version,
-        "coverage": "complete" if len(segments) == 1 and text else "partial",
+        "coverage": "unknown",
         "segments": [s.model_dump(mode="json") for s in segments],
         "summary": text[:4000] if len(segments) == 1 else None,
         "suggestions": [],
@@ -128,54 +133,19 @@ def _coerce_proposal(
     if not isinstance(parsed, dict):
         raise ProcessingUncertain("Proposal payload is not an object")
 
-    segments_raw = parsed.get("segments") or []
-    if not isinstance(segments_raw, list):
-        raise ProcessingUncertain("segments must be a list")
-    segments: list[WahaMediaSegment] = []
-    for raw in segments_raw[:200]:
-        if not isinstance(raw, dict):
-            continue
-        text = raw.get("text")
-        if not isinstance(text, str) or not text:
-            continue
-        segments.append(
-            WahaMediaSegment(
-                text=text[:_MAX_SEGMENT_TEXT],
-                page=raw.get("page") if isinstance(raw.get("page"), int) else None,
-                start_ms=raw.get("start_ms") if isinstance(raw.get("start_ms"), int) else None,
-                end_ms=raw.get("end_ms") if isinstance(raw.get("end_ms"), int) else None,
-            )
-        )
-    if not segments:
+    if not parsed.get("segments") or not any(
+        isinstance(item, dict) and item.get("text") for item in parsed["segments"]
+    ):
         raise ProcessingUncertain("Proposal has no readable segments")
-
-    if sum(len(s.text) for s in segments) > _MAX_RESULT_TEXT:
-        raise ProcessingUncertain("Vendor proposal exceeded 100000 char limit")
-
-    suggestions: list[WahaMediaSuggestion] = []
-    for raw in parsed.get("suggestions") or []:
-        if not isinstance(raw, dict):
-            continue
-        try:
-            suggestions.append(WahaMediaSuggestion.model_validate(raw))
-        except Exception as exc:  # pragma: no cover - defensive
-            log.debug("dropping malformed suggestion: %s", exc)
-
-    unresolved = [str(u) for u in (parsed.get("unresolved_questions") or []) if isinstance(u, str)]
-    if len(unresolved) > 30:
-        unresolved = unresolved[:30]
-
     proposal = {
         "provider": vendor,
         "model_version": model_version,
         "prompt_version": prompt_version,
-        "coverage": parsed.get("coverage")
-        if parsed.get("coverage") in {"complete", "partial", "unknown"}
-        else "unknown",
-        "segments": [s.model_dump(mode="json") for s in segments],
-        "summary": parsed.get("summary") if isinstance(parsed.get("summary"), str) else None,
-        "suggestions": [s.model_dump(mode="json") for s in suggestions],
-        "unresolved_questions": unresolved,
+        "coverage": parsed.get("coverage", "unknown"),
+        "segments": parsed.get("segments", []),
+        "summary": parsed.get("summary"),
+        "suggestions": parsed.get("suggestions", []),
+        "unresolved_questions": parsed.get("unresolved_questions", []),
     }
     return _validate(proposal)
 
@@ -184,7 +154,7 @@ def _validate(proposal: dict[str, Any]) -> WahaMediaResult:
     try:
         return WahaMediaResult.model_validate(proposal)
     except Exception as exc:
-        raise ProcessingUncertain(f"WahaMediaResult validation failed: {exc}") from exc
+        raise ProcessingUncertain("WahaMediaResult validation failed") from exc
 
 
 __all__ = [

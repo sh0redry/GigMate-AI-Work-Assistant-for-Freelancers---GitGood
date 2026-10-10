@@ -93,6 +93,8 @@ class MediaProcessorImpl:
 
     @staticmethod
     def _check_origin(request: MediaInput) -> None:
+        if request.origin not in {"synthetic", "live"}:
+            raise ProcessingUnavailable("MEDIA_ORIGIN_INVALID")
         if request.origin == "live" and not llm.is_live_origin_allowed():
             raise ProcessingUnavailable(
                 "Live-origin media is refused by default; export "
@@ -125,6 +127,25 @@ class MediaProcessorImpl:
                 "seam; refused without contacting the vendor."
             )
 
+        if dispatch == "pdf":
+            raise ProcessingUnavailable("MEDIA_PDF_PARSER_PENDING")
+        try:
+            vendor = (
+                llm._resolve_audio_vendor() if dispatch == "asr" else llm._resolve_chat_vendor()
+            )
+            llm._resolve_chat_endpoint(vendor)
+        except llm.MediaIntegrationPending as exc:
+            raise ProcessingUnavailable(str(exc)) from None
+        if dispatch == "ocr" and vendor == "deepseek":
+            raise ProcessingUnavailable("MEDIA_VISION_VENDOR_UNVERIFIED")
+        if dispatch == "text":
+            try:
+                text = request.content.decode("utf-8")
+            except UnicodeError:
+                raise ProcessingUnavailable("MEDIA_TEXT_ENCODING_INVALID") from None
+            if len(text) > 90000:
+                raise ProcessingUnavailable("MEDIA_TEXT_CHUNKING_PENDING")
+
         try:
             client = llm.default_client_factory(timeout=30.0)
         except Exception as exc:  # pragma: no cover - httpx import error
@@ -134,17 +155,27 @@ class MediaProcessorImpl:
             if dispatch == "asr":
                 return self._process_asr(request, client, prompt_version)
             return self._process_chat(request, client, prompt_version, dispatch)
+        except ProcessingUnavailable:
+            raise
         except llm.MediaIntegrationPending as exc:
             raise ProcessingUnavailable(str(exc)) from exc
         except llm.MediaVendorRejected as exc:
-            log.warning("media vendor rejected: %s", exc)
-            raise ProcessingUncertain(str(exc)) from exc
+            log.warning("MEDIA_VENDOR_REJECTED")
+            raise ProcessingUncertain("MEDIA_VENDOR_REJECTED") from exc
         except Exception as exc:
             # Network errors, JSON decode errors and any other unexpected
             # failure: the request may have incurred cost, so reconcile
             # rather than retry.
-            log.warning("media call raised: %s", exc)
-            raise ProcessingUncertain(f"vendor call failed: {exc}") from exc
+            log.warning("MEDIA_VENDOR_RESULT_UNKNOWN")
+            raise ProcessingUncertain("MEDIA_VENDOR_RESULT_UNKNOWN") from exc
+
+        finally:
+            close = getattr(client, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    log.warning("MEDIA_CLIENT_CLOSE_FAILED")
 
     # ------------------------------------------------------------ per-vendor
 
@@ -207,7 +238,7 @@ class MediaProcessorImpl:
     def _prompt_text(self) -> str:
         try:
             return self.prompt_path.read_text(encoding="utf-8")
-        except OSError as exc:
+        except (OSError, UnicodeError) as exc:
             raise ProcessingUnavailable(
                 f"Cannot read prompt file {self.prompt_path}: {exc}"
             ) from exc

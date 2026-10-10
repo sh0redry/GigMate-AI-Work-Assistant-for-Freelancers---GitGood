@@ -25,7 +25,7 @@ call the vendor. This double-key design is intentional; see
 ``docs/en/role-b-extraction.md`` for the rationale.
 
 Without the seam flag the script prints the refusal reason and exits with
-``0`` (smoke is informational, not a gate).
+``1``; unavailable and uncertain outcomes are smoke failures.
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--request-id",
         default="smoke-media",
-        help="Stable request id for vendor reconciliation",
+        help="Local request id (vendor lookup is not implemented)",
     )
     return parser.parse_args()
 
@@ -111,10 +111,10 @@ def main() -> int:
         result = proc.process(request)
     except ProcessingUnavailable as exc:
         print(f"\nRefused (unavailable): {exc}")
-        return 0
+        return 1
     except ProcessingUncertain as exc:
         print(f"\nRefused (uncertain — reconcile): {exc}")
-        return 0
+        return 1
 
     print("\nProposal")
     print("--------")

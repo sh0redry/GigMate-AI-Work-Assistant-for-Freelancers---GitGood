@@ -38,7 +38,9 @@
       },
       "expected_assignment": "matched",
       "expected_min_confidence": 0.9,
-      "expected_change_fields": ["schedule"]
+      "expected_change_fields": [
+        "schedule"
+      ]
     },
     {
       "case_id": "case-002-known-available-confirm",
@@ -73,7 +75,9 @@
       },
       "expected_assignment": "matched",
       "expected_min_confidence": 0.9,
-      "expected_change_fields": ["schedule"]
+      "expected_change_fields": [
+        "schedule"
+      ]
     },
     {
       "case_id": "case-003-unknown-waha-text",
@@ -206,6 +210,77 @@
         "account_id": "00000000-0000-4000-8000-000000000001",
         "conversation_id": "00000000-0000-4000-8000-000000000002",
         "message_id": "00000000-0000-4000-8000-0000000000ee",
+        "message_revision": 1,
+        "text": "改下星期四下午三点，地址我晚些发",
+        "context_version": 5,
+        "candidate_work_order_ids": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "base_work_order_version": 3,
+        "base_work_order_snapshot": {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "version": 3,
+          "fields": {
+            "schedule": {
+              "value": {
+                "kind": "timed",
+                "start_at": "2026-10-07T07:00:00Z",
+                "end_at": "2026-10-07T08:00:00Z",
+                "timezone": "Asia/Hong_Kong"
+              }
+            }
+          }
+        },
+        "origin": "live"
+      },
+      "expected_assignment": "needs_review",
+      "expected_change_fields": []
+    },
+    {
+      "case_id": "case-008-llm-skeleton-needs-review",
+      "scenario": "needs_review: the llm provider skeleton refuses every call until the real-model batch fills in _invoke_model",
+      "data_classification": "synthetic",
+      "provider": "llm",
+      "note": "Pins the separately authorized real-model provider seam: configuration, prompt versioning and registry wiring are present, but the skeleton never produces a proposal. The provider must be invoked through `build_provider('llm')` or `GIGMATE_EXTRACTION_PROVIDER=llm`; running the manifest under the default provider skips this case via the provider field.",
+      "input_event": {
+        "account_id": "00000000-0000-4000-8000-000000000001",
+        "conversation_id": "00000000-0000-4000-8000-000000000002",
+        "message_id": "00000000-0000-4000-8000-0000000000ff",
+        "message_revision": 1,
+        "text": "改下星期四下午三点，地址我晚些发",
+        "context_version": 5,
+        "candidate_work_order_ids": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "base_work_order_version": 3,
+        "base_work_order_snapshot": {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "version": 3,
+          "fields": {
+            "schedule": {
+              "value": {
+                "kind": "timed",
+                "start_at": "2026-10-07T07:00:00Z",
+                "end_at": "2026-10-07T08:00:00Z",
+                "timezone": "Asia/Hong_Kong"
+              }
+            }
+          }
+        }
+      },
+      "expected_assignment": "needs_review",
+      "expected_change_fields": []
+    },
+    {
+      "case_id": "case-009-llm-live-origin-refused",
+      "scenario": "needs_review: the llm provider refuses live-origin input by default, even when the text equals a known synthetic fixture; operator must set GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1 to lift the guard.",
+      "data_classification": "synthetic",
+      "provider": "llm",
+      "note": "Pins the live-origin safety guard for the real-model batch. Default behaviour matches case-007 (deterministic refusal); the LLM provider enforces the same boundary until an operator explicitly opts in. Running the manifest under the default (deterministic) provider skips this case via the provider field.",
+      "input_event": {
+        "account_id": "00000000-0000-4000-8000-000000000001",
+        "conversation_id": "00000000-0000-4000-8000-000000000002",
+        "message_id": "00000000-0000-4000-8000-0000000000dd",
         "message_revision": 1,
         "text": "改下星期四下午三点，地址我晚些发",
         "context_version": 5,
