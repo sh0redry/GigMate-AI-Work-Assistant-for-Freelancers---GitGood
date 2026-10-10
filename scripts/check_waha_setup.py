@@ -12,6 +12,8 @@ import sys
 import shutil
 import threading
 import time
+from datetime import UTC, datetime, timedelta
+from urllib.parse import parse_qs, urlparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -52,6 +54,49 @@ class Provider(BaseHTTPRequestHandler):
                     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aA4sAAAAASUVORK5CYII="
                 ),
                 png=True,
+            )
+        if self.path.startswith("/api/default/chats/") and "/messages" in self.path:
+            from urllib.parse import unquote
+
+            parsed = urlparse(self.path)
+            if "/messages/" in parsed.path:
+                return self.answer(
+                    {
+                        "id": unquote(parsed.path.split("/messages/", 1)[1]),
+                        "from": "synthetic:peer-new@lid",
+                        "fromMe": False,
+                        "hasMedia": False,
+                        "body": "Synthetic source snapshot",
+                        "timestamp": int(time.time()) - 60,
+                    }
+                )
+            q = parse_qs(urlparse(self.path).query)
+            return self.answer(
+                []
+                if int(q.get("offset", ["0"])[0])
+                else [
+                    {
+                        "id": "synthetic:http-history",
+                        "from": "synthetic:peer-new@lid",
+                        "fromMe": False,
+                        "hasMedia": False,
+                        "body": "Synthetic history context",
+                        "timestamp": int(time.time()) - 60,
+                    },
+                    {
+                        "id": "synthetic:http-audio",
+                        "from": "synthetic:peer-new@lid",
+                        "fromMe": False,
+                        "hasMedia": True,
+                        "body": "Synthetic audio description",
+                        "timestamp": int(time.time()) - 55,
+                        "media": {
+                            "mimetype": "audio/ogg",
+                            "filename": "synthetic.ogg",
+                            "url": "http://untrusted/download",
+                        },
+                    },
+                ]
             )
         if self.path.startswith("/api/default/chats"):
             return self.answer(
@@ -384,6 +429,94 @@ def main():
                 )
                 assert db.scalar(select(func.count()).select_from(ChangeRow)) == 0
             checkpoint("signed_live_origin_evidence_without_business_write")
+            selected = client.get(base + "/chats").json()["data"][0]["id"]
+            now = datetime.now(UTC) - timedelta(seconds=1)
+            sync_body = {
+                "expected_version": setup()["control_version"],
+                "chat_ids": [selected],
+                "since": (now - timedelta(days=1)).isoformat().replace("+00:00", "Z"),
+                "until": now.isoformat().replace("+00:00", "Z"),
+                "consent": True,
+                "max_records": 100,
+            }
+            sync_headers = {**headers, "Idempotency-Key": "synthetic-history-1"}
+            sync_response = client.post(
+                base + "/sync-jobs", json=sync_body, headers=sync_headers
+            )
+            assert sync_response.status_code == 202
+            sync_id = sync_response.json()["data"]["id"]
+            assert (
+                client.post(
+                    base + "/sync-jobs", json=sync_body, headers=sync_headers
+                ).json()["data"]["id"]
+                == sync_id
+            )
+            wait(
+                lambda: (
+                    client.get(base + "/sync-jobs/" + sync_id).json()["data"]["state"]
+                    == "succeeded"
+                )
+            )
+            result = client.get(base + "/sync-jobs/" + sync_id).json()["data"]
+            assert result["imported"] == 2 and result["complete_history"] is False
+            timeline = client.get(base + f"/chats/{selected}/timeline").json()["items"]
+            assert len(timeline) == 3 and any(m["kind"] == "audio" for m in timeline)
+            assert "untrusted" not in json.dumps(timeline) and all(
+                "provider_message_id" not in m for m in timeline
+            )
+            with Session() as db:
+                assert db.scalar(select(func.count()).select_from(Job)) == 1
+            checkpoint("bounded_history_and_media_metadata_without_business_jobs")
+            missing = {
+                "id": "synthetic:http-missing-edit",
+                "event": "message.edited",
+                "session": "default",
+                "timestamp": int(time.time() * 1000),
+                "payload": {
+                    "id": "synthetic:edit-not-original",
+                    "editedMessageId": "synthetic:missing-source",
+                    "from": "synthetic:peer-new@lid",
+                    "fromMe": False,
+                    "hasMedia": False,
+                    "body": "Synthetic failed edit must not be stored",
+                },
+            }
+            encoded = json.dumps(missing, separators=(",", ":")).encode()
+            response = client.post(
+                f"/api/v1/connectors/waha/{CONNECTION}/events",
+                content=encoded,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Webhook-Hmac-Algorithm": "sha512",
+                    "X-Webhook-Hmac": hmac.new(
+                        SECRET.encode(), encoded, hashlib.sha512
+                    ).hexdigest(),
+                },
+            )
+            assert response.status_code == 409
+            gap = client.get(base + "/source-gaps").json()["items"][0]
+            assert "provider_reference" not in gap
+            response = client.post(
+                base + "/sync-jobs",
+                json={**sync_body, "source_gap_id": gap["id"]},
+                headers={**headers, "Idempotency-Key": "synthetic-source-read"},
+            )
+            identifier = response.json()["data"]["id"]
+            wait(
+                lambda: (
+                    client.get(base + "/sync-jobs/" + identifier).json()["data"][
+                        "state"
+                    ]
+                    == "succeeded"
+                )
+            )
+            assert (
+                client.get(base + "/source-gaps").json()["items"][0]["state"]
+                == "snapshot_found"
+            )
+            with Session() as db:
+                assert db.scalar(select(func.count()).select_from(Job)) == 1
+            checkpoint("missing_source_snapshot_without_fake_revision_or_issue_clear")
             paused = client.post(
                 base + "/pause",
                 json={"expected_version": setup()["control_version"]},

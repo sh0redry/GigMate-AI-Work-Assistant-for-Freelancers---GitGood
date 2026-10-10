@@ -55,7 +55,7 @@ export interface ConnectionApi {
   ): Promise<Selection>;
   issues(id: string): Promise<Issue[]>;
   restart(id: string, key: string): Promise<void>;
-  retry(id: string): Promise<void>;
+  retry(id: string): Promise<Discovery | void>;
   reconcile(id: string): Promise<void>;
   pause(id: string): Promise<void>;
   resume(id: string): Promise<void>;
@@ -73,12 +73,16 @@ export function demoConnectionApi(): ConnectionApi & {
     "示例客户 · 摄影预约",
     "示例客户 · 网页设计",
     "示例项目讨论组",
+    ...Array.from({ length: 21 }, (_, i) =>
+      i % 3 === 2 ? `示例项目讨论组 ${i + 4}` : `示例客户 ${i + 4} · 工作预约`,
+    ),
   ];
   const choices: Choice[] = names.map((name, i) => ({
     id: `demo-${i}`,
     expires_at: null,
     label: name,
     selected: false,
+    kind: i % 3 === 2 ? "group" : "direct",
   }));
   let connected = false,
     enabled = true,

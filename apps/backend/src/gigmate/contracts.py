@@ -71,6 +71,14 @@ class WahaSetup(Model):
 class WahaControlCommand(Model):
     expected_version: Annotated[int, Field(ge=0)]
     action: Literal["connect", "recover", "inspect", "discover"]
+    offset: Annotated[int, Field(ge=0, le=10000)] = 0
+    limit: Annotated[int, Field(ge=1, le=100)] = 100
+
+    @model_validator(mode="after")
+    def discovery_only(self):
+        if self.action != "discover" and (self.offset != 0 or self.limit != 100):
+            raise ValueError("Pagination only applies to discovery")
+        return self
 
 
 class WahaVersionCommand(Model):
@@ -94,6 +102,7 @@ class WahaChoice(Model):
     label: str
     selected: bool
     expires_at: UtcTimestamp | None
+    kind: Literal["direct", "group"] = "direct"
 
 
 class WahaIssueReviewCommand(Model):
@@ -116,6 +125,69 @@ class WahaControlResult(Model):
     error_code: str | None
     provider_state: str | None
     provider_observed_at: UtcTimestamp | None
+    next_offset: Annotated[int, Field(ge=0)] | None = None
+
+
+class WahaSyncCommand(WahaVersionCommand):
+    chat_ids: Annotated[list[Id], Field(min_length=1, max_length=20)]
+    since: UtcTimestamp
+    until: UtcTimestamp
+    max_records: Annotated[int, Field(ge=1, le=1000)] = 500
+    consent: Annotated[bool, Field(strict=True)]
+    issue_id: Id | None = None
+    source_gap_id: Id | None = None
+
+
+class WahaSyncResult(Model):
+    id: Id
+    connection_id: Id
+    state: Literal["pending", "running", "succeeded", "failed", "cancelled"]
+    chat_ids: list[Id]
+    since: UtcTimestamp
+    until: UtcTimestamp
+    max_records: Annotated[int, Field(ge=1, le=1000)]
+    issue_id: Id | None
+    source_gap_id: Id | None
+    imported: Annotated[int, Field(ge=0)]
+    duplicates: Annotated[int, Field(ge=0)]
+    skipped: Annotated[int, Field(ge=0)]
+    pages: Annotated[int, Field(ge=0)]
+    attempts: Annotated[int, Field(ge=0)]
+    coverage: Literal["in_progress", "provider_exhausted", "limit_reached", "incomplete"]
+    complete_history: Literal[False] = False
+    error_code: str | None
+    created_at: UtcTimestamp
+    updated_at: UtcTimestamp
+
+
+class WahaTimelineMessage(Model):
+    id: Id
+    chat_id: Id
+    conversation_id: Id
+    source_message_id: Id | None
+    occurred_at: UtcTimestamp
+    observed_at: UtcTimestamp
+    origin: Literal["live", "history"]
+    evidence: Literal["revision", "snapshot"]
+    revision: Positive | None
+    direction: Literal["incoming", "outgoing"]
+    text: str | None
+    revoked: bool
+    kind: Literal["text", "image", "audio", "document", "video", "other"]
+    mimetype: str | None
+    filename: str | None
+    sender_id: Id | None
+    reply_to_id: Id | None
+    attachment_reading: Literal["deferred", "not_applicable"]
+    processing_state: str | None
+    delivery_status: Literal["unknown", "sent", "delivered", "read"] | None
+
+
+class WahaSourceGapView(Model):
+    id: Id
+    chat_id: Id
+    observed_at: UtcTimestamp
+    state: Literal["needs_lookup", "snapshot_found", "unavailable"]
 
 
 class ConnectorMetrics(Model):
@@ -174,6 +246,7 @@ class ConnectorReceipt(Model):
     duplicate: bool
     context_version: Annotated[int, Field(ge=0)]
     durable_acceptance: Literal[True]
+    acceptance_kind: Literal["normalized_event", "observation"] = "normalized_event"
 
 
 class WorkOrderStatus(StrEnum):

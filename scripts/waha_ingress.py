@@ -83,6 +83,10 @@ def provision(db, config, instance):
         )
         db.add(row)
         db.flush()
+    from gigmate.waha_sync import authorization_changed
+
+    if not row.enabled:
+        authorization_changed(db, row, None, False)
     row.enabled = True
     row.control_version += 1
     existing = {
@@ -95,6 +99,7 @@ def provision(db, config, instance):
             raise AdapterError("CONVERSATION_OWNERSHIP_CONFLICT")
         allowed = peer in config.allowlisted_chats
         if conversation.allowlisted != allowed:
+            authorization_changed(db, row, chat.id, not allowed)
             conversation.allowlisted = allowed
             conversation.context_version += 1
     for peer in sorted(config.allowlisted_chats - existing.keys()):
@@ -347,6 +352,9 @@ def main(argv=None):
                 if not row:
                     raise AdapterError("TRUSTED_ACCOUNT_REQUIRED")
                 if args.command == "pause":
+                    from gigmate.waha_sync import authorization_changed
+
+                    authorization_changed(db, row, None, True)
                     row.enabled = False
                     row.control_version += 1
                     result = {"paused": True}
