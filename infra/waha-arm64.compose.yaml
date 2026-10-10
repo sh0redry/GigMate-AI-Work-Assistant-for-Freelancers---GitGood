@@ -1,0 +1,6 @@
+# Same pinned version/WEBJS, native Apple Silicon/ARM64 runtime.
+# Append after waha.compose.yaml; never substitute an unpinned :arm tag.
+services:
+  waha:
+    platform: linux/arm64
+    image: devlikeapro/waha:arm-2026.9.1@sha256:b4216daddb7d5c1eb3ab99e608b76a005ec7523e766f923939d229718df4aafb

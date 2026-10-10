@@ -1,5 +1,7 @@
 # Role B extraction subsystem
 
+2026-10-09 integration update: [WAHA/extraction acceptance](role-a-integration-acceptance.md) records the merged control/worker handoff. Current Alembic head is `0007_merge_waha_extraction`, joining the unchanged B evidence migration and A's controls/provider-sample branch. Windows tests use pytest-owned temporary files; the default provider still refuses live extraction and no real-model/network integration was added.
+
 Updated: 2026-10-08. [Chinese](../zh/role-b-extraction.md). Builds on
 [team local development](role-a-team-local-development.md) and the
 [handoff summary](role-a-waha-handoff.md).

@@ -56,6 +56,68 @@ class ComponentHealth(Model):
     observed_at: UtcTimestamp | None
 
 
+class WahaSetup(Model):
+    connection_id: Id
+    control_version: Annotated[int, Field(ge=0)]
+    enabled: bool
+    available: bool
+    provider_state: str | None
+    provider_observed_at: UtcTimestamp | None
+    active_operation_id: Id | None
+    last_operation_id: Id | None
+    provider_sample_stale: bool
+
+
+class WahaControlCommand(Model):
+    expected_version: Annotated[int, Field(ge=0)]
+    action: Literal["connect", "recover", "inspect", "discover"]
+
+
+class WahaVersionCommand(Model):
+    expected_version: Annotated[int, Field(ge=0)]
+
+
+class WahaSelectionCommand(WahaVersionCommand):
+    selected_ids: Annotated[list[Id], Field(max_length=100)]
+    consent: Literal[True]
+
+    @model_validator(mode="before")
+    @classmethod
+    def explicit_consent(cls, value):
+        if isinstance(value, dict) and type(value.get("consent")) is not bool:
+            raise ValueError("Explicit boolean consent required")
+        return value
+
+
+class WahaChoice(Model):
+    id: Id
+    label: str
+    selected: bool
+    expires_at: UtcTimestamp | None
+
+
+class WahaIssueReviewCommand(Model):
+    issue_ids: Annotated[list[Id], Field(min_length=1, max_length=100)]
+    confirmed_no_import: Annotated[bool, Field(strict=True)]
+
+
+class WahaIssueReviewResult(Model):
+    reviewed: Annotated[int, Field(ge=1)]
+
+
+class WahaControlResult(Model):
+    id: Id
+    connection_id: Id
+    action: Literal["connect", "recover", "inspect", "discover"]
+    state: Literal[
+        "pending", "checking", "running", "succeeded", "failed", "result_unknown", "cancelled"
+    ]
+    control_version: Annotated[int, Field(ge=0)]
+    error_code: str | None
+    provider_state: str | None
+    provider_observed_at: UtcTimestamp | None
+
+
 class ConnectorMetrics(Model):
     rejected: Annotated[int, Field(ge=0)]
     retries: Annotated[int, Field(ge=0)]

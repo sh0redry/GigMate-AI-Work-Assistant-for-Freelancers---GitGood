@@ -26,6 +26,51 @@ def config():
     )
 
 
+@pytest.mark.parametrize("runtime", [None, {}])
+def test_stopped_session_verifies_server_engine_before_restart(config, runtime):
+    calls = []
+
+    def provider(request):
+        calls.append((request.method, request.url.path))
+        if request.url.path == "/api/server/version":
+            return httpx.Response(200, json={"version": "2026.9.1", "engine": "WEBJS"})
+        if request.method == "POST":
+            return httpx.Response(200, json={"name": "default"})
+        return httpx.Response(200, json={"name": "default", "status": "STOPPED", "engine": runtime})
+
+    client = LocalWahaClient(config, transport=httpx.MockTransport(provider))
+    assert client.restart_failed_session()["restart_requested"]
+    assert calls == [
+        ("GET", "/api/sessions/default"),
+        ("GET", "/api/server/version"),
+        ("POST", "/api/sessions/default/restart"),
+    ]
+    client.close()
+
+
+@pytest.mark.parametrize(
+    "server",
+    [{"version": "2026.9.1", "engine": "GOWS"}, {"version": "2026.9.2", "engine": "WEBJS"}, {}],
+)
+def test_stopped_wrong_engine_version_never_dispatches(config, server):
+    calls = []
+
+    def provider(request):
+        calls.append(request.method)
+        return httpx.Response(
+            200,
+            json=server
+            if request.url.path == "/api/server/version"
+            else {"name": "default", "status": "STOPPED"},
+        )
+
+    client = LocalWahaClient(config, transport=httpx.MockTransport(provider))
+    with pytest.raises(AdapterError, match="WAHA_ENGINE_MISMATCH"):
+        client.restart_failed_session()
+    assert "POST" not in calls
+    client.close()
+
+
 def raw_message():
     return {
         "id": "synthetic:event-1",

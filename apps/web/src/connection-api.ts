@@ -2,24 +2,28 @@ import type { components } from "./generated/api";
 
 export type Connector = components["schemas"]["ConnectorStatus"];
 export type Issue = components["schemas"]["RecoveryIssue"];
-// Frontend-only preview shapes. These are proposals, not shared API contracts.
-// Replace them with generated types after Andy publishes the corresponding API.
+// View state derives from generated setup/choice contracts; demo never writes.
 export type Pairing = {
+  enabled: boolean;
+  control_version: number;
   state: string;
   connected: boolean;
   qr_available: boolean;
+  available: boolean;
+  provider_sample_stale: boolean;
+  operation_id: string | null;
+  operation_state: components["schemas"]["WahaControlResult"]["state"] | null;
+  operation_action: components["schemas"]["WahaControlResult"]["action"] | null;
+  operation_error: string | null;
+  retry_available: boolean;
 };
-export type Choice = {
-  choice_id: string;
-  token: string;
-  name: string;
-  kind: "direct" | "group";
-  selected: boolean;
-  conversation_id: string | null;
+export type Choice = components["schemas"]["WahaChoice"];
+export type Selection = {
+  control_version: number;
+  selected: Choice[];
+  choices: Choice[];
 };
-export type Selection = { version: number; selected: Choice[] };
 export type Discovery = { items: Choice[]; next_offset: number | null };
-type Page<T> = { items: T[]; next_cursor: string | null };
 
 export class ConnectionError extends Error {
   constructor(
@@ -38,7 +42,7 @@ export interface ConnectionApi {
     recovery: boolean;
   };
   connectors(): Promise<Connector[]>;
-  pairing(id: string): Promise<Pairing>;
+  pairing(id: string, force?: boolean): Promise<Pairing>;
   start(id: string, key: string): Promise<Pairing>;
   qr(id: string): Promise<Blob>;
   selection(id: string): Promise<Selection>;
@@ -51,141 +55,14 @@ export interface ConnectionApi {
   ): Promise<Selection>;
   issues(id: string): Promise<Issue[]>;
   restart(id: string, key: string): Promise<void>;
+  retry(id: string): Promise<void>;
+  reconcile(id: string): Promise<void>;
+  pause(id: string): Promise<void>;
+  resume(id: string): Promise<void>;
   reviewIssues(id: string, issueIds: string[]): Promise<number>;
 }
 
-export function liveConnectionApi(csrf: string): ConnectionApi {
-  const localPairing =
-    import.meta.env.DEV && import.meta.env.GIGMATE_LOCAL_PAIRING === true;
-  async function request<T>(path: string): Promise<T> {
-    const response = await fetch(`/api/v1${path}`, {
-      credentials: "same-origin",
-      cache: "no-store",
-    });
-    if (!response.ok) {
-      const result = await response.json().catch(() => ({}));
-      throw new ConnectionError(
-        response.status === 401
-          ? "UNAUTHENTICATED"
-          : (result.error?.code ?? "HTTP_ERROR"),
-        result.error?.message ?? "请求失败",
-        result.request_id,
-      );
-    }
-    return response.json() as Promise<T>;
-  }
-  async function pending(): Promise<never> {
-    throw new ConnectionError(
-      "CAPABILITY_PENDING",
-      "扫码和会话授权功能待接入。当前可查看连接状态。",
-    );
-  }
-  const base = (id: string) => `/connectors/${encodeURIComponent(id)}`;
-  async function localRequest(
-    id: string,
-    kind: "status" | "qr" | "restart" | "review-issues",
-    body?: object,
-  ) {
-    const response = await fetch(
-      `/__gigmate_local_pairing/${encodeURIComponent(id)}/${kind}`,
-      {
-        credentials: "same-origin",
-        cache: "no-store",
-        method: body ? "POST" : "GET",
-        headers: {
-          "X-GigMate-Local-Pairing": "1",
-          ...(body
-            ? { "Content-Type": "application/json", "X-CSRF-Token": csrf }
-            : {}),
-        },
-        body: body ? JSON.stringify(body) : undefined,
-      },
-    );
-    if (!response.ok) {
-      const result = await response.json().catch(() => ({}));
-      throw new ConnectionError(
-        response.status === 401
-          ? "UNAUTHENTICATED"
-          : (result.error?.code ?? "LOCAL_PAIRING_UNAVAILABLE"),
-        "无法读取本机扫码状态，请检查服务后刷新。",
-      );
-    }
-    return response;
-  }
-  return {
-    capabilities: {
-      pairing: localPairing,
-      start: false,
-      selection: false,
-      recovery: localPairing && !!csrf,
-    },
-    restart: localPairing
-      ? async (id, key) => {
-          await localRequest(id, "restart", { key });
-        }
-      : pending,
-    reviewIssues: localPairing
-      ? async (id, issueIds) => {
-          const result = (await (
-            await localRequest(id, "review-issues", {
-              issue_ids: issueIds,
-              confirmed: true,
-            })
-          ).json()) as { reviewed: number };
-          return result.reviewed;
-        }
-      : pending,
-    async connectors() {
-      const result: Connector[] = [];
-      let cursor: string | null = null;
-      do {
-        const page: Page<Connector> = await request(
-          `/connectors?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
-        );
-        result.push(...page.items);
-        cursor = page.next_cursor;
-      } while (cursor);
-      return result;
-    },
-    pairing: localPairing
-      ? async (id) =>
-          (await localRequest(id, "status")).json() as Promise<Pairing>
-      : pending,
-    start: pending,
-    qr: localPairing
-      ? async (id) => {
-          const response = await localRequest(id, "qr");
-          const blob = await response.blob();
-          if (
-            blob.type !== "image/png" ||
-            blob.size === 0 ||
-            blob.size > 2 * 1024 * 1024
-          ) {
-            throw new ConnectionError(
-              "WAHA_INVALID_QR",
-              "二维码图片无效，请刷新重试。",
-            );
-          }
-          return blob;
-        }
-      : pending,
-    selection: pending,
-    chats: pending,
-    save: pending,
-    async issues(id) {
-      const result: Issue[] = [];
-      let cursor: string | null = null;
-      do {
-        const page: Page<Issue> = await request(
-          `${base(id)}/recovery-issues?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
-        );
-        result.push(...page.items);
-        cursor = page.next_cursor;
-      } while (cursor);
-      return result;
-    },
-  };
-}
+export { liveConnectionApi, clearConnectionAttempts } from "./waha-live-api";
 
 // Explicit, browser-only synthetic acceptance mode. No live credentials, QR or HTTP writes.
 export function demoConnectionApi(): ConnectionApi & {
@@ -198,14 +75,13 @@ export function demoConnectionApi(): ConnectionApi & {
     "示例项目讨论组",
   ];
   const choices: Choice[] = names.map((name, i) => ({
-    choice_id: `demo-${i}`,
-    token: `synthetic:${i}`,
-    name,
-    kind: i === 2 ? "group" : "direct",
+    id: `demo-${i}`,
+    expires_at: null,
+    label: name,
     selected: false,
-    conversation_id: null,
   }));
   let connected = false,
+    enabled = true,
     stale = false,
     failed = false,
     reviewed = false,
@@ -218,9 +94,9 @@ export function demoConnectionApi(): ConnectionApi & {
   const connector = (): Connector => ({
     id: "00000000-0000-4000-8000-000000000099",
     connector: "waha",
-    enabled: true,
+    enabled,
     state: connected ? "connected" : "connecting",
-    live_connected: connected && !stale,
+    live_connected: enabled && connected && !stale,
     stale,
     observed_at: "2026-10-06T08:00:00Z",
     last_sync_at: null,
@@ -234,7 +110,7 @@ export function demoConnectionApi(): ConnectionApi & {
     worker_health: health,
     monitor_health: health,
     provider_health: health,
-    pipeline_ready: connected && !stale,
+    pipeline_ready: enabled && connected && !stale,
     review_required: stale,
     unresolved_issues: stale ? 1 : 0,
     metrics: {
@@ -252,7 +128,11 @@ export function demoConnectionApi(): ConnectionApi & {
     },
   });
   const view = (): Selection => ({
-    version,
+    control_version: version,
+    choices: choices.map((c) => ({
+      ...c,
+      selected: selected.some((x) => x.id === c.id),
+    })),
     selected: selected.map((c) => ({ ...c, selected: true })),
   });
   return {
@@ -275,14 +155,33 @@ export function demoConnectionApi(): ConnectionApi & {
     },
     async pairing() {
       return {
+        enabled,
+        control_version: version,
         state: connected ? "WORKING" : failed ? "FAILED" : "SCAN_QR_CODE",
-        connected,
-        qr_available: !connected && !failed,
+        connected: enabled && connected,
+        available: true,
+        provider_sample_stale: false,
+        operation_id: null,
+        operation_state: null,
+        operation_action: null,
+        operation_error: null,
+        retry_available: false,
+        qr_available: enabled && !connected && !failed,
       };
     },
     async restart() {
       failed = false;
       stale = false;
+    },
+    async reconcile() {},
+    async retry() {},
+    async pause() {
+      enabled = false;
+      version++;
+    },
+    async resume() {
+      enabled = true;
+      version++;
     },
     async reviewIssues(_id, ids) {
       reviewed = true;
@@ -301,13 +200,13 @@ export function demoConnectionApi(): ConnectionApi & {
       return {
         items: choices.map((c) => ({
           ...c,
-          selected: selected.some((s) => s.choice_id === c.choice_id),
+          selected: selected.some((s) => s.id === c.id),
         })),
         next_offset: null,
       };
     },
     async save(_id, value, next) {
-      if (value.version !== version)
+      if (value.control_version !== version)
         throw new ConnectionError("VERSION_CONFLICT", "授权已更新，请重新查看");
       selected = next;
       version++;

@@ -4,12 +4,14 @@ Updated: 2026-10-06. This is the current capability summary, not a claim that ev
 
 ## What works now
 
+2026-10-08: [merged integration delivery](role-a-integration-acceptance.md) connects D's screens to the [setup API](role-a-setup-api-acceptance.md): owner-scoped durable connection intents, transient QR, opaque chat selection, pause/resume and recovered-issue review. Local product screens are implemented; production/multi-merchant onboarding remains pending.
+
 The optional local WAHA connector feeds trusted events into the existing modular backend, PostgreSQL inbox and separate worker. Replay remains available. Pinned provider: WAHA Core 2026.9.1, WEBJS, image digest in [Compose](../../infra/waha.compose.yaml). Other provider versions/engines are not validated.
 
 | Capability | Implemented behavior and limits |
 | --- | --- |
-| Local pairing | Private initialization, session start/status, QR saved privately for operator scanning; existing Linux session volume reused across service restarts. No product onboarding UI. |
-| Conversation selection | CLI lists recent chats for local selection; appends selected chats to ignored configuration. `provision` synchronizes authoritative database allowlists and account/session mapping. Local selection alone does not update database authorization. |
+| Local pairing | Private initialization and durable backend control; the authenticated UI displays transient QR and status, reusing existing session volumes. No production onboarding. |
+| Conversation selection | The UI discovers opaque choices and explicitly saves authoritative database authorization. CLI configuration selection/provision remains an operator alternative; mixing the two can replace choices. |
 | History probe | Counts available records for an allowed chat, returns complete_history=false. It does not import old messages into business storage or prove completeness. |
 | Text events | Incoming/outgoing text creation, editing and revocation normalized into versioned events. Canonical and short provider targets mapped conservatively; direction/ambiguity checks reject uncertain targets. Real same-message revisions 1/2/3 verified twice after recovery. |
 | ACK and session events | Delivery acknowledgments update delivery metadata, not content/context or extraction jobs. Session state notifications update connection samples and reject conflicting ordering; accepted counts include these events, not just texts. |

@@ -1,5 +1,7 @@
 # Role B 抽取子系统
 
+2026-10-09 联调更新：[WAHA/提取统一验收](role-a-integration-acceptance.md)记录控制与 worker 交接。当前 Alembic head 是 `0007_merge_waha_extraction`，汇合未改动的 B 证据迁移和 A 控制/采样分支。Windows 测试使用 pytest 管理临时文件；默认 provider 仍拒绝真实提取，没有增加真实模型或网络调用。
+
 更新：2026-10-08。[英文对应](../en/role-b-extraction.md)。基于
 [团队本地开发](role-a-team-local-development.md)与[交接总览](role-a-waha-handoff.md)。
 

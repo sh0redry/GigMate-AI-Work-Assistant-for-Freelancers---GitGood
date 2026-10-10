@@ -120,6 +120,26 @@ small {
   background: #edf2e9;
   margin-bottom: 20px;
 }
+.notice.stale {
+  border-color: #be8b45;
+  background: #fff3df;
+}
+.replay-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.message {
+  scroll-margin-top: 24px;
+  overflow-wrap: anywhere;
+}
+.message:target {
+  background: #edf5ef;
+  outline: 2px solid #176a52;
+}
 .grid {
   display: grid;
   grid-template-columns: 250px minmax(360px, 1fr) 280px;

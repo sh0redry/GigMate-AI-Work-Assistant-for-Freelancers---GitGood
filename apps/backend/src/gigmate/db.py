@@ -77,6 +77,9 @@ class WahaConnection(Base):
     instance_id: Mapped[str] = mapped_column(String(128))
     session_id: Mapped[str] = mapped_column(String(128))
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    control_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    provider_state: Mapped[str | None] = mapped_column(String(32))
+    provider_observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     state: Mapped[str] = mapped_column(String(24), default="unknown")
     state_timestamp: Mapped[int | None] = mapped_column(BigInteger)
     state_received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -110,6 +113,33 @@ class WahaMessage(Base):
         UniqueConstraint("chat_id", "provider_message_id", name="uq_waha_message"),
         Index("ix_waha_message_stanza", "chat_id", "stanza_id"),
     )
+
+
+class WahaControl(Base):
+    __tablename__ = "waha_controls"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    connection_id: Mapped[str] = mapped_column(ForeignKey("waha_connections.id"), index=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"))
+    request_key: Mapped[str] = mapped_column(String(128))
+    action: Mapped[str] = mapped_column(String(32))
+    version: Mapped[int] = mapped_column(Integer)
+    state: Mapped[str] = mapped_column(String(32))
+    active_key: Mapped[str | None] = mapped_column(String(36), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_token: Mapped[str | None] = mapped_column(String(36))
+    result: Mapped[dict] = mapped_column(JSON, default=dict)
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    __table_args__ = (UniqueConstraint("connection_id", "request_key", name="uq_waha_control_key"),)
+
+
+class WahaCandidate(Base):
+    __tablename__ = "waha_candidates"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    connection_id: Mapped[str] = mapped_column(ForeignKey("waha_connections.id"), index=True)
+    provider_chat_id: Mapped[str] = mapped_column(String(256))
+    label: Mapped[str] = mapped_column(String(200))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class MessageRow(Base):

@@ -8,8 +8,6 @@ and worker integration. Mirrors the patterns in
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 from copy import deepcopy
 from uuid import uuid4
 
@@ -58,13 +56,14 @@ ORDER_PATH = f"/api/v1/work-orders/{ORDER}"
 
 
 @pytest.fixture
-def memory_factory():
-    with tempfile.NamedTemporaryFile(suffix=".db") as handle:
-        url = f"sqlite:///{handle.name}"
-        engine = create_engine(url)
+def memory_factory(tmp_path):
+    # No open NamedTemporaryFile handle: Windows denies SQLite reopening it.
+    engine = create_engine("sqlite:///" + (tmp_path / "extraction.db").as_posix())
+    try:
         Base.metadata.create_all(engine)
         factory = sessionmaker(engine, expire_on_commit=False)
         yield factory
+    finally:
         engine.dispose()
 
 
@@ -583,13 +582,9 @@ def test_evaluate_case_flags_assignment_mismatch():
     assert "missing fields: ['schedule']" in message
 
 
-def test_evaluation_run_requires_non_empty_manifest(memory_account):
-    empty_path = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
-    try:
-        with open(empty_path, "w", encoding="utf-8") as handle:
-            json.dump({"cases": []}, handle)
-        with memory_account.begin() as db:
-            with pytest.raises(ValueError, match="no cases"):
-                evaluate_manifest(db, empty_path)
-    finally:
-        os.unlink(empty_path)
+def test_evaluation_run_requires_non_empty_manifest(memory_account, tmp_path):
+    empty_path = tmp_path / "empty-manifest.json"
+    empty_path.write_text(json.dumps({"cases": []}), encoding="utf-8")
+    with memory_account.begin() as db:
+        with pytest.raises(ValueError, match="no cases"):
+            evaluate_manifest(db, empty_path)

@@ -13,7 +13,7 @@ export function connectionState({
   if (!enabled)
     return {
       title: "接收授权已暂停",
-      help: "请联系接入负责人确认授权，再继续连接。",
+      help: "点击「恢复消息接收」重新启用已选会话的接收授权。",
       action: "refresh",
       tone: "warning",
     } as const;
@@ -58,5 +58,14 @@ export function pendingIssues<
 >(issues: T[]) {
   return issues.filter(
     (issue) => !issue.acknowledged_at || issue.resolution === "needs_followup",
+  );
+}
+
+export function choiceExpired(
+  choice: { expires_at: string | null },
+  now = Date.now(),
+) {
+  return (
+    choice.expires_at !== null && new Date(choice.expires_at).getTime() <= now
   );
 }

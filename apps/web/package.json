@@ -8,9 +8,10 @@
     "npm": "11.12.x"
   },
   "scripts": {
+    "test": "node --test connection-state.test.mjs waha-live-api.test.mjs replay-store.test.mjs workspace-api.test.mjs",
     "dev": "vite --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
-    "build": "npm run typecheck && vite build",
+    "build": "npm run test && npm run typecheck && vite build",
     "generate:api": "openapi-typescript ../../contracts/openapi.json -o src/generated/api.d.ts && prettier --write src/generated/api.d.ts",
     "check:api": "node ../../scripts/check_web_contracts.mjs",
     "format": "prettier --write src index.html package.json tsconfig.json vite.config.ts",

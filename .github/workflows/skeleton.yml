@@ -52,6 +52,8 @@ jobs:
         working-directory: apps/web
       - run: npm run check:api
         working-directory: apps/web
+      - run: npm test
+        working-directory: apps/web
       - run: npm run format:check
         working-directory: apps/web
       - run: npm run build

@@ -287,6 +287,8 @@ def receive(db, binding, raw, *, now=None):
     if event_type == "session.status":
         if connection.state_timestamp is None or timestamp > connection.state_timestamp:
             connection.state = event["payload"]["status"]
+            connection.provider_state = payload["status"]
+            connection.provider_observed_at = now
             connection.state_timestamp, connection.state_received_at = timestamp, now
         else:
             if (
@@ -367,6 +369,8 @@ def reconcile_state(db, binding, provider_state, *, now=None):
         # A callback accepted during the provider lookup must not be overwritten by that older sample.
         return status_view(db, connection)
     connection.state = SESSION_STATES[provider_state]
+    connection.provider_state = provider_state
+    connection.provider_observed_at = now
     connection.state_timestamp = int(now.timestamp() * 1000)
     connection.state_received_at = now
     db.flush()

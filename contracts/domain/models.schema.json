@@ -2081,6 +2081,335 @@
       "pattern": "Z$",
       "type": "string"
     },
+    "WahaChoice": {
+      "additionalProperties": false,
+      "properties": {
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expires At"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "selected": {
+          "title": "Selected",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "selected",
+        "expires_at"
+      ],
+      "title": "WahaChoice",
+      "type": "object"
+    },
+    "WahaControlCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "connect",
+            "recover",
+            "inspect",
+            "discover"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "expected_version": {
+          "minimum": 0,
+          "title": "Expected Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "expected_version",
+        "action"
+      ],
+      "title": "WahaControlCommand",
+      "type": "object"
+    },
+    "WahaControlResult": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "connect",
+            "recover",
+            "inspect",
+            "discover"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "connection_id": {
+          "format": "uuid",
+          "title": "Connection Id",
+          "type": "string"
+        },
+        "control_version": {
+          "minimum": 0,
+          "title": "Control Version",
+          "type": "integer"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Code"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "provider_observed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Provider Observed At"
+        },
+        "provider_state": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Provider State"
+        },
+        "state": {
+          "enum": [
+            "pending",
+            "checking",
+            "running",
+            "succeeded",
+            "failed",
+            "result_unknown",
+            "cancelled"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "connection_id",
+        "action",
+        "state",
+        "control_version",
+        "error_code",
+        "provider_state",
+        "provider_observed_at"
+      ],
+      "title": "WahaControlResult",
+      "type": "object"
+    },
+    "WahaIssueReviewCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "confirmed_no_import": {
+          "title": "Confirmed No Import",
+          "type": "boolean"
+        },
+        "issue_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Issue Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "issue_ids",
+        "confirmed_no_import"
+      ],
+      "title": "WahaIssueReviewCommand",
+      "type": "object"
+    },
+    "WahaIssueReviewResult": {
+      "additionalProperties": false,
+      "properties": {
+        "reviewed": {
+          "minimum": 1,
+          "title": "Reviewed",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "reviewed"
+      ],
+      "title": "WahaIssueReviewResult",
+      "type": "object"
+    },
+    "WahaSelectionCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "consent": {
+          "const": true,
+          "title": "Consent",
+          "type": "boolean"
+        },
+        "expected_version": {
+          "minimum": 0,
+          "title": "Expected Version",
+          "type": "integer"
+        },
+        "selected_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Selected Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "expected_version",
+        "selected_ids",
+        "consent"
+      ],
+      "title": "WahaSelectionCommand",
+      "type": "object"
+    },
+    "WahaSetup": {
+      "additionalProperties": false,
+      "properties": {
+        "active_operation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Active Operation Id"
+        },
+        "available": {
+          "title": "Available",
+          "type": "boolean"
+        },
+        "connection_id": {
+          "format": "uuid",
+          "title": "Connection Id",
+          "type": "string"
+        },
+        "control_version": {
+          "minimum": 0,
+          "title": "Control Version",
+          "type": "integer"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "last_operation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Operation Id"
+        },
+        "provider_observed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Provider Observed At"
+        },
+        "provider_sample_stale": {
+          "title": "Provider Sample Stale",
+          "type": "boolean"
+        },
+        "provider_state": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Provider State"
+        }
+      },
+      "required": [
+        "connection_id",
+        "control_version",
+        "enabled",
+        "available",
+        "provider_state",
+        "provider_observed_at",
+        "active_operation_id",
+        "last_operation_id",
+        "provider_sample_stale"
+      ],
+      "title": "WahaSetup",
+      "type": "object"
+    },
+    "WahaVersionCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_version": {
+          "minimum": 0,
+          "title": "Expected Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "expected_version"
+      ],
+      "title": "WahaVersionCommand",
+      "type": "object"
+    },
     "WorkOrder": {
       "additionalProperties": false,
       "properties": {

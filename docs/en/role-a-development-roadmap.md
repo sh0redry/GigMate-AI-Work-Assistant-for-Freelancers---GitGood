@@ -1,5 +1,7 @@
 # Role A technical evolution and unified acceptance
 
+2026-10-08 batch: [merged integration](role-a-integration-acceptance.md) connects D's local product screens to A's [setup APIs](role-a-setup-api-acceptance.md), retires the alternate bridge, and adds safe recovery review/provider sampling. Independent real-account acceptance and production onboarding remain separate gates. No Cloud API work.
+
 Current extension: A-01/A-02 and durable A-03 ingress have implementation evidence; [recovery acceptance](role-a-recovery-acceptance.md) adds component health, fault verification and manual gap review. This remains A-03 work. A-04 sending still depends on C's approval/outbox/reconciliation services. Earlier baseline descriptions below are planning history; see implementation status for actual current behavior.
 
 Updated: 2026-10-02. This is a development plan, not completed implementation. Scope is ingestion, authentication, durable jobs and connection monitoring. See [responsibilities](role-a-responsibilities.md) and the [Chinese counterpart](../zh/role-a-development-roadmap.md).
