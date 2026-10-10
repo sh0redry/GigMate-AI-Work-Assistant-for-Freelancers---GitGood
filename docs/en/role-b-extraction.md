@@ -130,24 +130,66 @@ a versioned prompt file from `gigmate/extraction/prompts/`, and persists the
 configured model and prompt versions in `ModelCallTrace` so reviewers can see
 why a request was refused.
 
+This batch ships the provider as a skeleton on purpose: the next authorized
+batch must replace `_invoke_model` and `_parse_response` *and* flip the
+class flag `LLMProvider._SKELETON_SEAM` to `False`. Until then the module
+performs no real network calls regardless of which environment variables are
+exported, and only `GIGMATE_LLM_API_KEY` is read; `OPENAI_API_KEY` /
+`ANTHROPIC_API_KEY` are deliberately not consulted so model credentials stay
+under the operator's explicit control.
+
 Configuration (environment variables, all optional until the seam is filled):
 
 | Variable | Purpose |
 | --- | --- |
-| `GIGMATE_LLM_PROVIDER` | Vendor name (`openai`, `anthropic`, ...). Used in `model_version`. |
-| `GIGMATE_LLM_MODEL` | Model identifier. Default marker `skeleton:pending` until configured. |
-| `GIGMATE_LLM_API_KEY` | Server-side only. Read by the seam when the next batch lands. |
-| `GIGMATE_LLM_ENDPOINT` | Optional base URL override (testing). |
+| `GIGMATE_LLM_PROVIDER` | Vendor name (`deepseek`, `openai`, `custom`). Used in `model_version` and as a sanity check that the operator picked a vendor this build supports. |
+| `GIGMATE_LLM_MODEL` | Model identifier (e.g. `deepseek-chat`, `gpt-4o-mini`). Default marker `skeleton:pending` until configured. |
+| `GIGMATE_LLM_API_KEY` | Server-side only. The provider reads this on every call; it is never stored on the instance or logged. |
+| `GIGMATE_LLM_ENDPOINT` | Optional base URL override (defaults to `https://api.deepseek.com`). |
 | `GIGMATE_LLM_PROMPT_PATH` | Optional override of the bundled prompt file. |
-| `GIGMATE_LLM_LIVE=1` | The live gate. Required to leave the skeleton state; with the gate on and the seam unimplemented the provider returns `needs_review` with a `llm:seam-pending` note and an explanatory `refused_reason` so a misconfiguration in production surfaces immediately in the trace rather than silently falling back to a real model. |
+| `GIGMATE_LLM_LIVE=1` | The explicit live gate. Required to actually invoke the model once `_SKELETON_SEAM` is flipped; until then it is the second line of defence after the class flag. |
+| `GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1` | Opt-in switch that lets `request.origin == "live"` traffic reach the model once the skeleton flag is open. Defaults to off. |
+
+#### Two-gate safety net
+
+Two gates must be open before `_invoke_model` runs:
+
+1. **Class flag `LLMProvider._SKELETON_SEAM`** — `True` in this batch.
+   While `True` the provider refuses every call with `llm:seam-pending` no
+   matter which environment variables are exported. This is the safety
+   net that prevents a future implementation of `_invoke_model` from
+   silently flipping into "real call" mode if the next batch only fills
+   in the seam method.
+2. **`GIGMATE_LLM_LIVE=1`** — operator switch. Even after the class flag
+   is flipped to `False`, the provider still refuses every call unless
+   `GIGMATE_LLM_LIVE=1` is exported.
+
+The two are checked in order: skeleton flag → live gate → wire check
+(vendor known, key set) → live-origin guard → `_invoke_model`. With the
+skeleton flag `True` the call is refused before configuration is even
+read, so a misconfigured deployment cannot accidentally emit a real
+network request.
+
+#### Prompt loading failure modes
 
 The prompt is loaded from
 `apps/backend/src/gigmate/extraction/prompts/role_b_extraction_v1.txt` by
-default. The first line `prompt_version: X.Y.Z` is read into
-`prompt_version`; missing or malformed files fall back to `0.0.0-skeleton`
-so the trace still shows the placeholder state. The bundled file encodes the
-hard rules (never emit `confirmed`, never grant execution authority, respect
-the origin trust boundary) and is the single seam the next batch edits.
+default (overridable via `GIGMATE_LLM_PROMPT_PATH`). The first line that
+matches `prompt_version: X.Y.Z` is read into `prompt_version`. Every
+failure mode is caught explicitly and recorded on
+`LLMProvider._prompt_load_error`:
+
+- File missing / `OSError` → placeholder `0.0.0-skeleton` + refusal.
+- Non-UTF-8 bytes (`UnicodeDecodeError`) → placeholder + refusal.
+- `prompt_version:` header line absent → placeholder + refusal.
+- `prompt_version:` header present but value empty → placeholder + refusal.
+
+In every case the outcome carries `notes=("llm:prompt-malformed",)` with a
+descriptive `refused_reason`, the `Proposal` row records
+`prompt_version = "0.0.0-skeleton"` and the `ModelCallTrace` row keeps
+the descriptive cause — the worker never raises into its broad
+`except Exception` handler, so a malformed prompt file cannot cause a
+`PROCESSING_FAILED` retry storm.
 
 `case-008-llm-skeleton-needs-review` in the evaluation manifest pins the
 skeleton behaviour when the manifest is run with `--provider llm`. Universal
@@ -251,13 +293,18 @@ traffic is out of scope for this batch.
 
 ## Open follow-ups
 
-- Real-model provider integration: replace
-  `gigmate.extraction.llm.LLMProvider._invoke_model` and `_parse_response`
-  with a real SDK call, wire credentials server-side, remove the live gate,
-  and add the prompt-injection regression suite + latency budget. The seam,
-  registry entry, prompt versioning, `llm:seam-pending` trace notes and
-  `case-008-llm-skeleton-needs-review` evaluation case are all in place so
-  this batch only has to fill in the two seam methods.
+- Real-model provider integration: the next authorized batch must
+  (a) replace `gigmate.extraction.llm.LLMProvider._invoke_model` and
+  `_parse_response` with a real SDK call, (b) flip
+  `LLMProvider._SKELETON_SEAM` to `False`, and (c) gate real
+  authorization + live-origin flow with their own dedicated review
+  (the live-origin guard currently lives in this provider but is
+  unreachable while the seam flag is `True`). Adding the
+  prompt-injection regression suite + latency budget is also part of
+  that batch. The seam, prompt-versioning fallback chain,
+  `llm:prompt-malformed` and `llm:seam-pending` trace notes, the
+  `case-008-llm-skeleton-needs-review` evaluation case and the
+  `_prompt_load_error` audit attribute are all in place.
 - D frontend review surface for `pending_change_ids` produced by real
   providers; current Replay cards already accept them but a real provider
   round-trip is required before frontend changes ship.
