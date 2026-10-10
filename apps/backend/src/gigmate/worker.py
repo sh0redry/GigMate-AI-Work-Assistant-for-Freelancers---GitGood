@@ -21,6 +21,7 @@ from gigmate.db import (
     WahaConnection,
     WorkOrderRow,
 )
+from gigmate.errors import BusinessError
 from gigmate.extraction import (
     ExtractionRequest,
     persist_changes_for,
@@ -309,6 +310,11 @@ def main():
                 from gigmate.waha_sync import run_once as sync_once
 
                 sync_once()
+                from gigmate.waha_media import run_once as media_once
+
+                media_once()
+            except BusinessError as error:
+                log.error("media_poll_failed code=%s", error.code)
             except SQLAlchemyError:
                 log.error("control_poll_failed code=DATABASE_UNAVAILABLE")
         if not poll():
@@ -336,9 +342,15 @@ def maintain(factory=Session):
         for identifier in identifiers:
             with factory.begin() as db:
                 purge_expired(db, identifier)
+        from gigmate.waha_media import purge as purge_media
+
+        purge_media(factory)
         return True
     except SQLAlchemyError:
         log.error("worker_maintenance_failed code=DATABASE_UNAVAILABLE")
+        return False
+    except (BusinessError, OSError):
+        log.error("worker_maintenance_failed code=MEDIA_STORAGE_UNAVAILABLE")
         return False
 
 

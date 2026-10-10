@@ -648,6 +648,127 @@ class RejectActionCommand(ApproveActionCommand):
     reason: Text
 
 
+class WahaMediaCommand(WahaVersionCommand):
+    snapshot_id: Id
+    consent_download: Literal[True]
+    process: bool = False
+    consent_model: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def real_consent(cls, value):
+        if isinstance(value, dict) and value.get("consent_download") is not True:
+            raise ValueError("Explicit download consent required")
+        return value
+
+    @model_validator(mode="after")
+    def processing_consent(self):
+        if self.process and not self.consent_model:
+            raise ValueError("Explicit processing consent required")
+        return self
+
+
+class WahaMediaSegment(Model):
+    text: Annotated[str, Field(max_length=4000)]
+    page: Annotated[int, Field(ge=1, le=200)] | None = None
+    start_ms: Annotated[int, Field(ge=0, le=7200000)] | None = None
+    end_ms: Annotated[int, Field(ge=0, le=7200000)] | None = None
+
+    @model_validator(mode="after")
+    def location(self):
+        if (self.start_ms is None) != (self.end_ms is None):
+            raise ValueError("Both time bounds are required")
+        if self.end_ms is not None and self.end_ms <= self.start_ms:
+            raise ValueError("Invalid time bounds")
+        if self.page is not None and self.start_ms is not None:
+            raise ValueError("Use a page or audio segment, not both")
+        return self
+
+
+class WahaMediaSuggestion(Model):
+    field: Literal["summary", "schedule", "address", "requirements", "other"]
+    text: Annotated[str, Field(min_length=1, max_length=2000)]
+    source_indices: Annotated[
+        list[Annotated[int, Field(ge=0, le=199)]], Field(min_length=1, max_length=20)
+    ]
+
+
+class WahaMediaResult(Model):
+    provider: Annotated[str, Field(min_length=1, max_length=80)]
+    model_version: Annotated[str, Field(min_length=1, max_length=100)]
+    prompt_version: Annotated[str, Field(min_length=1, max_length=100)]
+    coverage: Literal["complete", "partial", "unknown"] = "unknown"
+    segments: Annotated[list[WahaMediaSegment], Field(max_length=200)]
+    summary: Annotated[str, Field(max_length=4000)] | None = None
+    suggestions: Annotated[list[WahaMediaSuggestion], Field(max_length=30)] = Field(
+        default_factory=list
+    )
+    unresolved_questions: Annotated[
+        list[Annotated[str, Field(max_length=1000)]], Field(max_length=30)
+    ] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def bounded_sources(self):
+        if sum(len(segment.text) for segment in self.segments) > 100000:
+            raise ValueError("Extraction text limit exceeded")
+        if any(i >= len(self.segments) for item in self.suggestions for i in item.source_indices):
+            raise ValueError("Suggestion source is missing")
+        return self
+
+
+class WahaMediaReviewCommand(Model):
+    expected_attachment_version: Annotated[int, Field(ge=1)]
+    expected_context_version: Annotated[int, Field(ge=0)]
+    expected_result_job_id: Id
+    reviewed: Literal[True]
+    note: Annotated[str, Field(max_length=2000)] = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def explicit_review(cls, value):
+        if isinstance(value, dict) and value.get("reviewed") is not True:
+            raise ValueError("Explicit source review required")
+        return value
+
+
+class WahaAttachmentView(Model):
+    id: Id
+    snapshot_id: Id
+    version: Annotated[int, Field(ge=1)]
+    context_version: Annotated[int, Field(ge=0)]
+    state: Literal["pending", "downloaded", "processed", "stale", "expired"]
+    mimetype: str | None
+    size_bytes: int | None
+    sha256: str | None
+    preview_available: bool
+    source_fingerprint: str
+    expires_at: UtcTimestamp
+    result: WahaMediaResult | None
+    result_job_id: Id | None
+    reviewed_at: UtcTimestamp | None
+    review_note: str | None
+    latest_job_id: Id | None
+
+
+class WahaMediaJobView(Model):
+    id: Id
+    attachment_id: Id
+    state: Literal[
+        "pending", "running", "retry_wait", "succeeded", "failed", "cancelled", "result_unknown"
+    ]
+    stage: Literal["download", "processing", "reconciling"]
+    attempts: int
+    error_code: str | None
+    updated_at: UtcTimestamp
+
+
+class WahaMediaCapabilities(Model):
+    enabled: bool
+    processor_configured: bool
+    max_bytes: int
+    accepted_types: list[str]
+
+
 T = TypeVar("T")
 
 

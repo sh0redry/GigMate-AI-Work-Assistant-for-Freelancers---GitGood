@@ -211,6 +211,48 @@ class WahaSyncJob(Base):
     __table_args__ = (UniqueConstraint("connection_id", "request_key", name="uq_waha_sync_key"),)
 
 
+class WahaAttachment(Base):
+    __tablename__ = "waha_attachments"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    snapshot_id: Mapped[str] = mapped_column(ForeignKey("waha_snapshots.id"), unique=True)
+    connection_id: Mapped[str] = mapped_column(ForeignKey("waha_connections.id"), index=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"))
+    source_fingerprint: Mapped[str] = mapped_column(String(64))
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    state: Mapped[str] = mapped_column(String(24), default="pending")
+    blob_key: Mapped[str | None] = mapped_column(String(40))
+    sha256: Mapped[str | None] = mapped_column(String(64))
+    mimetype: Mapped[str | None] = mapped_column(String(80))
+    size_bytes: Mapped[int | None] = mapped_column(Integer)
+    result: Mapped[dict | None] = mapped_column(JSON)
+    review: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class WahaMediaJob(Base):
+    __tablename__ = "waha_media_jobs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    attachment_id: Mapped[str] = mapped_column(ForeignKey("waha_attachments.id"), index=True)
+    connection_id: Mapped[str] = mapped_column(ForeignKey("waha_connections.id"), index=True)
+    request_key: Mapped[str] = mapped_column(String(128))
+    command: Mapped[dict] = mapped_column(JSON)
+    version: Mapped[int] = mapped_column(Integer)
+    context_version: Mapped[int] = mapped_column(Integer)
+    source_fingerprint: Mapped[str] = mapped_column(String(64))
+    state: Mapped[str] = mapped_column(String(24))
+    stage: Mapped[str] = mapped_column(String(16))
+    active_key: Mapped[str | None] = mapped_column(String(36), unique=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_token: Mapped[str | None] = mapped_column(String(36))
+    retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (UniqueConstraint("connection_id", "request_key", name="uq_waha_media_key"),)
+
+
 class MessageRow(Base):
     __tablename__ = "message_revisions"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)

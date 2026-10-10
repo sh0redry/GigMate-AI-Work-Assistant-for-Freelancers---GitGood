@@ -1,0 +1,19 @@
+# Opt-in A media storage only. B owns its processor implementation and credentials.
+# Add after waha.compose.yaml + waha-ingress.compose.yaml; migrate to head first.
+services:
+  ingress:
+    environment:
+      WAHA_MEDIA_ENABLED: ${WAHA_MEDIA_ENABLED:-false}
+      WAHA_MEDIA_ROOT: /run/waha-media
+      GIGMATE_MEDIA_PROCESSOR_FACTORY: ${GIGMATE_MEDIA_PROCESSOR_FACTORY:-}
+    volumes:
+      - waha-media-data:/run/waha-media
+  ingress-worker:
+    environment:
+      WAHA_MEDIA_ENABLED: ${WAHA_MEDIA_ENABLED:-false}
+      WAHA_MEDIA_ROOT: /run/waha-media
+      GIGMATE_MEDIA_PROCESSOR_FACTORY: ${GIGMATE_MEDIA_PROCESSOR_FACTORY:-}
+    volumes:
+      - waha-media-data:/run/waha-media
+volumes:
+  waha-media-data:

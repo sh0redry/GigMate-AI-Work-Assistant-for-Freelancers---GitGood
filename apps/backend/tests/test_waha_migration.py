@@ -43,7 +43,7 @@ def migration_database(tmp_path):
 def test_versioned_migration_preserves_replay_rows(migration_database, existing_revision):
     root = Path(__file__).resolve().parents[3]
     assert ScriptDirectory(str(root / "apps/backend/migrations")).get_heads() == [
-        "0008_waha_message_sync"
+        "0009_waha_media_ingestion"
     ]
     url = migration_database
     environment = {**os.environ, "DATABASE_URL": url, "PYTHONPATH": str(root / "apps/backend/src")}
@@ -124,7 +124,7 @@ def test_versioned_migration_preserves_replay_rows(migration_database, existing_
     with engine.connect() as db:
         assert (
             db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0008_waha_message_sync"
+            == "0009_waha_media_ingestion"
         )
         assert db.execute(text("SELECT accepted,duplicates,state FROM waha_connections")).one() == (
             3,

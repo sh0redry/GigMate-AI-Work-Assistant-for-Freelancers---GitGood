@@ -1,5 +1,7 @@
 # WAHA implementation and team handoff
 
+2026-10-10 media extension: [A media ingestion](role-a-media-ingestion.md) adds explicit owned original-file download/preview, private storage, durable processing/reconciliation jobs and source review. B has not connected a real model; OCR/ASR/parsing/GenAI remain B's dependency, not shipped A functionality. No external sending or work-order authority added.
+
 Current baseline (2026-10-10): PR #11, #13 and D01 #15 are merged into main (1336c60). Andy_WAHA_message_sync includes that main plus the verified D01 compatibility below. PR #14 now targets main; retain its 0008 migration, bounded timeline/history/media observations and pagination rather than replacing the branch with main. Older dependency-target notes below are historical.
 
 2026-10-10 D01 compatibility: combine PR #15's persisted original-request recovery, expiry/authority guards, saved-authorization reload and replay workspace with message-sync discovery pagination, loaded search/type filters and WahaMessages. A restored discovery retains its original offset/limit/version/key and returns choices plus next_offset to the UI; it does not automatically submit a new page or reset unsaved selections. Retried connect/recover remains distinct from explicit server result_unknown reconciliation. Real phone/group/media and independent acceptance limits remain unchanged.
@@ -19,7 +21,7 @@ The optional local WAHA connector feeds trusted events into the existing modular
 | Local pairing | Private initialization and durable backend control; the authenticated UI displays transient QR and status, reusing existing session volumes. No production onboarding. |
 | Conversation selection | The UI discovers opaque choices and explicitly saves authoritative database authorization. CLI configuration selection/provision remains an operator alternative; mixing the two can replace choices. |
 | History/sync | Legacy CLI still counts records. The product now explicitly imports bounded owned snapshots, with progress/cancel/retry, recorded permission exclusions and complete_history=false. No automatic business processing or complete-history guarantee. |
-| Groups/media metadata | Participant/reply provenance, captions and declared attachment metadata, supported media ACK/edit/revoke observations. No original files, OCR/transcription or media GenAI; real-format acceptance pending. |
+| Groups/media and files | Participant/reply provenance, captions, attachment metadata and supported ACK/edit/revoke. Explicit owned raw-file download/preview and A/B task/review seam are opt-in; real OCR/ASR/parsing/GenAI belongs to B and physical formats remain pending. |
 | Text events | Incoming/outgoing text creation, editing and revocation normalized into versioned events. Canonical and short provider targets mapped conservatively; direction/ambiguity checks reject uncertain targets. Real same-message revisions 1/2/3 verified twice after recovery. |
 | ACK and session events | Delivery acknowledgments update delivery metadata, not content/context or extraction jobs. Session state notifications update connection samples and reject conflicting ordering; accepted counts include these events, not just texts. |
 | Source security | Raw-body HMAC, size/type checks, server-owned account/session mapping, consent and conversation allowlists before business persistence. Connector secrets never enter browser/model contexts. Browser authentication remains seeded development sessions/CSRF, not production identity. |
@@ -28,7 +30,7 @@ The optional local WAHA connector feeds trusted events into the existing modular
 | Health/status | Persisted state/freshness, last content sync, receipt/duplicate/stale counts and job counts; separate API/provider/worker/monitor health, pipeline_ready, review_required and safe metrics. Health also validates configured private binding/ownership. |
 | Recovery review | Persistent gaps/source issues, explicit bounded incident/source lookup and independent human review. Finding a snapshot does not reconstruct revisions or clear incidents. Database outages cannot always record themselves. |
 | Local operations | Diagnose/reconcile, pause, provision, webhook configuration, private-binding migration/configuration-volume sync and explicit 30-day content cleanup. No arbitrary send command. Private configuration uses Docker volumes; session volume is preserved. |
-| Verification | Latest PostgreSQL-configured suite 340 passed, SQLite 333 passed/7 skipped; actual disposable HTTP/worker/history/source/evaluation checks. Earlier real text/authorization/pause evidence is retained separately. Group/media/history and E independent live acceptance remain separate gates. |
+| Verification | Latest PostgreSQL-configured suite 385 passed; media SQLite module 35 passed/1 PG-only skipped; frontend 48 passed; 15 disposable HTTP/worker/evaluation checkpoints. Earlier real text/authorization/pause evidence is retained separately. Physical media/history, B's real adapter and E independent acceptance remain gates. |
 
 ## API, commands and reading order
 
@@ -62,11 +64,11 @@ For setup/migrations/Compose/private-volume synchronization, use the recovery ru
 ## Not implemented or not established
 
 - Complete historical coverage, automatic unconsented backfill, reconstruction of missing revisions or guaranteed ordering/completeness. Bounded snapshot import/explicit gap lookup are implemented.
-- Original media reading/transcription/OCR/GenAI, complete chat mirroring, group management and cross-engine behavior. Basic group/media metadata is implemented; physical formats need acceptance.
+- Real media transcription/OCR/parsing/GenAI, complete chat mirroring, group management and cross-engine behavior. Explicit owned original-file download/preview and A/B handoff are implemented opt-in; B processing and physical formats need acceptance.
 - General live AI extraction, automatic confirmed work orders or automatic formal calendar writes. AI remains proposals/drafts; no external send adapter, approvals/outbox/send echoes or unknown-send reconciliation.
 - Production authentication, multi-merchant self-service onboarding, production secret management, public deployment hardening and alert delivery. Local connector screens are implemented.
 - Independent E signoff or a guarantee that no messages were lost. Historical unresolved counts are runtime metadata; use current status rather than old dated counts.
 
 ## Remaining batch plan
 
-Official Cloud API remains outside the plan. Next is own-account unified history/group/media-metadata acceptance and E's independent review. Original-file/GenAI design is deferred by the owner. Later multi-session/deployment and approved sending batches need explicit scope; C's approval/outbox/reconciliation precedes any send adapter. Preserve batch development and unified acceptance; this summary does not authorize additional deployment or sends.
+Official Cloud API remains outside the plan. Next is own-account unified media/history acceptance, B's real processor integration and E's independent review. The owner authorized A's original-file plumbing and kept real models/business extraction with B. Later multi-session/deployment and approved sending batches need explicit scope; C's approval/outbox/reconciliation precedes any send adapter. Preserve batch development and unified acceptance; this summary does not authorize additional sends.

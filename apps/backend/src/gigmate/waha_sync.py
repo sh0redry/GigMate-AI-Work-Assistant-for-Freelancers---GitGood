@@ -355,6 +355,9 @@ def authorization_changed(db, connection, chat_id, denied, now=None):
     elif not denied and opened:
         opened.ended_at = now
     if denied:
+        from gigmate.waha_media import revoke_jobs
+
+        revoke_jobs(db, connection, chat_id)
         for job in db.scalars(select(WahaSyncJob).where(WahaSyncJob.active_key == connection.id)):
             job.state, job.active_key, job.lease_token = "cancelled", None, None
             job.updated_at, job.error_code = now, "CONSENT_REVOKED"

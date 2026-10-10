@@ -1,5 +1,21 @@
 # 已完成工作与验证记录
 
+## A 附件读取 / B 协议交付 — 2026-10-10
+
+Andy_WAHA_media_ingestion 从 56e482e 建立，保留之前未提交的运行恢复文档。用户明确确认 B 尚无真实适配器，先完成 A 管道/协议。实现权限范围内图片/音频/PDF/TXT 的明确下载同意、私有受限文件/哈希、受保护预览/下载、附件版本、持久阶段/租约/重试/取消、不确定模型结果只读核对、刷新恢复任务及绑定附件/上下文/确切结果任务的来源核对。来源/权限变化抑制结果和缓存读取，完整缓存复用、损坏缓存仅在明确同意下重新获取。真实 OCR/ASR/解析/GenAI 由 B 提供，A 仅交付服务端工厂接口和严格片段/建议结构，不授予业务权限；B 未设置时明确失败，无假 AI 成功。新增 0009、源生成契约/类型、可选 Compose/非 root 私有共享卷及双语交接/ADR 0006。
+
+最终自动证据：**385 项 PG 配置测试通过**，含三条迁移路径及双媒体 worker 单次发布；B 部分夹具仍为 SQLite，不当作锁证据。**15 个实际隔离 HTTP/API/worker/评估检查点**（四种媒体传输/预览及 B 未配置处理）、评估 **7/7**、Alembic 检查和专用清理通过。合成音频/PDF 仅证明传输/签名门槛，不证明解码/解析。最终 SQLite 媒体模块 **35 通过/1 项 PG 专用跳过**。前端 **48 通过**，契约漂移/格式/TypeScript/生产构建、后端 Ruff/格式、导出、基线/空白/私有值扫描通过。初期夹具导入/状态/头部断言已修正，再跑最终套件通过。浏览器工具两次无法启动 Node runtime，不声称页面视觉/真实格式自动验收完成。
+
+自有账号本地准备：原数据库升级 0009/check 通过，前后 enabled/control_version/授权聊天 ID 完全相同。API/worker 用 --no-deps 重建、媒体启用/B 工厂未设置，保留原 provider/会话/绑定/数据库/监控。新卷初始需 appuser 权限（0700），已纠正并验证实际非 root 写入/移除，镜像也补初始化供新安装。部署媒体模块哈希与最终源码一致。工作台/登录/capabilities 都 200，enabled=true、processor_configured=false；provider WORKING、pipeline_ready=true、授权版本 9、一个授权聊天，**真实媒体任务/文件为零**。原 provider 全局下载仍关闭。没有读取真实文件/聊天/二维码、发送、provision、确认故障或模型调用。真实图片/音频/PDF/TXT、B 真实模型及 E 独立评审仍待完成；未 commit/push。
+
+## 原本地 WAHA 运行恢复 — 2026-10-10
+
+后续页面过期排查：provider 仍为 WORKING，connected/pipeline_ready 采样新鲜；直接 ingress 的 setup 和最近操作为 200/succeeded，用户后续操作后的 control_version 为 9。5173 前端监听已停止，浏览器保留旧页面却无法刷新状态，授权视图也标记待重载。已把 Vite 以隐藏后台进程在 apps/web 启动，代理到 18702。启动命令结束后，localhost:5173 的页面/登录/setup/最近操作均 200；setup 为 WORKING、sample_stale=false、available=true、无活动操作。用户页面需刷新/重新登录/重新载入已有授权；不得盲目清除待核对原请求。本次没有应用源码或真实授权修改。
+
+按用户要求修复原安装：Docker 重启/恢复时五个 WAHA 服务统一记录退出 255，restart=no 使其保持停止，原数据库则按 unless-stopped 恢复。provider FAILED 采样早于容器退出窗口；安全日志分析发现反复 WEBJS null.on 初始化异常，但未确定最初触发原因。启动相同容器、保留会话/绑定/数据库后，STARTING 转为 WORKING，无需二维码、升级镜像、替换回调或修改授权。仅将原本机这五个容器改为 unless-stopped，私有 local-data/waha-a02/restart-policy.override.yaml 用于以后 Compose 重建；共享默认配置不变，本安装重建时需把该私有覆盖加在 waha.compose.yaml 和 waha-ingress.compose.yaml 后。明确 stop 仍由操作者控制。
+
+运行证据：provider WORKING/WEBJS、connected、enabled/live_connected/pipeline_ready 为 true、四项健康、待处理/处理中/失败任务为零，**7 项不读取内容的 HTTP 检查通过**。授权版本仍为 7、授权聊天数仍为 1。保留原 DB/会话卷，未读取原文件/聊天/二维码、发送、provision、确认故障或修复历史数据库。26 项历史故障待核对，恢复健康不证明漏消息已恢复。原前端已在 5173 启动并指向 ingress18702；WAHA 用 localhost:5173，独立工单演示用 127.0.0.1:18080，分开主机名作用域的浏览器 cookie。无实现代码/迁移/依赖/共享重启默认变更，仅文档及配置检查；未 commit/push。
+
 ## PR #14 媒体撤回修复 — 2026-10-10
 
 基于 59b8e14 的独立 P2 评审在当前 691567b 仍可复现：撤回归一化把已解析 canonical ID 覆盖为短别名，导致原说明文字仍显示。修复前完整 ID 对照通过，短 ID 因出现两行而失败。撤回现沿用 existing.provider_message_id，无 schema/接口/迁移变化。参数化回归验证一个已撤回快照、稳定单条 HTTP 时间线、后续受限历史读取不能恢复说明文字、重复收据/撤回不推进上下文或产生业务任务。额外别名重放断言验证同一收据的完整/短引用指向同一快照。

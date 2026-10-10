@@ -1,5 +1,7 @@
 # Role B extraction subsystem
 
+2026-10-10 media handoff: [A's media agreement](role-a-media-ingestion.md) supplies scoped bytes, immutable request/source/hash identifiers, source/context-bound result storage and review. B owns the real OCR/ASR/parser/GenAI factory and read-only reconciliation. No real adapter has been added by A; retain the existing deterministic live-input guard. Media snapshot evidence must not be cast into an existing canonical message revision or directly materialized as a confirmed work-order change. Review also binds expected_result_job_id so a new result cannot inherit an old review.
+
 2026-10-09 integration update: [WAHA/extraction acceptance](role-a-integration-acceptance.md) records the merged control/worker handoff. Current Alembic head is `0007_merge_waha_extraction`, joining the unchanged B evidence migration and A's controls/provider-sample branch. Windows tests use pytest-owned temporary files; the default provider still refuses live extraction and no real-model/network integration was added.
 
 Updated: 2026-10-08. [Chinese](../zh/role-b-extraction.md). Builds on

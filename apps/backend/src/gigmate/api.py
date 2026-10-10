@@ -29,11 +29,16 @@ from gigmate.contracts import (
     RequirementChange,
     Task,
     Text,
+    WahaAttachmentView,
     WahaChoice,
     WahaControlCommand,
     WahaControlResult,
     WahaIssueReviewCommand,
     WahaIssueReviewResult,
+    WahaMediaCapabilities,
+    WahaMediaCommand,
+    WahaMediaJobView,
+    WahaMediaReviewCommand,
     WahaSelectionCommand,
     WahaSetup,
     WahaSourceGapView,
@@ -770,6 +775,211 @@ def connector_timeline(
         else None
     )
     return dict(items=current, next_cursor=next_cursor, request_id=request.state.request_id)
+
+
+@app.get(
+    "/api/v1/connectors/{connection_id}/media/capabilities",
+    response_model=Detail[WahaMediaCapabilities],
+)
+def media_capabilities(
+    connection_id: UUID,
+    request: Request,
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    from gigmate import waha_media
+
+    controls.owned(db, account, str(connection_id))
+    return detail(request, waha_media.capabilities())
+
+
+@app.post(
+    "/api/v1/connectors/{connection_id}/media/jobs",
+    status_code=202,
+    response_model=Detail[WahaMediaJobView],
+)
+def media_enqueue(
+    connection_id: UUID,
+    command: WahaMediaCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    from gigmate import waha_media
+
+    row = controls.owned(db, account, str(connection_id), lock=True)
+    return detail(request, waha_media.enqueue(db, row, command, idempotency_key))
+
+
+@app.get(
+    "/api/v1/connectors/{connection_id}/media/jobs/{job_id}",
+    response_model=Detail[WahaMediaJobView],
+)
+def media_job(
+    connection_id: UUID,
+    job_id: UUID,
+    request: Request,
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    from gigmate import waha_media
+    from gigmate.db import WahaMediaJob
+
+    row = controls.owned(db, account, str(connection_id))
+    job = db.get(WahaMediaJob, str(job_id))
+    if not job or job.connection_id != row.id:
+        controls.fail("NOT_FOUND", 404)
+    waha_media.attachment_owned(db, row, job.attachment_id)
+    return detail(request, waha_media.job_view(job))
+
+
+@app.post(
+    "/api/v1/connectors/{connection_id}/media/jobs/{job_id}/cancel",
+    response_model=Detail[WahaMediaJobView],
+)
+def media_cancel(
+    connection_id: UUID,
+    job_id: UUID,
+    command: WahaVersionCommand,
+    request: Request,
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    from gigmate import waha_media
+
+    row = controls.owned(db, account, str(connection_id), lock=True)
+    controls.version(row, command.expected_version)
+    return detail(request, waha_media.cancel(db, row, str(job_id)))
+
+
+@app.post(
+    "/api/v1/connectors/{connection_id}/media/jobs/{job_id}/reconcile",
+    response_model=Detail[WahaMediaJobView],
+)
+def media_reconcile(
+    connection_id: UUID,
+    job_id: UUID,
+    command: WahaVersionCommand,
+    request: Request,
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    from gigmate import waha_media
+
+    row = controls.owned(db, account, str(connection_id), lock=True)
+    controls.version(row, command.expected_version)
+    return detail(request, waha_media.reconcile(db, row, str(job_id)))
+
+
+@app.get(
+    "/api/v1/connectors/{connection_id}/media/attachments", response_model=Page[WahaAttachmentView]
+)
+def media_attachments(
+    connection_id: UUID,
+    request: Request,
+    snapshot_id: UUID,
+    cursor: str | None = None,
+    limit: int = Query(20, ge=1, le=100),
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    from gigmate import waha_media
+    from gigmate.db import WahaAttachment
+
+    row = controls.owned(db, account, str(connection_id))
+    waha_media.source(db, row, str(snapshot_id))
+    return page(
+        request,
+        db.scalars(
+            select(WahaAttachment).where(
+                WahaAttachment.connection_id == row.id,
+                WahaAttachment.snapshot_id == str(snapshot_id),
+            )
+        ),
+        cursor,
+        limit,
+        lambda asset: waha_media.attachment_view(db, row, asset),
+    )
+
+
+@app.get(
+    "/api/v1/connectors/{connection_id}/media/attachments/{attachment_id}",
+    response_model=Detail[WahaAttachmentView],
+)
+def media_attachment(
+    connection_id: UUID,
+    attachment_id: UUID,
+    request: Request,
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    from gigmate import waha_media
+
+    row = controls.owned(db, account, str(connection_id))
+    asset, _, _, _ = waha_media.attachment_owned(db, row, str(attachment_id))
+    return detail(request, waha_media.attachment_view(db, row, asset))
+
+
+@app.get(
+    "/api/v1/connectors/{connection_id}/media/attachments/{attachment_id}/content",
+    responses={200: {"content": {"application/octet-stream": {}}}},
+)
+def media_content(
+    connection_id: UUID,
+    attachment_id: UUID,
+    download: bool = False,
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    from gigmate import waha_media
+    from gigmate.db import Account
+
+    # Serialize the short bounded file read with authorization writes.
+    account = db.scalar(select(Account).where(Account.id == account.id).with_for_update())
+    row = controls.owned(db, account, str(connection_id), lock=True)
+    content, mime = waha_media.preview(db, row, str(attachment_id))
+    extension = {
+        "image/png": "png",
+        "image/jpeg": "jpg",
+        "image/webp": "webp",
+        "audio/ogg": "ogg",
+        "audio/mpeg": "mp3",
+        "audio/wav": "wav",
+        "audio/mp4": "m4a",
+        "application/pdf": "pdf",
+        "text/plain": "txt",
+    }[mime]
+    return Response(
+        content,
+        media_type=mime,
+        headers={
+            "Cache-Control": "no-store, private",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": f'{"attachment" if download else "inline"}; filename="{attachment_id}.{extension}"',
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+            "Referrer-Policy": "no-referrer",
+            "Cross-Origin-Resource-Policy": "same-origin",
+        },
+    )
+
+
+@app.post(
+    "/api/v1/connectors/{connection_id}/media/attachments/{attachment_id}/review",
+    response_model=Detail[WahaAttachmentView],
+)
+def media_review(
+    connection_id: UUID,
+    attachment_id: UUID,
+    command: WahaMediaReviewCommand,
+    request: Request,
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    from gigmate import waha_media
+
+    row = controls.owned(db, account, str(connection_id), lock=True)
+    return detail(request, waha_media.review(db, row, str(attachment_id), command))
 
 
 @app.post("/api/v1/connectors/waha/{connection_id}/events", response_model=Detail[ConnectorReceipt])

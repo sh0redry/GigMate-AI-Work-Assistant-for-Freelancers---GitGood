@@ -27,16 +27,29 @@ SECRET = "synthetic-setup-secret-" + "a" * 64
 KEY = "synthetic-setup-api-" + "b" * 64
 state = {"session": None, "writes": 0}
 stop_requested = threading.Event()
+MEDIA = {
+    "image": (
+        "image/png",
+        base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aA4sAAAAASUVORK5CYII="
+        ),
+    ),
+    "audio": ("audio/ogg", b"OggSsynthetic-format-only-not-a-speech-sample"),
+    "pdf": ("application/pdf", b"%PDF-1.7\nSynthetic format-only fixture"),
+    "txt": ("text/plain", b"Synthetic text attachment"),
+}
 
 
 class Provider(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
-    def answer(self, value, code=200, png=False):
-        data = value if png else json.dumps(value).encode()
+    def answer(self, value, code=200, png=False, content_type=None):
+        data = value if isinstance(value, bytes) else json.dumps(value).encode()
         self.send_response(code)
-        self.send_header("Content-Type", "image/png" if png else "application/json")
+        self.send_header(
+            "Content-Type", content_type or ("image/png" if png else "application/json")
+        )
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
@@ -44,6 +57,12 @@ class Provider(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.headers.get("X-Api-Key") != KEY:
             return self.answer({}, 401)
+        if self.path.startswith("/api/files/default/"):
+            token = self.path.rsplit("/", 1)[1].removesuffix(".bin")
+            if token not in MEDIA:
+                return self.answer({}, 404)
+            mime, content = MEDIA[token]
+            return self.answer(content, content_type=mime)
         if self.path == "/api/server/version":
             return self.answer({"version": "2026.9.1", "engine": "WEBJS"})
         if self.path.startswith("/api/sessions/default"):
@@ -60,6 +79,29 @@ class Provider(BaseHTTPRequestHandler):
 
             parsed = urlparse(self.path)
             if "/messages/" in parsed.path:
+                reference = unquote(parsed.path.split("/messages/", 1)[1])
+                if (
+                    reference.startswith("synthetic:media-")
+                    and reference.removeprefix("synthetic:media-") in MEDIA
+                ):
+                    token = reference.removeprefix("synthetic:media-")
+                    return self.answer(
+                        {
+                            "id": reference,
+                            "from": "synthetic:peer-new@lid",
+                            "fromMe": False,
+                            "hasMedia": True,
+                            "body": "Synthetic media " + token,
+                            "timestamp": int(time.time()) - 10,
+                            "media": {
+                                "mimetype": MEDIA[token][0],
+                                "filename": token + ".bin",
+                                "url": "http://127.0.0.1:18800/api/files/default/"
+                                + token
+                                + ".bin",
+                            },
+                        }
+                    )
                 return self.answer(
                     {
                         "id": unquote(parsed.path.split("/messages/", 1)[1]),
@@ -233,6 +275,9 @@ def main():
         "WAHA_CONNECTOR_CONFIG": str(private / "binding.json"),
         "WAHA_CONTROL_INTERNAL": "false",
         "TRUSTED_ORIGINS": "http://127.0.0.1:18803,http://localhost:18803",
+        "WAHA_MEDIA_ENABLED": "true",
+        "WAHA_MEDIA_ROOT": str(private / "media"),
+        "GIGMATE_MEDIA_PROCESSOR_FACTORY": "",
     }
     processes, server = [], None
     try:
@@ -467,6 +512,102 @@ def main():
             with Session() as db:
                 assert db.scalar(select(func.count()).select_from(Job)) == 1
             checkpoint("bounded_history_and_media_metadata_without_business_jobs")
+            for token, (mime, content) in MEDIA.items():
+                event = {
+                    "id": "synthetic:http-media-" + token,
+                    "event": "message.any",
+                    "session": "default",
+                    "timestamp": int(time.time() * 1000) - 10000,
+                    "payload": {
+                        "id": "synthetic:media-" + token,
+                        "from": "synthetic:peer-new@lid",
+                        "fromMe": False,
+                        "hasMedia": True,
+                        "body": "Synthetic media " + token,
+                        "media": {"mimetype": mime, "filename": token + ".bin"},
+                    },
+                }
+                encoded = json.dumps(event, separators=(",", ":")).encode()
+                assert (
+                    client.post(
+                        f"/api/v1/connectors/waha/{CONNECTION}/events",
+                        content=encoded,
+                        headers={
+                            "Content-Type": "application/json",
+                            "X-Webhook-Hmac-Algorithm": "sha512",
+                            "X-Webhook-Hmac": hmac.new(
+                                SECRET.encode(), encoded, hashlib.sha512
+                            ).hexdigest(),
+                        },
+                    ).status_code
+                    == 200
+                )
+                timeline = client.get(base + f"/chats/{selected}/timeline").json()[
+                    "items"
+                ]
+                snapshot = next(
+                    m["id"] for m in timeline if m["text"] == "Synthetic media " + token
+                )
+                command_body = {
+                    "expected_version": setup()["control_version"],
+                    "snapshot_id": snapshot,
+                    "consent_download": True,
+                    "process": False,
+                    "consent_model": False,
+                }
+                created = client.post(
+                    base + "/media/jobs",
+                    json=command_body,
+                    headers={
+                        **headers,
+                        "Idempotency-Key": "synthetic-download-" + token,
+                    },
+                )
+                assert created.status_code == 202
+                job = created.json()["data"]
+                wait(
+                    lambda: (
+                        client.get(base + "/media/jobs/" + job["id"]).json()["data"][
+                            "state"
+                        ]
+                        == "succeeded"
+                    )
+                )
+                response = client.get(
+                    base + "/media/attachments/" + job["attachment_id"] + "/content"
+                )
+                assert response.status_code == 200 and response.content == content
+                assert "no-store" in response.headers["cache-control"]
+                assert response.headers["x-content-type-options"] == "nosniff"
+                view = client.get(
+                    base + "/media/attachments/" + job["attachment_id"]
+                ).json()["data"]
+                assert view["result"] is None and view["latest_job_id"] == job["id"]
+                with Session() as db:
+                    assert db.scalar(select(func.count()).select_from(Job)) == 1
+                checkpoint(
+                    "owned_media_" + token + "_download_preview_no_business_effect"
+                )
+            processed = client.post(
+                base + "/media/jobs",
+                json={**command_body, "process": True, "consent_model": True},
+                headers={**headers, "Idempotency-Key": "synthetic-model-unconfigured"},
+            ).json()["data"]
+            wait(
+                lambda: (
+                    client.get(base + "/media/jobs/" + processed["id"]).json()["data"][
+                        "state"
+                    ]
+                    == "failed"
+                )
+            )
+            assert (
+                client.get(base + "/media/jobs/" + processed["id"]).json()["data"][
+                    "error_code"
+                ]
+                == "MEDIA_PROCESSOR_NOT_CONFIGURED"
+            )
+            checkpoint("b_processor_unconfigured_no_fake_model_result")
             missing = {
                 "id": "synthetic:http-missing-edit",
                 "event": "message.edited",
