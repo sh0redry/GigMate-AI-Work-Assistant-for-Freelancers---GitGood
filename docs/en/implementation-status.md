@@ -270,14 +270,82 @@ Verification: `ruff check`/`ruff format --check` (ruff 0.15.6, CI scope incl. `r
 
 ## Role B llm provider skeleton — 2026-10-09
 
-Branch `william/role-b-llm-skeleton` (local only; not pushed) on top of `d6e70eb` ships the real-model provider seam as a non-emitting skeleton. The next authorized batch fills in the two seam methods without touching the worker, contracts, registry selection or the Replay path.
+Branch `william/role-b-llm-skeleton` (local only; not pushed) on top of `d6e70eb` ships the real-model provider seam as a non-emitting skeleton. The next authorized batch fills in the two seam methods **and** flips the class flag `LLMProvider._SKELETON_SEAM` to `False`; without both, the provider still refuses every call. The worker, contracts, registry selection and Replay path are not touched by this batch.
 
-- New module `gigmate.extraction.llm`: `LLMProvider` (registered as `llm` in the registry) and `LLMIntegrationPending`. The provider honours `ExtractionRequest.origin` (refuses live-origin input until the real-model batch relaxes the guard), reads a versioned prompt file from `gigmate/extraction/prompts/role_b_extraction_v1.txt`, and surfaces the configured model and prompt versions in `ModelCallTrace`. Configuration via `GIGMATE_LLM_PROVIDER`, `GIGMATE_LLM_MODEL`, `GIGMATE_LLM_API_KEY`, `GIGMATE_LLM_ENDPOINT`, `GIGMATE_LLM_PROMPT_PATH`. The `GIGMATE_LLM_LIVE=1` gate is the explicit "leave the skeleton" switch: with the gate on and the seam unimplemented, the provider returns `needs_review` with an `llm:seam-pending` note and an explanatory `refused_reason`; a misconfigured production deployment surfaces immediately in the trace rather than silently falling back to a real model.
+What this batch actually adds (matches the diff; nothing else):
+
+- New module `gigmate.extraction.llm`: `LLMProvider` (registered as `llm` in the registry) and `LLMIntegrationPending`. Honours `ExtractionRequest.origin` (refuses live-origin input until `GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1` is exported), reads a versioned prompt file from `gigmate/extraction/prompts/role_b_extraction_v1.txt`, and surfaces the configured model and prompt versions in `ModelCallTrace`. Configuration via `GIGMATE_LLM_PROVIDER`, `GIGMATE_LLM_MODEL`, `GIGMATE_LLM_API_KEY`, `GIGMATE_LLM_ENDPOINT`, `GIGMATE_LLM_PROMPT_PATH`, `GIGMATE_LLM_LIVE`, `GIGMATE_LLM_ALLOW_LIVE_ORIGIN`. The module only reads `GIGMATE_LLM_API_KEY`; `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` are not consulted and no typed configuration error is raised for them.
+- Two-gate safety net (P2 review fix):
+  1. **Class flag `LLMProvider._SKELETON_SEAM = True`** — refuses every call regardless of environment variables. Stays `True` in this batch; the next batch must set it to `False` together with the real `_invoke_model` body.
+  2. **`GIGMATE_LLM_LIVE=1`** — required to actually invoke the model once the seam flag is open. The off-switch blocks at the provider layer (a future implementation of `_invoke_model` cannot be reached with the switch off, even when provider/model/key are configured).
+  Spy tests in `tests/test_extraction.py::test_llm_provider_off_gate_blocks_at_provider_layer`, `test_llm_provider_on_gate_blocks_at_provider_layer_when_seam_unimplemented` and `test_llm_provider_skeleton_flag_is_required_to_reach_invocation` pin both states.
+- Robust prompt loading (P2 review fix): `_read_prompt_version` catches `OSError` *and* `UnicodeDecodeError`, validates that the extracted version is non-empty, and records a descriptive `LLMProvider._prompt_load_error` whenever it falls back. Every failure mode (missing file, encoding error, missing header line, empty header value) surfaces as an `llm:prompt-malformed` outcome with a `Proposal` row and a `ModelCallTrace` row — the worker no longer raises into its broad `except Exception` for these inputs. New tests `test_llm_provider_missing_override_prompt_records_prompt_malformed`, `test_llm_provider_non_utf8_prompt_records_prompt_malformed`, `test_llm_provider_empty_prompt_version_records_prompt_malformed`, `test_llm_provider_no_prompt_version_header_records_prompt_malformed` and `test_llm_provider_worker_evidence_when_prompt_malformed` (the last one drives the worker end-to-end and asserts `job.error_code == EXTRACTION_NEEDS_REVIEW` plus a persisted `Proposal` and `ModelCallTrace`).
+- Deterministic provider's `prompt_version` property also catches `UnicodeDecodeError` and rejects empty version headers (`test_deterministic_provider_prompt_version_handles_malformed_files`).
 - New manifest case `case-008-llm-skeleton-needs-review` (provider field `llm`) pins the skeleton behaviour. The evaluator now skips cases whose `provider` field does not match the active provider, so the default deterministic run still passes 7/7. Running the manifest with `--provider llm` exercises the targeted case plus the five universal needs_review cases (3, 4, 5, 6, 7); the matched cases (1, 2) are expected to fail under `llm` and are documented as such.
 - `EvaluationCase` Pydantic model gained an optional `provider: Text | None` field; the generated `contracts/domain/models.schema.json` was regenerated via `python scripts/export_contracts.py` and `--check` is clean.
-- Tests: 6 new cases cover registry selection, no-config refusal, live-origin refusal, the `LIVE` gate, prompt-version parsing and the `case-008` pass under the `llm` provider. The full extraction suite is 25/25; the full backend suite is 274 passed / 5 skipped (PostgreSQL locking tests) on SQLite.
+- Manifest path resolution (cwd safety net): `_resolve_manifest_path` now anchors relative paths to the repository root (`Path(__file__).resolve().parents[5]` from `gigmate/extraction/evaluator.py`) instead of the current working directory. Absolute paths still work; missing files still raise `FileNotFoundError` with the resolved path. CI happened to pass only because pytest was invoked from the repo root, but the operator path (`scripts/run_evaluation.py` from a different cwd) would have crashed with `FileNotFoundError`. Verified by running the two evaluation-manifest tests from `/tmp` after the fix.
+- Tests: 8 new cases were added on top of the original 6, covering the new gate semantics, prompt failure modes, worker evidence and the deterministic property fallback. The full extraction suite is 34/34; the full backend suite is 325 passed / 6 skipped (PostgreSQL locking tests) on SQLite.
 - `scripts/run_evaluation.py --provider llm` end-to-end run produced a JSON report: 6 pass (cases 3-8), 2 fail (cases 1-2 expected) — skeleton behaves as designed.
 - CI: `.github/workflows/skeleton.yml` `ruff check` and `ruff format --check` scope restored to include `scripts/run_evaluation.py` (the previous merge dropped it as part of the unrelated web-upload workaround).
-- Bilingual docs: `docs/{en,zh}/role-b-extraction.md` gain the `llm provider skeleton` section, the provider selection table gains the `llm` row, and the "open follow-ups" item is reframed to point at the two seam methods the next batch must replace.
+- Bilingual docs: `docs/{en,zh}/role-b-extraction.md` gain the `llm provider skeleton` section, the provider selection table gains the `llm` row, the `Two-gate safety net` and `Prompt loading failure modes` subsections describe the new behaviour, and the "open follow-ups" item is reframed to require (a) a real SDK call, (b) flipping `_SKELETON_SEAM` to `False` and (c) a dedicated authorization review for live-origin traffic.
 
-Verification (ruff 0.15.6, the version pinned in `apps/backend/requirements.lock`): `ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py` clean; `ruff format --check` clean; `export_contracts.py --check` synchronized; `check_baseline.py` PASS; `pytest apps/backend/tests -q` 274 passed / 5 skipped; LLM eval run 6/8 with the two expected matched-case misses. No migration changes, no contracts beyond the optional `EvaluationCase.provider` field. Branch has not been committed or pushed; awaits the user's preferred upload route.
+What this batch does **not** include (regression to be honest about the scope):
+
+- No real model integration, no real model credentials (no `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` reads, no typed configuration errors for them), and no media processing adapter. A's attachment link (OCR/ASR/PDF) still needs an independent `MediaProcessor.process/reconcile` implementation; this PR is not evidence that OCR/ASR/PDF is complete.
+- `scripts/smoke_deepseek.py` is a manual operator helper that requires `GIGMATE_LLM_LIVE=1` plus a real API key before it makes any request; the CI suite uses the in-process `httpx.Client` test seam. The helper is not a CI entry point.
+- PostgreSQL suite, HTTP integration and full Docker reruns were not exercised in this round (Docker Desktop Linux engine unavailable in the reviewer's environment); SQLite evidence above is the conditional-compatibility run, not locking proof.
+
+## Role B independent-review fixes — 2026-10-10
+
+Applied on PR head `e44d8ec` (branch `WillW27/role-b-deepseek-integration` on GitHub) in response to the independent review of the same commit. The reviewer distinguished between intentional design (kept as-is), reproducible defects (fixed in this PR), and pre-activation acceptance gates (recorded in the role-b-extraction docs, not in scope here). The skeleton lock, operator gate, live-origin opt-in, empty-prompt fallback, UTF-8 fallback, off-gate behaviour, and bounded model-call retry are accepted design choices and stay untouched.
+
+Reproducible defects (P2) fixed:
+
+- **Smoke-script exit code.** `scripts/smoke_deepseek.py` previously returned 0 for every `needs_review` outcome unless `notes == ("llm:not-configured",)`. Configuration / transport / parse / schema / lock failures (`llm:seam-pending`, `llm:http-failed`, `llm:response-malformed`, `llm:response-schema-failed`, `llm:prompt-load-failed`) all silently produced a green exit. The script now classifies via a `_classify_exit_code` helper: matched → 0; LLM-driven `llm:needs-review` → 0; any infrastructure-failure note → 1; any other `needs_review` note → 1 (conservative). Re-verified: with the skeleton lock on and the live gate open the script exits 1; with the live gate closed the script exits 2 (env check) before reaching the model.
+- **Registry metadata JSON serialisation.** `gigmate.extraction.registry.list_provider_metadata()` previously read `cls.prompt_version`. After the prompt-version was made an instance-level `@property` on `DeterministicProvider` (so deterministic and LLM providers stay in lock-step with the prompt file), reading the property off the class returned the `property` object and `json.dumps(...)` raised `TypeError: Object of type property is not JSON serializable`. The helper now constructs each provider once and reads `instance.prompt_version`; if construction fails (e.g. a future provider needs runtime config) it falls back to the class attribute. Round-trip is verified by a new regression test.
+
+Regression tests added (synthetic, no network):
+
+- `test_list_provider_metadata_is_json_serialisable` — asserts the helper returns plain strings and round-trips through `json.dumps` for all three registered providers.
+- `test_smoke_classify_exit_code_marks_infra_failures_as_nonzero` — loads `scripts/smoke_deepseek.py` via `importlib`, calls `_classify_exit_code` with each documented notes tuple, and asserts exit codes.
+
+Pre-activation acceptance gates (documented, not implemented): five items from the review (trusted identity and provenance re-binding, vendor / endpoint semantics, retry design with the worker lock and lease, date interpretation with a real time basis, stable sanitised error codes) are recorded under `## Pre-activation acceptance gates` in `docs/en/role-b-extraction.md` and the Chinese mirror. Each will ship as its own authorised batch with its own review; none is in scope for this PR.
+
+Verification on the same disposable SQLite database after the Branch A-03 migrations had already been upgraded to head:
+
+- `python -m ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py scripts/smoke_deepseek.py`: 0 errors.
+- `python -m ruff format --check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py scripts/smoke_deepseek.py`: 53 files already formatted.
+- `python scripts/export_contracts.py --check`: synchronized.
+- `python -m pytest apps/backend/tests/test_extraction.py -q --basetemp=/tmp/extraction_full`: 36 passed.
+- `python -m pytest apps/backend/tests -q --basetemp=/tmp/extraction_full`: 327 passed, 6 skipped (PostgreSQL row-locking tests).
+- `python scripts/run_evaluation.py --manifest contracts/evaluation/manifest.json`: 7/7 pass (deterministic, default).
+- `python scripts/run_evaluation.py --manifest contracts/evaluation/manifest.json --provider llm`: 7 pass (cases 3-9), 2 fail (cases 1-2 expected; matched synthetic fixtures need a real model).
+- `python -c "import json; from gigmate.extraction.registry import list_provider_metadata; json.dumps(list_provider_metadata())"`: clean round-trip.
+- `bash -c "GIGMATE_LLM_PROVIDER=deepseek GIGMATE_LLM_MODEL=deepseek-chat GIGMATE_LLM_API_KEY=sk-fake GIGMATE_LLM_LIVE=1 python scripts/smoke_deepseek.py >/dev/null 2>&1; echo $?"`: prints `1` (seam-pending → infra failure).
+
+The skeleton lock, the operator gate and the live-origin opt-in remain in place. No real model is invoked, no real API key is read, no real traffic is touched.
+
+## Merge of latest main into PR #20 — 2026-10-10
+
+After PR #18 (`llm:live-gate-off` + malformed-prompt/evidence fixes) merged to main as `cc2ac8e`, merging latest main into the PR #20 head `fb7f4db` produced text conflicts in `apps/backend/src/gigmate/extraction/llm.py` and `docs/{en,zh}/role-b-extraction.md` — a genuine fork between the two fix batches, not a #20 defect. Resolution keeps **both** sides:
+
+- The always-closed skeleton gate stays first: while `_SKELETON_SEAM=True` every call — operator gate on or off, configured or not — returns `llm:seam-pending` and no HTTP client is constructed (the #20 semantics; the production flag was **not** opened to make the conflict disappear).
+- Once the flag is lifted, #18's semantics are preserved: missing vendor/model/key (or an unknown vendor) → `llm:not-configured`, closed operator gate → `llm:live-gate-off`, live-origin input without `GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1` → `llm:origin-live-refused`.
+- All #18 malformed-prompt/evidence fixes stay: every prompt failure mode records `llm:prompt-malformed` with the `_prompt_load_error` cause; the worker persists `Proposal` + `ModelCallTrace` instead of failing.
+- The #20 inactive HTTP implementation (`_invoke_model` / `_call_chat_completion` / `_parse_response`, 30 s timeout, one retry) stays behind the gates. `_refusal_reason` now returns `(note, reason)` tuples uniformly instead of mixing raise/tuple styles; `_parse_response` additionally defaults `candidates` on LLM-driven `needs_review` replies so a minimal review response validates instead of surfacing `llm:response-schema-failed`.
+
+Combined test adjustments in `apps/backend/tests/test_extraction.py` (now 42 tests, up from 36; #18's four duplicate prompt-malformed unit tests are superseded by the stronger #20 versions, noted in-file):
+
+- Skeleton gate on: both operator-gate states (on/off) assert `llm:seam-pending` with a booby-trapped `_client_factory` proving no client is ever constructed.
+- Isolated test subclasses flip `_SKELETON_SEAM=False` only: gate-off still refuses with `llm:live-gate-off` and no client; gate-on issues the documented fake-client request (URL, bearer header, `json_object`, temperature 0) and the canned response parses; live-origin is refused without the opt-in and allowed with it.
+
+`scripts/smoke_deepseek.py` now also classifies `llm:live-gate-off` and `llm:origin-live-refused` as infra failures (exit 1) for post-flip correctness; the skeleton-lock comment attribution was corrected to #20.
+
+Verification (repo `.venv`, SQLite — conditional compatibility, not locking proof; no real model, credentials, WhatsApp traffic or deployment touched):
+
+- `python -m ruff check ...` / `ruff format --check ...` (incl. `scripts/smoke_deepseek.py`): clean.
+- `python scripts/export_contracts.py --check`: synchronized.
+- `python -m pytest apps/backend/tests -q`: 365 passed, 7 skipped (PostgreSQL row-locking tests).
+- `python scripts/check_baseline.py`: PASS.
+- Frontend: `npm run check:api`, `format:check`, `build` all pass (dependencies installed with `npm ci` in this environment).
+- `run_evaluation.py` (disposable SQLite): deterministic 9/9 exit 0; `--provider llm` 7 pass, 2 expected fail (cases 1-2 need a real model).

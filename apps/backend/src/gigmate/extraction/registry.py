@@ -71,10 +71,40 @@ def _reset_provider_for_testing(instance: Provider | None = None) -> None:
 
 
 def list_provider_metadata() -> list[dict]:
-    return [
-        {"name": cls.name, "model_version": cls.model_version, "prompt_version": cls.prompt_version}
-        for cls in _REGISTRY.values()
-    ]
+    """Return JSON-serialisable metadata for every registered provider.
+
+    Reads the version attributes off a constructed instance so providers
+    whose ``prompt_version`` is an instance-level ``@property`` (e.g.
+    :class:`DeterministicProvider`, which reads it from the bundled
+    prompt file) are reported correctly. Reading the property off the
+    class would return the ``property`` object itself, which is not
+    JSON-serialisable.
+    """
+    rows: list[dict] = []
+    for cls in _REGISTRY.values():
+        try:
+            instance = cls()
+        except Exception:
+            # Provider construction is allowed to require runtime config
+            # (e.g. LLMProvider reads env vars). Fall back to the class
+            # attributes so the helper still reports something useful.
+            rows.append(
+                {
+                    "name": getattr(cls, "name", cls.__name__),
+                    "model_version": getattr(cls, "model_version", "unknown"),
+                    "prompt_version": getattr(cls, "prompt_version", "0.0.0-unknown"),
+                }
+            )
+            continue
+        prompt_version = getattr(instance, "prompt_version", "0.0.0-unknown")
+        rows.append(
+            {
+                "name": instance.name,
+                "model_version": instance.model_version,
+                "prompt_version": prompt_version,
+            }
+        )
+    return rows
 
 
 def build_request_for(  # pragma: no cover - test helper only

@@ -280,16 +280,87 @@ PR #3 的 backend run 37432110763 在 test_waha_team.py 收集阶段报 `ModuleN
 - 小项：`scripts/run_evaluation.py` 导入补 `# noqa: E402`，并把该脚本纳入 `.github/workflows/skeleton.yml` 的 `ruff check`/`ruff format --check` 范围。
 
 验证：`ruff check`/`ruff format --check`（ruff 0.15.6，CI 范围含 `run_evaluation.py`）通过；`pytest apps/backend/tests -q`：268 通过、5 跳过（PostgreSQL 套件需要真实 PG 实例；两条新的外键敏感测试在 SQLite 上执行同一代码路径）；`export_contracts.py --check` 同步；`check_baseline.py` 通过；评测 7/7 通过。本轮无迁移改动（`0005` 已随 PR 交付）。
-## Role B llm provider 骨架 — 2026-10-09
+## Role B llm provider 骨架（含 P2 review 修复）— 2026-10-09/10
 
-本地分支 `william/role-b-llm-skeleton`（未推送）基于 `d6e70eb`，把真实模型 provider 的接缝作为不发请求的骨架交付。下一授权批次只需补齐两个接缝方法，不必动 worker、合约、注册表选择或 Replay 路径。
+本地分支 `william/role-b-llm-skeleton`（未推送）基于 `d6e70eb`，把真实模型 provider 的接缝作为不发请求的骨架交付。下一授权批次必须**同时**补齐两个接缝方法并把类标志 `LLMProvider._SKELETON_SEAM` 翻为 `False`，否则 provider 仍然拒绝所有请求。本批不动 worker、合约、注册表选择或 Replay 路径。
 
-- 新增 `gigmate.extraction.llm`：`LLMProvider`（注册表名 `llm`）与 `LLMIntegrationPending`。Provider 遵守 `ExtractionRequest.origin` 信任边界（live 来源在真实模型批次放宽前一律拒绝），从 `gigmate/extraction/prompts/role_b_extraction_v1.txt` 读版本化 prompt，并把配置的模型与 prompt 版本写入 `ModelCallTrace`。配置通过 `GIGMATE_LLM_PROVIDER`、`GIGMATE_LLM_MODEL`、`GIGMATE_LLM_API_KEY`、`GIGMATE_LLM_ENDPOINT`、`GIGMATE_LLM_PROMPT_PATH`。`GIGMATE_LLM_LIVE=1` 是显式的“离开骨架”闸门：开启且接缝未补全时返回 `needs_review`，写 `llm:seam-pending` 备注与详细 `refused_reason`；生产环境配置错误会立即在 trace 中暴露，不会悄悄回落。
+本批实际新增（与 diff 对齐，无夸大）：
+
+- 新增 `gigmate.extraction.llm`：`LLMProvider`（注册表名 `llm`）与 `LLMIntegrationPending`。Provider 遵守 `ExtractionRequest.origin` 信任边界（live 来源在 `GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1` 之前一律拒绝），从 `gigmate/extraction/prompts/role_b_extraction_v1.txt` 读取版本化 prompt，并把配置的模型与 prompt 版本写入 `ModelCallTrace`。配置通过 `GIGMATE_LLM_PROVIDER`、`GIGMATE_LLM_MODEL`、`GIGMATE_LLM_API_KEY`、`GIGMATE_LLM_ENDPOINT`、`GIGMATE_LLM_PROMPT_PATH`、`GIGMATE_LLM_LIVE`、`GIGMATE_LLM_ALLOW_LIVE_ORIGIN`。模块**只读** `GIGMATE_LLM_API_KEY`；刻意不读 `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`，也不为它们抛 typed configuration error。
+- 双闸门安全网（P2 review 修复）：
+  1. **类标志 `LLMProvider._SKELETON_SEAM = True`**——无论环境变量如何配置都拒绝所有调用。本批保持 `True`，下一批次必须把它翻为 `False` 的同时实现真实 `_invoke_model`。
+  2. **`GIGMATE_LLM_LIVE=1`**——真实调用所需。开关关闭时在 provider 层阻止调用，即使 provider/model/key 全部配置；未来真实实现的 `_invoke_model` 也无法在开关关闭时被触达。
+  Spy 测试 `test_llm_provider_off_gate_blocks_at_provider_layer`、`test_llm_provider_on_gate_blocks_at_provider_layer_when_seam_unimplemented`、`test_llm_provider_skeleton_flag_is_required_to_reach_invocation` 固化两种状态。
+- prompt 加载容错（P2 review 修复）：`_read_prompt_version` 同时捕获 `OSError` *与* `UnicodeDecodeError`，校验版本字符串非空，并把失败原因记入 `LLMProvider._prompt_load_error`。所有失败模式（文件缺失、编码错误、缺版本行、空版本头）都返回 `llm:prompt-malformed` outcome，并落库 `Proposal` 与 `ModelCallTrace`——worker 不会再把这些情况冒到宽口径 `except Exception` 触发 `PROCESSING_FAILED` 重试。新增 `test_llm_provider_missing_override_prompt_records_prompt_malformed`、`test_llm_provider_non_utf8_prompt_records_prompt_malformed`、`test_llm_provider_empty_prompt_version_records_prompt_malformed`、`test_llm_provider_no_prompt_version_header_records_prompt_malformed`、`test_llm_provider_worker_evidence_when_prompt_malformed`（最后一条端到端跑 worker 并断言 `job.error_code == EXTRACTION_NEEDS_REVIEW` 加落库的 `Proposal` / `ModelCallTrace`）。
+- deterministic provider 的 `prompt_version` 属性同样捕获 `UnicodeDecodeError` 并拒绝空版本头（`test_deterministic_provider_prompt_version_handles_malformed_files`）。
 - 新增清单用例 `case-008-llm-skeleton-needs-review`（`provider` 字段为 `llm`）固化骨架行为。评测器现在跳过 `provider` 字段与当前 provider 不匹配的用例，所以默认 deterministic 运行仍 7/7 通过。用 `--provider llm` 跑清单会执行这条定向用例加五条通用 needs_review 用例（3、4、5、6、7）；matched 用例（1、2）在 `llm` 下预期失败，文档中已说明。
 - `EvaluationCase` Pydantic 模型新增可选字段 `provider: Text | None`；通过 `python scripts/export_contracts.py` 重新生成 `contracts/domain/models.schema.json`，`--check` 同步。
-- 测试：新增 6 个用例覆盖注册表选择、无配置拒绝、live 来源拒绝、`LIVE` 闸门、prompt 版本解析与 `case-008` 在 `llm` provider 下通过。extraction 全套 25/25；后端全套在 SQLite 上 274 通过、5 跳过（PostgreSQL 锁测试）。
+- 清单路径解析（cwd 安全网）：`_resolve_manifest_path` 现在把相对路径锚定到仓库根（`evaluator.py` 文件的 `parents[5]`），不再依赖当前工作目录。绝对路径保持原行为；文件仍缺失时抛 `FileNotFoundError` 并带上解析后的路径。CI 之前能通过只是因为 pytest 总是从仓库根启动，但 `scripts/run_evaluation.py` 在其他 cwd 下执行会直接 `FileNotFoundError` 崩溃。修复后用 `/tmp` 作为 cwd 跑两条 evaluation-manifest 用例均通过。
+- 测试：原有 6 个用例上再补 8 个，extraction 全套 34/34；后端全套在 SQLite 上 325 通过、6 跳过（PostgreSQL 锁测试）。
 - `scripts/run_evaluation.py --provider llm` 端到端运行生成的 JSON 报告：6 通过（用例 3-8）、2 失败（用例 1-2 符合预期）——骨架行为如设计。
 - CI：`.github/workflows/skeleton.yml` 的 `ruff check` 与 `ruff format --check` 范围已恢复包含 `scripts/run_evaluation.py`（上次合并因网页上传绕过被去掉）。
-- 双语文档：`docs/{en,zh}/role-b-extraction.md` 新增 `llm provider 骨架` 章节，provider 选择表新增 `llm` 行，“待办”条目改为指向下一批次需要替换的两个接缝方法。
+- 双语文档：`docs/{en,zh}/role-b-extraction.md` 新增 `llm provider 骨架` 章节并补充 `双闸门安全网` 与 `prompt 加载失败模式` 小节，provider 选择表新增 `llm` 行；“待办”条目改写为下一批次必须完成三件事：(a) 真实 SDK 调用、(b) `_SKELETON_SEAM = False`、(c) 真实授权 + live-origin 通道走独立审查。
 
-验证（ruff 0.15.6，锁定版本见 `apps/backend/requirements.lock`）：`ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py` 通过；`ruff format --check` 通过；`export_contracts.py --check` 同步；`check_baseline.py` 通过；`pytest apps/backend/tests -q` 274 通过、5 跳过；LLM 评测 6/8（两条 matched 用例按预期失败）。无迁移改动；合约仅新增 `EvaluationCase.provider` 可选字段。分支尚未提交或推送，等用户选择上传方式。
+本批**未做**（诚实地划清范围）：
+
+- 没有真实模型接入、没有真实模型凭据（OPENAI_API_KEY/ANTHROPIC_API_KEY 未读、相关 typed configuration error 未实现）；`GIGMATE_LLM_API_KEY` 仅作为后续服务端配置记录。
+- 没有媒体处理适配器。A 的附件链路（OCR/ASR/PDF）仍需独立 `MediaProcessor.process/reconcile` 实现；本 PR 不能作为这三项已完成的依据。
+- `scripts/smoke_deepseek.py` 是手动运维脚本，需要 `GIGMATE_LLM_LIVE=1` 加真实 key 才会发请求；CI 用进程内 `httpx.Client` 测试 seam。
+- PostgreSQL 全套、HTTP 集成与完整 Docker 重跑在本轮 reviewer 环境中未跑（Docker Desktop Linux engine 不可用）；上述 SQLite 结果仅作为条件兼容性证据，不作锁证据。
+
+验证（ruff 0.15.6，锁定版本见 `apps/backend/requirements.lock`）：`ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py` 通过；`ruff format --check` 通过；`export_contracts.py --check` 同步；`check_baseline.py` 通过；`pytest apps/backend/tests -q` 325 通过、6 跳过；LLM 评测 6/8（两条 matched 用例按预期失败）。无迁移改动；合约仅新增 `EvaluationCase.provider` 可选字段。分支尚未提交或推送，等用户选择上传方式。
+
+## Role B 独立复核修复 — 2026-10-10
+
+本批次对 PR head `e44d8ec`（远端 `WillW27/role-b-deepseek-integration`）的独立复核作出响应。复核者明确区分了**有意设计**（保持原样）、**当前可复现缺陷**（在本 PR 修复）、**真实启用前验收门槛**（仅在 role-b-extraction 文档中记录，本 PR 不实现）。骨架锁、操作员闸、live-origin opt-in、空 prompt 兜底、UTF-8 兜底、活门行为、有限模型调用重试均被认可为设计选择，**未改动**。
+
+当前可复现缺陷（P2）已修复：
+
+- **smoke 退出码。** `scripts/smoke_deepseek.py` 此前对所有 `needs_review` 输出都返回 0，除非 `notes == ("llm:not-configured",)`。配置 / 传输 / 解析 / Schema / 锁失败（`llm:seam-pending`、`llm:http-failed`、`llm:response-malformed`、`llm:response-schema-failed`、`llm:prompt-load-failed`）全部静默返回绿色。现通过 `_classify_exit_code` 分类：matched → 0；模型主动的 `llm:needs-review` → 0；任何 infra-failure note → 1；其他 `needs_review` note → 1（保守）。复测：默认骨架锁 + 活门开时脚本退出 1；活门关时脚本在到达模型前就退出 2（env check）。
+- **registry 元数据 JSON 序列化。** `gigmate.extraction.registry.list_provider_metadata()` 此前读 `cls.prompt_version`。`DeterministicProvider` 把 `prompt_version` 改为实例级 `@property`（让 deterministic 与 LLM provider 与 prompt 文件锁步）后，从类上读这个 property 会返回 `property` 对象本身，`json.dumps(...)` 抛 `TypeError: Object of type property is not JSON serializable`。现在该 helper 构造一次 provider 读 `instance.prompt_version`；若构造失败（未来 provider 可能要运行时配置）则回落到类属性。新增回归测试验证可往返。
+
+新增回归测试（合成，无网络）：
+
+- `test_list_provider_metadata_is_json_serialisable` —— 断言 helper 对三个注册 provider 都返回纯字符串并能 `json.dumps` 往返。
+- `test_smoke_classify_exit_code_marks_infra_failures_as_nonzero` —— 用 `importlib` 加载 `scripts/smoke_deepseek.py`，逐个传入文档化的 notes 元组，断言退出码。
+
+启用前验收门槛（仅文档化、不实现）：复核者列出的 5 项（可信身份与出处重新绑定、vendor / endpoint 语义、与 worker 锁和租约一起设计的重试、带真实时间依据的日期解释、稳定脱敏的错误码）记入 `docs/{en,zh}/role-b-extraction.md` 新增的"Pre-activation acceptance gates / 真实启用前验收门槛"小节。每一项都是独立批次、独立评审，不在本 PR 范围。
+
+验证（沿用上一批次的可丢弃 SQLite 库，A-03 分支迁移已升级至 head）：
+
+- `python -m ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py scripts/smoke_deepseek.py`：0 错误。
+- `python -m ruff format --check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py scripts/smoke_deepseek.py`：53 files already formatted。
+- `python scripts/export_contracts.py --check`：同步。
+- `python -m pytest apps/backend/tests/test_extraction.py -q --basetemp=/tmp/extraction_full`：36 通过。
+- `python -m pytest apps/backend/tests -q --basetemp=/tmp/extraction_full`：327 通过、6 跳过（PostgreSQL 行锁测试）。
+- `python scripts/run_evaluation.py --manifest contracts/evaluation/manifest.json`：7/7 通过（deterministic 默认）。
+- `python scripts/run_evaluation.py --manifest contracts/evaluation/manifest.json --provider llm`：7 通过（用例 3-9）、2 失败（用例 1-2 预期失败；matched 合成 fixture 需真实模型）。
+- `python -c "import json; from gigmate.extraction.registry import list_provider_metadata; json.dumps(list_provider_metadata())"`：往返正常。
+- `bash -c "GIGMATE_LLM_PROVIDER=deepseek GIGMATE_LLM_MODEL=deepseek-chat GIGMATE_LLM_API_KEY=sk-fake GIGMATE_LLM_LIVE=1 python scripts/smoke_deepseek.py >/dev/null 2>&1; echo $?"`：输出 `1`（seam-pending → infra failure）。
+
+骨架锁、操作员闸、live-origin opt-in 全部保留。**未调用任何真实模型、未读取任何真实 API key、未接触任何真实流量。**
+
+## PR #20 合并最新 main（#18 之后）——2026-10-10
+
+PR #18（`llm:live-gate-off` + malformed-prompt/证据修复）以 `cc2ac8e` 合入 main 后，把最新 main 合入 PR #20 head `fb7f4db` 时在 `apps/backend/src/gigmate/extraction/llm.py` 与 `docs/{en,zh}/role-b-extraction.md` 出现文本冲突——这是两次修复批次之间的真实分叉，不是 #20 的缺陷。解决方案**两侧都保留**：
+
+- 常闭骨架门仍然在最前：`_SKELETON_SEAM=True` 期间所有调用（运维闸门开或关、配置与否）一律返回 `llm:seam-pending`，且绝不构造 HTTP 客户端（#20 语义；**没有**为了让冲突消失而打开生产骨架锁）。
+- 骨架标志翻开之后，#18 语义完整保留：vendor/model/key 缺失或 vendor 未知 → `llm:not-configured`；运维闸门关闭 → `llm:live-gate-off`；未开 `GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1` 的 live 来源 → `llm:origin-live-refused`。
+- #18 的全部 malformed-prompt/证据修复保留：每种 prompt 失败模式都记录带 `_prompt_load_error` 原因的 `llm:prompt-malformed`；worker 持久化 `Proposal` + `ModelCallTrace` 而不是失败。
+- #20 的未激活 HTTP 实现（`_invoke_model` / `_call_chat_completion` / `_parse_response`，30 秒超时、重试 1 次）保留在门后。`_refusal_reason` 统一改为返回 `(note, reason)` 元组，不再混用 raise/元组两种风格；`_parse_response` 对模型主动 `needs_review` 的回复补默认 `candidates`，最小化回复不再误报 `llm:response-schema-failed`。
+
+`apps/backend/tests/test_extraction.py` 组合调整（现 42 项，此前 36 项；#18 的四个重复 prompt-malformed 单测由更强的 #20 版本取代，文件内已注明）：
+
+- 骨架门开启：运维闸门开/关两种状态都断言 `llm:seam-pending`，并用陷阱式 `_client_factory` 证明从未构造客户端。
+- 仅隔离测试子类翻转 `_SKELETON_SEAM=False`：闸门关仍以 `llm:live-gate-off` 拒绝且无客户端；闸门开发出文档化的假客户端请求（URL、bearer 头、`json_object`、temperature 0）并解析罐头响应；live 来源未开 opt-in 时拒绝、开启后放行。
+
+`scripts/smoke_deepseek.py` 现在也把 `llm:live-gate-off` 与 `llm:origin-live-refused` 归类为 infra 失败（退出 1），覆盖翻门之后的正确性；骨架锁注释归属更正为 #20。
+
+验证（仓库 `.venv`，SQLite——仅条件兼容性、不证明行锁；未调用真实模型、未读取真实密钥、未接触真实流量或部署）：
+
+- `python -m ruff check ...` / `ruff format --check ...`（含 `scripts/smoke_deepseek.py`）：通过。
+- `python scripts/export_contracts.py --check`：同步。
+- `python -m pytest apps/backend/tests -q`：365 通过、7 跳过（PostgreSQL 行锁测试）。
+- `python scripts/check_baseline.py`：PASS。
+- 前端：`npm run check:api`、`format:check`、`build` 全部通过（本环境用 `npm ci` 安装依赖）。
+- `run_evaluation.py`（一次性 SQLite）：deterministic 9/9 退出 0；`--provider llm` 7 通过、2 预期失败（用例 1-2 需真实模型）。

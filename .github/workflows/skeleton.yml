@@ -32,8 +32,8 @@ jobs:
         with:
           python-version: '3.12.10'
       - run: pip install -r apps/backend/requirements.lock
-      - run: ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py
-      - run: ruff format --check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py
+      - run: ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py scripts/smoke_deepseek.py
+      - run: ruff format --check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py scripts/smoke_deepseek.py
       - run: python scripts/export_contracts.py --check
       - run: python scripts/check_baseline.py
       - run: alembic -c apps/backend/alembic.ini upgrade head
