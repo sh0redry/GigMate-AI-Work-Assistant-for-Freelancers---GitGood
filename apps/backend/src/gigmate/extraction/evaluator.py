@@ -21,6 +21,12 @@ from gigmate.db import EvaluationCaseRecord, EvaluationRun
 from .registry import build_provider
 from .types import ExtractionRequest, Provider
 
+# ``evaluator.py`` lives at ``apps/backend/src/gigmate/extraction/``; the
+# repository root is five parents above the file. Anchoring manifest paths
+# to ROOT keeps ``evaluate_manifest`` callable from any working directory
+# (operators, CI, subprocess workers), not just from the repo root.
+_ROOT = Path(__file__).resolve().parents[5]
+
 
 @dataclass
 class EvaluationOutcome:
@@ -44,10 +50,12 @@ class EvaluationRunSummary:
 
 
 def _resolve_manifest_path(relative: str | Path) -> Path:
-    path = Path(relative).resolve()
-    if not path.exists():
-        raise FileNotFoundError(path)
-    return path
+    candidate = Path(relative)
+    if not candidate.is_absolute():
+        candidate = (_ROOT / candidate).resolve()
+    if not candidate.exists():
+        raise FileNotFoundError(candidate)
+    return candidate
 
 
 def _build_request(case_payload: dict[str, Any], provider_name: str) -> ExtractionRequest:
@@ -127,8 +135,19 @@ def evaluate_manifest(
         raise ValueError(f"Manifest {path} has no cases; refusing to record an empty run.")
     started = datetime.now(UTC)
     per_case: list[EvaluationOutcome] = []
+    skipped = 0
     for case in cases:
+        case_provider = case.get("provider") if isinstance(case, dict) else None
+        if case_provider and case_provider != provider.name:
+            skipped += 1
+            continue
         per_case.append(evaluate_case(provider, case))
+    if not per_case:
+        names = sorted({case.get("provider") for case in cases if isinstance(case, dict)})
+        raise ValueError(
+            f"Manifest {path} has no cases targeting provider {provider.name!r}; "
+            f"manifest only targets {names}."
+        )
     finished = datetime.now(UTC)
     account_id = "00000000-0000-4000-8000-000000000eee"
     run_id = str(uuid4())

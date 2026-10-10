@@ -6,7 +6,11 @@ Replay smoke flow. For any other input (live WhatsApp content, unknown Replay
 text) it returns ``assignment: needs_review`` with no changes, so live traffic
 never receives confirmation or execution authority from this milestone.
 
-Real-model integration is a separately authorized batch; the seam is here.
+The ``llm`` provider is the separately authorized real-model seam; it ships as
+a non-emitting skeleton that returns ``needs_review`` with a clear reason
+until the real-model batch lands. The configuration, prompt versioning and
+registry wiring are all in place so the next batch only has to fill in
+``gigmate.extraction.llm.LLMProvider._invoke_model``.
 """
 
 from .evaluator import (

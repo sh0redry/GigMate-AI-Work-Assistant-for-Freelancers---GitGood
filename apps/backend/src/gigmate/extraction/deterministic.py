@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import copy
 import time
+from pathlib import Path
 from uuid import uuid4
 
 from gigmate.contracts import ChangeProposal
@@ -26,7 +27,29 @@ _PROPOSAL_TEMPLATE = fixture("proposal-reschedule")
 class DeterministicProvider:
     name = "deterministic"
     model_version = "synthetic:fixed-stub-v1"
-    prompt_version = "0.1.0"
+
+    @property
+    def prompt_version(self) -> str:
+        """Read the bundled prompt version so deterministic and LLM providers
+        stay in lock-step when the prompt file is bumped.
+
+        Mirrors :meth:`gigmate.extraction.llm.LLMProvider._read_prompt_version`:
+        encoding errors and empty version headers fall back to
+        ``0.0.0-unknown`` so a corrupted prompt file cannot crash the worker.
+        """
+        path = Path(__file__).resolve().parent / "prompts" / "role_b_extraction_v1.txt"
+        try:
+            with path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    stripped = line.strip()
+                    if stripped.startswith("prompt_version:"):
+                        version = stripped[len("prompt_version:") :].strip()
+                        if version:
+                            return version
+                        return "0.0.0-unknown"
+        except (OSError, UnicodeDecodeError):
+            return "0.0.0-unknown"
+        return "0.0.0-unknown"
 
     def propose(self, request: ExtractionRequest) -> ExtractionOutcome:
         began = time.monotonic()
@@ -64,6 +87,11 @@ class DeterministicProvider:
             work_order_id=order_id,
             base_work_order_version=request.base_work_order_version,
             base_context_version=request.context_version,
+            # Override the template's hardcoded prompt_version so the
+            # deterministic and LLM providers stay in lock-step when the
+            # prompt file is bumped. The template still seeds the rest of
+            # the structure; we only replace the version metadata.
+            prompt_version=self.prompt_version,
         )
         proposal["candidates"] = [{"work_order_id": order_id, "confidence": 1.0}]
         proposal["unresolved_questions"] = [] if text == _KNOWN_RESCHEDULE else ["见面地址尚未提供"]

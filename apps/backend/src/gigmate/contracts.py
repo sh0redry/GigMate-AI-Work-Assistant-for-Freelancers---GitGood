@@ -617,6 +617,7 @@ class EvaluationCase(Model):
         Literal["schedule", "address", "summary", "quantity", "specification", "deadline"]
     ] = Field(default_factory=list)
     note: Text | None = None
+    provider: Text | None = None
 
 
 class EvaluationRun(Model):
