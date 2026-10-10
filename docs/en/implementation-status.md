@@ -3,6 +3,7 @@
 ## PR #21 processor factory review correction — 2026-10-10
 
 Factory loading now requires callable process/reconcile methods before model submission and preserves constructor exceptions separately from configuration errors. Validation: 20 isolated factory tests passed; 52 media/evidence tests passed, with one PostgreSQL concurrency test skipped without a configured test database. Ruff check/format, contract export check, baseline and whitespace checks passed. No live model request, real media read, deployment or frontend change was performed.
+
 ## B media processor: real-model seam implementation — 2026-10-10
 
 Built on top of A's WAHA media ingestion branch (`pr-21-review` →
