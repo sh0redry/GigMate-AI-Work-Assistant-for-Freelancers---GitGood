@@ -505,6 +505,7 @@
 }
 
 .media-panel {
+  overflow-wrap: anywhere;
   margin-top: 1rem;
   border-top: 1px solid #dbe8e2;
   padding-top: 0.75rem;
@@ -534,4 +535,11 @@
   overflow-wrap: anywhere;
   max-height: 400px;
   overflow: auto;
+}
+
+.media-handoff {
+  padding: 12px;
+  border: 1px solid #dbe8e2;
+  border-radius: 8px;
+  margin: 12px 0;
 }

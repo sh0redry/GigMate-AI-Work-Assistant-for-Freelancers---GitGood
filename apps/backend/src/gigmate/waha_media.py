@@ -160,7 +160,12 @@ def attachment_view(db, row, asset):
     )
     review = (
         asset.review
-        if valid and asset.review and asset.review.get("context_version") == conv.context_version
+        if result_valid
+        and asset.review
+        and asset.review.get("context_version") == conv.context_version
+        and asset.review.get("result_job_id") == asset.result.get("job_id")
+        and asset.review.get("attachment_version") == asset.version
+        and asset.review.get("sha256") == asset.sha256
         else None
     )
     latest = db.scalar(
@@ -186,6 +191,9 @@ def attachment_view(db, row, asset):
         reviewed_at=review.get("at") if review else None,
         review_note=review.get("note") if review else None,
         latest_job_id=latest.id if latest else None,
+        input_context=asset.result.get("input_context")
+        if result_valid
+        else (latest.input_context if latest else None),
     )
 
 
@@ -211,7 +219,7 @@ def enqueue(db, row, command, key):
         )
     )
     if previous:
-        if previous.command != body:
+        if {**previous.command, "timezone": previous.command.get("timezone")} != body:
             fail("IDEMPOTENCY_CONFLICT")
         attachment_owned(db, row, previous.attachment_id)
         return job_view(previous)
@@ -261,6 +269,13 @@ def enqueue(db, row, command, key):
         connection_id=row.id,
         request_key=key,
         command=body,
+        input_context=dict(
+            message_sent_at=stamp(snap.message_sent_at) if snap.message_sent_at else None,
+            timezone=command.timezone,
+            timezone_source="merchant_choice" if command.timezone else "unknown",
+            source_occurred_at=stamp(snap.occurred_at),
+            source_observed_at=stamp(snap.observed_at),
+        ),
         version=row.control_version,
         context_version=conv.context_version,
         source_fingerprint=current,
@@ -408,8 +423,42 @@ def review(db, row, identifier, command):
         note=command.note,
         context_version=conv.context_version,
         source_fingerprint=asset.source_fingerprint,
+        result_job_id=asset.result["job_id"],
+        attachment_version=asset.version,
+        sha256=asset.sha256,
     )
     return attachment_view(db, row, asset)
+
+
+def evidence(db, row, identifier, attachment_version, context_version, result_job_id):
+    """Read-only A/B/C handoff; consumers must revalidate before any promotion."""
+    asset, _, _, conv = attachment_owned(db, row, identifier)
+    view = attachment_view(db, row, asset)
+    if asset.version != attachment_version or conv.context_version != context_version:
+        fail("MEDIA_SOURCE_CHANGED")
+    if view["result_job_id"] != result_job_id:
+        fail("MEDIA_RESULT_CHANGED")
+    if not view["result"] or not view["reviewed_at"]:
+        fail("MEDIA_REVIEW_REQUIRED")
+    read_blob(asset)
+    return dict(
+        schema_version="0.1.0",
+        account_id=row.account_id,
+        conversation_id=conv.id,
+        snapshot_id=asset.snapshot_id,
+        attachment_id=asset.id,
+        attachment_version=asset.version,
+        context_version=conv.context_version,
+        result_job_id=view["result_job_id"],
+        source_fingerprint=asset.source_fingerprint,
+        sha256=asset.sha256,
+        input_context=view["input_context"],
+        result=view["result"],
+        reviewed_at=view["reviewed_at"],
+        review_note=view["review_note"],
+        expires_at=stamp(asset.expires_at),
+        business_confirmation_required=True,
+    )
 
 
 def run_once(
@@ -507,6 +556,7 @@ def run_once(
         )
         source_id, source_fp = snap.id, job.source_fingerprint
         source_occurred_at = stamp(snap.occurred_at)
+        input_context = job.input_context or {}
         try:
             cached_key = None
             content = None
@@ -561,6 +611,10 @@ def run_once(
                 source_occurred_at,
                 content,
                 caption,
+                message_sent_at=input_context.get("message_sent_at"),
+                timezone=input_context.get("timezone"),
+                timezone_source=input_context.get("timezone_source", "unknown"),
+                source_observed_at=input_context.get("source_observed_at"),
             )
             if stage == "reconciling":
                 lookup = getattr(model, "reconcile", None)
@@ -664,6 +718,7 @@ def run_once(
                         "context_version": job.context_version,
                         "source_fingerprint": job.source_fingerprint,
                         "job_id": job.id,
+                        "input_context": job.input_context,
                     },
                     None,
                     "processed",

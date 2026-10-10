@@ -192,6 +192,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/connectors/{connection_id}/media/attachments/{attachment_id}/evidence": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Media Evidence */
+    get: operations["media_evidence_api_v1_connectors__connection_id__media_attachments__attachment_id__evidence_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/connectors/{connection_id}/media/attachments/{attachment_id}/review": {
     parameters: {
       query?: never;
@@ -1083,6 +1100,15 @@ export interface components {
        */
       request_id: string;
     };
+    /** Detail[WahaMediaEvidence] */
+    Detail_WahaMediaEvidence_: {
+      data: components["schemas"]["WahaMediaEvidence"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
     /** Detail[WahaMediaJobView] */
     Detail_WahaMediaJobView_: {
       data: components["schemas"]["WahaMediaJobView"];
@@ -1472,6 +1498,7 @@ export interface components {
        * Format: uuid
        */
       id: string;
+      input_context?: components["schemas"]["WahaMediaInputContext"] | null;
       /** Latest Job Id */
       latest_job_id: string | null;
       /** Mimetype */
@@ -1631,6 +1658,93 @@ export interface components {
        * Format: uuid
        */
       snapshot_id: string;
+      /** Timezone */
+      timezone?: string | null;
+    };
+    /** WahaMediaEvidence */
+    WahaMediaEvidence: {
+      /**
+       * Account Id
+       * Format: uuid
+       */
+      account_id: string;
+      /**
+       * Attachment Id
+       * Format: uuid
+       */
+      attachment_id: string;
+      /** Attachment Version */
+      attachment_version: number;
+      /**
+       * Business Confirmation Required
+       * @default true
+       * @constant
+       */
+      business_confirmation_required: true;
+      /** Context Version */
+      context_version: number;
+      /**
+       * Conversation Id
+       * Format: uuid
+       */
+      conversation_id: string;
+      /**
+       * Expires At
+       * Format: date-time
+       */
+      expires_at: string;
+      input_context: components["schemas"]["WahaMediaInputContext"] | null;
+      result: components["schemas"]["WahaMediaResult"];
+      /**
+       * Result Job Id
+       * Format: uuid
+       */
+      result_job_id: string;
+      /** Review Note */
+      review_note: string;
+      /**
+       * Reviewed At
+       * Format: date-time
+       */
+      reviewed_at: string;
+      /**
+       * Schema Version
+       * @default 0.1.0
+       * @constant
+       */
+      schema_version: "0.1.0";
+      /** Sha256 */
+      sha256: string;
+      /**
+       * Snapshot Id
+       * Format: uuid
+       */
+      snapshot_id: string;
+      /** Source Fingerprint */
+      source_fingerprint: string;
+    };
+    /** WahaMediaInputContext */
+    WahaMediaInputContext: {
+      /** Message Sent At */
+      message_sent_at?: string | null;
+      /**
+       * Source Observed At
+       * Format: date-time
+       */
+      source_observed_at: string;
+      /**
+       * Source Occurred At
+       * Format: date-time
+       */
+      source_occurred_at: string;
+      /** Timezone */
+      timezone?: string | null;
+      /**
+       * Timezone Source
+       * @default unknown
+       * @enum {string}
+       */
+      timezone_source: "merchant_choice" | "unknown";
     };
     /** WahaMediaJobView */
     WahaMediaJobView: {
@@ -2389,6 +2503,42 @@ export interface operations {
         content: {
           "application/json": unknown;
           "application/octet-stream": unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  media_evidence_api_v1_connectors__connection_id__media_attachments__attachment_id__evidence_get: {
+    parameters: {
+      query: {
+        expected_attachment_version: number;
+        expected_context_version: number;
+        expected_result_job_id: string;
+      };
+      header?: never;
+      path: {
+        connection_id: string;
+        attachment_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaMediaEvidence_"];
         };
       };
       /** @description Validation Error */

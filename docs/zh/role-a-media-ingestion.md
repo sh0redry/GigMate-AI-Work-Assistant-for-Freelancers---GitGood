@@ -1,5 +1,24 @@
 # 附件读取与 A/B 对接批次
 
+## 第二批：原消息时间、来源核对与业务交接
+
+在兼容 PR #16 的媒体分支上完成 A 的部分。真实 OCR/语音转写/PDF 解析/GenAI 仍依赖 B，外部发送不在本批范围。PR #18 尚未合并，也不是媒体处理器。
+
+- 新增 **0010_waha_media_evidence**，接在未修改的 0009 后。`waha_snapshots.message_sent_at` 只从新观察到的原消息/历史消息 payload 中受限的数字 Unix 秒 `timestamp` 记录；编辑/撤回不覆盖原值，旧快照保留空值。缺失、格式错误、毫秒形态或非有限数保持未知，不用事件 occurred_at 或观察时间替代。收据摘要/来源指纹不变，时间字段不会破坏原有重复事件身份。[供应商事件示例](https://waha.devlike.pro/docs/how-to/events/)分别提供消息时间和修改引用；仍需用自己的账号验证引擎实际行为。
+- `WahaMediaCommand.timezone` 可选填写合法 IANA 时区，由商户明确指定**本次请求**适用的时区，不冒充账号/客户时区；前端不根据电脑或号码默认选择。任务的 input_context 在排队时固定消息时间、时区及来源 merchant_choice/unknown、事件时间和观察时间，随受限 bytes 交给 B。旧任务不补造时间；改变时区不能复用原幂等键。显示结果保留生成它的时间依据，不继承后续任务的时区。原发送时间或适用时区不足时，解释相对日期前必须返回待确认问题。
+- 建议中的来源可点击定位到文字片段。来源核对额外绑定确切结果任务、附件版本及 SHA；没有这些绑定的旧核对记录需明确重新核对才能交接，不要求重新下载或重新调用模型。
+- 已实现只读 **GET /api/v1/connectors/{id}/media/attachments/{attachment_id}/evidence**，查询参数必须提供 expected_attachment_version、expected_context_version、expected_result_job_id。必须先核对当前结果；读取时重新检查归属、白名单、接收状态、来源、有效期与文件完整性，返回 no-store 的 WahaMediaEvidence 0.1.0。资料包括应用 UUID、来源指纹/哈希、固定时间依据、结果及片段/建议、核对与有效期，不包含供应商 URL/密钥/路径或执行权限。页面“查看业务交接资料（不写入工单）”只在核对后读取；暂停、权限/读取失败或刷新发现结果/上下文变化时清除展示。
+- **C 的业务消费仍待接入**：在实际业务命令中重新读/校验证据；确定一个工单，歧义时交人工；保留附件/结果/哈希/片段出处，不能冒充规范文本 SourceRef；绑定目标工单和上下文版本。已复制资料不是持续授权。读取交接资料、核对来源不等于客户确认、商户业务批准或创建工单。本批不实现晋升/业务写入或外部执行批准。
+
+### 一次性验收
+
+1. 先恢复 Docker Desktop，保留原会话、私有配置和数据库，不 provision/seed。用原数据库 URL/PYTHONPATH 执行 Alembic upgrade head 和 check，再用原媒体 Compose 重建 API/worker。**此前记录的本机部署仍是 0009，本批没有部署 0010**；新代码需使用 0010。上方升级命令仍适用，不为升级重新初始化。
+2. 在自己的已授权测试聊天发送图片、语音、PDF、TXT，说明文字使用虚构的相对日期。打开真实工作台，明确填写适用时区（如 Asia/Hong_Kong）或留未知，同意并读取，检查预览/刷新/任务恢复。对照手机核对原消息时间，不能与事件/观察时间混为一谈；编辑说明后原发送时间保持。旧记录没有依据就显示未知。
+3. B 未配置时不期待 OCR、不开启模型同意，保留明确提示。B 提供 process/reconcile 后，核对其收到的时间/来源/哈希、页码/音频位置、覆盖范围和待确认问题。改变时区须新建明确任务，不复用不确定请求、不盲目重提。
+4. 点击来源片段，对照原文件和结果，标记来源已核对后才读取交接资料。核对版本/哈希/结果 ID，确认没有新增工单/日历/发送。旧的未绑定核对需重新核对。
+5. 暂停/取消授权/撤回或编辑原附件/改变会话上下文，交接及结果访问必须拒绝或消失。旧结果 ID、损坏文件用合成夹具测试。恢复操作必须明确进行，已复制/下载的内容无法收回。
+6. Docker 可用后补跑隔离 PostgreSQL/HTTP、真实浏览器及 Windows/Apple Silicon 检查，由 E 独立评审。DOM 夹具和 SQLite 不证明真实供应商/模型或 PostgreSQL 锁。统一自动证据记录在进度文档。
+
 2026-10-10 · Andy_WAHA_media_ingestion，基于消息同步 56e482e。用户已授权原文件读取，并明确 **B 尚未接入真实模型，先完成 A 和对接协议**。[英文](../en/role-a-media-ingestion.md)、[ADR 0006](../en/adr/0006-owned-media-handoff.md)。仅对明确同意的请求替代 ADR 0005 暂缓读取的边界。
 
 ## A 实现什么
@@ -18,7 +37,7 @@
 
 A 提供 `gigmate.media_processing.MediaInput` 和 `MediaProcessor`，B 提供服务端工厂，通过 `GIGMATE_MEDIA_PROCESSOR_FACTORY=your.module:factory` 配置。A 不交付真实 provider、OCR、ASR 或 PDF 解析器，也没有运行时合成降级；测试处理器仅注入隔离夹具。
 
-- `process(input) -> WahaMediaResult`：输入含受限 bytes、规范 MIME、说明文字、origin=live、账号/会话/快照/附件 UUID、附件/上下文版本、指纹、SHA、已记录 source_occurred_at。不含凭据/URL/路径。message_sent_at/timezone 明确保留未知，**不能把观察时间或服务器时钟当作原发送时间处理相对日期**。原发送时间/账号时区应先联合补齐，否则返回待核对问题。
+- `process(input) -> WahaMediaResult`：输入含受限 bytes、规范 MIME、说明文字、origin=live、账号/会话/快照/附件 UUID、附件/上下文版本、指纹、SHA、已记录 source_occurred_at。不含凭据/URL/路径。message_sent_at/timezone 为第二批补齐的可空证据，**不能把观察时间或服务器时钟当作原发送时间处理相对日期**。原发送时间/账号时区应先联合补齐，否则返回待核对问题。
 - B 负责 OCR、语音转写、PDF/文本解析及可选 GenAI 业务建议；按 request_id 持久幂等/核对并保存不可变的账号/来源/哈希关联。调用在租约提交后，数据库业务锁外执行。
 - 输出含 provider/model/prompt 版本、coverage=complete/partial/unknown、带页码或音频区间的文字片段、摘要、引用零起始 source_indices 的建议及待确认问题。最多 200 片段/100000 提取字符，引用须存在。未知保持未知；禁止 confirmed 字段、工单写入、工具权限和发送；严格拒绝额外字段。
 - `ProcessingUnavailable` 表示 B 保证未提交；`ProcessingUncertain` 表示可能提交，不重试；其他异常保守处理。输出/日志不得泄露服务响应或密钥。
@@ -72,4 +91,4 @@ docker compose --env-file local-data/waha-a02/.env -f infra/waha.compose.yaml -f
 
 自动合成检查验证 A 管道和注入的 B 结果结构，不证明真实 OCR/ASR/模型准确率。实际次数、运行证据及 B/真机门槛见[进度](progress.md)。
 
-本机已升级 0009，媒体 API/worker/存储已启用，处理器未设置；没有自动读取真实文件。浏览器自动化助手两次都无法启动 Node runtime，故页面视觉/真实音频/PDF 行为留人工验证。自动音频/PDF HTTP 夹具仅验证传输/签名门槛，不证明有效解码/解析。本机直接从真实工作台开始人工步骤，不为验收重复迁移/provision。
+本机已升级 0009，媒体 API/worker/存储已启用，处理器未设置；没有自动读取真实文件。浏览器自动化助手两次都无法启动 Node runtime，故页面视觉/真实音频/PDF 行为留人工验证。自动音频/PDF HTTP 夹具仅验证传输/签名门槛，不证明有效解码/解析。第二批须先按上方说明升级到 0010 再重建 API/worker，不为验收重新 provision。

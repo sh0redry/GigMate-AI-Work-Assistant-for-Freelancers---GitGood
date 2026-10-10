@@ -2096,6 +2096,17 @@
           "title": "Id",
           "type": "string"
         },
+        "input_context": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WahaMediaInputContext"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "latest_job_id": {
           "anyOf": [
             {
@@ -2528,6 +2539,19 @@
           "format": "uuid",
           "title": "Snapshot Id",
           "type": "string"
+        },
+        "timezone": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timezone"
         }
       },
       "required": [
@@ -2536,6 +2560,174 @@
         "consent_download"
       ],
       "title": "WahaMediaCommand",
+      "type": "object"
+    },
+    "WahaMediaEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "account_id": {
+          "format": "uuid",
+          "title": "Account Id",
+          "type": "string"
+        },
+        "attachment_id": {
+          "format": "uuid",
+          "title": "Attachment Id",
+          "type": "string"
+        },
+        "attachment_version": {
+          "minimum": 1,
+          "title": "Attachment Version",
+          "type": "integer"
+        },
+        "business_confirmation_required": {
+          "const": true,
+          "default": true,
+          "title": "Business Confirmation Required",
+          "type": "boolean"
+        },
+        "context_version": {
+          "minimum": 0,
+          "title": "Context Version",
+          "type": "integer"
+        },
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "input_context": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WahaMediaInputContext"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result": {
+          "$ref": "#/$defs/WahaMediaResult"
+        },
+        "result_job_id": {
+          "format": "uuid",
+          "title": "Result Job Id",
+          "type": "string"
+        },
+        "review_note": {
+          "title": "Review Note",
+          "type": "string"
+        },
+        "reviewed_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Reviewed At",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "0.1.0",
+          "default": "0.1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "sha256": {
+          "minLength": 1,
+          "title": "Sha256",
+          "type": "string"
+        },
+        "snapshot_id": {
+          "format": "uuid",
+          "title": "Snapshot Id",
+          "type": "string"
+        },
+        "source_fingerprint": {
+          "minLength": 1,
+          "title": "Source Fingerprint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "account_id",
+        "conversation_id",
+        "snapshot_id",
+        "attachment_id",
+        "attachment_version",
+        "context_version",
+        "result_job_id",
+        "source_fingerprint",
+        "sha256",
+        "input_context",
+        "result",
+        "reviewed_at",
+        "review_note",
+        "expires_at"
+      ],
+      "title": "WahaMediaEvidence",
+      "type": "object"
+    },
+    "WahaMediaInputContext": {
+      "additionalProperties": false,
+      "properties": {
+        "message_sent_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message Sent At"
+        },
+        "source_observed_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Source Observed At",
+          "type": "string"
+        },
+        "source_occurred_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Source Occurred At",
+          "type": "string"
+        },
+        "timezone": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timezone"
+        },
+        "timezone_source": {
+          "default": "unknown",
+          "enum": [
+            "merchant_choice",
+            "unknown"
+          ],
+          "title": "Timezone Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_occurred_at",
+        "source_observed_at"
+      ],
+      "title": "WahaMediaInputContext",
       "type": "object"
     },
     "WahaMediaJobView": {

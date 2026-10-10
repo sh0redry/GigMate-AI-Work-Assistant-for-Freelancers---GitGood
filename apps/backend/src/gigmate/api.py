@@ -37,6 +37,7 @@ from gigmate.contracts import (
     WahaIssueReviewResult,
     WahaMediaCapabilities,
     WahaMediaCommand,
+    WahaMediaEvidence,
     WahaMediaJobView,
     WahaMediaReviewCommand,
     WahaSelectionCommand,
@@ -980,6 +981,36 @@ def media_review(
 
     row = controls.owned(db, account, str(connection_id), lock=True)
     return detail(request, waha_media.review(db, row, str(attachment_id), command))
+
+
+@app.get(
+    "/api/v1/connectors/{connection_id}/media/attachments/{attachment_id}/evidence",
+    response_model=Detail[WahaMediaEvidence],
+)
+def media_evidence(
+    connection_id: UUID,
+    attachment_id: UUID,
+    request: Request,
+    expected_attachment_version: int = Query(ge=1),
+    expected_context_version: int = Query(ge=0),
+    expected_result_job_id: UUID = Query(),
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    from gigmate import waha_media
+
+    row = controls.owned(db, account, str(connection_id))
+    return detail(
+        request,
+        waha_media.evidence(
+            db,
+            row,
+            str(attachment_id),
+            expected_attachment_version,
+            expected_context_version,
+            str(expected_result_job_id),
+        ),
+    )
 
 
 @app.post("/api/v1/connectors/waha/{connection_id}/events", response_model=Detail[ConnectorReceipt])

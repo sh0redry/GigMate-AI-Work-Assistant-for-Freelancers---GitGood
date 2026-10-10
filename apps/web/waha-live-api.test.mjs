@@ -102,6 +102,7 @@ test("media lost response retains exact source, consent, version and key", async
     consent_download: true,
     process: true,
     consent_model: true,
+    timezone: "Asia/Hong_Kong",
   };
   await assert.rejects(
     api.start(input, "original"),
@@ -110,6 +111,11 @@ test("media lost response retains exact source, consent, version and key", async
   assert.equal((await api.start(input, "original")).id, opid);
   assert.deepEqual(posts[0], posts[1]);
   assert.equal(posts[1][0].expected_version, 7);
+  assert.equal(posts[1][0].timezone, "Asia/Hong_Kong");
+  await assert.rejects(
+    api.start({ ...input, timezone: "UTC" }, "original"),
+    (e) => e.code === "IDEMPOTENCY_CONFLICT",
+  );
   await assert.rejects(
     api.start({ ...input, consent_model: false }, "original"),
     (e) => e.code === "IDEMPOTENCY_CONFLICT",

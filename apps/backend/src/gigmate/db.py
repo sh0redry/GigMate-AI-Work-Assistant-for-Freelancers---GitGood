@@ -152,6 +152,7 @@ class WahaSnapshot(Base):
     source: Mapped[str] = mapped_column(String(16))
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    message_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     data: Mapped[dict] = mapped_column(JSON)
     __table_args__ = (
@@ -237,6 +238,7 @@ class WahaMediaJob(Base):
     connection_id: Mapped[str] = mapped_column(ForeignKey("waha_connections.id"), index=True)
     request_key: Mapped[str] = mapped_column(String(128))
     command: Mapped[dict] = mapped_column(JSON)
+    input_context: Mapped[dict | None] = mapped_column(JSON)
     version: Mapped[int] = mapped_column(Integer)
     context_version: Mapped[int] = mapped_column(Integer)
     source_fingerprint: Mapped[str] = mapped_column(String(64))

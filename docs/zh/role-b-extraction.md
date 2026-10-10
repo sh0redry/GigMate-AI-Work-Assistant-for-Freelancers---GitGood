@@ -1,5 +1,7 @@
 # Role B 抽取子系统
 
+2026-10-10 媒体第二批：A 已提供固定的供应商发送时间/商户本次选择时区及已核对只读证据。B 须单独实现 MediaProcessor.process/reconcile，不能把文本提取接口当作媒体实现；C 须约定附件来源并在业务晋升前重新校验。时间不足保留待确认，本批不启用外部发送。见[媒体协议](role-a-media-ingestion.md)。
+
 2026-10-10 媒体对接：[A 的媒体协议](role-a-media-ingestion.md)提供权限范围内字节、不可变请求/来源/哈希标识、绑定来源/上下文的结果存储及核对。真实 OCR/ASR/解析/GenAI 工厂和只读核对由 B 实现。A 没有新增真实适配器，原 deterministic 拒绝 live 输入的边界保留。不能把媒体快照冒充 canonical 消息修订或直接写成已确认工单变化。核对还绑定 expected_result_job_id，防止新结果继承旧核对。
 
 2026-10-09 联调更新：[WAHA/提取统一验收](role-a-integration-acceptance.md)记录控制与 worker 交接。当前 Alembic head 是 `0007_merge_waha_extraction`，汇合未改动的 B 证据迁移和 A 控制/采样分支。Windows 测试使用 pytest 管理临时文件；默认 provider 仍拒绝真实提取，没有增加真实模型或网络调用。

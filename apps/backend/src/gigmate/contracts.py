@@ -653,6 +653,7 @@ class WahaMediaCommand(WahaVersionCommand):
     consent_download: Literal[True]
     process: bool = False
     consent_model: bool = False
+    timezone: Timezone | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -731,6 +732,33 @@ class WahaMediaReviewCommand(Model):
         return value
 
 
+class WahaMediaInputContext(Model):
+    message_sent_at: UtcTimestamp | None = None
+    timezone: Timezone | None = None
+    timezone_source: Literal["merchant_choice", "unknown"] = "unknown"
+    source_occurred_at: UtcTimestamp
+    source_observed_at: UtcTimestamp
+
+
+class WahaMediaEvidence(Model):
+    schema_version: Literal["0.1.0"] = "0.1.0"
+    account_id: Id
+    conversation_id: Id
+    snapshot_id: Id
+    attachment_id: Id
+    attachment_version: Annotated[int, Field(ge=1)]
+    context_version: Annotated[int, Field(ge=0)]
+    result_job_id: Id
+    source_fingerprint: Text
+    sha256: Text
+    input_context: WahaMediaInputContext | None
+    result: WahaMediaResult
+    reviewed_at: UtcTimestamp
+    review_note: str
+    expires_at: UtcTimestamp
+    business_confirmation_required: Literal[True] = True
+
+
 class WahaAttachmentView(Model):
     id: Id
     snapshot_id: Id
@@ -748,6 +776,7 @@ class WahaAttachmentView(Model):
     reviewed_at: UtcTimestamp | None
     review_note: str | None
     latest_job_id: Id | None
+    input_context: WahaMediaInputContext | None = None
 
 
 class WahaMediaJobView(Model):

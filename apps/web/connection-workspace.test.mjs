@@ -63,6 +63,9 @@ for (const name of modules) {
 const { ConnectionWorkspace } = await import(
   pathToFileURL(join(directory, "ConnectionWorkspace.mjs"))
 );
+const { WahaMedia } = await import(
+  pathToFileURL(join(directory, "WahaMedia.mjs"))
+);
 let root;
 afterEach(async () => {
   if (root) await act(async () => root.unmount());
@@ -228,6 +231,126 @@ async function tick(i) {
   await act(async () => node.click());
 }
 const summary = () => document.querySelector(".chat-page-summary").textContent;
+
+test("media review exposes pinned read-only handoff, source links and unknown date warning; pause clears it", async () => {
+  const attachment = {
+    id: rows[0].id,
+    snapshot_id: rows[1].id,
+    version: 2,
+    context_version: 9,
+    state: "processed",
+    mimetype: "image/png",
+    size_bytes: 10,
+    sha256: "synthetic-sha",
+    preview_available: false,
+    source_fingerprint: "synthetic-fingerprint",
+    expires_at: "2026-11-01T00:00:00Z",
+    result_job_id: rows[2].id,
+    reviewed_at: null,
+    review_note: null,
+    latest_job_id: null,
+    input_context: {
+      message_sent_at: null,
+      timezone: null,
+      timezone_source: "unknown",
+      source_occurred_at: "2026-10-10T00:00:00Z",
+      source_observed_at: "2026-10-10T00:00:01Z",
+    },
+    result: {
+      coverage: "partial",
+      provider: "synthetic-only",
+      model_version: "fixture",
+      prompt_version: "fixture",
+      segments: [
+        { text: "Synthetic source", page: 1, start_ms: null, end_ms: null },
+      ],
+      suggestions: [
+        {
+          field: "requirements",
+          text: "Synthetic proposal",
+          source_indices: [0],
+        },
+      ],
+      unresolved_questions: [],
+    },
+  };
+  const evidenceRequests = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const reply = (data) =>
+      new Response(JSON.stringify({ data }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    if (url.endsWith("/media/capabilities"))
+      return reply({
+        enabled: true,
+        processor_configured: true,
+        accepted_types: ["image/png"],
+      });
+    if (url.includes("/media/attachments?snapshot_id="))
+      return new Response(JSON.stringify({ items: [attachment] }), {
+        status: 200,
+      });
+    if (url.endsWith("/review")) {
+      const command = JSON.parse(init.body);
+      assert.equal(command.expected_result_job_id, attachment.result_job_id);
+      attachment.reviewed_at = "2026-10-10T01:00:00Z";
+      attachment.review_note = command.note;
+      return reply(attachment);
+    }
+    if (url.includes("/evidence?")) {
+      assert.equal(init.method, "GET");
+      const params = new URL(url, "http://localhost").searchParams;
+      assert.equal(params.get("expected_context_version"), "9");
+      assert.equal(params.get("expected_attachment_version"), "2");
+      assert.equal(
+        params.get("expected_result_job_id"),
+        attachment.result_job_id,
+      );
+      evidenceRequests.push(url);
+      return reply({
+        ...attachment,
+        attachment_id: attachment.id,
+        attachment_version: 2,
+        context_version: evidenceRequests.length === 1 ? 8 : 9,
+        business_confirmation_required: true,
+      });
+    }
+    throw new Error("Unexpected synthetic media request");
+  };
+  root = createRoot(document.getElementById("root"));
+  const props = {
+    connection: id,
+    csrf: "synthetic-csrf",
+    snapshot: rows[1].id,
+    mimetype: "image/png",
+    enabled: true,
+  };
+  await act(async () => root.render(createElement(WahaMedia, props)));
+  await click("附件读取与核对");
+  assert.match(document.body.textContent, /原消息时间：未知/);
+  assert.match(document.body.textContent, /日期依据不完整/);
+  assert.equal(button("查看业务交接资料（不写入工单）").disabled, true);
+  const link = document.querySelector(
+    `a[href="#media-${attachment.id}-segment-0"]`,
+  );
+  assert.ok(link && document.getElementById(link.hash.slice(1)));
+  await click("标记已核对来源（不确认工单）");
+  await click("查看业务交接资料（不写入工单）");
+  assert.equal(evidenceRequests.length, 1);
+  assert.equal(
+    document.querySelector(".media-handoff"),
+    null,
+    "a stale handoff cannot be shown for the current result",
+  );
+  await click("查看业务交接资料（不写入工单）");
+  assert.equal(evidenceRequests.length, 2);
+  assert.ok(document.querySelector(".media-handoff"));
+  await act(async () =>
+    root.render(createElement(WahaMedia, { ...props, enabled: false })),
+  );
+  assert.equal(document.querySelector(".media-handoff"), null);
+});
 
 test("workspace saves hidden selections across pages and filters, then reloads and remounts both", async () => {
   const api = server();

@@ -34,6 +34,8 @@ class MediaInput:
     origin: str = "live"
     message_sent_at: str | None = None
     timezone: str | None = None
+    timezone_source: str = "unknown"
+    source_observed_at: str | None = None
 
 
 class MediaProcessor(Protocol):

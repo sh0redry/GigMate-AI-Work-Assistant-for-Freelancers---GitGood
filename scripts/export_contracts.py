@@ -38,6 +38,8 @@ def domain_schema():
         c.WahaAttachmentView,
         c.WahaMediaResult,
         c.WahaMediaReviewCommand,
+        c.WahaMediaInputContext,
+        c.WahaMediaEvidence,
         c.ProvenancedField,
         c.WorkOrder,
         c.AccountConsent,

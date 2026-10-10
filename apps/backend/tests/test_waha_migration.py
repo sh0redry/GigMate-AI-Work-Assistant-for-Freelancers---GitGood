@@ -43,7 +43,7 @@ def migration_database(tmp_path):
 def test_versioned_migration_preserves_replay_rows(migration_database, existing_revision):
     root = Path(__file__).resolve().parents[3]
     assert ScriptDirectory(str(root / "apps/backend/migrations")).get_heads() == [
-        "0009_waha_media_ingestion"
+        "0010_waha_media_evidence"
     ]
     url = migration_database
     environment = {**os.environ, "DATABASE_URL": url, "PYTHONPATH": str(root / "apps/backend/src")}
@@ -110,6 +110,7 @@ def test_versioned_migration_preserves_replay_rows(migration_database, existing_
             )
     engine.dispose()
     migrate("upgrade", "head")
+
     engine = create_engine(url)
     assert "waha_connections" in inspect(engine).get_table_names()
     assert "waha_operations" in inspect(engine).get_table_names()
@@ -124,7 +125,7 @@ def test_versioned_migration_preserves_replay_rows(migration_database, existing_
     with engine.connect() as db:
         assert (
             db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0009_waha_media_ingestion"
+            == "0010_waha_media_evidence"
         )
         assert db.execute(text("SELECT accepted,duplicates,state FROM waha_connections")).one() == (
             3,
@@ -159,3 +160,136 @@ def test_versioned_migration_preserves_replay_rows(migration_database, existing_
         assert db.execute(text("SELECT count(*) FROM inbox")).scalar() == 1
     engine.dispose()
     migrate("upgrade", "head")
+
+
+def test_media_evidence_upgrade_does_not_invent_old_sending_times(migration_database):
+    from datetime import UTC, datetime
+
+    from sqlalchemy import MetaData, Table, select
+    from sqlalchemy.orm import sessionmaker
+
+    from gigmate.db import Account, ConversationRow, WahaChat, WahaConnection
+    from gigmate.seed import seed
+
+    root = Path(__file__).resolve().parents[3]
+    environment = {
+        **os.environ,
+        "DATABASE_URL": migration_database,
+        "PYTHONPATH": str(root / "apps/backend/src"),
+    }
+
+    def migrate(target):
+        subprocess.run(
+            [sys.executable, "-m", "alembic", "-c", "apps/backend/alembic.ini", "upgrade", target],
+            cwd=root,
+            env=environment,
+            capture_output=True,
+            check=True,
+        )
+
+    migrate("0009_waha_media_ingestion")
+    engine = create_engine(migration_database)
+    factory = sessionmaker(engine)
+    seed(factory)
+    connection_id, chat_id, snapshot_id, asset_id, job_id = [str(uuid4()) for _ in range(5)]
+    with factory.begin() as db:
+        account = db.scalar(select(Account).where(Account.username == "merchant"))
+        conversation = db.scalar(
+            select(ConversationRow).where(ConversationRow.account_id == account.id)
+        )
+        account_id = account.id
+        db.add(
+            WahaConnection(
+                id=connection_id,
+                account_id=account.id,
+                instance_id="synthetic-migration",
+                session_id="default",
+            )
+        )
+        db.flush()
+        db.add(
+            WahaChat(
+                id=chat_id,
+                connection_id=connection_id,
+                conversation_id=conversation.id,
+                provider_chat_id="synthetic:peer@lid",
+            )
+        )
+    metadata = MetaData()
+    tables = {
+        name: Table(name, metadata, autoload_with=engine)
+        for name in ["waha_snapshots", "waha_attachments", "waha_media_jobs"]
+    }
+    at = datetime(2026, 10, 10, tzinfo=UTC)
+    with engine.begin() as db:
+        db.execute(
+            tables["waha_snapshots"]
+            .insert()
+            .values(
+                id=snapshot_id,
+                chat_id=chat_id,
+                provider_message_id="synthetic:media",
+                source="live",
+                occurred_at=at,
+                observed_at=at,
+                revoked=False,
+                data={"kind": "image"},
+            )
+        )
+        db.execute(
+            tables["waha_attachments"]
+            .insert()
+            .values(
+                id=asset_id,
+                snapshot_id=snapshot_id,
+                connection_id=connection_id,
+                account_id=account_id,
+                source_fingerprint="synthetic",
+                version=1,
+                state="downloaded",
+                created_at=at,
+                expires_at=at,
+            )
+        )
+        db.execute(
+            tables["waha_media_jobs"]
+            .insert()
+            .values(
+                id=job_id,
+                attachment_id=asset_id,
+                connection_id=connection_id,
+                request_key="synthetic-old",
+                command={"synthetic": True},
+                version=0,
+                context_version=0,
+                source_fingerprint="synthetic",
+                state="succeeded",
+                stage="download",
+                attempts=1,
+                created_at=at,
+                updated_at=at,
+            )
+        )
+    engine.dispose()
+    migrate("head")
+    engine = create_engine(migration_database)
+    with engine.connect() as db:
+        assert (
+            db.execute(
+                text("SELECT message_sent_at FROM waha_snapshots WHERE id=:id"), {"id": snapshot_id}
+            ).scalar_one()
+            is None
+        )
+        assert (
+            db.execute(
+                text("SELECT input_context FROM waha_media_jobs WHERE id=:id"), {"id": job_id}
+            ).scalar_one()
+            is None
+        )
+        assert (
+            db.execute(
+                text("SELECT state FROM waha_media_jobs WHERE id=:id"), {"id": job_id}
+            ).scalar_one()
+            == "succeeded"
+        )
+    engine.dispose()

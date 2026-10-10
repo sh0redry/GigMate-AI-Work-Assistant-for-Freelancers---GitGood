@@ -1,5 +1,7 @@
 # WAHA implementation and team handoff
 
+2026-10-10 batch 2: frozen original-time/timezone input, clickable source segments and version/hash-bound read-only reviewed business evidence are implemented; C promotion and B real processors remain pending. See [media protocol](role-a-media-ingestion.md).
+
 2026-10-10 media extension: [A media ingestion](role-a-media-ingestion.md) adds explicit owned original-file download/preview, private storage, durable processing/reconciliation jobs and source review. B has not connected a real model; OCR/ASR/parsing/GenAI remain B's dependency, not shipped A functionality. No external sending or work-order authority added.
 
 Current baseline (2026-10-10): PR #11, #13 and D01 #15 are merged into main (1336c60). Andy_WAHA_message_sync includes that main plus the verified D01 compatibility below. PR #14 now targets main; retain its 0008 migration, bounded timeline/history/media observations and pagination rather than replacing the branch with main. Older dependency-target notes below are historical.

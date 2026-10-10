@@ -55,6 +55,10 @@ export function WahaMedia({
     [job, setJob] = useState<MediaJob | null>(null);
   const [downloadConsent, setDownloadConsent] = useState(false),
     [modelConsent, setModelConsent] = useState(false);
+  const [timezone, setTimezone] = useState("");
+  const [handoff, setHandoff] = useState<Awaited<
+    ReturnType<typeof api.evidence>
+  > | null>(null);
   const [url, setUrl] = useState<string | null>(null),
     [text, setText] = useState<string | null>(null),
     [note, setNote] = useState("");
@@ -77,6 +81,7 @@ export function WahaMedia({
       if (!active.current) return;
       clearPreview();
       setAsset(null);
+      setHandoff(null);
       const code =
         error instanceof ConnectionError ? error.code : "MEDIA_UNAVAILABLE";
       setNotice(errors[code] ?? code);
@@ -97,6 +102,7 @@ export function WahaMedia({
     if (!open || !enabled) {
       clearPreview();
       setAsset(null);
+      setHandoff(null);
     }
     return () => {
       epoch.current++;
@@ -120,6 +126,16 @@ export function WahaMedia({
     if (active.current && generation === epoch.current) {
       setCaps(capabilities);
       setAsset(current);
+      setHandoff((previous) =>
+        previous &&
+        current?.reviewed_at &&
+        previous.attachment_version === current.version &&
+        previous.context_version === current.context_version &&
+        previous.result_job_id === current.result_job_id &&
+        previous.reviewed_at === current.reviewed_at
+          ? previous
+          : null,
+      );
       if (savedJob) {
         setJob(savedJob);
         if (["succeeded", "failed", "cancelled"].includes(savedJob.state))
@@ -183,6 +199,7 @@ export function WahaMedia({
         consent_download: true,
         process: modelConsent,
         consent_model: modelConsent,
+        timezone: timezone.trim() || null,
       },
     };
     let current: MediaJob;
@@ -262,6 +279,19 @@ export function WahaMedia({
             }
           >
             <label>
+              本次解释日期的时区（可留空）
+              <input
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+                placeholder="例如 Asia/Hong_Kong"
+                maxLength={100}
+              />
+            </label>
+            <p>
+              请填写适用的 IANA
+              时区，不会根据手机号或电脑猜测；缺少时间依据时应交由人工核对。
+            </p>
+            <label>
               <input
                 type="checkbox"
                 checked={downloadConsent}
@@ -330,6 +360,17 @@ export function WahaMedia({
           {asset && (
             <>
               <p>
+                原消息时间：{asset.input_context?.message_sent_at ?? "未知"} ·
+                日期解释时区：
+                {asset.input_context?.timezone ?? "未指定"}（商户本次选择）
+              </p>
+              {(!asset.input_context?.message_sent_at ||
+                !asset.input_context?.timezone) && (
+                <p>
+                  日期依据不完整：“明天”等相对日期需要人工确认，观察时间不能代替发送时间。
+                </p>
+              )}
+              <p>
                 附件版本 {asset.version} · {asset.mimetype} ·{" "}
                 {asset.size_bytes ?? 0} 字节 · 来源指纹{" "}
                 {asset.source_fingerprint.slice(0, 12)}
@@ -373,7 +414,7 @@ export function WahaMedia({
                     {asset.result.provider} / {asset.result.model_version}
                   </p>
                   {asset.result.segments.map((s, i) => (
-                    <div key={i}>
+                    <div key={i} id={`media-${asset.id}-segment-${i}`}>
                       <small>
                         来源片段 {i + 1}
                         {s.page && ` · 第 ${s.page} 页`}
@@ -388,7 +429,12 @@ export function WahaMedia({
                   {(asset.result.suggestions ?? []).map((s, i) => (
                     <p key={i}>
                       {s.field}：{s.text}（片段{" "}
-                      {s.source_indices.map((x) => x + 1).join("、")}）
+                      {s.source_indices.map((x) => (
+                        <a key={x} href={`#media-${asset.id}-segment-${x}`}>
+                          片段 {x + 1}{" "}
+                        </a>
+                      ))}
+                      ）
                     </p>
                   ))}
                   {(asset.result.unresolved_questions ?? []).map((q, i) => (
@@ -420,6 +466,41 @@ export function WahaMedia({
                       {asset.review_note}
                     </p>
                   )}
+                  <button
+                    disabled={busy || !enabled || !asset.reviewed_at}
+                    onClick={() =>
+                      void act(async () => {
+                        const generation = epoch.current;
+                        const value = await api.evidence(asset);
+                        if (active.current && generation === epoch.current)
+                          setHandoff(value);
+                      })
+                    }
+                  >
+                    查看业务交接资料（不写入工单）
+                  </button>
+                  {handoff &&
+                    asset.reviewed_at &&
+                    handoff.attachment_version === asset.version &&
+                    handoff.context_version === asset.context_version &&
+                    handoff.result_job_id === asset.result_job_id &&
+                    handoff.reviewed_at === asset.reviewed_at && (
+                      <div className="media-handoff">
+                        <p>
+                          来源已核对，业务仍需单独确认。C
+                          使用这些来源标识前必须重新检查权限、版本和有效期。
+                        </p>
+                        <p>
+                          附件 {handoff.attachment_id} · 上下文{" "}
+                          {handoff.context_version} · 来源任务{" "}
+                          {handoff.result_job_id}
+                        </p>
+                        <p>
+                          有效期：{handoff.expires_at} · SHA-256：
+                          {handoff.sha256}
+                        </p>
+                      </div>
+                    )}
                 </>
               )}
             </>

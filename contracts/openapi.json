@@ -937,6 +937,25 @@
         "title": "Detail[WahaMediaCapabilities]",
         "type": "object"
       },
+      "Detail_WahaMediaEvidence_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/WahaMediaEvidence"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[WahaMediaEvidence]",
+        "type": "object"
+      },
       "Detail_WahaMediaJobView_": {
         "additionalProperties": false,
         "properties": {
@@ -1963,6 +1982,16 @@
             "title": "Id",
             "type": "string"
           },
+          "input_context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WahaMediaInputContext"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "latest_job_id": {
             "anyOf": [
               {
@@ -2394,6 +2423,18 @@
             "format": "uuid",
             "title": "Snapshot Id",
             "type": "string"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
           }
         },
         "required": [
@@ -2402,6 +2443,172 @@
           "consent_download"
         ],
         "title": "WahaMediaCommand",
+        "type": "object"
+      },
+      "WahaMediaEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "account_id": {
+            "format": "uuid",
+            "title": "Account Id",
+            "type": "string"
+          },
+          "attachment_id": {
+            "format": "uuid",
+            "title": "Attachment Id",
+            "type": "string"
+          },
+          "attachment_version": {
+            "minimum": 1.0,
+            "title": "Attachment Version",
+            "type": "integer"
+          },
+          "business_confirmation_required": {
+            "const": true,
+            "default": true,
+            "title": "Business Confirmation Required",
+            "type": "boolean"
+          },
+          "context_version": {
+            "minimum": 0.0,
+            "title": "Context Version",
+            "type": "integer"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "pattern": "Z$",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "input_context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WahaMediaInputContext"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result": {
+            "$ref": "#/components/schemas/WahaMediaResult"
+          },
+          "result_job_id": {
+            "format": "uuid",
+            "title": "Result Job Id",
+            "type": "string"
+          },
+          "review_note": {
+            "title": "Review Note",
+            "type": "string"
+          },
+          "reviewed_at": {
+            "format": "date-time",
+            "pattern": "Z$",
+            "title": "Reviewed At",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "0.1.0",
+            "default": "0.1.0",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "sha256": {
+            "minLength": 1,
+            "title": "Sha256",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "format": "uuid",
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "source_fingerprint": {
+            "minLength": 1,
+            "title": "Source Fingerprint",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id",
+          "conversation_id",
+          "snapshot_id",
+          "attachment_id",
+          "attachment_version",
+          "context_version",
+          "result_job_id",
+          "source_fingerprint",
+          "sha256",
+          "input_context",
+          "result",
+          "reviewed_at",
+          "review_note",
+          "expires_at"
+        ],
+        "title": "WahaMediaEvidence",
+        "type": "object"
+      },
+      "WahaMediaInputContext": {
+        "additionalProperties": false,
+        "properties": {
+          "message_sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "pattern": "Z$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Sent At"
+          },
+          "source_observed_at": {
+            "format": "date-time",
+            "pattern": "Z$",
+            "title": "Source Observed At",
+            "type": "string"
+          },
+          "source_occurred_at": {
+            "format": "date-time",
+            "pattern": "Z$",
+            "title": "Source Occurred At",
+            "type": "string"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          },
+          "timezone_source": {
+            "default": "unknown",
+            "enum": [
+              "merchant_choice",
+              "unknown"
+            ],
+            "title": "Timezone Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_occurred_at",
+          "source_observed_at"
+        ],
+        "title": "WahaMediaInputContext",
         "type": "object"
       },
       "WahaMediaJobView": {
@@ -3991,6 +4198,86 @@
           }
         },
         "summary": "Media Content"
+      }
+    },
+    "/api/v1/connectors/{connection_id}/media/attachments/{attachment_id}/evidence": {
+      "get": {
+        "operationId": "media_evidence_api_v1_connectors__connection_id__media_attachments__attachment_id__evidence_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "attachment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Attachment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expected_attachment_version",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Expected Attachment Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expected_context_version",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Expected Context Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expected_result_job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Expected Result Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WahaMediaEvidence_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Media Evidence"
       }
     },
     "/api/v1/connectors/{connection_id}/media/attachments/{attachment_id}/review": {

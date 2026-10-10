@@ -133,6 +133,21 @@ export function mediaApi(connection: string, csrf: string) {
         await response(`/media/attachments/${encodeURIComponent(id)}/content`)
       ).blob();
     },
+    evidence(asset: Attachment) {
+      if (!asset.result_job_id || !asset.reviewed_at)
+        throw new ConnectionError(
+          "MEDIA_REVIEW_REQUIRED",
+          "请先核对当前结果来源。",
+        );
+      const query = new URLSearchParams({
+        expected_attachment_version: String(asset.version),
+        expected_context_version: String(asset.context_version),
+        expected_result_job_id: asset.result_job_id,
+      });
+      return detail<components["schemas"]["WahaMediaEvidence"]>(
+        `/media/attachments/${encodeURIComponent(asset.id)}/evidence?${query}`,
+      );
+    },
     async review(asset: Attachment, note: string) {
       return detail<Attachment>(
         `/media/attachments/${encodeURIComponent(asset.id)}/review`,

@@ -1,5 +1,7 @@
 # Role A technical evolution and unified acceptance
 
+2026-10-10 media batch 2: A now supplies frozen provider sending time/merchant-selected timezone and reviewed read-only evidence. B must implement real MediaProcessor.process/reconcile separately from text extraction; C must agree attachment provenance and revalidate before business promotion. Missing time stays unresolved, and this does not enable external sending. See [media protocol](role-a-media-ingestion.md).
+
 2026-10-10 authorized media batch: [A ingestion and B handoff](role-a-media-ingestion.md) implements explicit original-file reads/private preview, durable processing stages and source review. User confirmed B has no real adapter; B owns OCR/ASR/parsing/GenAI and business interpretation. This is A infrastructure delivery, not completion of real AI or approved sending. Own-account file-format acceptance and B integration remain the next unified gates.
 
 2026-10-09 authorized extension: [message-sync delivery](role-a-message-sync-acceptance.md) implements bounded history snapshots, owned timeline, explicit gap/source lookup, group/media metadata and durable GET-only jobs. Original media reading/GenAI is deferred by the owner. Next gate is one own-account batch acceptance and independent E review, followed by separately scoped multi-session/deployment or approved sending work. Earlier stage labels below remain planning history.

@@ -97,7 +97,14 @@ def metadata(chat, item):
     )
 
 
-def snapshot(db, chat, item, occurred, *, source, now, revoked=False):
+def message_time(value):
+    """Provider message timestamp in seconds; never use event/observation time."""
+    if type(value) not in {int, float} or not 0 < value < 4102444800:
+        return None
+    return datetime.fromtimestamp(value, UTC)
+
+
+def snapshot(db, chat, item, occurred, *, source, now, revoked=False, capture_sent_at=True):
     reference, data = metadata(chat, item)
     key = uid("snapshot", chat.id, reference)
     existing = db.get(WahaSnapshot, key)
@@ -131,6 +138,7 @@ def snapshot(db, chat, item, occurred, *, source, now, revoked=False):
         source=source,
         occurred_at=occurred,
         observed_at=now,
+        message_sent_at=message_time(item.get("timestamp")) if capture_sent_at else None,
         revoked=revoked,
         data=data,
     )
@@ -288,7 +296,14 @@ def receive_media(db, connection, chat, conversation, raw, *, now):
     ):
         fail("SOURCE_ORDER_NEEDS_RECONCILIATION")
     row, changed = snapshot(
-        db, chat, normalized, occurred, source="live", now=now, revoked=kind == "message.revoked"
+        db,
+        chat,
+        normalized,
+        occurred,
+        source="live",
+        now=now,
+        revoked=kind == "message.revoked",
+        capture_sent_at=kind in {"message", "message.any"},
     )
     db.add(
         WahaObservationReceipt(
@@ -330,7 +345,13 @@ def observe_text(db, chat, raw, now):
     # Live text remains canonical in message_revisions; only extended provenance here.
     item["body"] = None
     snapshot(
-        db, chat, item, datetime.fromtimestamp(raw["timestamp"] / 1000, UTC), source="live", now=now
+        db,
+        chat,
+        item,
+        datetime.fromtimestamp(raw["timestamp"] / 1000, UTC),
+        source="live",
+        now=now,
+        capture_sent_at=raw["event"] in {"message", "message.any"},
     )
 
 
