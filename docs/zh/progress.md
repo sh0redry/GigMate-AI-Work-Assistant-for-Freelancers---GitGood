@@ -251,6 +251,7 @@ PR #3 的 backend run 37432110763 在 test_waha_team.py 收集阶段报 `ModuleN
 - deterministic provider 的 `prompt_version` 属性同样捕获 `UnicodeDecodeError` 并拒绝空版本头（`test_deterministic_provider_prompt_version_handles_malformed_files`）。
 - 新增清单用例 `case-008-llm-skeleton-needs-review`（`provider` 字段为 `llm`）固化骨架行为。评测器现在跳过 `provider` 字段与当前 provider 不匹配的用例，所以默认 deterministic 运行仍 7/7 通过。用 `--provider llm` 跑清单会执行这条定向用例加五条通用 needs_review 用例（3、4、5、6、7）；matched 用例（1、2）在 `llm` 下预期失败，文档中已说明。
 - `EvaluationCase` Pydantic 模型新增可选字段 `provider: Text | None`；通过 `python scripts/export_contracts.py` 重新生成 `contracts/domain/models.schema.json`，`--check` 同步。
+- 清单路径解析（cwd 安全网）：`_resolve_manifest_path` 现在把相对路径锚定到仓库根（`evaluator.py` 文件的 `parents[5]`），不再依赖当前工作目录。绝对路径保持原行为；文件仍缺失时抛 `FileNotFoundError` 并带上解析后的路径。CI 之前能通过只是因为 pytest 总是从仓库根启动，但 `scripts/run_evaluation.py` 在其他 cwd 下执行会直接 `FileNotFoundError` 崩溃。修复后用 `/tmp` 作为 cwd 跑两条 evaluation-manifest 用例均通过。
 - 测试：原有 6 个用例上再补 8 个，extraction 全套 34/34；后端全套在 SQLite 上 325 通过、6 跳过（PostgreSQL 锁测试）。
 - `scripts/run_evaluation.py --provider llm` 端到端运行生成的 JSON 报告：6 通过（用例 3-8）、2 失败（用例 1-2 符合预期）——骨架行为如设计。
 - CI：`.github/workflows/skeleton.yml` 的 `ruff check` 与 `ruff format --check` 范围已恢复包含 `scripts/run_evaluation.py`（上次合并因网页上传绕过被去掉）。
