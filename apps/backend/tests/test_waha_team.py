@@ -216,3 +216,49 @@ def test_unknown_daemon_architecture_fails_clearly(monkeypatch):
     monkeypatch.setattr(team, "run", lambda args: "unknown")
     with pytest.raises(team.TeamError, match="UNSUPPORTED_DOCKER_ARCHITECTURE"):
         team.compose("up")
+
+
+@pytest.mark.parametrize("matching", [True, False])
+def test_legacy_database_profile_is_explicit_verified_and_workspace_bound(
+    tmp_path, monkeypatch, matching
+):
+    import sqlalchemy
+    from scripts import waha_ingress, waha_local
+
+    private = tmp_path / "local-data/waha-a02"
+    private.mkdir(parents=True)
+    monkeypatch.setattr(team, "ROOT", tmp_path)
+    monkeypatch.setattr(team, "PRIVATE", private)
+    monkeypatch.setattr(team, "PROFILE", private / "team.json")
+    monkeypatch.setattr(waha_local, "load_config", lambda: None)
+    monkeypatch.setattr(
+        waha_ingress,
+        "local_binding",
+        lambda c: SimpleNamespace(connection_id="synthetic", account_id="synthetic"),
+    )
+
+    class Connection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def execute(self, *args, **kwargs):
+            return SimpleNamespace(scalar=lambda: matching)
+
+    monkeypatch.setattr(
+        sqlalchemy, "create_engine", lambda *a, **k: SimpleNamespace(connect=lambda: Connection())
+    )
+    url = "postgresql+psycopg://synthetic:synthetic-only@127.0.0.1:16432/synthetic"
+    if not matching:
+        with pytest.raises(team.TeamError, match="BINDING_DATABASE_MISMATCH"):
+            team.remember_database({"DATABASE_URL": url})
+        assert not (private / "database.json").exists()
+        return
+    assert team.remember_database({"DATABASE_URL": url})["database_profile_saved"]
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    assert team.environment()["DATABASE_URL"] == url
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://other@localhost/other")
+    with pytest.raises(team.TeamError, match="DATABASE_ENV_CONFLICT"):
+        team.environment()

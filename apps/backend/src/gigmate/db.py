@@ -129,6 +129,7 @@ class WahaControl(Base):
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     lease_token: Mapped[str | None] = mapped_column(String(36))
     result: Mapped[dict] = mapped_column(JSON, default=dict)
+    parameters: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     error_code: Mapped[str | None] = mapped_column(String(64))
     __table_args__ = (UniqueConstraint("connection_id", "request_key", name="uq_waha_control_key"),)
 
@@ -140,6 +141,74 @@ class WahaCandidate(Base):
     provider_chat_id: Mapped[str] = mapped_column(String(256))
     label: Mapped[str] = mapped_column(String(200))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class WahaSnapshot(Base):
+    __tablename__ = "waha_snapshots"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(ForeignKey("waha_chats.id"), index=True)
+    provider_message_id: Mapped[str] = mapped_column(String(256))
+    stanza_id: Mapped[str | None] = mapped_column(String(256))
+    source: Mapped[str] = mapped_column(String(16))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    data: Mapped[dict] = mapped_column(JSON)
+    __table_args__ = (
+        UniqueConstraint("chat_id", "provider_message_id", name="uq_waha_snapshot"),
+        Index("ix_waha_snapshot_stanza", "chat_id", "stanza_id"),
+    )
+
+
+class WahaObservationReceipt(Base):
+    __tablename__ = "waha_observation_receipts"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    connection_id: Mapped[str] = mapped_column(ForeignKey("waha_connections.id"), index=True)
+    snapshot_id: Mapped[str] = mapped_column(ForeignKey("waha_snapshots.id"), index=True)
+    digest: Mapped[str] = mapped_column(String(64))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class WahaExclusion(Base):
+    __tablename__ = "waha_sync_exclusions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    connection_id: Mapped[str] = mapped_column(ForeignKey("waha_connections.id"), index=True)
+    chat_id: Mapped[str | None] = mapped_column(ForeignKey("waha_chats.id"))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WahaSourceGap(Base):
+    __tablename__ = "waha_source_gaps"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(ForeignKey("waha_chats.id"), index=True)
+    provider_reference: Mapped[str] = mapped_column(String(256))
+    direction: Mapped[str] = mapped_column(String(8), default="incoming")
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    state: Mapped[str] = mapped_column(String(32), default="needs_lookup")
+    __table_args__ = (
+        UniqueConstraint("chat_id", "provider_reference", "direction", name="uq_waha_source_gap"),
+    )
+
+
+class WahaSyncJob(Base):
+    __tablename__ = "waha_sync_jobs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"))
+    connection_id: Mapped[str] = mapped_column(ForeignKey("waha_connections.id"), index=True)
+    request_key: Mapped[str] = mapped_column(String(128))
+    version: Mapped[int] = mapped_column(Integer)
+    state: Mapped[str] = mapped_column(String(24))
+    active_key: Mapped[str | None] = mapped_column(String(36), unique=True)
+    command: Mapped[dict] = mapped_column(JSON)
+    progress: Mapped[dict] = mapped_column(JSON, default=dict)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_token: Mapped[str | None] = mapped_column(String(36))
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    __table_args__ = (UniqueConstraint("connection_id", "request_key", name="uq_waha_sync_key"),)
 
 
 class MessageRow(Base):

@@ -55,7 +55,7 @@ export interface ConnectionApi {
   ): Promise<Selection>;
   issues(id: string): Promise<Issue[]>;
   restart(id: string, key: string): Promise<void>;
-  retry(id: string): Promise<void>;
+  retry(id: string): Promise<Discovery | void>;
   reconcile(id: string): Promise<void>;
   pause(id: string): Promise<void>;
   resume(id: string): Promise<void>;
@@ -79,6 +79,7 @@ export function demoConnectionApi(): ConnectionApi & {
     expires_at: null,
     label: name,
     selected: false,
+    kind: i === 2 ? "group" : "direct",
   }));
   let connected = false,
     enabled = true,

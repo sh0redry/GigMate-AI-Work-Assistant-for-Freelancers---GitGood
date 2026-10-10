@@ -355,3 +355,55 @@ class LocalWahaClient:
             "available_records": len(result),
             "complete_history": False,
         }
+
+    def history_page(self, chat, *, since, until, offset=0, limit=50):
+        """Server-owned caller must resolve current database consent before each read."""
+        if (
+            not isinstance(chat, str)
+            or len(chat) > 256
+            or not chat.endswith(("@c.us", "@lid", "@g.us"))
+            or type(offset) is not int
+            or offset < 0
+            or type(limit) is not int
+            or not 1 <= limit <= 100
+        ):
+            raise AdapterError("INVALID_HISTORY_RANGE")
+        if not self.status()["connected"]:
+            raise AdapterError("WAHA_NOT_CONNECTED")
+        result = self._request(
+            "GET",
+            f"/api/default/chats/{quote(chat, safe='')}/messages",
+            params={
+                "limit": limit,
+                "offset": offset,
+                "downloadMedia": "false",
+                "filter.timestamp.gte": since,
+                "filter.timestamp.lte": until,
+            },
+        )
+        if (
+            not isinstance(result, list)
+            or len(result) > limit
+            or any(not isinstance(x, dict) for x in result)
+        ):
+            raise AdapterError("WAHA_INVALID_RESPONSE")
+        return result
+
+    def message_snapshot(self, chat, reference):
+        if (
+            not isinstance(chat, str)
+            or not chat.endswith(("@c.us", "@lid", "@g.us"))
+            or not isinstance(reference, str)
+            or not 1 <= len(reference) <= 256
+        ):
+            raise AdapterError("INVALID_MESSAGE_REFERENCE")
+        if not self.status()["connected"]:
+            raise AdapterError("WAHA_NOT_CONNECTED")
+        result = self._request(
+            "GET",
+            f"/api/default/chats/{quote(chat, safe='')}/messages/{quote(reference, safe='')}",
+            params={"downloadMedia": "false"},
+        )
+        if not isinstance(result, dict):
+            raise AdapterError("WAHA_INVALID_RESPONSE")
+        return result

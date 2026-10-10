@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
 const directory = await mkdtemp(join(tmpdir(), "gigmate-http-api-"));
-for (const name of ["connection-api", "waha-live-api"]) {
+for (const name of ["connection-api", "waha-live-api", "waha-sync-api"]) {
   const source = await readFile(
     new URL(`./src/${name}.ts`, import.meta.url),
     "utf8",
@@ -26,6 +26,9 @@ for (const name of ["connection-api", "waha-live-api"]) {
 const { liveConnectionApi, ConnectionError, clearConnectionAttempts } =
   await import(pathToFileURL(join(directory, "connection-api.mjs")));
 const original = globalThis.fetch;
+const { synchronizationApi } = await import(
+  pathToFileURL(join(directory, "waha-sync-api.mjs"))
+);
 afterEach(() => {
   globalThis.fetch = original;
   delete globalThis.sessionStorage;
@@ -72,6 +75,94 @@ const json = (data, status = 200) =>
   });
 const error = (code, status) =>
   new Response(JSON.stringify({ error: { code, message: code } }), { status });
+
+test("sync lost response replays exact consent range and authority rather than creating another intent", async () => {
+  const writes = [];
+  let version = 7;
+  globalThis.fetch = async (url, init) => {
+    if (url.endsWith("/setup"))
+      return json(setup({ control_version: version }));
+    assert.equal(url, base + "/sync-jobs");
+    assert.equal(init.headers["X-CSRF-Token"], "synthetic-csrf");
+    writes.push({ body: init.body, key: init.headers["Idempotency-Key"] });
+    if (writes.length === 1) throw new TypeError("Synthetic lost response");
+    return json({ id: opid, state: "pending" });
+  };
+  const api = synchronizationApi(id, "synthetic-csrf");
+  const command = {
+    chat_ids: [choice],
+    since: "2026-10-08T00:00:00Z",
+    until: "2026-10-09T00:00:00Z",
+    max_records: 100,
+    consent: true,
+    issue_id: null,
+    source_gap_id: null,
+  };
+  await assert.rejects(
+    api.start(command, "stable-sync"),
+    (e) => e.code === "SYNC_RESULT_UNCERTAIN",
+  );
+  version = 9;
+  await api.start(command, "stable-sync");
+  assert.deepEqual(writes[0], writes[1]);
+  assert.equal(JSON.parse(writes[1].body).expected_version, 7);
+  await assert.rejects(
+    api.start({ ...command, max_records: 500 }, "stable-sync"),
+    (e) => e.code === "IDEMPOTENCY_CONFLICT",
+  );
+});
+
+test("sync timeline/cancel use owner backend without media URLs or provider administration", async () => {
+  const seen = [];
+  globalThis.fetch = async (url, init) => {
+    seen.push([url, init]);
+    if (url.endsWith("/setup")) return json(setup());
+    if (url.includes("/timeline"))
+      return new Response(JSON.stringify({ items: [], next_cursor: null }), {
+        status: 200,
+      });
+    if (url.endsWith("/cancel")) return json({ id: opid, state: "cancelled" });
+    if (url.endsWith("/chats"))
+      return json([
+        { id: choice, selected: true, kind: "group" },
+        { id: "other", selected: false },
+      ]);
+    throw new Error("Unexpected route");
+  };
+  const api = synchronizationApi(id, "synthetic-csrf");
+  assert.equal((await api.chats()).length, 1);
+  await api.timeline(choice, "cursor one");
+  await api.cancel(opid);
+  assert(seen.every(([u, i]) => u.startsWith(base) && i.cache === "no-store"));
+  const cancelled = seen.find(([u]) => u.endsWith("/cancel"));
+  assert.equal(JSON.parse(cancelled[1].body).expected_version, 7);
+  assert(seen.some(([u]) => u.includes("cursor=cursor%20one")));
+});
+
+test("discovery forwards pagination and exposes next offset without losing prior authority", async () => {
+  globalThis.fetch = async (url, init) => {
+    if (url.endsWith("/setup")) return json(setup());
+    if (url.endsWith("/operations")) {
+      assert.equal(JSON.parse(init.body).offset, 100);
+      return json(op({ action: "discover", next_offset: 200 }));
+    }
+    if (url.endsWith("/chats"))
+      return json([
+        {
+          id: choice,
+          label: "Synthetic",
+          selected: false,
+          kind: "group",
+          expires_at: null,
+        },
+      ]);
+    throw new Error("Unexpected route");
+  };
+  assert.equal(
+    (await liveConnectionApi("csrf").chats(id, 100)).next_offset,
+    200,
+  );
+});
 
 test("lost operation response preserves exact version/body/key and never uses local bridge", async () => {
   let version = 7;
@@ -322,6 +413,107 @@ function memoryStorage() {
     removeItem: (key) => rows.delete(key),
   };
 }
+
+test("lost discovery page survives reload and restores the exact offset, limit, version, key and next cursor", async () => {
+  globalThis.sessionStorage = memoryStorage();
+  const posts = [];
+  globalThis.fetch = async (url, init) => {
+    if (url.endsWith("/setup"))
+      return json(setup({ control_version: posts.length ? 99 : 7 }));
+    if (url.endsWith("/chats"))
+      return json([
+        {
+          id: choice,
+          label: "Synthetic later page",
+          selected: false,
+          expires_at: null,
+        },
+      ]);
+    assert.equal(url, base + "/operations");
+    posts.push({
+      body: JSON.parse(init.body),
+      key: init.headers["Idempotency-Key"],
+    });
+    if (posts.length === 1) throw new TypeError("Synthetic lost page response");
+    return json(
+      op({
+        action: "discover",
+        control_version: posts.at(-1).body.expected_version,
+        next_offset: posts.at(-1).body.offset + 100,
+      }),
+      202,
+    );
+  };
+  await assert.rejects(
+    liveConnectionApi("synthetic-csrf").chats(id, 200),
+    (e) => e.code === "OPERATION_RESULT_UNKNOWN",
+  );
+  const reloaded = liveConnectionApi("synthetic-csrf");
+  assert.equal((await reloaded.pairing(id, true)).retry_available, true);
+  await assert.rejects(
+    reloaded.chats(id, 0),
+    (e) => e.code === "OPERATION_RESULT_UNKNOWN",
+  );
+  assert.equal(posts.length, 1);
+  const restored = await reloaded.retry(id);
+  assert.deepEqual(posts[0], posts[1]);
+  assert.deepEqual(posts[1].body, {
+    action: "discover",
+    expected_version: 7,
+    offset: 200,
+    limit: 100,
+  });
+  assert.equal(restored.next_offset, 300);
+  assert.equal(restored.items[0].id, choice);
+  assert.equal(sessionStorage.length, 0);
+  assert.equal(
+    (await reloaded.chats(id, restored.next_offset)).next_offset,
+    400,
+  );
+  assert.equal(posts[2].body.expected_version, 99);
+  assert.notEqual(posts[2].key, posts[1].key);
+});
+
+test("restored discovery retains an explicitly stored page size and rejects malformed pagination metadata", async () => {
+  globalThis.sessionStorage = memoryStorage();
+  const stored = {
+    key: "synthetic-page-key",
+    body: { action: "discover", expected_version: 4, offset: 80, limit: 40 },
+  };
+  sessionStorage.setItem(
+    "gigmate-control-attempt:" + id,
+    JSON.stringify(stored),
+  );
+  globalThis.fetch = async (url, init) => {
+    if (url.endsWith("/operations")) {
+      assert.deepEqual(JSON.parse(init.body), stored.body);
+      assert.equal(init.headers["Idempotency-Key"], stored.key);
+      return json(op({ action: "discover", next_offset: 120 }));
+    }
+    if (url.endsWith("/chats")) return json([]);
+    return json(setup());
+  };
+  assert.equal(
+    (await liveConnectionApi("synthetic-csrf").retry(id)).next_offset,
+    120,
+  );
+  for (const body of [
+    { ...stored.body, offset: -1 },
+    { ...stored.body, offset: 10001 },
+    { ...stored.body, limit: 101 },
+    { ...stored.body, offset: "80" },
+    { ...stored.body, action: "connect" },
+  ]) {
+    sessionStorage.setItem(
+      "gigmate-control-attempt:" + id,
+      JSON.stringify({ ...stored, body }),
+    );
+    assert.equal(
+      (await liveConnectionApi("synthetic-csrf").pairing(id)).retry_available,
+      false,
+    );
+  }
+});
 test("lost response survives adapter recreation and only explicit original-key retry submits", async () => {
   globalThis.sessionStorage = memoryStorage();
   const posts = [];

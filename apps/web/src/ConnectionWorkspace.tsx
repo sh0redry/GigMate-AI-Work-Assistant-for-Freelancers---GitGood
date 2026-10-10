@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { WahaMessages } from "./WahaMessages";
 import {
   ConnectionError,
   demoConnectionApi,
@@ -120,6 +121,8 @@ export function ConnectionWorkspace({
   const [selectionNeedsReload, setSelectionNeedsReload] = useState(false);
   const [clock, setClock] = useState(Date.now());
   const [choices, setChoices] = useState<Choice[]>([]);
+  const [search, setSearch] = useState("");
+  const [chatKind, setChatKind] = useState("all");
   const [picked, setPicked] = useState<string[]>([]);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -498,7 +501,7 @@ export function ConnectionWorkspace({
       setNextOffset(discovery.next_offset);
       setLoaded(true);
       setNotice(
-        "已发现最近会话，请勾选并保存处理授权。最多读取 100 个最近会话，列表可能不完整。新选项 10 分钟后过期。",
+        "已发现最近会话，请勾选并保存处理授权。每页最多读取 100 个会话，可加载更多；列表可能不完整。新选项按服务端原到期时间失效。",
       );
     } finally {
       await refreshStatus();
@@ -834,7 +837,20 @@ export function ConnectionWorkspace({
                     onClick={() =>
                       void act(async () => {
                         try {
-                          await api.retry(id);
+                          const stamp = epoch.current;
+                          const discovery = await api.retry(id);
+                          if (discovery && stamp === epoch.current) {
+                            if (!selection) {
+                              const value = await api.selection(id);
+                              if (stamp !== epoch.current) return;
+                              setSelection(value);
+                              setSelectionNeedsReload(false);
+                              setPicked(value.selected.map((c) => c.id));
+                            }
+                            setChoices((c) => mergeChoices(c, discovery.items));
+                            setNextOffset(discovery.next_offset);
+                            setLoaded(true);
+                          }
                         } finally {
                           await refreshStatus();
                         }
@@ -1074,7 +1090,7 @@ export function ConnectionWorkspace({
             </div>
             <p className="subtle">
               已有授权可在断线、暂停或接入配置不可用时读取及撤销。发现新会话需要有效连接；最多读取
-              100 个最近会话。
+              每页 100 个会话，可加载更多。
             </p>
             {selectionStale && (
               <p className="connection-notice error" role="alert">
@@ -1125,58 +1141,90 @@ export function ConnectionWorkspace({
                   </div>
                 )}
                 <div className="chat-choices">
-                  {choices.map((c, i) => (
-                    <label className="chat-choice" key={c.id}>
-                      <input
-                        type="checkbox"
-                        checked={picked.includes(c.id)}
-                        disabled={
-                          busy ||
-                          (!picked.includes(c.id) &&
-                            (picked.length >= 100 ||
-                              (!c.selected &&
-                                (!canDiscover || choiceExpired(c, clock)))))
-                        }
-                        onChange={(e) => {
-                          setPicked((p) =>
-                            e.target.checked
-                              ? [...p, c.id]
-                              : p.filter((k) => k !== c.id),
-                          );
-                          setNotice("");
-                        }}
-                      />
-                      <span className="chat-avatar" aria-hidden="true">
-                        {c.label.slice(0, 1) || "聊"}
-                      </span>
-                      <span className="chat-title">
-                        <strong>
-                          {c.label === "已授权会话"
-                            ? `已授权会话 ${i + 1}`
-                            : c.label}
-                        </strong>
-                        <small>
-                          {"聊天"} ·{" "}
-                          {selection.selected.some((s) => s.id === c.id)
-                            ? demo
-                              ? "演示已授权"
-                              : "服务端已授权"
-                            : "尚未授权"}
-                          {!c.selected && choiceExpired(c, clock)
-                            ? " · 选项已过期"
-                            : ""}
-                        </small>
-                      </span>
-                    </label>
-                  ))}
+                  <label>
+                    搜索已载入聊天
+                    <input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="聊天名称"
+                    />
+                  </label>
+                  <label>
+                    聊天类型
+                    <select
+                      value={chatKind}
+                      onChange={(e) => setChatKind(e.target.value)}
+                    >
+                      <option value="all">全部</option>
+                      <option value="direct">个人聊天</option>
+                      <option value="group">群聊</option>
+                      <option value="selected">已授权</option>
+                    </select>
+                  </label>
+                  {choices
+                    .filter(
+                      (c) =>
+                        c.label
+                          .toLocaleLowerCase()
+                          .includes(search.toLocaleLowerCase()) &&
+                        (chatKind === "all" ||
+                          (chatKind === "selected" && c.selected) ||
+                          c.kind === chatKind),
+                    )
+                    .map((c, i) => (
+                      <label className="chat-choice" key={c.id}>
+                        <input
+                          type="checkbox"
+                          checked={picked.includes(c.id)}
+                          disabled={
+                            busy ||
+                            (!picked.includes(c.id) &&
+                              (picked.length >= 100 ||
+                                (!c.selected &&
+                                  (!canDiscover || choiceExpired(c, clock)))))
+                          }
+                          onChange={(e) => {
+                            setPicked((p) =>
+                              e.target.checked
+                                ? [...p, c.id]
+                                : p.filter((k) => k !== c.id),
+                            );
+                            setNotice("");
+                          }}
+                        />
+                        <span className="chat-avatar" aria-hidden="true">
+                          {c.label.slice(0, 1) || "聊"}
+                        </span>
+                        <span className="chat-title">
+                          <strong>
+                            {c.label === "已授权会话"
+                              ? `已授权会话 ${i + 1}`
+                              : c.label}
+                          </strong>
+                          <small>
+                            {"聊天"} ·{" "}
+                            {selection.selected.some((s) => s.id === c.id)
+                              ? demo
+                                ? "演示已授权"
+                                : "服务端已授权"
+                              : "尚未授权"}
+                            {!c.selected && choiceExpired(c, clock)
+                              ? " · 选项已过期"
+                              : ""}
+                          </small>
+                        </span>
+                      </label>
+                    ))}
                 </div>
                 {nextOffset !== null && (
                   <button
                     className="secondary"
-                    disabled={busy}
+                    disabled={busy || !canDiscover}
                     onClick={() =>
                       void act(async () => {
+                        const stamp = epoch.current;
                         const discovery = await api.chats(id, nextOffset);
+                        if (stamp !== epoch.current) return;
                         setChoices((c) => mergeChoices(c, discovery.items));
                         setNextOffset(discovery.next_offset);
                       })
@@ -1234,6 +1282,16 @@ export function ConnectionWorkspace({
             )}
           </section>
         </div>
+      )}
+      {!demo && id && (
+        <WahaMessages
+          key={`${id}:${csrf}`}
+          connection={id}
+          csrf={csrf}
+          enabled={!!connector?.enabled}
+          issues={issues}
+          onSessionExpired={onSessionExpired}
+        />
       )}
     </section>
   );

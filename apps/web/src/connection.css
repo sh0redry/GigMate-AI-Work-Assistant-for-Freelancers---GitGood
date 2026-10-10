@@ -383,3 +383,51 @@
   background: #176a52;
   color: white;
 }
+.synchronization-panel {
+  margin-top: 24px;
+}
+.synchronization-panel label,
+.chat-choices > label:not(.chat-choice) {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 10px 0;
+}
+.synchronization-panel select,
+.chat-choices select,
+.chat-choices input:not([type="checkbox"]) {
+  font: inherit;
+  border: 1px solid #c8dbd0;
+  border-radius: 8px;
+  background: white;
+  padding: 8px 12px;
+  max-width: 100%;
+  min-width: 0;
+}
+.synchronization-panel fieldset {
+  border: 1px solid #dce7df;
+  border-radius: 10px;
+  padding: 16px;
+  margin: 20px 0;
+}
+.message-timeline {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.message-timeline li {
+  border-left: 3px solid #8fbaa6;
+  border-radius: 8px;
+  padding: 14px 18px;
+  background: #f3f7f4;
+  overflow-wrap: anywhere;
+}
+.message-timeline p {
+  white-space: pre-wrap;
+  margin: 6px 0;
+}
+.synchronization-panel li button {
+  margin: 8px;
+}

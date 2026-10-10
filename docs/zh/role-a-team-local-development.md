@@ -1,5 +1,7 @@
 # 团队本地 WAHA 联调与后续开发框架
 
+最新扩展：[消息同步验收](role-a-message-sync-acceptance.md)。升级 0008 并重建后，在本地消息/同步区域查询有界历史和群聊/媒体元数据；旧安装可明确保存经验证的私有 DB 地址，本批不读取原文件或做媒体 GenAI。
+
 2026-10-08：完成下方本机启动后，按[统一适配验收](role-a-integration-acceptance.md)使用已实现的页面连接/授权并升级旧操作记录。D 已接入 A 的统一后端，无需本机桥接。
 
 更新：2026-10-06。[英文对应](../en/role-a-team-local-development.md)，[当前能力](role-a-waha-handoff.md)。本批提供开发工具，不实现生产接入、AI 或发送；Cloud API 不纳入计划。
