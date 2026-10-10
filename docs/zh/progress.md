@@ -1,5 +1,15 @@
 # 已完成工作与验证记录
 
+## PR #18 llm 骨架评审跟进 — 2026-10-10
+
+负责人对 PR #18（`WillW27/role-b-llm-skeleton`，head `78151a6`）的审查要求合并前修正两处代码并校正 PR 描述。两处代码修正已落在 PR 分支上；PR 正文属于 GitHub 侧编辑，仍需作者自行更新。
+
+- **提示词配置回退（P2）：** `LLMProvider._read_prompt_version` 现在在文件缺失、`OSError`、非 UTF-8 字节、缺少 `prompt_version:` 头部行或头部值为空时统一回退 `0.0.0-skeleton`，并把可读原因记入 `_prompt_load_error`；`propose` 以 `llm:prompt-malformed` 备注返回 `needs_review`。此前空版本（`ValidationError`）与非 UTF-8（`UnicodeDecodeError`）会逃逸到 worker 的 `PROCESSING_FAILED` 重试路径且无证据；新增 worker 回归断言任务以 `EXTRACTION_NEEDS_REVIEW` 结束并持久化 proposal/trace。
+- **真实调用闸门反转：** 闸门改为正向开关。`GIGMATE_LLM_LIVE` 关闭时 Provider 层直接拒绝并写 `llm:live-gate-off`（即便已配置供应商与模型）；只有闸门开启才会进入 `_invoke_model`（仍是 stub，返回 `llm:seam-pending`）。此前开启闸门被提前拒绝、关闭闸门反而进入接缝，仅补全 `_invoke_model` 会在闸门关闭时调用模型。来源信任边界改为最先校验，效果不变。
+- 内置提示词仍读取 `prompt_version: 0.1.0`；`case-007-live-origin-with-fixture-text` 与评测清单语义不变。
+
+实际证据（`78151a6` 的独立 worktree）：`pytest apps/backend/tests/test_extraction.py` **33 项通过**（原 25，新增 8 项回归：覆盖/缺失/空值/缺头/非 UTF-8 提示词、闸门关与开两个 spy、畸形提示词的 worker 证据）；完整 `pytest apps/backend/tests` **356 项通过、7 项跳过**。Ruff check/format、`scripts/export_contracts.py --check`、`scripts/check_baseline.py` 通过。测试运行在 SQLite 上，7 项跳过为仅 PostgreSQL 的锁测试，故此处不能证明 PostgreSQL 锁。未调用真实模型、未读取真实密钥、未触碰真实流量。PR 描述修正在 git 差异之外。
+
 ## D01 会话列表评审跟进 — 2026-10-10
 
 Kyrie 明确授权合并 Andy PR #14，并将 D 文档范围扩展到这两份共享中英文进度记录。以 D 账号独立复查并批准 PR #14 的 `56e482e` 后，它已合入 main，合并提交 `ab52d3e`；本地 main 已快进。下方 Draft 描述属于历史记录。PR #16 现以 main 为目标，同步该 main 没有冲突；差异只含前端测试／依赖锁、D 文档及本进度记录，不改 Andy/WAHA、B/C、生成文件或契约。原 `Kyrie_Frontend`／`c702f0c` 保持完整。

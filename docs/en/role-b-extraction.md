@@ -139,13 +139,16 @@ Configuration (environment variables, all optional until the seam is filled):
 | `GIGMATE_LLM_API_KEY` | Server-side only. Read by the seam when the next batch lands. |
 | `GIGMATE_LLM_ENDPOINT` | Optional base URL override (testing). |
 | `GIGMATE_LLM_PROMPT_PATH` | Optional override of the bundled prompt file. |
-| `GIGMATE_LLM_LIVE=1` | The live gate. Required to leave the skeleton state; with the gate on and the seam unimplemented the provider returns `needs_review` with a `llm:seam-pending` note and an explanatory `refused_reason` so a misconfiguration in production surfaces immediately in the trace rather than silently falling back to a real model. |
+| `GIGMATE_LLM_LIVE=1` | The live gate, a positive opt-in. While it is off the provider refuses every call at the provider layer with `llm:live-gate-off`, even when the vendor and model are configured. Only when it is on does control reach `_invoke_model`; the unimplemented seam there returns `needs_review` with `llm:seam-pending`. Either way a misconfiguration surfaces immediately in the trace rather than silently falling back to a real model. |
 
 The prompt is loaded from
 `apps/backend/src/gigmate/extraction/prompts/role_b_extraction_v1.txt` by
 default. The first line `prompt_version: X.Y.Z` is read into
-`prompt_version`; missing or malformed files fall back to `0.0.0-skeleton`
-so the trace still shows the placeholder state. The bundled file encodes the
+`prompt_version`; a missing file, an OS error, a non-UTF-8 file, a missing
+header line or an empty header value all fall back to `0.0.0-skeleton` and
+surface an auditable `llm:prompt-malformed` outcome (the empty-version and
+non-UTF-8 cases used to raise out of `propose`), so the trace still shows the
+placeholder state and the cause. The bundled file encodes the
 hard rules (never emit `confirmed`, never grant execution authority, respect
 the origin trust boundary) and is the single seam the next batch edits.
 

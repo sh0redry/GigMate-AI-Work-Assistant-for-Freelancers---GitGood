@@ -26,11 +26,20 @@ Configuration (environment variables, all optional until the seam is filled):
 - ``GIGMATE_LLM_ENDPOINT`` - optional base URL override for testing.
 - ``GIGMATE_LLM_PROMPT_PATH`` - optional override of the bundled prompt file
   (defaults to the versioned file in this package).
-- ``GIGMATE_LLM_LIVE=1`` - the explicit live gate. Required to leave the
-  skeleton state; the provider returns ``needs_review`` with a
-  ``llm:seam-pending`` note when this is set but the seam is not implemented,
-  so a misconfiguration in production surfaces immediately in the trace
-  rather than silently falling back to a real model.
+- ``GIGMATE_LLM_LIVE=1`` - the explicit live gate. It is a *positive* opt-in:
+  while it is off the provider refuses every call at the provider layer with a
+  ``llm:live-gate-off`` note, even when ``GIGMATE_LLM_PROVIDER`` and
+  ``GIGMATE_LLM_MODEL`` are configured. When it is on the call reaches
+  :meth:`_invoke_model`, which stays a stub and returns ``needs_review`` with a
+  ``llm:seam-pending`` note until the real-model batch implements it. Either
+  way a misconfiguration surfaces immediately in the trace rather than
+  silently falling back to a real model call.
+
+The prompt header is read on every call. A missing file, an OS error, a
+non-UTF-8 file, a missing header line or an empty header value all fall back to
+``0.0.0-skeleton`` and surface an auditable ``llm:prompt-malformed`` outcome so
+a bad prompt configuration can never raise out of ``propose`` into the worker's
+failure path.
 
 The skeleton honors the same origin trust boundary as the deterministic
 provider: live-origin input is always refused with ``needs_review`` until the
@@ -62,12 +71,15 @@ _MODEL_VERSION_PENDING = "skeleton:pending"
 
 
 class LLMIntegrationPending(RuntimeError):
-    """Raised when the live gate is enabled but :meth:`_invoke_model` is not implemented.
+    """Raised when control reaches the unimplemented :meth:`_invoke_model` seam.
 
-    Caught by :meth:`LLMProvider.propose` and returned as a
-    ``needs_review`` outcome so the worker still records evidence. The next
-    authorized batch replaces the stub with a real SDK call and this class
-    becomes unreachable.
+    Caught by :meth:`LLMProvider.propose` and returned as a ``needs_review``
+    outcome so the worker still records evidence. The provider blocks the
+    call at its own layer (missing configuration, live gate off) before the
+    seam is reached, so this only fires once an operator has explicitly opened
+    the live gate on a build whose seam is still a stub. The next authorized
+    batch replaces the stub with a real SDK call and this class becomes
+    unreachable.
     """
 
 
@@ -93,6 +105,11 @@ class LLMProvider:
         self._configured_endpoint = os.environ.get(_ENDPOINT_ENV)
         self._configured_live = os.environ.get(_LIVE_GATE) == "1"
         self._prompt_path = self._resolve_prompt_path()
+        # Reset on every ``_read_prompt_version`` call; a non-None value means
+        # the prompt file is missing or malformed and ``propose`` surfaces it
+        # as an ``llm:prompt-malformed`` outcome instead of letting the
+        # underlying error escape into the worker's failure path.
+        self._prompt_load_error: str | None = None
 
     # ------------------------------------------------------------------ public
 
@@ -100,26 +117,22 @@ class LLMProvider:
         began = time.monotonic()
         prompt_version = self._read_prompt_version()
         model_version = self._model_version()
-        try:
-            reason = self._refusal_reason(request)
-        except LLMIntegrationPending as exc:
+
+        # A malformed prompt configuration must still produce an auditable
+        # needs_review outcome rather than escaping as a ValidationError (empty
+        # version) or UnicodeDecodeError into the worker's failure path.
+        if self._prompt_load_error is not None:
             return self._needs_review(
                 request,
-                reason=str(exc),
+                reason=self._prompt_load_error,
                 latency_ms=self._elapsed(began),
                 prompt_version=prompt_version,
                 model_version=model_version,
-                notes=("llm:seam-pending",),
+                notes=("llm:prompt-malformed",),
             )
-        if reason is not None:
-            return self._needs_review(
-                request,
-                reason=reason,
-                latency_ms=self._elapsed(began),
-                prompt_version=prompt_version,
-                model_version=model_version,
-                notes=("llm:not-configured",),
-            )
+
+        # The origin trust boundary is the strongest gate and is checked before
+        # configuration so live input is always refused, configured or not.
         if request.origin != "synthetic":
             return self._needs_review(
                 request,
@@ -132,6 +145,21 @@ class LLMProvider:
                 model_version=model_version,
                 notes=("llm:origin-live-refused",),
             )
+
+        refusal = self._refusal_reason(request)
+        if refusal is not None:
+            note, reason = refusal
+            return self._needs_review(
+                request,
+                reason=reason,
+                latency_ms=self._elapsed(began),
+                prompt_version=prompt_version,
+                model_version=model_version,
+                notes=(note,),
+            )
+
+        # Reachable only with a complete configuration *and* the live gate on;
+        # the seam itself raises until the real-model batch implements it.
         try:
             return self._invoke_model(request, began, prompt_version, model_version)
         except LLMIntegrationPending as exc:
@@ -146,25 +174,33 @@ class LLMProvider:
 
     # ------------------------------------------------------------- helpers
 
-    def _refusal_reason(self, request: ExtractionRequest) -> str | None:
-        """Return a non-None reason string when the call must be refused.
+    def _refusal_reason(self, request: ExtractionRequest) -> tuple[str, str] | None:
+        """Return ``(note, reason)`` when the call is refused at the provider layer.
 
-        The live gate is checked first; turning it on without a real
-        implementation raises immediately so a production deployment cannot
-        silently fall back to a "real" call that does not exist.
+        Configuration is checked before the live gate so an unconfigured
+        deployment keeps the descriptive ``llm:not-configured`` reason. The
+        live gate is then a positive opt-in: while ``GIGMATE_LLM_LIVE`` is off
+        the provider refuses every call here with ``llm:live-gate-off``, even
+        when the vendor and model are configured. Only when the configuration
+        is complete *and* the live gate is on does control reach
+        :meth:`_invoke_model`; the skeleton seam there returns ``needs_review``
+        with ``llm:seam-pending`` until the real-model batch implements it.
         """
-        if self._configured_live:
-            raise LLMIntegrationPending(
-                "GIGMATE_LLM_LIVE=1 but gigmate.extraction.llm._invoke_model is "
-                "not implemented; refusing the call instead of silently falling "
-                "back. Set GIGMATE_LLM_LIVE=0 (or unset) until the real-model "
-                "batch lands."
-            )
         if not self._configured_provider or not self._configured_model:
             return (
+                "llm:not-configured",
                 "LLM provider is not configured; set GIGMATE_LLM_PROVIDER and "
                 "GIGMATE_LLM_MODEL (and GIGMATE_LLM_API_KEY) before the real-model "
-                "batch is authorized."
+                "batch is authorized.",
+            )
+        if not self._configured_live:
+            return (
+                "llm:live-gate-off",
+                "GIGMATE_LLM_LIVE=1 is required before the LLM seam is invoked; "
+                "the provider refuses every call while the live gate is off - even "
+                "when GIGMATE_LLM_PROVIDER/GIGMATE_LLM_MODEL are configured - so a "
+                "misconfigured deployment cannot silently fall back to a real "
+                "model call once _invoke_model is implemented.",
             )
         return None
 
@@ -180,15 +216,49 @@ class LLMProvider:
         return Path(__file__).resolve().parent / "prompts" / _DEFAULT_PROMPT_FILENAME
 
     def _read_prompt_version(self) -> str:
+        """Return the ``prompt_version:`` header, falling back on malformed files.
+
+        Every failure mode - missing file, OS error, non-UTF-8 bytes, a missing
+        header line or an empty header value - falls back to
+        :data:`_PROMPT_VERSION_PENDING` and records a human-readable cause in
+        :attr:`_prompt_load_error`. ``propose`` surfaces that cause as an
+        auditable ``llm:prompt-malformed`` outcome, so a bad prompt config can
+        no longer raise ``UnicodeDecodeError`` (non-UTF-8 file) or a
+        ``ValidationError`` (empty version string) into the worker's failure
+        path.
+        """
         path = self._prompt_path
         try:
             with path.open("r", encoding="utf-8") as handle:
                 for line in handle:
                     stripped = line.strip()
-                    if stripped.startswith(_PROMPT_VERSION_PREFIX):
-                        return stripped[len(_PROMPT_VERSION_PREFIX) :].strip()
-        except OSError:
+                    if not stripped.startswith(_PROMPT_VERSION_PREFIX):
+                        continue
+                    version = stripped[len(_PROMPT_VERSION_PREFIX) :].strip()
+                    if version:
+                        self._prompt_load_error = None
+                        return version
+                    self._prompt_load_error = (
+                        f"LLM prompt file {path} declares an empty "
+                        f"{_PROMPT_VERSION_PREFIX} header; using "
+                        f"{_PROMPT_VERSION_PENDING}."
+                    )
+                    return _PROMPT_VERSION_PENDING
+        except OSError as exc:
+            self._prompt_load_error = (
+                f"LLM prompt file {path} could not be opened "
+                f"({type(exc).__name__}); using {_PROMPT_VERSION_PENDING}."
+            )
             return _PROMPT_VERSION_PENDING
+        except UnicodeDecodeError:
+            self._prompt_load_error = (
+                f"LLM prompt file {path} is not valid UTF-8; using {_PROMPT_VERSION_PENDING}."
+            )
+            return _PROMPT_VERSION_PENDING
+        self._prompt_load_error = (
+            f"LLM prompt file {path} has no {_PROMPT_VERSION_PREFIX} header line; "
+            f"using {_PROMPT_VERSION_PENDING}."
+        )
         return _PROMPT_VERSION_PENDING
 
     def _needs_review(

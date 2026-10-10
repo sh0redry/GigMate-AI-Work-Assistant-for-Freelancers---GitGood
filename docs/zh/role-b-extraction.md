@@ -119,12 +119,15 @@ provider，不污染进程级缓存。
 | `GIGMATE_LLM_API_KEY` | 仅服务端使用，下一批次补全接缝时被读取。 |
 | `GIGMATE_LLM_ENDPOINT` | 可选 base URL 覆盖（测试用）。 |
 | `GIGMATE_LLM_PROMPT_PATH` | 可选 prompt 文件覆盖。 |
-| `GIGMATE_LLM_LIVE=1` | 真实调用闸门。开启且接缝未补全时返回 `needs_review`，并写 `llm:seam-pending` 备注与详细 `refused_reason`，让生产环境配置错误立即在 trace 中可见，绝不悄悄回落。 |
+| `GIGMATE_LLM_LIVE=1` | 真实调用闸门，正向开关：关闭时 Provider 层直接拒绝所有调用并写 `llm:live-gate-off`（即便已配置供应商与模型）；开启后才会进入 `_invoke_model` 接缝，接缝未补全时返回 `needs_review` 与 `llm:seam-pending`。两种情形都在 trace 中可见，绝不悄悄回落。 |
 
 默认 prompt 来自
 `apps/backend/src/gigmate/extraction/prompts/role_b_extraction_v1.txt`，第一行
-`prompt_version: X.Y.Z` 会被读入 `prompt_version`；文件缺失或格式异常时
-回退到 `0.0.0-skeleton`，trace 中仍可看出占位状态。文件正文固化了几条
+`prompt_version: X.Y.Z` 会被读入 `prompt_version`；文件缺失、OS 错误、非
+UTF-8 编码、缺少版本行或版本行为空时一律回退到 `0.0.0-skeleton`，并以
+`llm:prompt-malformed` 备注记录可审计原因（空版本与非 UTF-8 原先会直接抛出
+`ValidationError` / `UnicodeDecodeError` 进入 worker 失败路径），trace 中仍
+可看出占位状态与原因。文件正文固化了几条
 硬规则（不得把字段标为 `confirmed`、不得授予执行权限、遵守来源信任边界），
 下一批次只需改这一个文件与两个接缝方法。
 

@@ -1,5 +1,15 @@
 # Implementation status and validation
 
+## PR #18 llm-skeleton review follow-up — 2026-10-10
+
+Owner review of PR #18 (`WillW27/role-b-llm-skeleton`, head `78151a6`) asked for two code corrections before merge plus a PR-description fix. Both code corrections are applied on the PR branch; the PR body is a GitHub-side edit the author must still make.
+
+- **Prompt-config fallback (P2):** `LLMProvider._read_prompt_version` now falls back to `0.0.0-skeleton` on a missing file, `OSError`, non-UTF-8 bytes, a missing `prompt_version:` header line or an empty header value, recording a human-readable cause in `_prompt_load_error`; `propose` surfaces it as a `needs_review` outcome with the `llm:prompt-malformed` note. The empty-version (`ValidationError`) and non-UTF-8 (`UnicodeDecodeError`) cases previously escaped into the worker's `PROCESSING_FAILED` retry path with no evidence; a worker regression now asserts the job ends `EXTRACTION_NEEDS_REVIEW` with a persisted proposal/trace.
+- **Live-gate inversion:** the gate is now a positive opt-in. With `GIGMATE_LLM_LIVE` off the provider refuses at the provider layer with `llm:live-gate-off` even when the vendor/model are configured; only with the gate on does control reach `_invoke_model` (still a stub, returning `llm:seam-pending`). Previously the gate-on path refused early and the gate-off path reached the seam, so filling `_invoke_model` alone would have called the model with the gate closed. The origin trust boundary is now checked first, unchanged in effect.
+- The bundled prompt still reads `prompt_version: 0.1.0`; `case-007-live-origin-with-fixture-text` and the evaluation-manifest semantics are unchanged.
+
+Actual evidence (isolated worktree of `78151a6`): `pytest apps/backend/tests/test_extraction.py` **33 passed** (was 25; +8 regressions: override/missing/empty/missing-header/non-UTF-8 prompt, gate-off and gate-on spies, malformed-prompt worker evidence); full `pytest apps/backend/tests` **356 passed, 7 skipped**. Ruff check and format, `scripts/export_contracts.py --check` and `scripts/check_baseline.py` passed. Tests ran on SQLite; the 7 skips are PostgreSQL-only locking tests, so no PostgreSQL locking is proven here. No real model was invoked, no real key read, no live traffic touched. The PR description correction is not part of the git diff.
+
 ## D01 chat-list review follow-up — 2026-10-10
 
 Kyrie explicitly authorized merging Andy's PR #14 and extending D documentation edits to these shared bilingual progress records. PR #14 head `56e482e` was independently rechecked and approved from the D account, then merged into main as `ab52d3e`; local main was fast-forwarded. Earlier Draft references below are historical. PR #16 now targets main, with that main included without conflicts. Its diff contains only frontend tests/dependency lock plus D documentation and these progress records; Andy/WAHA, B/C, generated files and contracts are unchanged. Original `Kyrie_Frontend` / `c702f0c` remains intact.
