@@ -6,6 +6,7 @@ import {
   type TimelineMessage,
 } from "./waha-sync-api";
 import type { Choice, Issue } from "./connection-api";
+import { WahaMedia } from "./WahaMedia";
 
 const labels: Record<string, string> = {
   completed: "已处理",
@@ -221,8 +222,21 @@ export function WahaMessages({
               {m.kind !== "text" && (
                 <p>
                   {m.kind} · {m.filename ?? m.mimetype ?? "类型待确认"} ·
-                  原文件尚未读取
+                  原文件通过下方授权入口读取
                 </p>
+              )}
+              {m.kind !== "text" && !m.revoked && (
+                <WahaMedia
+                  key={`${m.id}:${m.occurred_at}`}
+                  connection={connection}
+                  csrf={csrf}
+                  snapshot={m.id}
+                  mimetype={
+                    m.mimetype?.split(";")[0].trim().toLowerCase() ?? null
+                  }
+                  enabled={enabled}
+                  onSessionExpired={onSessionExpired}
+                />
               )}
               {m.sender_id && (
                 <small>群成员标识：{m.sender_id.slice(-8)}</small>

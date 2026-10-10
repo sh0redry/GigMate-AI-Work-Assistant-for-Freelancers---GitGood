@@ -141,6 +141,176 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/connectors/{connection_id}/media/attachments": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Media Attachments */
+    get: operations["media_attachments_api_v1_connectors__connection_id__media_attachments_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/media/attachments/{attachment_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Media Attachment */
+    get: operations["media_attachment_api_v1_connectors__connection_id__media_attachments__attachment_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/media/attachments/{attachment_id}/content": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Media Content */
+    get: operations["media_content_api_v1_connectors__connection_id__media_attachments__attachment_id__content_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/media/attachments/{attachment_id}/evidence": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Media Evidence */
+    get: operations["media_evidence_api_v1_connectors__connection_id__media_attachments__attachment_id__evidence_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/media/attachments/{attachment_id}/review": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Media Review */
+    post: operations["media_review_api_v1_connectors__connection_id__media_attachments__attachment_id__review_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/media/capabilities": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Media Capabilities */
+    get: operations["media_capabilities_api_v1_connectors__connection_id__media_capabilities_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/media/jobs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Media Enqueue */
+    post: operations["media_enqueue_api_v1_connectors__connection_id__media_jobs_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/media/jobs/{job_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Media Job */
+    get: operations["media_job_api_v1_connectors__connection_id__media_jobs__job_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/media/jobs/{job_id}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Media Cancel */
+    post: operations["media_cancel_api_v1_connectors__connection_id__media_jobs__job_id__cancel_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/media/jobs/{job_id}/reconcile": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Media Reconcile */
+    post: operations["media_reconcile_api_v1_connectors__connection_id__media_jobs__job_id__reconcile_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/connectors/{connection_id}/operations": {
     parameters: {
       query?: never;
@@ -894,6 +1064,15 @@ export interface components {
        */
       request_id: string;
     };
+    /** Detail[WahaAttachmentView] */
+    Detail_WahaAttachmentView_: {
+      data: components["schemas"]["WahaAttachmentView"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
     /** Detail[WahaControlResult] */
     Detail_WahaControlResult_: {
       data: components["schemas"]["WahaControlResult"];
@@ -906,6 +1085,33 @@ export interface components {
     /** Detail[WahaIssueReviewResult] */
     Detail_WahaIssueReviewResult_: {
       data: components["schemas"]["WahaIssueReviewResult"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[WahaMediaCapabilities] */
+    Detail_WahaMediaCapabilities_: {
+      data: components["schemas"]["WahaMediaCapabilities"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[WahaMediaEvidence] */
+    Detail_WahaMediaEvidence_: {
+      data: components["schemas"]["WahaMediaEvidence"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[WahaMediaJobView] */
+    Detail_WahaMediaJobView_: {
+      data: components["schemas"]["WahaMediaJobView"];
       /**
        * Request Id
        * Format: uuid
@@ -1059,6 +1265,18 @@ export interface components {
     Page_Task_: {
       /** Items */
       items: components["schemas"]["Task"][];
+      /** Next Cursor */
+      next_cursor: string | null;
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Page[WahaAttachmentView] */
+    Page_WahaAttachmentView_: {
+      /** Items */
+      items: components["schemas"]["WahaAttachmentView"][];
       /** Next Cursor */
       next_cursor: string | null;
       /**
@@ -1266,6 +1484,53 @@ export interface components {
       /** Error Type */
       type: string;
     };
+    /** WahaAttachmentView */
+    WahaAttachmentView: {
+      /** Context Version */
+      context_version: number;
+      /**
+       * Expires At
+       * Format: date-time
+       */
+      expires_at: string;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      input_context?: components["schemas"]["WahaMediaInputContext"] | null;
+      /** Latest Job Id */
+      latest_job_id: string | null;
+      /** Mimetype */
+      mimetype: string | null;
+      /** Preview Available */
+      preview_available: boolean;
+      result: components["schemas"]["WahaMediaResult"] | null;
+      /** Result Job Id */
+      result_job_id: string | null;
+      /** Review Note */
+      review_note: string | null;
+      /** Reviewed At */
+      reviewed_at: string | null;
+      /** Sha256 */
+      sha256: string | null;
+      /** Size Bytes */
+      size_bytes: number | null;
+      /**
+       * Snapshot Id
+       * Format: uuid
+       */
+      snapshot_id: string;
+      /** Source Fingerprint */
+      source_fingerprint: string;
+      /**
+       * State
+       * @enum {string}
+       */
+      state: "pending" | "downloaded" | "processed" | "stale" | "expired";
+      /** Version */
+      version: number;
+    };
     /** WahaChoice */
     WahaChoice: {
       /** Expires At */
@@ -1357,6 +1622,236 @@ export interface components {
     WahaIssueReviewResult: {
       /** Reviewed */
       reviewed: number;
+    };
+    /** WahaMediaCapabilities */
+    WahaMediaCapabilities: {
+      /** Accepted Types */
+      accepted_types: string[];
+      /** Enabled */
+      enabled: boolean;
+      /** Max Bytes */
+      max_bytes: number;
+      /** Processor Configured */
+      processor_configured: boolean;
+    };
+    /** WahaMediaCommand */
+    WahaMediaCommand: {
+      /**
+       * Consent Download
+       * @constant
+       */
+      consent_download: true;
+      /**
+       * Consent Model
+       * @default false
+       */
+      consent_model: boolean;
+      /** Expected Version */
+      expected_version: number;
+      /**
+       * Process
+       * @default false
+       */
+      process: boolean;
+      /**
+       * Snapshot Id
+       * Format: uuid
+       */
+      snapshot_id: string;
+      /** Timezone */
+      timezone?: string | null;
+    };
+    /** WahaMediaEvidence */
+    WahaMediaEvidence: {
+      /**
+       * Account Id
+       * Format: uuid
+       */
+      account_id: string;
+      /**
+       * Attachment Id
+       * Format: uuid
+       */
+      attachment_id: string;
+      /** Attachment Version */
+      attachment_version: number;
+      /**
+       * Business Confirmation Required
+       * @default true
+       * @constant
+       */
+      business_confirmation_required: true;
+      /** Context Version */
+      context_version: number;
+      /**
+       * Conversation Id
+       * Format: uuid
+       */
+      conversation_id: string;
+      /**
+       * Expires At
+       * Format: date-time
+       */
+      expires_at: string;
+      input_context: components["schemas"]["WahaMediaInputContext"] | null;
+      result: components["schemas"]["WahaMediaResult"];
+      /**
+       * Result Job Id
+       * Format: uuid
+       */
+      result_job_id: string;
+      /** Review Note */
+      review_note: string;
+      /**
+       * Reviewed At
+       * Format: date-time
+       */
+      reviewed_at: string;
+      /**
+       * Schema Version
+       * @default 0.1.0
+       * @constant
+       */
+      schema_version: "0.1.0";
+      /** Sha256 */
+      sha256: string;
+      /**
+       * Snapshot Id
+       * Format: uuid
+       */
+      snapshot_id: string;
+      /** Source Fingerprint */
+      source_fingerprint: string;
+    };
+    /** WahaMediaInputContext */
+    WahaMediaInputContext: {
+      /** Message Sent At */
+      message_sent_at?: string | null;
+      /**
+       * Source Observed At
+       * Format: date-time
+       */
+      source_observed_at: string;
+      /**
+       * Source Occurred At
+       * Format: date-time
+       */
+      source_occurred_at: string;
+      /** Timezone */
+      timezone?: string | null;
+      /**
+       * Timezone Source
+       * @default unknown
+       * @enum {string}
+       */
+      timezone_source: "merchant_choice" | "unknown";
+    };
+    /** WahaMediaJobView */
+    WahaMediaJobView: {
+      /**
+       * Attachment Id
+       * Format: uuid
+       */
+      attachment_id: string;
+      /** Attempts */
+      attempts: number;
+      /** Error Code */
+      error_code: string | null;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Stage
+       * @enum {string}
+       */
+      stage: "download" | "processing" | "reconciling";
+      /**
+       * State
+       * @enum {string}
+       */
+      state:
+        | "pending"
+        | "running"
+        | "retry_wait"
+        | "succeeded"
+        | "failed"
+        | "cancelled"
+        | "result_unknown";
+      /**
+       * Updated At
+       * Format: date-time
+       */
+      updated_at: string;
+    };
+    /** WahaMediaResult */
+    WahaMediaResult: {
+      /**
+       * Coverage
+       * @default unknown
+       * @enum {string}
+       */
+      coverage: "complete" | "partial" | "unknown";
+      /** Model Version */
+      model_version: string;
+      /** Prompt Version */
+      prompt_version: string;
+      /** Provider */
+      provider: string;
+      /** Segments */
+      segments: components["schemas"]["WahaMediaSegment"][];
+      /** Suggestions */
+      suggestions?: components["schemas"]["WahaMediaSuggestion"][];
+      /** Summary */
+      summary?: string | null;
+      /** Unresolved Questions */
+      unresolved_questions?: string[];
+    };
+    /** WahaMediaReviewCommand */
+    WahaMediaReviewCommand: {
+      /** Expected Attachment Version */
+      expected_attachment_version: number;
+      /** Expected Context Version */
+      expected_context_version: number;
+      /**
+       * Expected Result Job Id
+       * Format: uuid
+       */
+      expected_result_job_id: string;
+      /**
+       * Note
+       * @default
+       */
+      note: string;
+      /**
+       * Reviewed
+       * @constant
+       */
+      reviewed: true;
+    };
+    /** WahaMediaSegment */
+    WahaMediaSegment: {
+      /** End Ms */
+      end_ms?: number | null;
+      /** Page */
+      page?: number | null;
+      /** Start Ms */
+      start_ms?: number | null;
+      /** Text */
+      text: string;
+    };
+    /** WahaMediaSuggestion */
+    WahaMediaSuggestion: {
+      /**
+       * Field
+       * @enum {string}
+       */
+      field: "summary" | "schedule" | "address" | "requirements" | "other";
+      /** Source Indices */
+      source_indices: number[];
+      /** Text */
+      text: string;
     };
     /** WahaSelectionCommand */
     WahaSelectionCommand: {
@@ -1906,6 +2401,352 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Page_WahaTimelineMessage_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  media_attachments_api_v1_connectors__connection_id__media_attachments_get: {
+    parameters: {
+      query: {
+        snapshot_id: string;
+        cursor?: string | null;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Page_WahaAttachmentView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  media_attachment_api_v1_connectors__connection_id__media_attachments__attachment_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+        attachment_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaAttachmentView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  media_content_api_v1_connectors__connection_id__media_attachments__attachment_id__content_get: {
+    parameters: {
+      query?: {
+        download?: boolean;
+      };
+      header?: never;
+      path: {
+        connection_id: string;
+        attachment_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+          "application/octet-stream": unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  media_evidence_api_v1_connectors__connection_id__media_attachments__attachment_id__evidence_get: {
+    parameters: {
+      query: {
+        expected_attachment_version: number;
+        expected_context_version: number;
+        expected_result_job_id: string;
+      };
+      header?: never;
+      path: {
+        connection_id: string;
+        attachment_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaMediaEvidence_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  media_review_api_v1_connectors__connection_id__media_attachments__attachment_id__review_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+        attachment_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WahaMediaReviewCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaAttachmentView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  media_capabilities_api_v1_connectors__connection_id__media_capabilities_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaMediaCapabilities_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  media_enqueue_api_v1_connectors__connection_id__media_jobs_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WahaMediaCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaMediaJobView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  media_job_api_v1_connectors__connection_id__media_jobs__job_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+        job_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaMediaJobView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  media_cancel_api_v1_connectors__connection_id__media_jobs__job_id__cancel_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+        job_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WahaVersionCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaMediaJobView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  media_reconcile_api_v1_connectors__connection_id__media_jobs__job_id__reconcile_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+        job_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WahaVersionCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaMediaJobView_"];
         };
       };
       /** @description Validation Error */

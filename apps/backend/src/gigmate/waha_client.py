@@ -2,7 +2,7 @@
 
 import json
 from dataclasses import dataclass, field
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 from uuid import UUID
 
 import httpx
@@ -407,3 +407,84 @@ class LocalWahaClient:
         if not isinstance(result, dict):
             raise AdapterError("WAHA_INVALID_RESPONSE")
         return result
+
+    def attachment_bytes(self, chat, reference, direction, *, max_bytes):
+        """Explicit owned read only; never follow an event URL or redirect."""
+        if not isinstance(reference, str) or not 1 <= len(reference) <= 256:
+            raise AdapterError("INVALID_MESSAGE_REFERENCE")
+        if not isinstance(chat, str) or not chat.endswith(("@c.us", "@lid", "@g.us")):
+            raise AdapterError("INVALID_TRUSTED_MAPPING")
+        if not self.status()["connected"]:
+            raise AdapterError("WAHA_NOT_CONNECTED")
+        item = self._request(
+            "GET",
+            f"/api/default/chats/{quote(chat, safe='')}/messages/{quote(reference, safe='')}",
+            params={"downloadMedia": "true"},
+        )
+        if not isinstance(item, dict):
+            raise AdapterError("WAHA_INVALID_RESPONSE")
+
+        def serialized(value):
+            return value.get("_serialized") if isinstance(value, dict) else value
+
+        outgoing = item.get("fromMe")
+        peer = serialized(item.get("to") if outgoing else item.get("from"))
+        if (
+            serialized(item.get("id")) != reference
+            or type(outgoing) is not bool
+            or ("outgoing" if outgoing else "incoming") != direction
+            or peer != chat
+            or item.get("hasMedia") is not True
+        ):
+            raise AdapterError("SOURCE_MAPPING_MISMATCH")
+        media = item.get("media")
+        if not isinstance(media, dict) or media.get("error"):
+            raise AdapterError("WAHA_MEDIA_UNAVAILABLE")
+        location = media.get("url")
+        if not isinstance(location, str) or len(location) > 2048:
+            raise AdapterError("WAHA_MEDIA_UNAVAILABLE")
+        try:
+            parsed = urlsplit(location)
+            configured = urlsplit(self.config.base_url)
+            authorities = {
+                (configured.scheme, configured.hostname, configured.port),
+                ("http", "localhost", 3000),
+                ("http", "127.0.0.1", 3000),
+            }
+            if str(self._client.base_url).startswith("http://waha:3000"):
+                authorities.add(("http", "waha", 3000))
+            decoded = unquote(parsed.path)
+            suffix = decoded.removeprefix("/api/files/")
+            if (
+                parsed.username
+                or parsed.password
+                or parsed.query
+                or parsed.fragment
+                or (parsed.scheme, parsed.hostname, parsed.port) not in authorities
+                or not decoded.startswith("/api/files/")
+                or ".." in suffix
+                or "\\" in suffix
+                or "%" in suffix
+                or any(ord(c) < 32 for c in suffix)
+                or not suffix
+                or any(not segment for segment in suffix.split("/"))
+            ):
+                raise ValueError
+        except ValueError:
+            raise AdapterError("UNTRUSTED_MEDIA_LOCATION") from None
+        chunks, size = [], 0
+        try:
+            with self._client.stream("GET", parsed.path) as response:
+                if response.status_code != 200:
+                    raise AdapterError("WAHA_MEDIA_UNAVAILABLE")
+                length = response.headers.get("content-length")
+                if length and (not length.isdecimal() or int(length) > max_bytes):
+                    raise AdapterError("MEDIA_SIZE_LIMIT")
+                for chunk in response.iter_bytes():
+                    size += len(chunk)
+                    if size > max_bytes:
+                        raise AdapterError("MEDIA_SIZE_LIMIT")
+                    chunks.append(chunk)
+        except httpx.HTTPError:
+            raise AdapterError("WAHA_UNAVAILABLE") from None
+        return b"".join(chunks), media.get("mimetype")

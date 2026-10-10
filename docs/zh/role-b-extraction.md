@@ -1,5 +1,18 @@
 # Role B 抽取子系统
 
+## PR #21 ???????? ? 2026-10-11
+
+?????????`_ENABLED=False`???????????????? `a5aa0a1` ???????PDF ????????????? `MEDIA_PDF_PARSER_PENDING`???????????????? DeepSeek ?????? `MEDIA_VISION_VENDOR_UNVERIFIED`??? OpenAI/custom ???????????????????custom ???? endpoint?TXT ??? UTF-8 ???? 90,000 ??????????????????
+
+?????????????????????????????????????????????????????? ASR ???????????????coverage ? unknown???????????/???????????????????????????????? UTF-8 ??????????smoke ??/???????????
+
+????? B ???? PDF ???????????????????????/????????????I/O ???????/??????A ????????/???????????????? request-id ???????reconcile() ????? None????????????????????? C ????????????????????????????
+
+
+2026-10-10 媒体第二批：A 已提供固定的供应商发送时间/商户本次选择时区及已核对只读证据。B 须单独实现 MediaProcessor.process/reconcile，不能把文本提取接口当作媒体实现；C 须约定附件来源并在业务晋升前重新校验。时间不足保留待确认，本批不启用外部发送。见[媒体协议](role-a-media-ingestion.md)。
+
+2026-10-10 媒体对接：[A 的媒体协议](role-a-media-ingestion.md)提供权限范围内字节、不可变请求/来源/哈希标识、绑定来源/上下文的结果存储及核对。真实 OCR/ASR/解析/GenAI 工厂和只读核对由 B 实现。A 没有新增真实适配器，原 deterministic 拒绝 live 输入的边界保留。不能把媒体快照冒充 canonical 消息修订或直接写成已确认工单变化。核对还绑定 expected_result_job_id，防止新结果继承旧核对。
+
 2026-10-09 联调更新：[WAHA/提取统一验收](role-a-integration-acceptance.md)记录控制与 worker 交接。当前 Alembic head 是 `0007_merge_waha_extraction`，汇合未改动的 B 证据迁移和 A 控制/采样分支。Windows 测试使用 pytest 管理临时文件；默认 provider 仍拒绝真实提取，没有增加真实模型或网络调用。
 
 更新：2026-10-10（合并 #18 的闸门/prompt 修复与 #20 的未激活 HTTP 实现
@@ -246,17 +259,131 @@ provider 对 live 来源一律拒绝（与文本无关），因此当前真实 W
 或任何运维相关文本绝不能写进受跟踪样例。模型密钥留服务端；provider
 接口 DTO 不接受密钥，日志只写 ID、延迟和稳定错误码。
 
+## 媒体处理器（WAHA 附件的 Role B 实现）
+
+更新日期：2026-10-10。本节交付填充 [WAHA 媒体摄取批次](role-a-waha-handoff.md)
+所留接缝的真实模型处理器。A 拥有存储、租约、授权与审核；B 通过本处理器
+拥有 OCR / ASR / 解析 / GenAI。处理器只产出 `WahaMediaResult` 提案——
+商家确认由下游 `WahaMediaEvidence.business_confirmation_required` 强制，
+B 侧永不把字段标为 `confirmed`、永不授予执行权限。
+
+### 接缝契约
+
+`gigmate.media_processing.MediaProcessor`（Protocol）定义两个方法：
+
+* `process(request: MediaInput) -> WahaMediaResult` —— B 用 `request_id`
+  做厂家侧幂等与对账；输出仅为提案。
+* `reconcile(request_id) -> WahaMediaResult | None` —— 只读查询，永不
+  重新提交。`None` 表示结果仍未知，worker 必须下次再调而不是重发
+  `process()`。
+
+A 通过环境变量
+`GIGMATE_MEDIA_PROCESSOR_FACTORY="gigmate.media.processor:MediaProcessorImpl"`
+加载实现。`MediaInput` 故意不暴露 `api_key`、`provider_url`、
+`authorization` 属性；`test_waha_media.py` 中的接缝测试与
+`test_media_processor.py` 中的类型测试共同锁定这一约束。
+
+### 两闸门安全网
+
+处理器联系任何厂家前必须同时打开两个闸门：
+
+1. **`apps/backend/src/gigmate/media/processor.py` 模块级 `_ENABLED` 标志**
+   —— 本批次为 `False`。在 `False` 时，处理器在读取任何环境变量**之前**
+   以 `ProcessingUnavailable` 拒绝所有调用。这是防止未来贡献者单靠导出
+   运维开关就把接缝打开的安全网。
+2. **`GIGMATE_MEDIA_LIVE=1`** —— 运维开关。即便类标志翻为 `True`，处理
+   器仍然拒绝所有调用，除非导出该变量。检查顺序：类标志 → 运维开关 →
+   API key 是否设置 → live-origin 闸 → 厂家调用。当类标志为 `False` 时
+   在读取任何配置之前就拒绝，配置错误的部署不可能意外发出真实网络请求。
+
+附加守门：
+
+* 必须设置 `GIGMATE_MEDIA_API_KEY`，否则抛 `ProcessingUnavailable`。
+* 真实客户附件要送达模型必须有 `GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN=1`；
+  没有时处理器拒绝 `request.origin == "live"`、只允许 `synthetic`。
+* 处理器绝不接受经 HTTP 传入的凭据或模型端点。工厂字符串只来自服务端
+  环境变量，由 `importlib` 解析；HTTP 参数无法注入代码。
+
+### 厂家路由与配置
+
+| 变量 | 用途 |
+| --- | --- |
+| `GIGMATE_MEDIA_CHAT_VENDOR` | chat-completions 厂家（`deepseek`/`openai`/`custom`）。默认 `deepseek`。 |
+| `GIGMATE_MEDIA_CHAT_MODEL` | chat-completions 模型 ID（如 `deepseek-chat`、`gpt-4o-mini`），厂家默认。 |
+| `GIGMATE_MEDIA_AUDIO_VENDOR` | 转写厂家（`openai`/`custom`）。默认 `openai`。 |
+| `GIGMATE_MEDIA_AUDIO_MODEL` | 转写模型 ID（如 `whisper-1`）。 |
+| `GIGMATE_MEDIA_ENDPOINT` | 可选基地址覆盖。 |
+| `GIGMATE_MEDIA_PROMPT_PATH` | 可选 prompt 文件覆盖。 |
+
+MIME 路由（`gigmate.media.routing`）：
+
+| MIME | 派发键 | 厂家适配器 |
+| --- | --- | --- |
+| `image/png`、`image/jpeg`、`image/webp` | `ocr` | chat-completions 视觉输入 |
+| `audio/ogg`、`audio/mpeg`、`audio/wav`、`audio/mp4`、`audio/x-m4a` | `asr` | `/v1/audio/transcriptions` |
+| `application/pdf` | `pdf` | chat-completions 文本抽取 |
+| `text/plain` | `text` | chat-completions |
+
+集合外的 MIME 在联系厂家前以 `ProcessingUnavailable` 拒绝。A 的白名单
+仍是权威，B 仅消费规范化类型。
+
+### 异常语义
+
+处理器遵循 `gigmate.media_processing` 中记录的契约：
+
+* `ProcessingUnavailable` —— 未提交任何厂家请求。闸门未开、厂家未知、
+  API key 缺失、prompt 文件异常或 MIME 不支持时抛出。worker 翻译为
+  `MEDIA_PROCESSOR_NOT_CONFIGURED`，下载产物保留供重试。
+* `ProcessingUncertain` —— 厂家调用可能已提交（已计费）。4xx / 5xx、
+  超时、网络错误、厂家侧 schema 失败时抛出。worker 翻译为
+  `MEDIA_PROCESSING_RESULT_UNKNOWN`，走 `reconcile()` 而非自动重发。
+* `MediaIntegrationPending`（私有）—— 配置未完成时厂家适配器内部抛出；
+  处理器翻译为 `ProcessingUnavailable`。
+* `MediaVendorRejected`（私有）—— 4xx / 5xx 时厂家适配器内部抛出；
+  处理器翻译为 `ProcessingUncertain`。
+
+本批次 `reconcile()` 一律返回 `None`，因为 chat-completions 厂家一般
+不暴露基于 request-id 的查询。需要厂家侧查找的运维必须显式扩展处理
+器；默认永不静默重发。
+
+### prompt 加载失败模式
+
+prompt 默认从 `apps/backend/src/gigmate/media/prompts/role_b_media_v1.txt`
+加载（可经 `GIGMATE_MEDIA_PROMPT_PATH` 覆盖）。匹配 `prompt_version: X.Y.Z`
+的第一行被读入结果的 `prompt_version` 字段。所有失败模式都被显式捕获：
+
+* 文件缺失 / `OSError` → `ProcessingUnavailable` 拒绝。
+* 非 UTF-8 字节（`UnicodeDecodeError`）→ `ProcessingUnavailable` 拒绝。
+* `prompt_version:` 头行缺失 → `ProcessingUnavailable` 拒绝。
+* 头存在但值为空 → `ProcessingUnavailable` 拒绝。
+
+任意失败下 worker 记录为 `MEDIA_PROCESSOR_NOT_CONFIGURED`，不会用错误
+prompt 重试。
+
+### 运维 smoke
+
+`scripts/smoke_media.py` 是运维侧手动 smoke（不在 CI）。需要两闸门
+同时打开，并打印解析后的提案 JSON：
+
+```text
+.venv/bin/python scripts/smoke_media.py --mime image/png --file path/to/sample.png
+.venv/bin/python scripts/smoke_media.py --mime audio/ogg --file path/to/sample.ogg
+```
+
+未打开接缝标志时脚本打印拒绝原因并以 `0` 退出。CI 不跑本脚本；真实调用
+需要运维侧的厂家密钥。
+
 ## 验证
 
 本批次权威检查：
 
 ```text
-.venv/bin/python -m ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py
-.venv/bin/python -m ruff format --check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py
+.venv/bin/python -m ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/smoke_media.py scripts/run_evaluation.py
+.venv/bin/python -m ruff format --check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/smoke_media.py scripts/run_evaluation.py
 .venv/bin/python scripts/export_contracts.py --check
 .venv/bin/python -m alembic -c apps/backend/alembic.ini upgrade head
 .venv/bin/python -m alembic -c apps/backend/alembic.ini check
-.venv/bin/python -m pytest apps/backend/tests -q --basetemp=local-data/pytest
+.venv/bin/python -m pytest apps/backend/tests/test_media_processor.py apps/backend/tests -q --basetemp=local-data/pytest
 .venv/bin/python scripts/check_baseline.py
 ```
 
@@ -343,3 +470,9 @@ PostgreSQL 测试是有意义的运行；SQLite 不证明行锁，只验证条�
 - D 前端面向真实 provider 输出的 `pending_change_ids` 展示；当前
   Replay 卡片已能呈现，但真实 provider 来回之前不更新前端。
 - 真实 provider 上线后细化 `unresolved_questions` 给商户的人工核对呈现。
+- 媒体侧的厂家 `reconcile()`：chat-completions 厂家一般不暴露基于
+  request-id 的查找，当前实现返回 `None`，worker 需等待人工重试。
+  后续批次可在接缝标志开启后追加厂家特定查找。
+- B 侧的 prompt-injection 回归套件（图像 OCR + 音频 ASR + PDF 解析）。
+  当前处理器只信任捆绑的 prompt、对格式异常输入拒绝调用；后续授权
+  批次应加入对抗输入夹具。

@@ -1,5 +1,18 @@
 # Role B extraction subsystem
 
+## PR #21 media integration safety correction ? 2026-10-11
+
+The media implementation ships **inactive** (`_ENABLED=False`) and has not been validated against a real vendor. The factory contract fixes in `a5aa0a1` are retained. PDF routing is recognized but processing now refuses with `MEDIA_PDF_PARSER_PENDING`; decoding PDF binary as text is not parsing. The default DeepSeek image route refuses with `MEDIA_VISION_VENDOR_UNVERIFIED`; explicit OpenAI/custom fake-client shapes are not proof of model vision capability. Custom vendors require an explicit endpoint. TXT must be UTF-8 and at most 90,000 characters; longer files require future chunking, without silent truncation.
+
+Response validation retains every segment and source index: invalid/oversized results are uncertain, not silently shortened or reindexed. Full ASR text is split into bounded segments when vendor segments do not exactly reproduce it; coverage remains unknown and unsupported timing is not invented. Clients are closed after success and failure, and uncertain logs do not contain raw provider exception/response text. Malformed UTF-8 prompts refuse before submission. Smoke refusal/unknown outcomes exit nonzero.
+
+Before enabling real media, B still needs a real PDF parser, explicit model capability and per-route credential verification, timestamp/timezone grounding, prompt-injection tests, bounded I/O and actual vendor/codec acceptance. A's request identity and source/version bindings remain server-owned; vendor request-id reconciliation is not implemented and `reconcile()` stays read-only/None. Unknown outcomes are not automatically or blindly resubmitted. Merchant evidence review and C business approval remain separate. No real model, account, media or deployment was accessed by this correction.
+
+
+2026-10-10 media batch 2: A now supplies frozen provider sending time/merchant-selected timezone and reviewed read-only evidence. B must implement real MediaProcessor.process/reconcile separately from text extraction; C must agree attachment provenance and revalidate before business promotion. Missing time stays unresolved, and this does not enable external sending. See [media protocol](role-a-media-ingestion.md).
+
+2026-10-10 media handoff: [A's media agreement](role-a-media-ingestion.md) supplies scoped bytes, immutable request/source/hash identifiers, source/context-bound result storage and review. B owns the real OCR/ASR/parser/GenAI factory and read-only reconciliation. No real adapter has been added by A; retain the existing deterministic live-input guard. Media snapshot evidence must not be cast into an existing canonical message revision or directly materialized as a confirmed work-order change. Review also binds expected_result_job_id so a new result cannot inherit an old review.
+
 2026-10-09 integration update: [WAHA/extraction acceptance](role-a-integration-acceptance.md) records the merged control/worker handoff. Current Alembic head is `0007_merge_waha_extraction`, joining the unchanged B evidence migration and A's controls/provider-sample branch. Windows tests use pytest-owned temporary files; the default provider still refuses live extraction and no real-model/network integration was added.
 
 Updated: 2026-10-10 (merge of the #18 gate-off/prompt-malformed fixes with
@@ -285,6 +298,138 @@ prompt-injection attempts and live-origin input with fixture-equal text.
 The script exits `0` only when all cases pass. Missing or empty manifests
 fail loudly rather than recording an empty run.
 
+## Media processor (Role B for WAHA attachments)
+
+Updated: 2026-10-10. This section ships the real-model processor that fills
+the seam introduced by the [WAHA media ingestion batch](role-a-waha-handoff.md).
+A owns storage, leases, authorization and review; B owns OCR / ASR / parsing
+/ GenAI through this processor. The processor only emits
+`WahaMediaResult` proposals — merchant confirmation is enforced downstream by
+`WahaMediaEvidence.business_confirmation_required`, never on the B side.
+
+### Seam contract
+
+`gigmate.media_processing.MediaProcessor` (Protocol) defines two methods:
+
+* `process(request: MediaInput) -> WahaMediaResult` — B uses `request_id` for
+  vendor-side idempotency and reconciliation; output is proposals only.
+* `reconcile(request_id) -> WahaMediaResult | None` — read-only lookup; never
+  resubmit. `None` means the result is still unknown; the worker must call
+  this on the next tick rather than re-issuing `process()`.
+
+A loads the implementation through the environment variable
+`GIGMATE_MEDIA_PROCESSOR_FACTORY="gigmate.media.processor:MediaProcessorImpl"`.
+`MediaInput` deliberately exposes no `api_key`, `provider_url` or
+`authorization` attribute; the seam test in `test_waha_media.py` and the type
+test in `test_media_processor.py` lock this down.
+
+### Two-gate safety net
+
+Two gates must be open before the processor contacts any vendor:
+
+1. **Module-level `_ENABLED` flag** in
+   `apps/backend/src/gigmate/media/processor.py` — `False` in this batch. While
+   `False` the processor refuses every call with `ProcessingUnavailable`
+   *before* it reads any environment variable. This is the safety net that
+   prevents a future contributor from silently turning the seam on by exporting
+   the operator switch.
+2. **`GIGMATE_MEDIA_LIVE=1`** — operator switch. Even after the class flag is
+   flipped to `True`, the processor still refuses every call unless this
+   variable is exported. The two are checked in order: seam flag → live gate
+   → API key present → live-origin guard → vendor call. With the seam flag
+   `False` the call is refused before any configuration is read, so a
+   misconfigured deployment cannot accidentally emit a real network request.
+
+Additional guards:
+
+* `GIGMATE_MEDIA_API_KEY` must be set, otherwise `ProcessingUnavailable`.
+* `GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN=1` is required to send real customer
+  attachments to the model; without it the processor refuses
+  `request.origin == "live"` and requires synthetic origin.
+* The processor never accepts credentials or model endpoints over HTTP. The
+  factory string comes from a server-side env var and is parsed by
+  `importlib`; no HTTP argument can inject code.
+
+### Vendor routing and configuration
+
+| Variable | Purpose |
+| --- | --- |
+| `GIGMATE_MEDIA_CHAT_VENDOR` | Chat-completions vendor (`deepseek`, `openai`, `custom`). Default `deepseek`. |
+| `GIGMATE_MEDIA_CHAT_MODEL` | Model identifier for chat-completions (e.g. `deepseek-chat`, `gpt-4o-mini`). Default per vendor. |
+| `GIGMATE_MEDIA_AUDIO_VENDOR` | Transcription vendor (`openai`, `custom`). Default `openai`. |
+| `GIGMATE_MEDIA_AUDIO_MODEL` | Model identifier for transcriptions (e.g. `whisper-1`). |
+| `GIGMATE_MEDIA_ENDPOINT` | Optional base URL override for both vendors. |
+| `GIGMATE_MEDIA_PROMPT_PATH` | Optional override of the bundled prompt file. |
+
+MIME routing (in `gigmate.media.routing`):
+
+| MIME | Dispatch | Vendor adapter |
+| --- | --- | --- |
+| `image/png`, `image/jpeg`, `image/webp` | `ocr` | chat-completions with vision input |
+| `audio/ogg`, `audio/mpeg`, `audio/wav`, `audio/mp4`, `audio/x-m4a` | `asr` | `/v1/audio/transcriptions` |
+| `application/pdf` | `pdf` | chat-completions with text extraction |
+| `text/plain` | `text` | chat-completions |
+
+Anything outside this set is refused with `ProcessingUnavailable` before the
+vendor is contacted. A's whitelist remains authoritative; B only consumes
+the canonical types.
+
+### Exception semantics
+
+The processor follows the contract documented in
+`gigmate.media_processing`:
+
+* `ProcessingUnavailable` — no vendor request was submitted. Raised when the
+  gates are closed, the vendor is unknown, the API key is missing, the prompt
+  file is malformed, or the MIME is unsupported. The worker translates this
+  to `MEDIA_PROCESSOR_NOT_CONFIGURED` and the download artefact is preserved
+  for retry.
+* `ProcessingUncertain` — the vendor call may have been submitted (charged).
+  Raised on 4xx, 5xx, timeouts, network errors and vendor-side schema
+  failures. The worker translates this to
+  `MEDIA_PROCESSING_RESULT_UNKNOWN` and uses `reconcile()` rather than
+  automatic resubmission.
+* `MediaIntegrationPending` (private) — raised inside the vendor adapter when
+  configuration is incomplete; the processor translates to
+  `ProcessingUnavailable`.
+* `MediaVendorRejected` (private) — raised inside the vendor adapter on 4xx
+  / 5xx; the processor translates to `ProcessingUncertain`.
+
+`reconcile()` returns `None` in this batch because chat-completions vendors
+do not expose a stable request-id lookup. Operators that need vendor-side
+lookup must extend the processor explicitly; the default never silently
+resubmits.
+
+### Prompt loading failure modes
+
+The prompt is loaded from
+`apps/backend/src/gigmate/media/prompts/role_b_media_v1.txt` by default
+(overridable via `GIGMATE_MEDIA_PROMPT_PATH`). The first line matching
+`prompt_version: X.Y.Z` is read into the `prompt_version` field on the
+result. Every failure mode is caught explicitly:
+
+* File missing / `OSError` → refusal with `ProcessingUnavailable`.
+* Non-UTF-8 bytes (`UnicodeDecodeError`) → refusal with `ProcessingUnavailable`.
+* `prompt_version:` header line absent → refusal with `ProcessingUnavailable`.
+* Header present but value empty → refusal with `ProcessingUnavailable`.
+
+In every case the worker records the refusal as
+`MEDIA_PROCESSOR_NOT_CONFIGURED` rather than retrying into a malformed
+prompt.
+
+### Operator smoke
+
+`scripts/smoke_media.py` is the operator-side manual smoke (not in CI). It
+requires both gates to be open and prints the parsed proposal JSON:
+
+```text
+.venv/bin/python scripts/smoke_media.py --mime image/png --file path/to/sample.png
+.venv/bin/python scripts/smoke_media.py --mime audio/ogg --file path/to/sample.ogg
+```
+
+Without the seam flag the script prints the refusal reason and exits `0`.
+CI does not run this script; a real call requires the operator's vendor key.
+
 ## Synthetic fixtures and privacy
 
 Evaluation cases live under `contracts/evaluation/` and follow the same
@@ -299,12 +444,12 @@ IDs, latency and stable error codes.
 Authoritative checks for this batch:
 
 ```text
-.venv/bin/python -m ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py
-.venv/bin/python -m ruff format --check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py
+.venv/bin/python -m ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/smoke_media.py scripts/run_evaluation.py
+.venv/bin/python -m ruff format --check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/smoke_media.py scripts/run_evaluation.py
 .venv/bin/python scripts/export_contracts.py --check
 .venv/bin/python -m alembic -c apps/backend/alembic.ini upgrade head
 .venv/bin/python -m alembic -c apps/backend/alembic.ini check
-.venv/bin/python -m pytest apps/backend/tests -q --basetemp=local-data/pytest
+.venv/bin/python -m pytest apps/backend/tests/test_media_processor.py apps/backend/tests -q --basetemp=local-data/pytest
 .venv/bin/python scripts/check_baseline.py
 ```
 
@@ -423,3 +568,11 @@ piece of work with its own batch and review.
   round-trip is required before frontend changes ship.
 - Tighten `unresolved_questions` rendering for merchant review once a real
   provider exists.
+- Vendor-side `reconcile()` for media: chat-completions vendors do not expose
+  a stable request-id lookup, so the current implementation returns `None`
+  and the worker must retain the unknown result for explicit review; it must not blindly resubmit. A future batch can add a
+  vendor-specific lookup once the seam flag is open and operators need it.
+- B-side prompt-injection regression suite for media attachments (image OCR
+  + audio ASR + PDF parsing). The processor trusts the bundled prompt today
+  and refuses the call only on malformed input; a separately authorized batch
+  should add fixtures for adversarial inputs.
