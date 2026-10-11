@@ -4,6 +4,91 @@
  */
 
 export interface paths {
+  "/api/v1/actions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Actions */
+    get: operations["actions_api_v1_actions_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/actions/{action_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Action Detail */
+    get: operations["action_detail_api_v1_actions__action_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/actions/{action_id}/approve": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Approve Action */
+    post: operations["approve_action_api_v1_actions__action_id__approve_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/actions/{action_id}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Cancel Action */
+    post: operations["cancel_action_api_v1_actions__action_id__cancel_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/actions/{action_id}/reject": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Reject Action */
+    post: operations["reject_action_api_v1_actions__action_id__reject_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/auth/login": {
     parameters: {
       query?: never;
@@ -537,6 +622,107 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    /**
+     * ActionState
+     * @enum {string}
+     */
+    ActionState:
+      | "draft"
+      | "pending_approval"
+      | "approved"
+      | "executing"
+      | "succeeded"
+      | "failed"
+      | "result_unknown"
+      | "cancelled"
+      | "expired";
+    /** ActionView */
+    ActionView: {
+      /**
+       * Account Id
+       * Format: uuid
+       */
+      account_id: string;
+      /** Approved At */
+      approved_at: string | null;
+      /** Approved By */
+      approved_by: string | null;
+      /** Body */
+      body: string;
+      /** Bound Context Version */
+      bound_context_version: number;
+      /** Bound Work Order Version */
+      bound_work_order_version: number;
+      /** Closed Note */
+      closed_note: string | null;
+      /** Closed Reason */
+      closed_reason: string | null;
+      /**
+       * Conversation Id
+       * Format: uuid
+       */
+      conversation_id: string;
+      /**
+       * Delivery Status
+       * @enum {string}
+       */
+      delivery_status:
+        | "not_submitted"
+        | "accepted"
+        | "sent"
+        | "delivered"
+        | "read"
+        | "unknown";
+      /**
+       * Expires At
+       * Format: date-time
+       */
+      expires_at: string;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Idempotency Key */
+      idempotency_key: string;
+      /**
+       * Kind
+       * @constant
+       */
+      kind: "send_text";
+      /** Provider Message Id */
+      provider_message_id: string | null;
+      /** Recipient */
+      recipient: string;
+      /** Revision */
+      revision: number;
+      /** Snapshot Hash */
+      snapshot_hash: string;
+      /** Sources */
+      sources: components["schemas"]["SourceRef"][];
+      state: components["schemas"]["ActionState"];
+      /**
+       * Trigger
+       * @constant
+       */
+      trigger: "schedule_conflict";
+      /**
+       * Work Order Id
+       * Format: uuid
+       */
+      work_order_id: string;
+    } & (unknown & unknown);
+    /** ApproveActionCommand */
+    ApproveActionCommand: {
+      /** Expected Action Revision */
+      expected_action_revision: number;
+      /** Expected Context Version */
+      expected_context_version: number;
+      /** Expected Version */
+      expected_version: number;
+      /** Snapshot Hash */
+      snapshot_hash: string;
+    };
     /** CalendarEvent */
     CalendarEvent: {
       /**
@@ -849,6 +1035,15 @@ export interface components {
       /** Timezone */
       timezone: string;
     };
+    /** Detail[ActionView] */
+    Detail_ActionView_: {
+      data: components["schemas"]["ActionView"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
     /** Detail[ConnectionInfo] */
     Detail_ConnectionInfo_: {
       data: components["schemas"]["ConnectionInfo"];
@@ -994,6 +1189,18 @@ export interface components {
       mode: "synthetic_replay";
       /** Username */
       username: string;
+    };
+    /** Page[ActionView] */
+    Page_ActionView_: {
+      /** Items */
+      items: components["schemas"]["ActionView"][];
+      /** Next Cursor */
+      next_cursor: string | null;
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
     };
     /** Page[CalendarEvent] */
     Page_CalendarEvent_: {
@@ -1164,6 +1371,19 @@ export interface components {
        * Format: date-time
        */
       started_at: string;
+    };
+    /** RejectActionCommand */
+    RejectActionCommand: {
+      /** Expected Action Revision */
+      expected_action_revision: number;
+      /** Expected Context Version */
+      expected_context_version: number;
+      /** Expected Version */
+      expected_version: number;
+      /** Reason */
+      reason: string;
+      /** Snapshot Hash */
+      snapshot_hash: string;
     };
     /** ReplayCommand */
     ReplayCommand: {
@@ -1650,6 +1870,182 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  actions_api_v1_actions_get: {
+    parameters: {
+      query?: {
+        state?: components["schemas"]["ActionState"] | null;
+        work_order_id?: string | null;
+        cursor?: string | null;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Page_ActionView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  action_detail_api_v1_actions__action_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        action_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_ActionView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  approve_action_api_v1_actions__action_id__approve_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        action_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ApproveActionCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_ActionView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  cancel_action_api_v1_actions__action_id__cancel_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        action_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RejectActionCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_ActionView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  reject_action_api_v1_actions__action_id__reject_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        action_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RejectActionCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_ActionView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   login_api_v1_auth_login_post: {
     parameters: {
       query?: never;

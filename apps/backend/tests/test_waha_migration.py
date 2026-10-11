@@ -43,7 +43,7 @@ def migration_database(tmp_path):
 def test_versioned_migration_preserves_replay_rows(migration_database, existing_revision):
     root = Path(__file__).resolve().parents[3]
     assert ScriptDirectory(str(root / "apps/backend/migrations")).get_heads() == [
-        "0008_waha_message_sync"
+        "0009_approval_actions"
     ]
     url = migration_database
     environment = {**os.environ, "DATABASE_URL": url, "PYTHONPATH": str(root / "apps/backend/src")}
@@ -115,16 +115,20 @@ def test_versioned_migration_preserves_replay_rows(migration_database, existing_
     assert "waha_operations" in inspect(engine).get_table_names()
     assert "waha_controls" in inspect(engine).get_table_names()
     assert "waha_candidates" in inspect(engine).get_table_names()
-    assert {"proposals", "model_call_traces", "evaluation_runs", "evaluation_cases"} <= set(
-        inspect(engine).get_table_names()
-    )
+    assert {
+        "proposals",
+        "model_call_traces",
+        "evaluation_runs",
+        "evaluation_cases",
+        "approval_actions",
+    } <= set(inspect(engine).get_table_names())
     assert {"provider_state", "provider_observed_at"} <= {
         item["name"] for item in inspect(engine).get_columns("waha_connections")
     }
     with engine.connect() as db:
         assert (
             db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0008_waha_message_sync"
+            == "0009_approval_actions"
         )
         assert db.execute(text("SELECT accepted,duplicates,state FROM waha_connections")).one() == (
             3,

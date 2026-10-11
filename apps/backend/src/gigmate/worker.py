@@ -8,6 +8,7 @@ from uuid import uuid4
 from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
+from gigmate.approvals import draft_for_change, follow_up
 from gigmate.contracts import RequirementChange
 from gigmate.db import (
     Account,
@@ -172,10 +173,15 @@ def run_once(factory=Session):
                                 change_id,
                             ],
                         }
+                        db.flush()
+                        draft_for_change(db, account_id, order, conversation, payload)
                     job.state, job.error_code = (
                         "completed",
                         None if proposal else "STUB_UNSUPPORTED_INPUT",
                     )
+            if job.state == "completed" and job.error_code != "SOURCE_SUPERSEDED":
+                # Decide the next question only after reading this message.
+                follow_up(db, account_id, conversation)
             if job.lease_until.replace(tzinfo=UTC) <= datetime.now(UTC):
                 raise RuntimeError("LEASE_EXPIRED")
             job.lease_owner, job.lease_until = None, None
@@ -260,6 +266,11 @@ def _route_through_provider(
                 **order.data,
                 "pending_change_ids": list(order.data.get("pending_change_ids", [])) + new_ids,
             }
+            db.flush()
+            for change in db.scalars(select(ChangeRow).where(ChangeRow.id.in_(new_ids))):
+                # Role B's draft_text is a merchant-facing summary (prompt v1), not a
+                # customer reply, so the customer-facing body uses the role C template.
+                draft_for_change(db, account.id, order, conversation, change.data)
             return True
     return False
 

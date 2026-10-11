@@ -326,6 +326,25 @@ class CommandResult(Base):
     __table_args__ = (UniqueConstraint("account_id", "scope", "key", name="uq_command_key"),)
 
 
+class ActionRow(Base):
+    """Merchant-reviewed outbound actions. P0 supports send_text drafts only."""
+
+    __tablename__ = "approval_actions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"), index=True)
+    work_order_id: Mapped[str] = mapped_column(ForeignKey("work_orders.id"), index=True)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"), index=True)
+    # Why the draft exists, e.g. "schedule_conflict:<change id>"; one draft per trigger.
+    trigger: Mapped[str] = mapped_column(String(128), unique=True)
+    # Equals work_order_id until sent or closed: at most one non-dispatched draft per order.
+    active_key: Mapped[str | None] = mapped_column(String(36), unique=True)
+    reason: Mapped[str | None] = mapped_column(String(64))
+    # Merchant's own words when rejecting or cancelling.
+    note: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    data: Mapped[dict] = mapped_column(JSON)
+
+
 class Proposal(Base):
     __tablename__ = "proposals"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
