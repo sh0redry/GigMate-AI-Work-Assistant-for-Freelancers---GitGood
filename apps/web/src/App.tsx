@@ -8,10 +8,12 @@ import { clearConnectionAttempts } from "./connection-api";
 export function App() {
   const environment = currentEnvironment();
   const config = environmentConfig();
+  const canConnect = environment !== "isolated";
   const [view, setView] = useState<"connect" | "business">("business");
   const [login, setLogin] = useState<Login | null>(null);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const activeView = canConnect ? view : "business";
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const csrf = login?.csrf_token ?? "";
@@ -19,7 +21,7 @@ export function App() {
     clearConnectionAttempts();
     setLogin(null);
     setPassword("");
-    setView("connect");
+    setView("business");
     setBusy(false);
     setNotice(message);
   }, []);
@@ -75,7 +77,7 @@ export function App() {
         </div>
         <div className="mode">
           {login
-            ? view === "connect"
+            ? activeView === "connect"
               ? "WhatsApp 连接"
               : "业务工作台"
             : "欢迎使用"}
@@ -119,23 +121,25 @@ export function App() {
         <nav className="workspace-navigation" aria-label="工作台页面">
           <button
             className="secondary"
-            aria-pressed={view === "business"}
+            aria-pressed={activeView === "business"}
             disabled={busy}
             onClick={() => navigate("business")}
           >
             业务工作台
           </button>
-          <button
-            className="secondary"
-            aria-pressed={view === "connect"}
-            disabled={busy}
-            onClick={() => navigate("connect")}
-          >
-            WhatsApp 连接
-          </button>
+          {canConnect && (
+            <button
+              className="secondary"
+              aria-pressed={activeView === "connect"}
+              disabled={busy}
+              onClick={() => navigate("connect")}
+            >
+              WhatsApp 连接
+            </button>
+          )}
         </nav>
       )}
-      {login && view === "business" && (
+      {login && activeView === "business" && (
         <section className="intro">
           <p className="eyebrow">业务协作工作台</p>
           <h1>把变更核对清楚，再落实安排。</h1>
@@ -156,7 +160,11 @@ export function App() {
           }}
         >
           <h2>登录 GigMate 工作台</h2>
-          <p>使用为你配置的 GigMate 账号登录，管理业务和 WhatsApp 会话授权。</p>
+          <p>
+            {canConnect
+              ? "使用为你配置的 GigMate 账号登录，管理业务和 WhatsApp 会话授权。"
+              : "使用测试账号登录，练习虚构工单、变更核对、日历和待办。"}
+          </p>
           {config && (
             <div className="test-account">
               <strong>公开开发测试账号</strong>
@@ -209,7 +217,7 @@ export function App() {
               退出
             </button>
           </div>
-          {view === "connect" ? (
+          {activeView === "connect" ? (
             <ConnectionWorkspace
               csrf={csrf}
               onSessionExpired={expireSession}

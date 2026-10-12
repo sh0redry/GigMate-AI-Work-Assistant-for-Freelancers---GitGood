@@ -1,5 +1,9 @@
 # Implementation status and validation
 
+## Isolated frontend uses business workspace only — 2026-10-12
+
+Remove WhatsApp navigation and connection-page mounting in isolated testing; retain it for actual connection environments and published deployments. Isolated sign-in explains fictional business practice. Existing App regression now verifies business-only navigation and no connector reads, while the real-environment regression retains the connector path. **75 frontend tests**, TypeScript/build, API/format and bilingual baseline checks passed; browser verified the isolated signed-in page has no WhatsApp button. Update paired user/learning guides. Frontend-only change; no backend/contract/migration/runtime or WAHA operation. Local commit only, no PR/push.
+
 ## D-02 development environment switching — 2026-10-12
 
 Restore public default development account/password hints with blank inputs. A persistent banner labels actual local WAHA/business use versus fictional isolated data, shows its loopback target and switches through full navigation/relogin. Busy operations block switching; all adapters bind their destination. Cookies have distinct names/paths and only the selected session is forwarded; control attempts are namespaced so switching preserves unknown requests without retries. Invalid/remote/same-port configuration fails. Published bundles use deployment `/api` without development switching or default-password content. No backend source/contract/migration change or user replay button. Update paired operation/learning/acceptance docs; only local commit, no PR/push/main merge.

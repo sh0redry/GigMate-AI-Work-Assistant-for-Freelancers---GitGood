@@ -6,7 +6,7 @@ This guide describes D-02 and the current cleanup on `codex/d02-workspace`, **no
 
 ## 1 Current pages and capability
 
-Before login there is only the GigMate account form, with blank inputs and a public development hint (`merchant` / `demo-only-change-me`; changed passwords take precedence). GigMate sign-in is separate from phone WhatsApp login. After login, **业务工作台** is the default, with only **业务工作台** and **WhatsApp 连接** navigation.
+Before login there is only the GigMate account form, with blank inputs and a public development hint (`merchant` / `demo-only-change-me`; changed passwords take precedence). GigMate sign-in is separate from phone WhatsApp login. After login, **业务工作台** is the default. The isolated environment has only **业务工作台**; **WhatsApp 连接** appears only in the actual connection environment (or the published deployment). Isolated use never mounts the connection page or issues its connector requests.
 
 D-01 preview, simulated pairing/disconnection and work-order replay controls have been removed from user UI, including their simulator implementation. Synthetic fixtures remain in developer tests without a user entry. Existing seeded records are not deleted by removing buttons.
 
@@ -52,6 +52,8 @@ npm run dev
 The public hint applies to default development installations, not WAHA administration or phone credentials. Changed installation passwords take precedence. Production provisioning remains pending. Published `npm run build` output uses its deployment's `/api` and excludes local switching/development-password hints; these are Vite development features.
 
 ## 3 Connection and chat consent
+
+This page is available in **真实连接（本机开发）** only. If you are in isolated testing, use the top environment switch and sign in again first.
 
 1. Sign in and choose **WhatsApp 连接**. A fresh connected state needs no new pairing, but processing still requires explicitly saved conversation authorization.
 2. Missing connection records require account provisioning review and **刷新连接**. Read failure is different from an unconfigured account.

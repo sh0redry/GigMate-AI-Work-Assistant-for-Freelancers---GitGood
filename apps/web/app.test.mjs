@@ -226,6 +226,12 @@ test("development login names the isolated environment, shows public test creden
     calls.every((c) => c.url.startsWith("/environments/isolated/api/v1/")),
   );
   assert.match(document.body.textContent, /隔离测试（虚构数据）/);
+  assert.equal(button("WhatsApp 连接"), undefined);
+  assert.equal(document.querySelector("nav").textContent.trim(), "业务工作台");
+  assert.equal(
+    calls.some((c) => c.url.includes("/connectors")),
+    false,
+  );
 });
 test("opening the other environment starts signed out with empty inputs and keeps request metadata separate", async () => {
   developmentConfig();
