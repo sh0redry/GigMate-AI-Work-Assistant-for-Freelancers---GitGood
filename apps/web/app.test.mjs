@@ -1,0 +1,195 @@
+import assert from "node:assert/strict";
+import { after, afterEach, test } from "node:test";
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { createRequire } from "node:module";
+import ts from "typescript";
+import { JSDOM } from "jsdom";
+import { act, createElement } from "react";
+const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost/" });
+globalThis.window = dom.window;
+globalThis.document = dom.window.document;
+globalThis.sessionStorage = dom.window.sessionStorage;
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+const { createRoot } = await import("react-dom/client");
+const originalFetch = globalThis.fetch;
+const directory = await mkdtemp(join(tmpdir(), "gigmate-app-dom-"));
+const require = createRequire(import.meta.url);
+const components = [
+  "App",
+  "WorkOrderWorkspace",
+  "ConnectionWorkspace",
+  "ChatChoices",
+  "WahaMessages",
+];
+for (const name of [
+  ...components,
+  "replay-store",
+  "workspace-api",
+  "work-order-view",
+  "connection-api",
+  "waha-live-api",
+  "waha-sync-api",
+  "connection-state",
+  "chat-choices",
+]) {
+  const extension = components.includes(name) ? "tsx" : "ts";
+  const source = await readFile(
+    new URL(`./src/${name}.${extension}`, import.meta.url),
+    "utf8",
+  );
+  const code = ts
+    .transpileModule(source, {
+      fileName: `${name}.${extension}`,
+      compilerOptions: {
+        target: ts.ScriptTarget.ES2022,
+        module: ts.ModuleKind.ESNext,
+        jsx: ts.JsxEmit.ReactJSX,
+      },
+    })
+    .outputText.replace(/import "\.\/connection\.css";\s*/g, "")
+    .replace(/"\.\/([\w-]+)(?:\.ts)?"/g, '"./$1.mjs"')
+    .replace(/"(react(?:\/jsx-runtime)?)"/g, (_, specifier) =>
+      JSON.stringify(pathToFileURL(require.resolve(specifier)).href),
+    );
+  await writeFile(join(directory, name + ".mjs"), code);
+}
+const { App } = await import(pathToFileURL(join(directory, "App.mjs")));
+let root;
+afterEach(async () => {
+  if (root) await act(async () => root.unmount());
+  root = null;
+  document.getElementById("root").replaceChildren();
+  sessionStorage.clear();
+  globalThis.fetch = originalFetch;
+});
+after(async () => {
+  dom.window.close();
+  for (const name of [
+    "window",
+    "document",
+    "sessionStorage",
+    "IS_REACT_ACT_ENVIRONMENT",
+  ])
+    delete globalThis[name];
+  await rm(directory, { recursive: true });
+});
+function fixture({ denied = false } = {}) {
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, options });
+    if (url.endsWith("/auth/login"))
+      return denied
+        ? Response.json({ error: { code: "UNAUTHENTICATED" } }, { status: 401 })
+        : Response.json({
+            data: {
+              username: "learner",
+              csrf_token: "synthetic-csrf",
+              account_id: "synthetic-account",
+            },
+          });
+    if (url.endsWith("/auth/logout"))
+      return Response.json({ data: { ok: true } });
+    if (
+      options.method === "GET" &&
+      ["/work-orders?", "/tasks?", "/calendar-events?", "/connectors?"].some(
+        (path) => url.includes(path),
+      )
+    )
+      return Response.json({ items: [], next_cursor: null });
+    throw new Error(`Unexpected request ${options.method} ${url}`);
+  };
+  return calls;
+}
+async function mount() {
+  root = createRoot(document.getElementById("root"));
+  await act(async () => root.render(createElement(App)));
+}
+async function fill(input, value) {
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    ).set.call(input, value);
+    input.dispatchEvent(new window.Event("input", { bubbles: true }));
+  });
+}
+async function login() {
+  await fill(
+    document.querySelector('input[autocomplete="username"]'),
+    "learner",
+  );
+  await fill(
+    document.querySelector('input[type="password"]'),
+    "synthetic-password",
+  );
+  await act(async () =>
+    document
+      .querySelector("form")
+      .dispatchEvent(
+        new window.Event("submit", { bubbles: true, cancelable: true }),
+      ),
+  );
+}
+const button = (text) =>
+  [...document.querySelectorAll("button")].find((b) => b.textContent === text);
+function noDemo() {
+  assert.equal(
+    /D-01 演示|模拟扫码|工单回放|虚构回放输入|demo-only-change-me/.test(
+      document.body.textContent,
+    ),
+    false,
+  );
+}
+test("signed-out product has blank credentials, no business reads or demo bypass, and rejected login stays signed out", async () => {
+  const calls = fixture({ denied: true });
+  await mount();
+  assert.equal(calls.length, 0);
+  assert.equal(
+    document.querySelector('input[autocomplete="username"]').value,
+    "",
+  );
+  assert.equal(document.querySelector('input[type="password"]').value, "");
+  assert.equal(document.querySelector("nav"), null);
+  noDemo();
+  await login();
+  assert.match(document.body.textContent, /账号或密码不正确/);
+  assert.equal(document.querySelector("nav"), null);
+  assert.deepEqual(
+    calls.map((c) => c.url),
+    ["/api/v1/auth/login"],
+  );
+});
+test("authenticated product lands in honest empty business workspace, connects through owned API, and logout clears the screen and password", async () => {
+  const calls = fixture();
+  await mount();
+  await login();
+  assert.equal(button("业务工作台").getAttribute("aria-pressed"), "true");
+  assert.match(document.body.textContent, /当前还没有工单/);
+  assert.match(document.body.textContent, /自动建单和手动新建功能尚未开放/);
+  assert.deepEqual(JSON.parse(calls[0].options.body), {
+    username: "learner",
+    password: "synthetic-password",
+  });
+  assert.equal(
+    calls.some((c) => c.url.includes("/replay")),
+    false,
+  );
+  noDemo();
+  await act(async () => button("WhatsApp 连接").click());
+  assert.match(document.body.textContent, /还没有本机连接/);
+  assert.match(document.body.textContent, /请联系接入负责人检查当前账号/);
+  assert.equal(
+    calls.some((c) => c.url.includes("/connectors?")),
+    true,
+  );
+  noDemo();
+  await act(async () => button("退出").click());
+  assert.equal(document.querySelector("nav"), null);
+  assert.equal(document.querySelector('input[type="password"]').value, "");
+  assert.equal(document.body.textContent.includes("当前账号：learner"), false);
+  const logout = calls.find((c) => c.url.endsWith("/auth/logout"));
+  assert.equal(logout.options.headers["X-CSRF-Token"], "synthetic-csrf");
+});

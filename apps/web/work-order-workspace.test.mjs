@@ -204,17 +204,15 @@ async function click(text) {
   assert.equal(b.disabled, false, text);
   await act(async () => b.click());
 }
-async function mount(f, mode = "business") {
+async function mount(f) {
   root = createRoot(document.getElementById("root"));
   await act(async () =>
     root.render(
       createElement(WorkOrderWorkspace, {
         csrf: "synthetic",
-        username: "merchant",
         onSessionExpired: () => {},
         onBusyChange: () => {},
         request: f.request,
-        mode,
       }),
     ),
   );
@@ -284,18 +282,18 @@ test("outage marks retained data stale, disables confirmation and recovers with 
   assert.equal(button("核对并确认安排").disabled, false);
   assert.equal(f.writes.length, 0);
 });
-test("conflicts and missing source revisions cannot be confirmed and replay stays explicitly labelled", async () => {
+test("conflicts and missing source revisions stay blocked without replay controls", async () => {
   const f = fixture();
   f.update({ conflict_ids: ["busy"] });
-  await mount(f, "replay");
+  await mount(f);
   assert.match(document.body.textContent, /时间冲突/);
   assert.equal(button("核对并确认安排").disabled, true);
-  assert.ok(button("回放：15:00 冲突改期"));
+  assert.equal(button("回放：15:00 冲突改期"), undefined);
   f.update({
     conflict_ids: [],
     sources: [{ message_id: "m2", message_revision: 2 }],
   });
-  await click("刷新回放数据");
+  await click("刷新业务数据");
   assert.match(document.body.textContent, /该版本未载入，需复核/);
   assert.equal(button("核对并确认安排").disabled, true);
   assert.equal(f.writes.length, 0);

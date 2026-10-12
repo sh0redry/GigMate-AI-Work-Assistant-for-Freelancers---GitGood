@@ -1,5 +1,7 @@
 # D-02 业务工作台验收
 
+**成品界面整理，2026-10-12：** D 分支现已移除用户演示／回放按钮与浏览器模拟服务。下方固定输入步骤是前一提交 `4665692` 的验收历史；现在通过隔离后端夹具／测试验证回放。当前操作见[使用手册](role-d-frontend-user-guide.md)，业务确认行为保留，现前端 67 项通过。未创建 PR／合入 main，也未新增真实手机／模型／发送验收。
+
 2026-10-12 · Kyrie · 基于 main `bbb0074`。[English counterpart](../en/role-d-stage2-acceptance.md)。[模块计划](role-d-development-roadmap.md)。
 
 ## 已实现范围

@@ -28,6 +28,8 @@
 | [D-02 业务工作台验收](role-d-stage2-acceptance.md) | 当前功能、异常保护与实际证据 |
 | [前端使用说明](role-d-frontend-user-guide.md) | 连接、业务核对与回放操作 |
 | [桌面应用可行性](role-d-desktop-feasibility.md) | PWA／Tauri／Electron 与后端部署边界 |
+| [Kyrie 从零学习手册](kyrie-learning-guide.md) | 生活例子、代码小课、练习与版本说明 |
+| [Kyrie 文件地图](kyrie-file-atlas.md) | 先读几个文件，再查完整参考 |
 | [已完成工作](progress.md) | 实际实现、验证结果与未完成范围 |
 | [英文架构决策](../en/adr/README.md) | 选型与决策依据 |
 | [契约](../../contracts/README.md) | 字段、枚举、样例与接口约定 |

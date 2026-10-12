@@ -1,5 +1,7 @@
 # D-02 business workspace acceptance
 
+**Product UI cleanup, 2026-10-12:** user demo/replay controls and the browser simulator are now removed on the D branch. The fixed-input reviewer steps below describe preceding `4665692` acceptance history; use isolated backend fixtures/tests for replay now. Current operation is in the [user guide](role-d-frontend-user-guide.md). The business confirmation behavior remains; current frontend suite is 67 passed. No PR/main merge or real-phone/model/send acceptance.
+
 2026-10-12 · Kyrie · Based on main `bbb0074`. [Chinese counterpart](../zh/role-d-stage2-acceptance.md). [Module plan](role-d-development-roadmap.md).
 
 ## Implemented boundary

@@ -1,5 +1,14 @@
 # Implementation status and validation
 
+## Product UI cleanup and Kyrie beginner learning update — 2026-10-12
+
+On `codex/d02-workspace` after `4665692`, removed D-01 preview/simulated connection controls, simulator implementation/props/styles and user work-order replay controls. App now has blank credentials, authenticated business/connection navigation, business landing, password clearing and truthful empty/unsupported-state guidance. Backend replay/fixtures remain for isolated developer tests; no data deletion, backend/generated contract/migration or live configuration change. This is partial D-05 polish, not final product acceptance. Kyrie reports team pairing works; no new real-phone acceptance was performed.
+
+Updated bilingual [user guide](role-d-frontend-user-guide.md), [beginner learning guide](kyrie-learning-guide.md), [file map](kyrie-file-atlas.md) and indexes. Learning guide replaces acronym-first explanations with a booking story, six initial concepts, small code lessons, exercises/answers and later vocabulary lookup. Preserves original seven dated public screenshots and full reference; 1.1 source is backed up in ignored local-data. Notes main versus unmerged D worktree clearly.
+
+Actual evidence: **67 frontend tests passed**, including two new real-App/synthetic-HTTP regressions for blank sign-in/no demo bypass, rejected login with no business reads, honest empty orders, owned connector path and CSRF logout/password clearing. Previous cross-page authorization, unknown outcomes, multi-chat provenance/review invalidation and conflict tests still pass. TypeScript/Vite, `check:api`, `format:check`, export consistency, bilingual baseline and whitespace checks passed. Browser against the retained isolated PostgreSQL/API/worker environment verified blank login, two-tab business landing, preserved v4 data, connector empty state, no demo controls, logout/relogin and narrow layout. DOM/isolated runtime evidence is not real WAHA/mobile/Windows or model/send acceptance. Backend code unchanged; prior 372 PostgreSQL-configured tests are preceding evidence, not a new run. Local commit only; no new push, PR or main merge. The documented CI Ruff scope passes (56 files); an extra all-scripts scan finds pre-existing unused sys/formatting in unchanged check_baseline.py, left outside this frontend batch.
+
+
 ## D-02 business workspace — 2026-10-12
 
 Formalized Kyrie's D-01 through D-05 plan and implemented the D-02 workspace on main `bbb0074`: sourced details/all linked conversations, search/status, explicit version-bound schedule review, internal calendar and task/history filters, with fictional replay separated. No backend/contracts/migrations changed. [Acceptance and actual evidence](role-d-stage2-acceptance.md), [roadmap](role-d-development-roadmap.md), [desktop assessment](role-d-desktop-feasibility.md). Desktop packaging is assessed only, not implemented.

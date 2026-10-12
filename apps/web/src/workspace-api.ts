@@ -74,7 +74,7 @@ export function workspaceApi(
         SCHEDULE_CONFLICT: "该时段与其他预约冲突，不能确认，请刷新查看。",
         CONSENT_REVOKED: "当前处理授权已暂停，请联系接入负责人核对。",
         CSRF_REJECTED: "登录验证已变化，请退出后重新登录。",
-        NOT_FOUND: "当前业务或对话不可用，请刷新并确认使用了回放环境。",
+        NOT_FOUND: "当前工单或会话不可用，请刷新并检查当前账号和会话授权。",
       };
       throw new WorkspaceError(
         code,

@@ -1,10 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import {
-  canConfirm,
-  changePresentation,
-  ReplayStore,
-  SAMPLE_ORDER_ID,
-} from "./replay-store";
+import { canConfirm, changePresentation, ReplayStore } from "./replay-store";
 import {
   changeContext,
   replayApi,
@@ -30,10 +25,8 @@ import {
 
 type Props = {
   csrf: string;
-  username: string;
   onSessionExpired: () => void;
   onBusyChange: (busy: boolean) => void;
-  mode?: "business" | "replay";
   request?: RequestApi;
 };
 function Sources({
@@ -75,10 +68,8 @@ function Sources({
 }
 export function WorkOrderWorkspace({
   csrf,
-  username,
   onSessionExpired,
   onBusyChange,
-  mode = "business",
   request,
 }: Props) {
   const store = useMemo(
@@ -179,7 +170,7 @@ export function WorkOrderWorkspace({
           disabled={state.loading || state.mutating}
           onClick={() => void store.refresh()}
         >
-          刷新{mode === "replay" ? "回放" : "业务"}数据
+          刷新业务数据
         </button>
       </div>
       <div className="grid" aria-busy={state.loading || state.mutating}>
@@ -229,7 +220,7 @@ export function WorkOrderWorkspace({
             <p>
               {data.orders.length
                 ? "没有匹配的工单，调整搜索或状态筛选。"
-                : "当前账号没有工单。新建工单接口尚未实现，请在开发环境使用虚构回放样例。"}
+                : "当前还没有工单。你可以先在「WhatsApp 连接」中管理会话授权；自动建单和手动新建功能尚未开放。"}
             </p>
           )}
           {!data && (
@@ -237,39 +228,10 @@ export function WorkOrderWorkspace({
               {state.loading ? "正在读取工单…" : "读取失败，请检查服务后刷新。"}
             </p>
           )}
-          {mode === "replay" && (
-            <section aria-label="合成回放输入">
-              <h3>虚构回放输入</h3>
-              <p>
-                固定样例只适用于 merchant 的「虚构业务预约」，不会发送消息。
-              </p>
-              <button
-                className="secondary"
-                disabled={
-                  !ready ||
-                  username !== "merchant" ||
-                  state.selected !== SAMPLE_ORDER_ID
-                }
-                onClick={() => void store.replay("reschedule", username)}
-              >
-                回放：15:00 冲突改期
-              </button>
-              <button
-                disabled={
-                  !ready ||
-                  username !== "merchant" ||
-                  state.selected !== SAMPLE_ORDER_ID
-                }
-                onClick={() => void store.replay("available", username)}
-              >
-                回放：16:30 可用时段
-              </button>
-              <small>重复输入不会重复创建记录。刷新不会重置数据。</small>
-            </section>
-          )}
         </aside>
         <main className="panel">
           <h2>工单详情</h2>
+          {detailReady && !order && <p>有工单后，可在此查看详情与来源消息。</p>}
           {!detailReady && <p>正在核对选中工单，完成前不能确认。</p>}
           {detailReady && order && data && (
             <>
@@ -301,7 +263,7 @@ export function WorkOrderWorkspace({
               </h2>
               {!changes.length && (
                 <p className="empty">
-                  暂无变更提议。真实消息的通用提取仍取决于后端能力；可在工单回放页验证固定样例。
+                  暂无需要核对的变更。新的变更会显示在这里。
                 </p>
               )}
               {changes.map((change) => {
@@ -552,7 +514,7 @@ export function WorkOrderWorkspace({
           ))}
           {detailReady && !tasks.length && <p>当前工单在该范围暂无待办。</p>}
           <small>
-            新建、工单状态修改、回复审批和外发属于后续模块；当前页面不会发送消息。
+            新建工单、修改工单状态和回复审批功能尚未开放。此页面不会发送消息。
           </small>
         </aside>
       </div>
