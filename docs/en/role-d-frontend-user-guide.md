@@ -2,7 +2,7 @@
 
 Updated 2026-10-12, Hong Kong time. [中文版](../zh/role-d-frontend-user-guide.md). For code explanations, read [Kyrie's beginner guide](kyrie-learning-guide.md).
 
-This guide describes D-02 and the current cleanup on `codex/d02-workspace`, **not merged main**. Preceding D-02 `4665692` was pushed but has no PR; subsequent cleanup follows the instruction to commit only, without creating a PR. The ordinary main checkout can still show old demo controls. Locate D with `git worktree list`; do not reset your WhatsApp session to fix a frontend version mismatch.
+This guide describes D-02 and the current cleanup on `codex/d02-workspace`, **not merged main**. The consolidated D-02 changes are now prepared for PR submission under Kyrie’s updated instruction. A PR asks teammates to review; it does not put the feature into main. The ordinary main checkout can still show old demo controls. Locate D with `git worktree list`; do not reset your WhatsApp session to fix a frontend version mismatch.
 
 ## 1 Current pages and capability
 

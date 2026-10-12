@@ -1,5 +1,9 @@
 # Implementation status and validation
 
+## Consolidated D-02 PR preparation — 2026-10-12
+
+Kyrie now requests pushing and opening a PR for the completed D-02 frontend branch. This supersedes the earlier commit-only instruction; dated no-PR records below describe their original stage. The candidate combines sourced business review/calendar/tasks, removal of user demo controls, development environment switching and isolated business-only navigation, with paired beginner/user/reference documentation. Fresh pre-submission checks: **75 frontend tests passed**, TypeScript/Vite build, API consistency, Prettier, generated contracts, baseline (**74 Markdown files / 873 local links**) and diff whitespace passed. No backend/schema/migration changes; backend pytest evidence below is historical, not rerun for submission. Independent review and main merge remain pending.
+
 ## Isolated frontend uses business workspace only — 2026-10-12
 
 Remove WhatsApp navigation and connection-page mounting in isolated testing; retain it for actual connection environments and published deployments. Isolated sign-in explains fictional business practice. Existing App regression now verifies business-only navigation and no connector reads, while the real-environment regression retains the connector path. **75 frontend tests**, TypeScript/build, API/format and bilingual baseline checks passed; browser verified the isolated signed-in page has no WhatsApp button. Update paired user/learning guides. Frontend-only change; no backend/contract/migration/runtime or WAHA operation. Local commit only, no PR/push.

@@ -17,7 +17,7 @@ With 20 minutes, read the booking story and six terms, then do exercise A. Aim t
 | Code | Explain why paging preserves hidden checkbox selections |
 | A small change | Describe the effect, checks and remaining uncertainty |
 
-Your ordinary project directory is on main `bbb0074`. D-02 is in a separate worktree, branch `codex/d02-workspace`, with preceding commit `4665692`. That commit was pushed under the earlier instruction but has no PR and is not merged into main. This product cleanup continues in the D directory. `git worktree list` shows the directories without changing them. Open `d02-workspace` to inspect current D code; main may still show the older UI. New-D GitHub links in the map refer to preceding `4665692` for location, not proof later local edits are uploaded.
+Your ordinary project directory is on main `bbb0074`. D-02 is in a separate worktree, branch `codex/d02-workspace`, with preceding commit `4665692`. The complete D-02 workspace, product cleanup and environment switching are now prepared for a PR under Kyrie’s updated instruction. They remain outside main until reviewed and merged. `git worktree list` shows the directories without changing them. Open `d02-workspace` to inspect current D code; main may still show the older UI. New-D GitHub links in the map refer to preceding `4665692` for location, not proof later local edits are uploaded.
 
 Kyrie reports the team can now connect to WAHA. This is a team observation, not a new pairing test by this update. A working connection does not establish model extraction, order creation or message sending.
 
@@ -67,7 +67,7 @@ Git records versions; GitHub hosts collaboration.
 | Merge | Integrate into the target branch |
 | Fetch | Update your remembered remote positions without replacing current files |
 
-A branch names a development line. A worktree is another checkout directory for the same repository. This explains why D changes can exist while main has older files. D-02's `4665692` was committed/pushed but has no PR and is not in main.
+A branch names a development line. A worktree is another checkout directory for the same repository. This explains why D changes can exist while main has older files. D-02 is now being submitted for review; committing, pushing and opening a PR still do not merge it into main.
 
 The following screenshots are original public pages from **2026-10-11**. Counts and status are dated teaching observations.
 

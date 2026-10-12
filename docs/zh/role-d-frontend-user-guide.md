@@ -2,7 +2,7 @@
 
 更新：2026-10-12（香港时间）。[English counterpart](../en/role-d-frontend-user-guide.md)。想学代码原理，读 [Kyrie 入门手册](kyrie-learning-guide.md)。
 
-本手册对应 `codex/d02-workspace` 的 D-02 与当前界面整理，**尚未合入 main**。D-02 原提交 `4665692` 已推送，没有 PR；后续整理遵循“commit 就好、不创建 PR”。普通 main 目录仍可能显示旧演示入口。用 `git worktree list` 找 D 工作目录，不要为了界面版本重置自己的 WhatsApp 会话。
+本手册对应 `codex/d02-workspace` 的 D-02 与当前界面整理，**尚未合入 main**。根据 Kyrie 的新要求，完整 D-02 改动现在准备提交 PR。PR 是请队友检查，创建 PR 不等于功能已经进入 main。普通 main 目录仍可能显示旧演示入口。用 `git worktree list` 找 D 工作目录，不要为了界面版本重置自己的 WhatsApp 会话。
 
 ## 1 现在有哪些页面
 

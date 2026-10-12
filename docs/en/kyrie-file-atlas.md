@@ -4,7 +4,7 @@ Updated 2026-10-12. [中文地图](../zh/kyrie-file-atlas.md) · [Beginner guide
 
 Start with App.tsx (login/navigation), chat-choices.ts (page calculation), ChatChoices.tsx (checkbox rows), WorkOrderWorkspace.tsx (business review), and workspace-api.ts (requests). Read the long connection screen/backend later.
 
-Ordinary checkout is main `bbb0074`; new D is a separate `codex/d02-workspace` directory, locatable with `git worktree list`. Original exhaustive reference/history is preserved; version labels describe path existence against old D `c702f0c`, not identical current content. New-D source links use pushed `4665692` for location, not later unpublished cleanup. Local App/new entry tests have paths without nonexistent online links. No new PR or main integration.
+Ordinary checkout is main `bbb0074`; new D is a separate `codex/d02-workspace` directory, locatable with `git worktree list`. Original exhaustive reference/history is preserved; version labels describe path existence against old D `c702f0c`, not identical current content. New-D source links use pushed `4665692` for location, not later unpublished cleanup. App/new entry tests are listed by repository path; inspect them on the complete D branch or its PR. The complete D-02 branch is now prepared for PR review; main integration remains pending.
 
 Roles coordinate work, not character authorship: A messaging, B proposals, C business rules, D UI, E independent checks. Tests do not establish phone pairing. Do not edit generated outputs manually. Dependencies/cache/private keys/sessions are excluded.
 
