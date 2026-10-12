@@ -38,7 +38,9 @@ def test_smoke_refusal_and_unknown_are_nonzero(monkeypatch, tmp_path, error):
 @pytest.mark.parametrize(
     "mime,content,vendor,code",
     [
-        ("application/pdf", b"%PDF-synthetic", "openai", "PDF_PARSER_PENDING"),
+        # PDF is now a real parser (gigmate.media.pdfparse, 2026-10-12); a
+        # non-parseable payload still refuses before the client exists.
+        ("application/pdf", b"%PDF-synthetic", "openai", "PDF_NOT_PARSEABLE"),
         ("image/png", b"synthetic", "deepseek", "VISION_VENDOR_UNVERIFIED"),
         ("text/plain", b"\xff", "openai", "TEXT_ENCODING_INVALID"),
         ("text/plain", b"a" * 90001, "openai", "TEXT_CHUNKING_PENDING"),
