@@ -1,5 +1,13 @@
 # Implementation status and validation
 
+## PR #21 review: persistent content-stop decision — 2026-10-13
+
+Independently reproduced the new P2 in four synthetic cancel/pause-resume + immediate/repeated-unknown lookup cases: reconciliation erased the only stop marker and a later valid result became public. The job now persists its first `content_stop_reason` separately from state, errors and control versions. Subsequent lookups retain that decision, never call process again and never publish the stopped request's output or restore review. Unknown outcomes still block a new request; a known valid return releases the gate as cancelled and permits only a new explicit intent.
+
+Additive **0012_waha_media_stop** follows unchanged 0010, avoiding the separate sending branch's 0011 number. Upgrade head/check before running new code. The migration preserves visible stop reasons and conservatively flags pre-upgrade unknown/reconciling jobs whose decision may already have been erased; it cannot undo previously published results. Those need operator review. #23 must reconcile migration ancestry after #21 lands. Public contracts are unchanged; bilingual media/API notes explain these limits.
+
+Actual automatic evidence: Windows full backend **548 passed / 9 skipped** (8 PostgreSQL-dependent cases and one unsupported-platform case), with migration/backfill/downgrade and existing media/PDF tests. Final four regressions also pass after adding the explicit-new-intent assertion. Disposable SQLite upgrade to 0012/check has no drift; SQLite does not prove PostgreSQL locking. Frontend **57 passed**, generated types, format, TypeScript/build, applicable Ruff/format, contract export and baseline passed. CI on the new pushed head must independently confirm PostgreSQL and the OS matrix. Existing Starlette/httpx warning remains. No real model/media/send, QR, deployment or user database/session operation; the sending branch and its two uncommitted documentation sections remain untouched. PR stays Draft for independent review and manual acceptance.
+
 ## PR #21 PDF resource isolation batch
 
 Production PDF parsing now uses a private child with a 20-second default wall budget, 512 MiB memory budget, bounded input/output and one parser per worker. Windows attaches limits to a suspended real base interpreter (not a venv launcher); Linux uses hard memory/CPU limits and parent-death binding. A PID handshake precedes data handoff. No model/connector/database environment is inherited, input is not staged, UTF-8 is fixed and IPC results are validated. Native macOS fails closed; use the Linux Docker backend. This is resource isolation, not a filesystem/network sandbox or malware scanner.

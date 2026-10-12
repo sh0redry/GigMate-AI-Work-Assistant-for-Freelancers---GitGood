@@ -43,7 +43,7 @@ def migration_database(tmp_path):
 def test_versioned_migration_preserves_replay_rows(migration_database, existing_revision):
     root = Path(__file__).resolve().parents[3]
     assert ScriptDirectory(str(root / "apps/backend/migrations")).get_heads() == [
-        "0010_waha_media_evidence"
+        "0012_waha_media_stop"
     ]
     url = migration_database
     environment = {**os.environ, "DATABASE_URL": url, "PYTHONPATH": str(root / "apps/backend/src")}
@@ -125,7 +125,7 @@ def test_versioned_migration_preserves_replay_rows(migration_database, existing_
     with engine.connect() as db:
         assert (
             db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0010_waha_media_evidence"
+            == "0012_waha_media_stop"
         )
         assert db.execute(text("SELECT accepted,duplicates,state FROM waha_connections")).one() == (
             3,
@@ -270,6 +270,36 @@ def test_media_evidence_upgrade_does_not_invent_old_sending_times(migration_data
                 updated_at=at,
             )
         )
+        legacy_cases = [
+            ("cancel", "result_unknown", "processing", "MEDIA_CANCELLED"),
+            ("pause", "result_unknown", "processing", "CONSENT_REVOKED"),
+            ("expired", "result_unknown", "processing", "MEDIA_SOURCE_EXPIRED"),
+            ("cancelled", "cancelled", "processing", None),
+            ("erased", "result_unknown", "reconciling", "MEDIA_PROCESSING_RESULT_UNKNOWN"),
+            ("lookup", "pending", "reconciling", None),
+            ("fresh", "pending", "processing", None),
+        ]
+        for suffix, state, stage, error_code in legacy_cases:
+            db.execute(
+                tables["waha_media_jobs"]
+                .insert()
+                .values(
+                    id="synthetic-" + suffix,
+                    attachment_id=asset_id,
+                    connection_id=connection_id,
+                    request_key="synthetic-" + suffix,
+                    command={"synthetic": True},
+                    version=0,
+                    context_version=0,
+                    source_fingerprint="synthetic",
+                    state=state,
+                    stage=stage,
+                    error_code=error_code,
+                    attempts=1,
+                    created_at=at,
+                    updated_at=at,
+                )
+            )
     engine.dispose()
     migrate("head")
     engine = create_engine(migration_database)
@@ -292,4 +322,13 @@ def test_media_evidence_upgrade_does_not_invent_old_sending_times(migration_data
             ).scalar_one()
             == "succeeded"
         )
+        stopped = dict(db.execute(text("SELECT id,content_stop_reason FROM waha_media_jobs")).all())
+        assert stopped[job_id] is None
+        assert stopped["synthetic-fresh"] is None
+        assert stopped["synthetic-cancel"] == "MEDIA_CANCELLED"
+        assert stopped["synthetic-pause"] == "CONSENT_REVOKED"
+        assert stopped["synthetic-expired"] == "MEDIA_SOURCE_EXPIRED"
+        assert stopped["synthetic-cancelled"] == "MEDIA_CANCELLED"
+        assert stopped["synthetic-erased"] == "MEDIA_LEGACY_REVIEW_REQUIRED"
+        assert stopped["synthetic-lookup"] == "MEDIA_LEGACY_REVIEW_REQUIRED"
     engine.dispose()

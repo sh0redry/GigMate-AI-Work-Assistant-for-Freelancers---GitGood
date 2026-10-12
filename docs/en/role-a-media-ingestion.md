@@ -1,5 +1,13 @@
 # Owned attachment ingestion and A/B handoff
 
+## PR #21: stopping content use survives outcome lookup
+
+Cancellation, reception pause/revocation and invalid source decisions are persisted as the job's immutable `content_stop_reason`. Read-only reconciliation still uses the original request ID; refreshing control versions or transient errors cannot clear that decision. Repeated unknown lookups keep the active attachment gate. A definite valid lookup releases the gate with state `cancelled`, without publishing the stopped request's result or restoring its review. Regrant does not resume this request. A genuinely new task needs explicit consent and a new idempotency key after the original outcome is known; it is not an automatic retry.
+
+Additive **0012_waha_media_stop** follows unchanged 0010. The number avoids the sending branch's 0011; that branch must reconcile migration ancestry after #21 lands. Run `upgrade head` and `check` before starting this code, preserving private sessions/data. Visible legacy stop reasons are recovered. Older unknown/reconciling jobs may have lost their stop marker, so they conservatively receive `MEDIA_LEGACY_REVIEW_REQUIRED`: lookup can release their gate but cannot publish their content. Fresh pending tasks and known successful results are unchanged. This cannot undo content already published by the old implementation; such data needs operator review. No live database was migrated by this fix.
+
+Regressions cover cancel or pause/resume → unknown → successful lookup, repeated unknown lookups, HTTP result suppression and retained gate/request identity; migration fixtures cover preserved and erased legacy markers. Source/context changes can still prevent lookup under existing authority checks; no bypass or blind resubmission is added.
+
 ## Batch 2: original time, source review and business handoff
 
 Implemented A's part on top of the PR #16 compatible media branch. Real OCR/ASR/PDF parsing/GenAI remains B's dependency, and external sending remains outside this batch. PR #18 has not been merged and is not a media processor.

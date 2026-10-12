@@ -75,6 +75,75 @@ def test_inflight_stop_keeps_unknown_gate_and_suppresses_late_content(setup, ope
         assert not work(setup, processor=Interrupted())
 
 
+@pytest.mark.parametrize("operation", ["cancel", "pause-regrant"])
+@pytest.mark.parametrize("unknown_lookups", [0, 2])
+def test_stopped_unknown_result_never_republished_after_later_lookup(
+    setup, operation, unknown_lookups
+):
+    observed = {"submissions": 0, "lookups": []}
+    command = body(setup, process=True, consent_model=True)
+    job_id = enqueue(setup, command).json()["data"]["id"]
+
+    class Stopped(Processor):
+        def process(self, request):
+            observed["submissions"] += 1
+            actions = (
+                [(f"media/jobs/{job_id}/cancel", 0)]
+                if operation == "cancel"
+                else [("pause", 0), ("resume", 1)]
+            )
+            observed["statuses"] = [
+                setup[0]
+                .post(path(setup, verb), json={"expected_version": version}, headers=setup[2])
+                .status_code
+                for verb, version in actions
+            ]
+            raise media_processing.ProcessingUncertain
+
+        def reconcile(self, request_id):
+            observed["lookups"].append(request_id)
+            return None if len(observed["lookups"]) <= unknown_lookups else result()
+
+    processor = Stopped()
+    assert work(setup) and work(setup, processor=processor)
+    assert observed["statuses"] == ([200] if operation == "cancel" else [200, 200])
+    version = 0 if operation == "cancel" else 2
+    reason = "MEDIA_CANCELLED" if operation == "cancel" else "CONSENT_REVOKED"
+    for index in range(unknown_lookups + 1):
+        response = setup[0].post(
+            path(setup, f"media/jobs/{job_id}/reconcile"),
+            json={"expected_version": version},
+            headers=setup[2],
+        )
+        assert response.status_code == 200, response.text
+        assert work(setup, processor=processor)
+        final = index == unknown_lookups
+        with setup[1]() as db:
+            job = db.get(WahaMediaJob, job_id)
+            assert job.state == ("cancelled" if final else "result_unknown")
+            assert bool(job.active_key) == (not final)
+            assert job.error_code == reason
+            assert job.content_stop_reason == reason
+            assert job.lease_token is None
+        current = asset(setup)
+        assert current.result is None and current.review is None
+        response = setup[0].get(path(setup, f"media/attachments/{current.id}"))
+        assert response.status_code == 200, response.text
+        assert response.json()["data"]["result"] is None
+        if not final:
+            assert (
+                enqueue(
+                    setup, {**command, "expected_version": version}, key=f"blocked-{index}"
+                ).status_code
+                == 409
+            )
+    assert observed["submissions"] == 1
+    assert observed["lookups"] == [job_id] * (unknown_lookups + 1)
+    fresh = enqueue(setup, {**command, "expected_version": version}, key="explicit-new-intent")
+    assert fresh.status_code == 202, fresh.text
+    assert fresh.json()["data"]["id"] != job_id
+
+
 def test_cancel_pending_reconciliation_preserves_original_unknown(setup):
     class Uncertain(Processor):
         def process(self, request):

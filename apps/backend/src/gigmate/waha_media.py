@@ -294,6 +294,9 @@ def enqueue(db, row, command, key):
 
 def stop_job(job, reason):
     """Stop content use without forgetting a possibly submitted model request."""
+    # This decision belongs to the request, not to a transient error or lease.
+    # Regrant/reconciliation may inspect its outcome but cannot undo the stop.
+    job.content_stop_reason = job.content_stop_reason or reason
     uncertain = (
         job.state == "result_unknown"
         or job.stage == "reconciling"
@@ -302,7 +305,7 @@ def stop_job(job, reason):
     job.state = "result_unknown" if uncertain else "cancelled"
     if not uncertain:
         job.active_key, job.lease_token, job.lease_until = None, None, None
-    job.error_code, job.updated_at = reason, datetime.now(UTC)
+    job.error_code, job.updated_at = job.content_stop_reason, datetime.now(UTC)
 
 
 def cancel(db, row, identifier):
@@ -357,7 +360,7 @@ def reconcile(db, row, identifier):
         fail("MEDIA_SOURCE_CHANGED")
     job.version, job.stage, job.state = row.control_version, "reconciling", "pending"
     job.lease_token, job.lease_until = None, None
-    job.attempts, job.retry_at, job.error_code = 0, None, None
+    job.attempts, job.retry_at, job.error_code = 0, None, job.content_stop_reason
     job.updated_at = datetime.now(UTC)
     return job_view(job)
 
@@ -554,7 +557,10 @@ def run_once(
         if job.state == "running":
             if not job.lease_until or utc(job.lease_until) <= now:
                 if job.stage != "download":
-                    job.state, job.error_code = "result_unknown", "MEDIA_PROCESSING_INTERRUPTED"
+                    job.state, job.error_code = (
+                        "result_unknown",
+                        job.content_stop_reason or "MEDIA_PROCESSING_INTERRUPTED",
+                    )
                     job.lease_token, job.lease_until = None, None
                     return True
                 job.state = "pending"
@@ -616,7 +622,7 @@ def run_once(
             job.state = "result_unknown" if stage == "reconciling" else "failed"
             if stage != "reconciling":
                 job.active_key = None
-            job.error_code = error.code
+            job.error_code = job.content_stop_reason or error.code
             job.lease_token, job.lease_until = None, None
             return True
     # Provider/model I/O occurs after lease commit, never under business locks.
@@ -709,14 +715,10 @@ def run_once(
             row = controls.owned(db, account, connection_id, lock=True)
             job = db.get(WahaMediaJob, identifier)
             asset = db.get(WahaAttachment, job.attachment_id)
-            interrupted = job.state == "result_unknown" and job.error_code in {
-                "MEDIA_CANCELLED",
-                "CONSENT_REVOKED",
-                "MEDIA_SOURCE_EXPIRED",
-            }
+            interrupted = job.content_stop_reason is not None
             if (job.state != "running" and not interrupted) or job.lease_token != token:
                 return True
-            stop_reason = job.error_code if interrupted else None
+            stop_reason = job.content_stop_reason
             try:
                 if not account.active:
                     fail("CONSENT_REVOKED", 403)
@@ -729,7 +731,8 @@ def run_once(
                 ):
                     fail("MEDIA_SOURCE_CHANGED")
             except BusinessError as exc:
-                interrupted, stop_reason = True, exc.code
+                job.content_stop_reason = job.content_stop_reason or exc.code
+                interrupted, stop_reason = True, job.content_stop_reason
             if interrupted:
                 # The original lease proves the outcome belongs to this attempt.
                 # Suppress late content even after regrant. Only a definite return
