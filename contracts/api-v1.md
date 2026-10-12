@@ -144,6 +144,8 @@ There is no browser `send arbitrary text` endpoint. An approved action is queued
 
 ## Skeleton transition
 
+PDF processing uses a bounded private process before any vendor request. Stable job errors include MEDIA_PDF_TIMEOUT, MEDIA_PDF_MEMORY_LIMIT, MEDIA_PDF_OUTPUT_LIMIT, MEDIA_PDF_LIMIT_UNAVAILABLE, MEDIA_PDF_CHILD_TERMINATED and MEDIA_PDF_PROTOCOL_INVALID. They indicate pre-submission failure and never certify successful extraction. Native unsupported memory protection fails closed; the backend's Linux Docker path remains supported. Model-origin unknown outcomes still use the separate reconciliation rules above.
+
 WAHA media interruption: cancelling a running model-processing or reconciliation task can return `result_unknown`. This revokes further result use while retaining a possibly submitted request; it does not certify that the vendor stopped. New requests remain blocked until a definite outcome is recorded. Read-only reconciliation returns `MEDIA_PROCESSING_STILL_IN_FLIGHT` while the original lease is live. Regrant alone does not retry a model request. Download-only cancellation remains local and suppresses staging files.
 
 Pydantic domain generation, implemented OpenAPI, frontend type generation, ownership/CSRF/version tests and drift checks are present. Extend the remaining inventory through source models/routes and regenerate contracts. This document records behavior and planned scope; OpenAPI reflects actual implementation.

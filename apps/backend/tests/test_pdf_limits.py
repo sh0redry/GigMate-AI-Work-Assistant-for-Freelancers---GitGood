@@ -52,5 +52,5 @@ def test_text_limit_stops_before_reading_next_page(monkeypatch):
     monkeypatch.setattr(pypdf, "PdfReader", Reader)
     monkeypatch.setattr(pdfparse, "MAX_TOTAL_TEXT", 10)
     with pytest.raises(pdfparse.PdfParseError, match="TEXT_LIMIT"):
-        pdfparse.extract(b"synthetic")
+        pdfparse._extract_local(b"synthetic")
     assert visited == [1]

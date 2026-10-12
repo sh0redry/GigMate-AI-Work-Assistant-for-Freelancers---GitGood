@@ -1,5 +1,19 @@
 # Role B extraction subsystem
 
+## PDF resource isolation
+
+The vendor preflight now calls a private child process, not pypdf in the business worker. Defaults: 20 seconds wall time, 512 MiB, one parser per worker process, 20 MiB input and 1 MiB serialized output. Trusted server settings `GIGMATE_PDF_TIMEOUT_SECONDS` (1–60) and `GIGMATE_PDF_MEMORY_MIB` (128–1024) are propagated to API/worker by the media Compose overlay; they are not request parameters. Existing page/segment/text bounds and partial coverage checks remain.
+
+Windows starts the real base interpreter suspended, attaches a private Job Object with committed-memory/CPU/active-process limits and kill-on-close, then resumes it. A venv redirector must not receive the limit instead of the parser. Linux sets hard RLIMIT_AS/RLIMIT_CPU, disables core dumps, bounds descriptors and binds child lifetime to its parent. Only after a bounded startup response proves the expected PID is PDF data released. Native macOS fails closed with MEDIA_PDF_LIMIT_UNAVAILABLE; run the backend in the project's Linux Docker image. No unreliable native-memory fallback is advertised.
+
+The child receives bytes through pipes without staging files, uses UTF-8, receives no model/WAHA/database environment or worker PYTHONPATH, and loads only the locked pypdf location. Output shape/count/page/text bounds are revalidated in the parent. Timeout/output failure terminates and reaps the private process and closes pipes; crashes are not success. Known pre-vendor PDF refusal codes are persisted on the media job rather than disguised as a missing processor. The worker has an independent heartbeat thread during parsing/model I/O; no new DB migration is needed.
+
+Local preparation may take time. A now supplies a private `MediaInput.before_submit` callback which the shipped B processor invokes after parsing and immediately before client construction. It rechecks active account/connection/consent, original lease, source/context/control and attachment version/expiry in a short transaction. Cancellation during preparation therefore prevents a later model submission. This callable is not part of any prompt, HTTP or stored evidence shape; third-party processors must honor this handoff. A change after that final check cannot retroactively retract external I/O. The wall-time deadline includes startup and IPC; bounded process teardown may add a few seconds.
+
+This is resource isolation, not a complete filesystem/network sandbox or malware scanner. Limits are per worker, not a global host quota; deployments must size worker count/host resources accordingly. Scanned PDF OCR, real models and shared AI deployment remain separate. No original deployment or session is changed by this batch. Resource checks run in Linux/Windows/macOS CI; macOS verifies explicit native refusal, not native parsing. Native Apple Silicon/Docker codec and real-file acceptance still require a teammate's own-account run.
+
+Mechanisms: [Windows Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects), [extended memory limits](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-jobobject_extended_limit_information), [Python resource](https://docs.python.org/3/library/resource.html).
+
 ## PDF integration and in-flight model interruption — 2026-10-12
 
 PR #21 includes the PDF branch at `0d91ad1`. Text-layer PDFs are parsed locally before client construction; the model cannot replace locally bound page text. Missing page text forces complete coverage down to partial. Crossing the text bound stops before extracting another page. Scanned PDFs remain unsupported. Output bounds are not a hard CPU/memory sandbox; parser resource isolation remains a real-activation gate.

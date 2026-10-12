@@ -26,8 +26,9 @@ Bounds (aligned with the ``WahaMediaResult`` contract in
   remaining below the total-text limit.
 * total text — at most 100000 characters (``WahaMediaResult`` validator).
 
-These are input/output limits, not a hard CPU or memory sandbox. Resource
-isolation for untrusted PDF decompression remains a real-activation gate.
+Production parsing uses a separate process with hard resource limits;
+``_extract_local`` is only its private core. This is not a complete
+filesystem/network sandbox or malware scanner.
 """
 
 from __future__ import annotations
@@ -76,6 +77,13 @@ class PdfExtraction:
 
 
 def extract(content: bytes) -> PdfExtraction:
+    """Parse only in a resource-limited child; never fall back to this process."""
+    from .pdf_isolation import extract_isolated
+
+    return extract_isolated(content)
+
+
+def _extract_local(content: bytes) -> PdfExtraction:
     """Parse ``content`` and return bounded per-page text.
 
     Raises :class:`PdfParseError` (stable ``MEDIA_PDF_*`` code) when the
@@ -92,6 +100,8 @@ def extract(content: bytes) -> PdfExtraction:
     try:
         reader = PdfReader(io.BytesIO(content))
         total_pages = len(reader.pages)
+    except MemoryError:
+        raise
     except Exception as exc:
         log.info("MEDIA_PDF_NOT_PARSEABLE: %s", type(exc).__name__)
         raise PdfParseError(f"MEDIA_PDF_NOT_PARSEABLE: {type(exc).__name__}") from None
@@ -108,6 +118,8 @@ def extract(content: bytes) -> PdfExtraction:
     for index, page in enumerate(reader.pages, start=1):
         try:
             raw = page.extract_text() or ""
+        except MemoryError:
+            raise
         except Exception:  # one unreadable page must not fake coverage
             log.info("MEDIA_PDF page %s unreadable", index)
             raw = ""

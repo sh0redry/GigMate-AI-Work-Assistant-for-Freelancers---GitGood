@@ -475,6 +475,38 @@ def evidence(db, row, identifier, attachment_version, context_version, result_jo
     )
 
 
+def check_model_submission(factory, account_id, connection_id, identifier, token, asset_version):
+    """Recheck after local preparation without holding business locks over I/O."""
+    try:
+        with factory.begin() as db:
+            account = db.scalar(select(Account).where(Account.id == account_id).with_for_update())
+            if not account or not account.active:
+                fail("CONSENT_REVOKED", 403)
+            row = controls.owned(db, account, connection_id, lock=True)
+            job = db.get(WahaMediaJob, identifier)
+            if (
+                job.state != "running"
+                or job.lease_token != token
+                or not job.lease_until
+                or utc(job.lease_until) <= datetime.now(UTC)
+            ):
+                fail("MEDIA_PROCESSING_PERMISSION_CHANGED")
+            asset = db.get(WahaAttachment, job.attachment_id)
+            snap, _, conv = source(db, row, asset.snapshot_id)
+            if (
+                row.control_version != job.version
+                or conv.context_version != job.context_version
+                or fingerprint(snap) != job.source_fingerprint
+                or asset.version != asset_version
+                or utc(asset.expires_at) <= datetime.now(UTC)
+            ):
+                fail("MEDIA_SOURCE_CHANGED")
+    except BusinessError:
+        raise media_processing.ProcessingUnavailable(
+            "MEDIA_PROCESSING_PERMISSION_CHANGED"
+        ) from None
+
+
 def run_once(
     factory=Session, *, make_client=controls.client_for, make_processor=media_processing.processor
 ):
@@ -629,6 +661,9 @@ def run_once(
                 timezone=input_context.get("timezone"),
                 timezone_source=input_context.get("timezone_source", "unknown"),
                 source_observed_at=input_context.get("source_observed_at"),
+                before_submit=lambda: check_model_submission(
+                    factory, account_id, connection_id, identifier, token, asset_version
+                ),
             )
             if stage == "reconciling":
                 lookup = getattr(model, "reconcile", None)
@@ -644,8 +679,11 @@ def run_once(
                 if isinstance(raw_result, WahaMediaResult)
                 else raw_result
             ).model_dump(mode="json")
-    except media_processing.ProcessingUnavailable:
-        error = "MEDIA_PROCESSOR_NOT_CONFIGURED"
+    except media_processing.ProcessingUnavailable as exc:
+        code = str(exc).split(":", 1)[0]
+        error = (
+            code if code in media_processing.UNAVAILABLE_CODES else "MEDIA_PROCESSOR_NOT_CONFIGURED"
+        )
         unknown = stage == "reconciling"
     except media_processing.ProcessingUncertain:
         error, unknown = "MEDIA_PROCESSING_RESULT_UNKNOWN", True

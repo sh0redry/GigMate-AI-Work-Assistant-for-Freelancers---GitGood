@@ -168,6 +168,9 @@ class MediaProcessorImpl:
             # Refuse on a malformed PDF prompt before the client exists too.
             self._prompt_version(self.pdf_prompt_path)
 
+        # Trusted service callback, never forwarded to the model or frontend.
+        if request.before_submit:
+            request.before_submit()
         try:
             client = llm.default_client_factory(timeout=30.0)
         except Exception as exc:  # pragma: no cover - httpx import error

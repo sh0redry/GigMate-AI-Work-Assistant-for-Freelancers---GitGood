@@ -1,5 +1,13 @@
 # Implementation status and validation
 
+## PR #21 PDF resource isolation batch
+
+Production PDF parsing now uses a private child with a 20-second default wall budget, 512 MiB memory budget, bounded input/output and one parser per worker. Windows attaches limits to a suspended real base interpreter (not a venv launcher); Linux uses hard memory/CPU limits and parent-death binding. A PID handshake precedes data handoff. No model/connector/database environment is inherited, input is not staged, UTF-8 is fixed and IPC results are validated. Native macOS fails closed; use the Linux Docker backend. This is resource isolation, not a filesystem/network sandbox or malware scanner.
+
+Known PDF refusal codes are persisted before vendor submission. The worker heartbeat runs independently of parser/model waits. A private before-submit callback revalidates permission/lease/source after local preparation, preventing a model call when the task was cancelled during parsing. No new schema or migration. Media Compose exposes trusted limits to API/worker; CI adds native Linux/Windows/macOS resource checks (macOS validates refusal, not native parsing).
+
+Actual Windows evidence: real memory allocation over a 128 MiB cap is refused, timeout kills/reaps the owned process, crashes/output overflow/invalid packets fail, wrong PID cannot receive data, keys are not inherited, Unicode IPC and heartbeat continuity pass. Full regression before the final pre-submit callback: **542 passed / 9 skipped** (8 PostgreSQL checks plus unsupported-platform test). Final affected parser/task/authority cases: **40 passed / 1 platform skip**; remaining media compatibility cases **124 passed / 1 PostgreSQL skip**. Frontend **57 passed**, types/format/TypeScript/build, Ruff/format, contract export and disposable SQLite migration 0010/check passed. Existing Starlette/httpx warning remains. New matrix CI and independent review must finish on the pushed head. No real media/model/send, QR, deployment or original DB/session operation; the owner's sending branch and uncommitted progress sections are preserved.
+
 ## PR #21 PDF integration and model interruption correction — 2026-10-12
 
 Integrated teammate PDF branch `0d91ad1` into the existing media PR, preserving its local parser, dedicated business prompt, dependency pin and Unicode documentation repair. Added server-enforced partial coverage for missing page text and early text-limit refusal before reading another page. Corrected the segment-limit explanation: it is independent of total text. Scanned PDFs remain refused; no hard parser CPU/memory sandbox or actual model activation is claimed.
