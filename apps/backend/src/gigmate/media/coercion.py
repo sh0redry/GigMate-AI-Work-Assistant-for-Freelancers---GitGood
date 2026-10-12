@@ -28,14 +28,11 @@ _MAX_SEGMENT_TEXT = 4000
 _MAX_RESULT_TEXT = 100000
 
 
-def coerce_chat_response(
-    payload: Mapping[str, Any], *, prompt_version: str, vendor: str, model_version: str
-) -> WahaMediaResult:
-    """Normalise a chat-completions payload into :class:`WahaMediaResult`.
+def _parse_message_object(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Read ``choices[0].message.content`` and parse it as a JSON object.
 
-    Accepts both the strict JSON mode body (``choices[0].message.content``
-    parsed as a JSON object) and the older plain-text body. Anything that
-    cannot be coerced into a valid proposal raises
+    Shared by every chat-shaped coercion: the vendor JSON mode body (string
+    content) and the older dict content. Anything unreadable raises
     :class:`ProcessingUncertain`.
     """
 
@@ -54,10 +51,69 @@ def coerce_chat_response(
         parsed = message
     else:
         raise ProcessingUncertain(f"Vendor message is {type(message).__name__}, expected str/dict")
+    if not isinstance(parsed, dict):
+        raise ProcessingUncertain("Proposal payload is not an object")
+    return parsed
 
+
+def coerce_chat_response(
+    payload: Mapping[str, Any], *, prompt_version: str, vendor: str, model_version: str
+) -> WahaMediaResult:
+    """Normalise a chat-completions payload into :class:`WahaMediaResult`.
+
+    Accepts both the strict JSON mode body (``choices[0].message.content``
+    parsed as a JSON object) and the older plain-text body. Anything that
+    cannot be coerced into a valid proposal raises
+    :class:`ProcessingUncertain`.
+    """
+
+    parsed = _parse_message_object(payload)
     return _coerce_proposal(
         parsed, prompt_version=prompt_version, vendor=vendor, model_version=model_version
     )
+
+
+def coerce_pdf_extraction(
+    payload: Mapping[str, Any],
+    *,
+    segments: list[WahaMediaSegment],
+    prompt_version: str,
+    vendor: str,
+    model_version: str,
+    base_unresolved: list[str] | None = None,
+) -> WahaMediaResult:
+    """Build a :class:`WahaMediaResult` from the PDF two-layer pipeline.
+
+    The segments come from the local parser (``gigmate.media.pdfparse``)
+    and are the only source of extraction text; the model only contributes
+    the business layer: coverage, summary, suggestions and
+    unresolved_questions. Any ``segments`` key in the model output is
+    ignored — a model can never retype, merge or invent page text.
+
+    ``base_unresolved`` carries parser-level notes (e.g. blank pages) that
+    are merged in front of the model's own unresolved questions.
+    """
+
+    if not segments:
+        raise ProcessingUncertain("PDF extraction called without local segments")
+
+    parsed = _parse_message_object(payload)
+    coverage = parsed.get("coverage", "unknown")
+    unresolved = list(parsed.get("unresolved_questions") or [])
+    if base_unresolved:
+        unresolved = base_unresolved + unresolved
+
+    proposal: dict[str, Any] = {
+        "provider": vendor,
+        "model_version": model_version,
+        "prompt_version": prompt_version,
+        "coverage": coverage,
+        "segments": [segment.model_dump(mode="json") for segment in segments],
+        "summary": parsed.get("summary"),
+        "suggestions": parsed.get("suggestions", []),
+        "unresolved_questions": unresolved,
+    }
+    return _validate(proposal)
 
 
 def coerce_transcription_response(
@@ -159,5 +215,6 @@ def _validate(proposal: dict[str, Any]) -> WahaMediaResult:
 
 __all__ = [
     "coerce_chat_response",
+    "coerce_pdf_extraction",
     "coerce_transcription_response",
 ]

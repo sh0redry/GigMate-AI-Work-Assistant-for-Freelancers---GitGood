@@ -1,6 +1,17 @@
 # Role B extraction subsystem
 
-## PR #21 media integration safety correction ? 2026-10-11
+## Real PDF parser and two-layer extraction — 2026-10-12
+
+`gigmate.media.pdfparse` replaces the `MEDIA_PDF_PARSER_PENDING` stub with a real local parser (`pypdf==6.20.0`, added to `pyproject.toml` and `requirements.lock`). PDF processing is now two layers:
+
+1. **Local parse (deterministic, before any vendor call).** Pages are extracted verbatim with bounded I/O: at most 200 pages (the `WahaMediaSegment.page` bound), per-page text split into chunks of at most 4000 characters that keep the page number, total text at most 100000 characters (the contract bound). Oversized input refuses with `MEDIA_PDF_PAGE_LIMIT` / `MEDIA_PDF_TEXT_LIMIT` — never silently truncated. Unreadable bytes refuse with `MEDIA_PDF_NOT_PARSEABLE`; a scanned PDF with no text layer refuses with `MEDIA_PDF_NO_TEXT_LAYER` rather than shipping pixels to a text model. All of these happen before the vendor request, so the processor maps them to `ProcessingUnavailable` (nothing was charged). Pages that carry no extractable text inside an otherwise readable PDF are surfaced as an unresolved question ("N of M pages carried no extractable text") instead of claiming full coverage.
+2. **Business extraction (vendor).** The extracted pages are shipped to the chat model with the dedicated prompt `prompts/role_b_media_pdf_v1.txt` (version header `1.0.0`, overridable via `GIGMATE_MEDIA_PDF_PROMPT_PATH`). The model only contributes coverage, summary, suggestions and unresolved questions; any `segments` key in its output is ignored because the final `WahaMediaResult` segments are bound locally from the parser. A model can never retype, merge or invent page text, and suggestion `source_indices` are validated against the local segments by the contract.
+
+Validation: 9 new PDF cases in `test_media_processor.py` (real two-page parse with an injected model `segments` key proving local binding, no-text-layer, garbage bytes, 201-page bound, text bound, long-page splitting, blank-page unresolved question, vendor 5xx after a successful parse, bad `source_indices`) — 50 passed in the file, full backend suite re-run green. Ruff check/format clean; contract export and baseline checks unchanged.
+
+This closes the "real PDF parser" item of the 2026-10-11 correction list. Still open from that list: explicit model capability and per-route credential verification, timestamp/timezone grounding, prompt-injection tests, and actual vendor/codec acceptance — the implementation still ships inactive (`_ENABLED=False`) and no real model request was made.
+
+## PR #21 media integration safety correction — 2026-10-11
 
 The media implementation ships **inactive** (`_ENABLED=False`) and has not been validated against a real vendor. The factory contract fixes in `a5aa0a1` are retained. PDF routing is recognized but processing now refuses with `MEDIA_PDF_PARSER_PENDING`; decoding PDF binary as text is not parsing. The default DeepSeek image route refuses with `MEDIA_VISION_VENDOR_UNVERIFIED`; explicit OpenAI/custom fake-client shapes are not proof of model vision capability. Custom vendors require an explicit endpoint. TXT must be UTF-8 and at most 90,000 characters; longer files require future chunking, without silent truncation.
 
@@ -360,6 +371,7 @@ Additional guards:
 | `GIGMATE_MEDIA_AUDIO_MODEL` | Model identifier for transcriptions (e.g. `whisper-1`). |
 | `GIGMATE_MEDIA_ENDPOINT` | Optional base URL override for both vendors. |
 | `GIGMATE_MEDIA_PROMPT_PATH` | Optional override of the bundled prompt file. |
+| `GIGMATE_MEDIA_PDF_PROMPT_PATH` | Optional override of the bundled PDF extraction prompt file. |
 
 MIME routing (in `gigmate.media.routing`):
 
@@ -367,7 +379,7 @@ MIME routing (in `gigmate.media.routing`):
 | --- | --- | --- |
 | `image/png`, `image/jpeg`, `image/webp` | `ocr` | chat-completions with vision input |
 | `audio/ogg`, `audio/mpeg`, `audio/wav`, `audio/mp4`, `audio/x-m4a` | `asr` | `/v1/audio/transcriptions` |
-| `application/pdf` | `pdf` | chat-completions with text extraction |
+| `application/pdf` | `pdf` | local page extraction (`gigmate.media.pdfparse`) then chat-completions business pass |
 | `text/plain` | `text` | chat-completions |
 
 Anything outside this set is refused with `ProcessingUnavailable` before the

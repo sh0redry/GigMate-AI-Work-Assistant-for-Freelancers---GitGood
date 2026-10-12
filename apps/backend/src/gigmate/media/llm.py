@@ -42,6 +42,8 @@ _ENDPOINT_ENV = "GIGMATE_MEDIA_ENDPOINT"
 
 _PROMPT_PATH_ENV = "GIGMATE_MEDIA_PROMPT_PATH"
 _DEFAULT_PROMPT_FILENAME = "role_b_media_v1.txt"
+_PDF_PROMPT_PATH_ENV = "GIGMATE_MEDIA_PDF_PROMPT_PATH"
+_PDF_PROMPT_FILENAME = "role_b_media_pdf_v1.txt"
 _PROMPT_VERSION_PREFIX = "prompt_version:"
 _PROMPT_VERSION_PENDING = "0.0.0-skeleton"
 
@@ -132,6 +134,21 @@ def resolve_prompt_path(default_dir: Path | None = None) -> Path:
     return base / _DEFAULT_PROMPT_FILENAME
 
 
+def resolve_pdf_prompt_path(default_dir: Path | None = None) -> Path:
+    """Resolve the prompt file for the PDF business-extraction pass.
+
+    The PDF pipeline uses a dedicated prompt (segments are parsed locally,
+    so the model must not emit segments). Operators can override the
+    location with ``GIGMATE_MEDIA_PDF_PROMPT_PATH`` for smoke runs.
+    """
+
+    override = os.environ.get(_PDF_PROMPT_PATH_ENV, "").strip()
+    if override:
+        return Path(override)
+    base = default_dir or Path(__file__).resolve().parent / "prompts"
+    return base / _PDF_PROMPT_FILENAME
+
+
 def read_prompt_version(path: Path) -> str:
     """Read the ``prompt_version:`` header from a prompt file.
 
@@ -150,6 +167,31 @@ def read_prompt_version(path: Path) -> str:
     except (OSError, UnicodeError):
         return _PROMPT_VERSION_PENDING
     return _PROMPT_VERSION_PENDING
+
+
+def _chat_payload(*, model: str, prompt: str, user_content: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": user_content},
+        ],
+        "temperature": 0,
+        "response_format": {"type": "json_object"},
+    }
+
+
+def _post_chat_completions(
+    client: httpx.Client, endpoint: str, payload: dict[str, Any]
+) -> dict[str, Any]:
+    response = client.post(f"{endpoint}/v1/chat/completions", json=payload)
+    if response.status_code >= 400:
+        raise MediaVendorRejected(f"MEDIA_CHAT_HTTP_{response.status_code}")
+    try:
+        body = response.json()
+    except json.JSONDecodeError as exc:
+        raise MediaVendorRejected(f"Invalid JSON from chat completions: {exc}") from exc
+    return body
 
 
 def chat_completions(
@@ -192,23 +234,33 @@ def chat_completions(
     if extra_user:
         user_content.append({"type": "text", "text": json.dumps(extra_user, ensure_ascii=False)})
 
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": user_content},
-        ],
-        "temperature": 0,
-        "response_format": {"type": "json_object"},
-    }
-    response = client.post(f"{endpoint}/v1/chat/completions", json=payload)
-    if response.status_code >= 400:
-        raise MediaVendorRejected(f"MEDIA_CHAT_HTTP_{response.status_code}")
-    try:
-        body = response.json()
-    except json.JSONDecodeError as exc:
-        raise MediaVendorRejected(f"Invalid JSON from chat completions: {exc}") from exc
-    return body
+    payload = _chat_payload(model=model, prompt=prompt, user_content=user_content)
+    return _post_chat_completions(client, endpoint, payload)
+
+
+def chat_extraction_completions(
+    *,
+    client: httpx.Client,
+    endpoint: str,
+    model: str,
+    prompt: str,
+    text: str,
+    caption: str | None,
+) -> dict[str, Any]:
+    """POST a text-only extraction request and return the parsed JSON body.
+
+    Used by the PDF pipeline: the bytes are parsed locally first, and the
+    business-extraction model receives the already-extracted text instead
+    of raw attachment bytes. Failure semantics match
+    :func:`chat_completions`.
+    """
+
+    user_content: list[dict[str, Any]] = []
+    if caption:
+        user_content.append({"type": "text", "text": f"Caption: {caption}"})
+    user_content.append({"type": "text", "text": text})
+    payload = _chat_payload(model=model, prompt=prompt, user_content=user_content)
+    return _post_chat_completions(client, endpoint, payload)
 
 
 def audio_transcriptions(
@@ -291,11 +343,13 @@ __all__ = [
     "MediaVendorRejected",
     "audio_transcriptions",
     "chat_completions",
+    "chat_extraction_completions",
     "default_client_factory",
     "dispatch_key",
     "env_summary",
     "is_live_origin_allowed",
     "is_live_unlocked",
     "read_prompt_version",
+    "resolve_pdf_prompt_path",
     "resolve_prompt_path",
 ]

@@ -1,6 +1,14 @@
 # Implementation status and validation
 
-## PR #21 teammate media integration and main compatibility ? 2026-10-11
+## Real PDF parser: two-layer extraction — 2026-10-12
+
+`gigmate.media.pdfparse` replaces the `MEDIA_PDF_PARSER_PENDING` stub with a real local parser (`pypdf==6.20.0`, added to `pyproject.toml` and `requirements.lock`). Layer 1 parses pages locally with bounded I/O: at most 200 pages, per-page text split into at most 4000-character chunks that keep the page number, at most 100000 characters total. `MEDIA_PDF_PAGE_LIMIT`, `MEDIA_PDF_TEXT_LIMIT`, `MEDIA_PDF_NOT_PARSEABLE` and `MEDIA_PDF_NO_TEXT_LAYER` (scanned, no text layer) all refuse **before** any vendor request, so they map to `ProcessingUnavailable` and nothing is charged; nothing is silently truncated. Layer 2 ships the extracted pages to the chat vendor with the dedicated `role_b_media_pdf_v1.txt` prompt (version header 1.0.0, overridable via `GIGMATE_MEDIA_PDF_PROMPT_PATH`); the model only contributes coverage / summary / suggestions / unresolved_questions and any `segments` key in its output is ignored — page text is bound locally, so the model can never retype, merge or invent it, and suggestion `source_indices` are validated against the local segments by the contract. Blank pages inside an otherwise readable PDF surface as an unresolved question instead of faking coverage. This batch also repairs the mojibake the 2026-10-11 entries left in `docs/zh/role-b-extraction.md` and `docs/zh/progress.md` (the corrupted paragraphs are restored in Chinese).
+
+**Tests**: 9 new PDF cases in `test_media_processor.py` — local binding proven by injecting a `segments` key into the model response; no-text-layer / garbage-bytes / 201-page / oversized-total refusals all verified to make **no** vendor call; 9000-char page splitting; blank-page unresolved question; post-parse vendor 5xx → `ProcessingUncertain`; bad `source_indices` → uncertain. File passes 50/50; full backend suite re-run green; Ruff check/format clean; contract export and baseline checks unchanged.
+
+**Honest limits**: the implementation still ships inactive (`_ENABLED=False`) and no real model request was made. Scanned/image-only PDFs refuse rather than silently OCR (that needs a vision-capable vendor, still unverified). Explicit model capability / per-route credential verification, timestamp/timezone grounding, prompt-injection fixtures and real vendor/codec acceptance remain open from the 2026-10-11 correction list.
+
+## PR #21 teammate media integration and main compatibility — 2026-10-11
 
 Reviewed the teammate comments: factory process/reconcile callability and constructor exception handling were already fixed in `a5aa0a1`. Integrated B's `b5d7e84` inactive media seam, then latest main `bbb0074`; progress conflicts were combined, preserving A and B histories. No sending changes from `Andy_WAHA_multitype_sending` are included.
 

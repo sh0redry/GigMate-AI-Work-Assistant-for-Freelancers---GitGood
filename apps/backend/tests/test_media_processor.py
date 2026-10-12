@@ -12,6 +12,11 @@ Coverage:
   plain text -> text, anything else -> ProcessingUnavailable.
 * Per-vendor call shape: chat-completions request URL/payload, transcription
   multipart request body.
+* PDF pipeline: local per-page parse is the source of truth (the model cannot
+  retype segments); parse refusals (no text layer, garbage bytes, page bound)
+  happen before any vendor call; long pages split into bounded chunks; blank
+  pages surface an unresolved question; vendor 5xx after a successful parse
+  is ProcessingUncertain.
 * Coercion: vendor JSON -> WahaMediaResult with valid bounds.
 * Failure modes: 4xx / 5xx -> ProcessingUncertain, network error ->
   ProcessingUncertain, malformed vendor JSON -> ProcessingUncertain.
@@ -23,11 +28,13 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import io
 import json
 from typing import Any
 
 import httpx
 import pytest
+from pypdf import PdfWriter
 
 import gigmate.media.llm as llm
 import gigmate.media.processor as mp
@@ -425,6 +432,306 @@ def test_malformed_json_is_uncertain(saved_env, saved_seam_flag):
     saved_env.setattr(llm, "default_client_factory", lambda *, timeout: fake)
     with pytest.raises(ProcessingUncertain, match="MEDIA_VENDOR_REJECTED"):
         MediaProcessorImpl().process(make_input())
+
+
+# PDF pipeline (local parse -> business extraction)
+
+
+def _build_pdf(*page_texts: str) -> bytes:
+    """Build a minimal but structurally valid PDF, one page per text.
+
+    Hand-assembling the objects (catalog, pages, font, page + content
+    streams, xref, trailer) keeps the helper dependency-free and
+    deterministic: ``pypdf`` extracts exactly the text we place in the
+    ``Tj`` operator, which is what the parser tests assert against.
+    """
+
+    objects: list[bytes] = []
+    objects.append(b"<< /Type /Catalog /Pages 2 0 R >>")
+    count = len(page_texts)
+    kids = " ".join(f"{4 + i * 2} 0 R" for i in range(count))
+    objects.append(f"<< /Type /Pages /Kids [{kids}] /Count {count} >>".encode())
+    objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    for index, text in enumerate(page_texts):
+        content_num = 5 + index * 2
+        objects.append(
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            f"/Resources << /Font << /F1 3 0 R >> >> /Contents {content_num} 0 R >>".encode()
+        )
+        safe = text.replace("\\", r"\\").replace("(", r"\(").replace(")", r"\)")
+        stream = f"BT /F1 12 Tf 72 700 Td ({safe}) Tj ET".encode("latin-1", "replace")
+        objects.append(
+            b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream"
+        )
+    out = bytearray(b"%PDF-1.7\n")
+    offsets = [0]
+    for number, obj in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{number} 0 obj\n".encode() + obj + b"\nendobj\n"
+    xref_pos = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n".encode()
+    out += b"0000000000 65535 f \n"
+    for offset in offsets[1:]:
+        out += f"{offset:010d} 00000 n \n".encode()
+    out += (
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%EOF"
+    ).encode()
+    return bytes(out)
+
+
+def _blank_pdf(pages: int) -> bytes:
+    """Build a valid PDF whose pages carry no text layer (scanned shape)."""
+
+    writer = PdfWriter()
+    for _ in range(pages):
+        writer.add_blank_page(width=100, height=100)
+    buffer = io.BytesIO()
+    writer.write(buffer)
+    return buffer.getvalue()
+
+
+def _pdf_ok() -> dict[str, Any]:
+    """Vendor body for the PDF business-extraction pass.
+
+    Note the deliberate fake ``segments`` key: the model must not be able
+    to retype page text, so the coercion ignores it and keeps the locally
+    parsed segments.
+    """
+
+    return {
+        "choices": [
+            {
+                "message": {
+                    "content": json.dumps(
+                        {
+                            "coverage": "complete",
+                            "segments": [
+                                {"text": "MODEL INJECTED TEXT", "page": 9},
+                            ],
+                            "summary": "A two-page work brief",
+                            "suggestions": [
+                                {
+                                    "field": "requirements",
+                                    "text": "bring own tools",
+                                    "source_indices": [0],
+                                }
+                            ],
+                            "unresolved_questions": [],
+                        }
+                    )
+                }
+            }
+        ]
+    }
+
+
+def test_pdf_real_parse_and_extraction(saved_env, saved_seam_flag):
+    """Two-layer pipeline: local page text is the source of truth; the
+    model only contributes the business layer and cannot retype
+    segments."""
+
+    mp._ENABLED = True
+    saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
+    saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
+    saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
+    fake = _FakeClient(chat_payload=_pdf_ok())
+    saved_env.setattr(llm, "default_client_factory", lambda *, timeout: fake)
+    content = _build_pdf("First page quote text", "Second page quote text")
+    result = MediaProcessorImpl().process(make_input(mimetype="application/pdf", content=content))
+
+    assert isinstance(result, WahaMediaResult)
+    # Segments come from the local parser, verbatim, with page numbers.
+    assert [(segment.page, segment.text) for segment in result.segments] == [
+        (1, "First page quote text"),
+        (2, "Second page quote text"),
+    ]
+    # The model's injected segments key was ignored.
+    assert all("MODEL INJECTED" not in segment.text for segment in result.segments)
+    assert result.coverage == "complete"
+    assert result.summary == "A two-page work brief"
+    assert [s.field for s in result.suggestions] == ["requirements"]
+    assert result.suggestions[0].source_indices == [0]
+    # One chat call whose user payload carries the extracted pages.
+    assert len(fake.calls) == 1
+    url, kwargs = fake.calls[0]
+    assert url.endswith("/v1/chat/completions")
+    user_content = kwargs["json"]["messages"][1]["content"]
+    sent_text = user_content[-1]["text"]
+    assert "First page quote text" in sent_text
+    assert "Second page quote text" in sent_text
+
+
+def test_pdf_no_text_layer_refuses_without_vendor_call(saved_env, saved_seam_flag):
+    mp._ENABLED = True
+    saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
+    saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
+    saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
+    fake = _FakeClient(chat_payload=_pdf_ok())
+    saved_env.setattr(llm, "default_client_factory", lambda *, timeout: fake)
+    with pytest.raises(ProcessingUnavailable, match="MEDIA_PDF_NO_TEXT_LAYER"):
+        MediaProcessorImpl().process(make_input(mimetype="application/pdf", content=_blank_pdf(1)))
+    assert fake.calls == []
+
+
+def test_pdf_invalid_bytes_refuse_without_vendor_call(saved_env, saved_seam_flag):
+    mp._ENABLED = True
+    saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
+    saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
+    saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
+    fake = _FakeClient(chat_payload=_pdf_ok())
+    saved_env.setattr(llm, "default_client_factory", lambda *, timeout: fake)
+    with pytest.raises(ProcessingUnavailable, match="MEDIA_PDF_NOT_PARSEABLE"):
+        MediaProcessorImpl().process(
+            make_input(mimetype="application/pdf", content=b"definitely not a pdf")
+        )
+    assert fake.calls == []
+
+
+def test_pdf_page_limit_refuses(saved_env, saved_seam_flag):
+    """The page bound is checked before any text is extracted: a 201-page
+    file is refused with the page-limit code, not the no-text-layer code."""
+
+    mp._ENABLED = True
+    saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
+    saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
+    saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
+    fake = _FakeClient(chat_payload=_pdf_ok())
+    saved_env.setattr(llm, "default_client_factory", lambda *, timeout: fake)
+    with pytest.raises(ProcessingUnavailable, match="MEDIA_PDF_PAGE_LIMIT"):
+        MediaProcessorImpl().process(
+            make_input(mimetype="application/pdf", content=_blank_pdf(201))
+        )
+    assert fake.calls == []
+
+
+def test_pdf_long_page_splits_into_bounded_segments(saved_env, saved_seam_flag):
+    mp._ENABLED = True
+    saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
+    saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
+    saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
+    fake = _FakeClient(chat_payload=_pdf_ok())
+    saved_env.setattr(llm, "default_client_factory", lambda *, timeout: fake)
+    content = _build_pdf("x" * 9000)
+    result = MediaProcessorImpl().process(make_input(mimetype="application/pdf", content=content))
+    assert len(result.segments) == 3
+    assert all(segment.page == 1 for segment in result.segments)
+    assert all(len(segment.text) <= 4000 for segment in result.segments)
+    assert "".join(segment.text for segment in result.segments) == "x" * 9000
+
+
+def test_pdf_blank_pages_surface_unresolved_question(saved_env, saved_seam_flag):
+    """A partly scanned PDF keeps its readable pages but the result must
+    say how many pages carried no text instead of claiming full
+    coverage."""
+
+    mp._ENABLED = True
+    saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
+    saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
+    saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
+    fake = _FakeClient(chat_payload=_pdf_ok())
+    saved_env.setattr(llm, "default_client_factory", lambda *, timeout: fake)
+    content = _build_pdf("readable page", "")
+    result = MediaProcessorImpl().process(make_input(mimetype="application/pdf", content=content))
+    assert len(result.segments) == 1
+    assert any("1 of 2 pages" in question for question in result.unresolved_questions)
+
+
+def test_pdf_vendor_5xx_is_uncertain(saved_env, saved_seam_flag):
+    """Once the local parse succeeds and the vendor is contacted, a 5xx
+    may have been charged and must be Uncertain, not Unavailable."""
+
+    mp._ENABLED = True
+    saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
+    saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
+    saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
+    fake = _FakeClient(status_code=500, body=b'{"error":"server"}')
+    saved_env.setattr(llm, "default_client_factory", lambda *, timeout: fake)
+    with pytest.raises(ProcessingUncertain, match="MEDIA_VENDOR_REJECTED"):
+        MediaProcessorImpl().process(
+            make_input(mimetype="application/pdf", content=_build_pdf("vendor fails later"))
+        )
+
+
+def test_pdf_text_limit_refuses(saved_env, saved_seam_flag):
+    """A document whose extracted text exceeds the contract's 100000-char
+    bound is refused outright, never silently truncated."""
+
+    mp._ENABLED = True
+    saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
+    saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
+    saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
+    fake = _FakeClient(chat_payload=_pdf_ok())
+    saved_env.setattr(llm, "default_client_factory", lambda *, timeout: fake)
+    content = _build_pdf("y" * 100001)
+    with pytest.raises(ProcessingUnavailable, match="MEDIA_PDF_TEXT_LIMIT"):
+        MediaProcessorImpl().process(make_input(mimetype="application/pdf", content=content))
+    assert fake.calls == []
+
+
+def test_pdf_oversized_document_refuses_on_text_bound(saved_env, saved_seam_flag):
+    """Bound precedence: an oversized multi-page document hits the
+    total-text bound before the split can overflow the segment bound,
+    and the refusal is explicit rather than a silent truncation."""
+
+    mp._ENABLED = True
+    saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
+    saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
+    saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
+    fake = _FakeClient(chat_payload=_pdf_ok())
+    saved_env.setattr(llm, "default_client_factory", lambda *, timeout: fake)
+    # 101 pages x 9000 chars = 909000 chars total: far past the 100000-char
+    # contract bound, so the parser refuses on total text before any
+    # vendor call. (The segment bound stays defensive behind it: >200
+    # chunks of <=4000 chars always implies >100000 chars of text.)
+    content = _build_pdf(*(["z" * 9000] * 101))
+    with pytest.raises(ProcessingUnavailable, match="MEDIA_PDF_TEXT_LIMIT"):
+        MediaProcessorImpl().process(make_input(mimetype="application/pdf", content=content))
+    assert fake.calls == []
+
+
+def test_pdf_model_bad_source_indices_is_uncertain(saved_env, saved_seam_flag):
+    mp._ENABLED = True
+    saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
+    saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
+    saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
+    payload = {
+        "choices": [
+            {
+                "message": {
+                    "content": json.dumps(
+                        {
+                            "coverage": "complete",
+                            "summary": "A brief",
+                            "suggestions": [
+                                {
+                                    "field": "schedule",
+                                    "text": "next monday",
+                                    "source_indices": [99],
+                                }
+                            ],
+                            "unresolved_questions": [],
+                        }
+                    )
+                }
+            }
+        ]
+    }
+    fake = _FakeClient(chat_payload=payload)
+    saved_env.setattr(llm, "default_client_factory", lambda *, timeout: fake)
+    with pytest.raises(ProcessingUncertain):
+        MediaProcessorImpl().process(
+            make_input(mimetype="application/pdf", content=_build_pdf("one page"))
+        )
 
 
 # Reconcile semantics

@@ -22,7 +22,10 @@ Exception semantics:
 
 * :class:`ProcessingUnavailable` — no vendor request was submitted. Used when
   the gates are closed, the vendor is unrecognised, the prompt is malformed,
-  the MIME is unsupported or the API key is missing.
+  the MIME is unsupported, the API key is missing, or the local PDF parser
+  (``gigmate.media.pdfparse``) refuses the bytes (unreadable file, page /
+  segment / total-text bounds, no text layer). The PDF parse happens before
+  the vendor call, so a parser refusal can never have been charged.
 * :class:`ProcessingUncertain` — the vendor call may have been submitted
   (charged). Used for 4xx / 5xx, schema failures, timeouts, and for the ASR
   path when only DeepSeek credentials are configured. The worker must use
@@ -31,11 +34,12 @@ Exception semantics:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from pathlib import Path
 
-from gigmate.contracts import WahaMediaResult
+from gigmate.contracts import WahaMediaResult, WahaMediaSegment
 from gigmate.media_processing import (
     MediaInput,
     MediaProcessor,
@@ -43,8 +47,12 @@ from gigmate.media_processing import (
     ProcessingUncertain,
 )
 
-from . import llm
-from .coercion import coerce_chat_response, coerce_transcription_response
+from . import llm, pdfparse
+from .coercion import (
+    coerce_chat_response,
+    coerce_pdf_extraction,
+    coerce_transcription_response,
+)
 from .routing import route
 
 log = logging.getLogger(__name__)
@@ -66,9 +74,11 @@ class MediaProcessorImpl:
 
     name = "media-llm"
     prompt_path: Path
+    pdf_prompt_path: Path
 
     def __init__(self) -> None:
         self.prompt_path = llm.resolve_prompt_path()
+        self.pdf_prompt_path = llm.resolve_pdf_prompt_path()
 
     # --------------------------------------------------------------- gates
 
@@ -104,11 +114,12 @@ class MediaProcessorImpl:
 
     # ------------------------------------------------------------ prompts
 
-    def _prompt_version(self) -> str:
-        version = llm.read_prompt_version(self.prompt_path)
+    def _prompt_version(self, path: Path | None = None) -> str:
+        target = path or self.prompt_path
+        version = llm.read_prompt_version(target)
         if version == llm._PROMPT_VERSION_PENDING:
             raise ProcessingUnavailable(
-                f"Prompt file {self.prompt_path} is missing or malformed; "
+                f"Prompt file {target} is missing or malformed; "
                 "cannot call the vendor with an unversioned prompt."
             )
         return version
@@ -127,8 +138,6 @@ class MediaProcessorImpl:
                 "seam; refused without contacting the vendor."
             )
 
-        if dispatch == "pdf":
-            raise ProcessingUnavailable("MEDIA_PDF_PARSER_PENDING")
         try:
             vendor = (
                 llm._resolve_audio_vendor() if dispatch == "asr" else llm._resolve_chat_vendor()
@@ -136,6 +145,7 @@ class MediaProcessorImpl:
             llm._resolve_chat_endpoint(vendor)
         except llm.MediaIntegrationPending as exc:
             raise ProcessingUnavailable(str(exc)) from None
+
         if dispatch == "ocr" and vendor == "deepseek":
             raise ProcessingUnavailable("MEDIA_VISION_VENDOR_UNVERIFIED")
         if dispatch == "text":
@@ -146,6 +156,18 @@ class MediaProcessorImpl:
             if len(text) > 90000:
                 raise ProcessingUnavailable("MEDIA_TEXT_CHUNKING_PENDING")
 
+        # The PDF parse is deterministic local work: run it before the HTTP
+        # client is built so garbage / oversized / text-less documents refuse
+        # without ever constructing the vendor connection.
+        extraction: pdfparse.PdfExtraction | None = None
+        if dispatch == "pdf":
+            try:
+                extraction = pdfparse.extract(request.content)
+            except pdfparse.PdfParseError as exc:
+                raise ProcessingUnavailable(str(exc)) from None
+            # Refuse on a malformed PDF prompt before the client exists too.
+            self._prompt_version(self.pdf_prompt_path)
+
         try:
             client = llm.default_client_factory(timeout=30.0)
         except Exception as exc:  # pragma: no cover - httpx import error
@@ -154,6 +176,9 @@ class MediaProcessorImpl:
         try:
             if dispatch == "asr":
                 return self._process_asr(request, client, prompt_version)
+            if dispatch == "pdf":
+                assert extraction is not None  # parsed above before the client
+                return self._process_pdf(request, client, extraction)
             return self._process_chat(request, client, prompt_version, dispatch)
         except ProcessingUnavailable:
             raise
@@ -205,6 +230,65 @@ class MediaProcessorImpl:
             payload, prompt_version=prompt_version, vendor=self.name, model_version=model_version
         )
 
+    def _process_pdf(
+        self,
+        request: MediaInput,
+        client,
+        extraction: pdfparse.PdfExtraction,
+    ) -> WahaMediaResult:
+        """Two-layer PDF pipeline: local parse, then business extraction.
+
+        Layer 1 (local, deterministic) already ran in :meth:`process`:
+        ``extraction`` carries the bounded per-page text, and parse
+        failures refused before the client was even constructed — nothing
+        may have been charged.
+
+        Layer 2 (vendor): the extracted pages are shipped to the chat
+        model with the dedicated PDF prompt. The model only contributes
+        coverage / summary / suggestions; it can never retype the page
+        text because the segments in the final result are bound locally.
+        """
+
+        prompt_version = self._prompt_version(self.pdf_prompt_path)
+
+        base_unresolved: list[str] = []
+        if extraction.empty_pages:
+            base_unresolved.append(
+                f"{extraction.empty_pages} of {extraction.total_pages} pages "
+                "carried no extractable text"
+            )
+
+        segments = [WahaMediaSegment(text=page.text, page=page.page) for page in extraction.pages]
+        segments_payload = {
+            "segments": [
+                {"index": index, "page": segment.page, "text": segment.text}
+                for index, segment in enumerate(segments)
+            ]
+        }
+
+        chat_vendor = llm._resolve_chat_vendor()
+        chat_model = os.environ.get(llm._CHAT_MODEL_ENV, "").strip() or None
+        endpoint = llm._resolve_chat_endpoint(chat_vendor)
+        model = chat_model or self._default_chat_model(chat_vendor)
+        model_version = llm._chat_model_version(chat_vendor, model)
+        prompt = self._prompt_text(self.pdf_prompt_path)
+        payload = llm.chat_extraction_completions(
+            client=client,
+            endpoint=endpoint,
+            model=model,
+            prompt=prompt,
+            text=json.dumps(segments_payload, ensure_ascii=False),
+            caption=request.caption,
+        )
+        return coerce_pdf_extraction(
+            payload,
+            segments=segments,
+            prompt_version=prompt_version,
+            vendor=self.name,
+            model_version=model_version,
+            base_unresolved=base_unresolved or None,
+        )
+
     def _process_asr(
         self,
         request: MediaInput,
@@ -235,13 +319,12 @@ class MediaProcessorImpl:
             return "gpt-4o-mini"
         return "custom-model"
 
-    def _prompt_text(self) -> str:
+    def _prompt_text(self, path: Path | None = None) -> str:
+        target = path or self.prompt_path
         try:
-            return self.prompt_path.read_text(encoding="utf-8")
+            return target.read_text(encoding="utf-8")
         except (OSError, UnicodeError) as exc:
-            raise ProcessingUnavailable(
-                f"Cannot read prompt file {self.prompt_path}: {exc}"
-            ) from exc
+            raise ProcessingUnavailable(f"Cannot read prompt file {target}: {exc}") from exc
 
     # ------------------------------------------------------------ reconcile
 
