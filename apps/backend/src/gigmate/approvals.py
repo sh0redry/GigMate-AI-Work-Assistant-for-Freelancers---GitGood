@@ -7,7 +7,7 @@ purely local so they work while the connector is disabled.
 
 import hashlib
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -37,6 +37,7 @@ SNAPSHOT_FIELDS = (
 # Not yet handed to the sender: can still be replaced, rejected or cancelled.
 NOT_DISPATCHED = {"pending_approval", "approved"}
 CONFLICT_TEMPLATE = "收到，你想改到 {when}。这个时间我已有其他安排，方便换个时间吗？"
+OPEN_ITEMS_TEMPLATE = "你好，想跟你确认一下：{questions}"
 
 
 def utc_text(moment):
@@ -163,6 +164,86 @@ def draft_for_change(db, account_id, order, conversation, change, draft_text=Non
     return new_draft(db, account_id, order, conversation, trigger, body, change["sources"])
 
 
+def open_items(order_data):
+    """contracts/api-v1.md section 3: the key items still open on an order.
+
+    An item is open while its field is missing (or needs review), or proposed
+    without the customer's confirmation. Returns (reason codes, questions), in
+    the order the questions are asked. Resolved values the customer has not
+    confirmed are echoed back so the customer can check them.
+    """
+    items, questions = [], []
+    schedule, address = order_data["fields"]["schedule"], order_data["fields"]["address"]
+    value = schedule["value"]
+    if value is None or schedule["status"] in {"missing", "needs_review"}:
+        items.append("missing_schedule")
+        questions.append("哪天几点方便？")
+    elif value["kind"] == "date_only":
+        day = f"{date.fromisoformat(value['date']):%m/%d}"
+        if schedule["status"] == "proposed":
+            items.append("verify_schedule")
+            questions.append(f"你说的是 {day} 吗？几点方便？")
+        else:
+            questions.append(f"{day} 几点方便？")
+        items.append("missing_time")
+    elif schedule["status"] == "proposed":
+        items.append("verify_schedule")
+        questions.append(f"时间是 {local_label(value)} 对吗？")
+    if not address["value"] or address["status"] in {"missing", "needs_review"}:
+        items.append("missing_address")
+        questions.append("见面地址是？")
+    elif address["status"] == "proposed":
+        items.append("verify_address")
+        questions.append(f"地址是「{address['value']}」对吗？")
+    return items, questions
+
+
+def latest_message_source(db, account_id, conversation_id):
+    """The newest current message of the conversation, as a draft source."""
+    newest = {}
+    for row in db.scalars(
+        select(MessageRow).where(
+            MessageRow.account_id == account_id, MessageRow.conversation_id == conversation_id
+        )
+    ):
+        if row.id not in newest or row.revision > newest[row.id].revision:
+            newest[row.id] = row
+    current = [row for row in newest.values() if not row.data["revoked"]]
+    if not current:
+        return []
+    row = max(current, key=lambda item: (item.data["occurred_at"], item.id))
+    return [{"message_id": row.id, "message_revision": row.revision}]
+
+
+def ask_open_items(db, account_id, order, conversation, suffix=""):
+    """Keep one clarification draft per pending order that asks only for open items.
+
+    Called after the merchant creates or confirms something on the order (and
+    on reissue). Never sends anything: the draft waits for merchant approval.
+    Returns the draft data, or None when nothing is open or the order is not
+    pending.
+    """
+    if order.data["status"] != "pending_confirmation" or not conversation.allowlisted:
+        return None
+    items, questions = open_items(order.data)
+    if not items:
+        return None
+    trigger = f"open_items:{order.id}:v{order.data['version']}:{'+'.join(items)}{suffix}"
+    if db.scalar(select(ActionRow.id).where(ActionRow.trigger == trigger)):
+        return None
+    sources = []
+    for field in order.data["fields"].values():
+        for source in field["sources"]:
+            if source not in sources:
+                sources.append(source)
+    sources = sources or latest_message_source(db, account_id, conversation.id)
+    if not sources:
+        return None
+    cancel_pending(db, account_id, work_order_id=order.id, reason="superseded")
+    body = OPEN_ITEMS_TEMPLATE.format(questions="".join(questions))
+    return new_draft(db, account_id, order, conversation, trigger, body, sources)
+
+
 def latest_by_order(db, account_id, conversation_id):
     """Newest action per order in a conversation, locked for the caller's transaction."""
     latest = {}
@@ -223,9 +304,11 @@ def view(row, reissuable=False):
     if is_due(row):
         data = {**data, "state": "expired"}
         reason = "expired"
+    kind, *parts = row.trigger.split(":")
     return {
         **data,
-        "trigger": row.trigger.split(":", 1)[0],
+        "trigger": kind,
+        "open_items": parts[2].split("@", 1)[0].split("+") if kind == "open_items" else [],
         "closed_reason": reason,
         "closed_note": row.note,
         "reissuable": reissuable and (data["state"], reason) in REISSUABLE,
@@ -388,10 +471,18 @@ def reissue(db, account, action_id, command, key, request_id):
         raise BusinessError(
             409, "APPROVAL_STALE", "The time no longer conflicts; this question is outdated"
         )
-    trigger = f"{row.trigger.split('@', 1)[0]}@{conversation.context_version}"
-    data = new_draft(
-        db, account.id, order, conversation, trigger, row.data["body"], row.data["sources"]
-    )
+    if row.trigger.startswith("open_items:"):
+        # Ask only what is still open now; an answered item is never asked again.
+        data = ask_open_items(
+            db, account.id, order, conversation, suffix=f"@{conversation.context_version}"
+        )
+        if data is None:
+            raise BusinessError(409, "APPROVAL_STALE", "Nothing is left to ask")
+    else:
+        trigger = f"{row.trigger.split('@', 1)[0]}@{conversation.context_version}"
+        data = new_draft(
+            db, account.id, order, conversation, trigger, row.data["body"], row.data["sources"]
+        )
     fresh = db.get(ActionRow, data["id"])
     audit(db, account.id, fresh, "reissue_action", request_id)
     result = view(fresh, True)

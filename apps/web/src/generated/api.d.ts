@@ -560,7 +560,8 @@ export interface paths {
     /** Orders */
     get: operations["orders_api_v1_work_orders_get"];
     put?: never;
-    post?: never;
+    /** Create Order */
+    post: operations["create_order_api_v1_work_orders_post"];
     delete?: never;
     options?: never;
     head?: never;
@@ -707,6 +708,14 @@ export interface components {
        * @constant
        */
       kind: "send_text";
+      /** Open Items */
+      open_items: (
+        | "missing_schedule"
+        | "verify_schedule"
+        | "missing_time"
+        | "missing_address"
+        | "verify_address"
+      )[];
       /** Provider Message Id */
       provider_message_id: string | null;
       /** Recipient */
@@ -722,9 +731,9 @@ export interface components {
       state: components["schemas"]["ActionState"];
       /**
        * Trigger
-       * @constant
+       * @enum {string}
        */
-      trigger: "schedule_conflict";
+      trigger: "schedule_conflict" | "open_items";
       /**
        * Work Order Id
        * Format: uuid
@@ -1029,6 +1038,38 @@ export interface components {
       source: "app" | "api" | "replay";
       /** Text */
       text: string | null;
+    };
+    /** CreateWorkOrderCommand */
+    CreateWorkOrderCommand: {
+      /** Address */
+      address?: string | null;
+      /**
+       * Address Sources
+       * @default []
+       */
+      address_sources: components["schemas"]["SourceRef"][];
+      /**
+       * Confirm Additional Order
+       * @default false
+       */
+      confirm_additional_order: boolean;
+      /**
+       * Conversation Id
+       * Format: uuid
+       */
+      conversation_id: string;
+      /** Schedule */
+      schedule?:
+        | components["schemas"]["TimedSchedule"]
+        | components["schemas"]["DateOnly"]
+        | null;
+      /**
+       * Schedule Sources
+       * @default []
+       */
+      schedule_sources: components["schemas"]["SourceRef"][];
+      /** Summary */
+      summary: string;
     };
     /**
      * CustomerConfirmation
@@ -3043,6 +3084,41 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Page_WorkOrder_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  create_order_api_v1_work_orders_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateWorkOrderCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkOrder_"];
         };
       };
       /** @description Validation Error */

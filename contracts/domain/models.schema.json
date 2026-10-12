@@ -1113,6 +1113,78 @@
       "title": "ConversationMessage",
       "type": "object"
     },
+    "CreateWorkOrderCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "anyOf": [
+            {
+              "maxLength": 300,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Address"
+        },
+        "address_sources": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Address Sources",
+          "type": "array"
+        },
+        "confirm_additional_order": {
+          "default": false,
+          "title": "Confirm Additional Order",
+          "type": "boolean"
+        },
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "schedule": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimedSchedule"
+            },
+            {
+              "$ref": "#/$defs/DateOnly"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Schedule"
+        },
+        "schedule_sources": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Schedule Sources",
+          "type": "array"
+        },
+        "summary": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "conversation_id",
+        "summary"
+      ],
+      "title": "CreateWorkOrderCommand",
+      "type": "object"
+    },
     "CustomerConfirmation": {
       "enum": [
         "not_requested",
