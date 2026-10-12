@@ -1,3 +1,4 @@
+import { currentEnvironment, environmentConfig } from "./environment";
 import { useCallback, useState } from "react";
 import { ConnectionWorkspace } from "./ConnectionWorkspace";
 import { WorkOrderWorkspace } from "./WorkOrderWorkspace";
@@ -5,6 +6,8 @@ import { workspaceApi, type Detail, type Login } from "./workspace-api";
 import { clearConnectionAttempts } from "./connection-api";
 
 export function App() {
+  const environment = currentEnvironment();
+  const config = environmentConfig();
   const [view, setView] = useState<"connect" | "business">("business");
   const [login, setLogin] = useState<Login | null>(null);
   const [username, setUsername] = useState("");
@@ -78,6 +81,40 @@ export function App() {
             : "欢迎使用"}
         </div>
       </header>
+      {config && environment && (
+        <section
+          className={`environment-panel ${environment}`}
+          aria-label="当前环境与切换"
+        >
+          <div className="row">
+            <strong>
+              当前：
+              {environment === "real"
+                ? "真实连接（本机开发）"
+                : "隔离测试（虚构数据）"}
+            </strong>
+            <a
+              className="environment-switch"
+              href={`/environments/${environment === "real" ? "isolated" : "real"}/`}
+              aria-disabled={busy}
+              onClick={(event) => {
+                if (busy) event.preventDefault();
+              }}
+            >
+              切换到{environment === "real" ? "隔离测试" : "真实连接"}
+            </a>
+          </div>
+          <p>
+            {environment === "real"
+              ? "连接你自己的 WAHA 和本机业务数据库，授权与操作会影响该环境的真实记录。仍是开发环境，尚未正式上线。"
+              : "连接独立测试数据库，只含虚构工单，用来练习核对变更、日历和待办；不接收真实 WhatsApp 聊天。"}
+          </p>
+          <small>
+            后端地址：{config.targets[environment]}
+            。切换后重新登录；两边的数据、登录凭据和待核对请求分别保留，不搬运数据。操作处理中暂不可切换。
+          </small>
+        </section>
+      )}
       {login && (
         <nav className="workspace-navigation" aria-label="工作台页面">
           <button
@@ -120,6 +157,21 @@ export function App() {
         >
           <h2>登录 GigMate 工作台</h2>
           <p>使用为你配置的 GigMate 账号登录，管理业务和 WhatsApp 会话授权。</p>
+          {config && (
+            <div className="test-account">
+              <strong>公开开发测试账号</strong>
+              <p>
+                账号：<code>{config.publicTestAccount.username}</code>
+                <br />
+                密码：<code>{config.publicTestAccount.password}</code>
+              </p>
+              <small>
+                {environment === "isolated"
+                  ? "用于隔离测试数据库。若维护者改过密码，以实际配置为准。"
+                  : "真实连接环境也可能使用此默认开发账号；如果你改过密码，请用自己的配置。它不是 WhatsApp 密码，也不是正式上线账号。"}
+              </small>
+            </div>
+          )}
           <label>
             账号
             <input

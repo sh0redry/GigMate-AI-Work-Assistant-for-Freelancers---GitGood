@@ -304,3 +304,42 @@ a:focus-visible {
     margin: 6px 0;
   }
 }
+
+.environment-panel {
+  border: 1px solid #b8c9bc;
+  border-radius: 12px;
+  padding: 18px 22px;
+  margin-top: 18px;
+  overflow-wrap: anywhere;
+}
+.environment-panel.isolated {
+  background: #fff5df;
+  border-color: #d8b878;
+}
+.environment-panel.real {
+  background: #edf5ef;
+}
+.environment-panel p {
+  margin: 10px 0;
+}
+.environment-switch {
+  display: inline-block;
+  padding: 8px 12px;
+  border: 1px solid #60736a;
+  border-radius: 7px;
+  color: #184735;
+  background: white;
+  text-decoration: none;
+}
+.environment-switch[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: wait;
+}
+.test-account {
+  padding: 14px;
+  background: #f4f6f2;
+  border-radius: 8px;
+}
+.test-account p {
+  margin: 8px 0;
+}

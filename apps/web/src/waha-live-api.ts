@@ -1,3 +1,4 @@
+import { apiBase, attemptNamespace } from "./environment.ts";
 import {
   ConnectionError,
   type ConnectionApi,
@@ -15,7 +16,7 @@ type Command = Omit<CommandShape, "offset" | "limit"> &
 type Detail<T> = { data: T };
 type Page<T> = { items: T[]; next_cursor: string | null };
 type Attempt = { key: string; body: Command };
-const storagePrefix = "gigmate-control-attempt:";
+
 function storage() {
   try {
     return typeof sessionStorage === "undefined" ? null : sessionStorage;
@@ -25,6 +26,7 @@ function storage() {
 }
 // Only opaque app IDs and the exact request body/key; never credentials or QR.
 export function clearConnectionAttempts() {
+  const storagePrefix = attemptNamespace();
   const target = storage();
   if (!target) return;
   try {
@@ -39,6 +41,8 @@ export function clearConnectionAttempts() {
 
 // Only canonical backend endpoints. No subprocess, WAHA key or local profile.
 export function liveConnectionApi(csrf: string): ConnectionApi {
+  const storagePrefix = attemptNamespace();
+  const api = apiBase();
   const attempts = new Map<string, Attempt>();
   function attempt(id: string) {
     if (!attempts.has(id)) {
@@ -102,7 +106,7 @@ export function liveConnectionApi(csrf: string): ConnectionApi {
   ) {
     let value: Response;
     try {
-      value = await fetch(`/api/v1${path}`, {
+      value = await fetch(`${api}${path}`, {
         method,
         credentials: "same-origin",
         cache: "no-store",

@@ -1,5 +1,7 @@
 # D-02 business workspace acceptance
 
+**Environment switch follow-up, 2026-10-12:** development login again shows the public default account/password. The persistent banner distinguishes actual local WAHA/business use from fictional isolated data and switches backend in one click via a fresh signed-out page. Cookies and uncertain requests are separated; all adapters bind their destination. Current frontend suite: **75 passed** with types/build/API/format/contract/baseline checks. Browser verified both local API logins and round-trip switching, without new pairing/consent/model/send acceptance. See the [updated guide](role-d-frontend-user-guide.md).
+
 **Product UI cleanup, 2026-10-12:** user demo/replay controls and the browser simulator are now removed on the D branch. The fixed-input reviewer steps below describe preceding `4665692` acceptance history; use isolated backend fixtures/tests for replay now. Current operation is in the [user guide](role-d-frontend-user-guide.md). The business confirmation behavior remains; current frontend suite is 67 passed. No PR/main merge or real-phone/model/send acceptance.
 
 2026-10-12 · Kyrie · Based on main `bbb0074`. [Chinese counterpart](../zh/role-d-stage2-acceptance.md). [Module plan](role-d-development-roadmap.md).

@@ -27,6 +27,7 @@ const components = [
 for (const name of [
   ...components,
   "replay-store",
+  "environment",
   "workspace-api",
   "work-order-view",
   "connection-api",
@@ -64,6 +65,8 @@ afterEach(async () => {
   document.getElementById("root").replaceChildren();
   sessionStorage.clear();
   globalThis.fetch = originalFetch;
+  delete globalThis.__GIGMATE_ENVIRONMENTS__;
+  dom.reconfigure({ url: "http://localhost/" });
 });
 after(async () => {
   dom.window.close();
@@ -192,4 +195,98 @@ test("authenticated product lands in honest empty business workspace, connects t
   assert.equal(document.body.textContent.includes("当前账号：learner"), false);
   const logout = calls.find((c) => c.url.endsWith("/auth/logout"));
   assert.equal(logout.options.headers["X-CSRF-Token"], "synthetic-csrf");
+});
+
+function developmentConfig() {
+  globalThis.__GIGMATE_ENVIRONMENTS__ = {
+    defaultEnvironment: "isolated",
+    publicTestAccount: {
+      username: "merchant",
+      password: "demo-only-change-me",
+    },
+    targets: {
+      real: "http://127.0.0.1:18702",
+      isolated: "http://127.0.0.1:18012",
+    },
+  };
+}
+test("development login names the isolated environment, shows public test credentials and routes all business reads there", async () => {
+  developmentConfig();
+  const calls = fixture();
+  await mount();
+  assert.match(document.body.textContent, /隔离测试（虚构数据）/);
+  assert.match(document.body.textContent, /merchant/);
+  assert.match(document.body.textContent, /demo-only-change-me/);
+  assert.equal(
+    document.querySelector(".environment-switch").getAttribute("href"),
+    "/environments/real/",
+  );
+  await login();
+  assert.ok(
+    calls.every((c) => c.url.startsWith("/environments/isolated/api/v1/")),
+  );
+  assert.match(document.body.textContent, /隔离测试（虚构数据）/);
+});
+test("opening the other environment starts signed out with empty inputs and keeps request metadata separate", async () => {
+  developmentConfig();
+  const calls = fixture();
+  await mount();
+  await login();
+  sessionStorage.setItem(
+    "gigmate-control-attempt:isolated:pending",
+    "synthetic-uncertain",
+  );
+  await act(async () => root.unmount());
+  dom.reconfigure({ url: "http://localhost/environments/real/" });
+  await mount();
+  assert.equal(document.querySelector("nav"), null);
+  assert.equal(document.querySelector('input[type="password"]').value, "");
+  assert.equal(
+    document.querySelector('input[autocomplete="username"]').value,
+    "",
+  );
+  assert.match(document.body.textContent, /真实连接（本机开发）/);
+  assert.match(document.body.textContent, /尚未正式上线/);
+  assert.equal(
+    document.querySelector(".environment-switch").getAttribute("href"),
+    "/environments/isolated/",
+  );
+  const before = calls.length;
+  await login();
+  assert.ok(
+    calls
+      .slice(before)
+      .every((c) => c.url.startsWith("/environments/real/api/v1/")),
+  );
+  await act(async () => button("WhatsApp 连接").click());
+  assert.ok(calls.at(-1).url.startsWith("/environments/real/api/v1/"));
+  await act(async () => button("退出").click());
+  assert.equal(
+    sessionStorage.getItem("gigmate-control-attempt:isolated:pending"),
+    "synthetic-uncertain",
+  );
+});
+test("environment navigation is blocked during an unresolved login", async () => {
+  developmentConfig();
+  let finish;
+  globalThis.fetch = () =>
+    new Promise((resolve) => {
+      finish = resolve;
+    });
+  await mount();
+  await login();
+  const link = document.querySelector(".environment-switch");
+  assert.equal(link.getAttribute("aria-disabled"), "true");
+  const click = new window.MouseEvent("click", {
+    bubbles: true,
+    cancelable: true,
+  });
+  await act(async () => link.dispatchEvent(click));
+  assert.equal(click.defaultPrevented, true);
+  await act(async () =>
+    finish(
+      Response.json({ error: { code: "UNAUTHENTICATED" } }, { status: 401 }),
+    ),
+  );
+  assert.equal(link.getAttribute("aria-disabled"), "false");
 });

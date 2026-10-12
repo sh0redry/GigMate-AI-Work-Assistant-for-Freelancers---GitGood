@@ -24,6 +24,7 @@ const modules = [
   "ConnectionWorkspace",
   "ChatChoices",
   "WahaMessages",
+  "environment",
   "connection-api",
   "waha-live-api",
   "waha-sync-api",
@@ -51,7 +52,7 @@ for (const name of modules) {
       },
     })
     .outputText.replace(/import "\.\/connection\.css";\s*/g, "")
-    .replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"')
+    .replace(/"\.\/([\w-]+)(?:\.ts)?"/g, '"./$1.mjs"')
     .replace(/"(react(?:\/jsx-runtime)?)"/g, (_, specifier) =>
       JSON.stringify(pathToFileURL(require.resolve(specifier)).href),
     );

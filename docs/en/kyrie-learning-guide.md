@@ -162,10 +162,10 @@ npm run dev
 `cd` changes directory, `ci` installs locked dependencies, and `dev` keeps a development service running. Use pinned Node 24.15.x/npm 11.12.x. For the default team backend, macOS/Linux:
 
 ```bash
-GIGMATE_API_URL=http://127.0.0.1:18702 npm run dev
+GIGMATE_REAL_API_URL=http://127.0.0.1:18702 npm run dev
 ```
 
-That variable chooses the backend; actual local configuration can use another port. Vite otherwise defaults to 18000. The page guide has PowerShell syntax. Opening a page does not start its backend or update the checkout.
+Think of the same page opening two separate notebooks: **真实连接** uses your actual local WAHA/business data; **隔离测试** uses fictional data in a separate database. The top button switches notebooks and asks you to sign in again; it does not copy or delete records. The login form displays public default development credentials. Defaults are real 18702 and isolated 18000; `GIGMATE_REAL_API_URL` / `GIGMATE_ISOLATED_API_URL` configure the respective destinations once. The page guide explains separate backend setup, alternate ports and PowerShell. Opening/switching a page does not start its backend or update the checkout.
 
 After edits, in apps/web:
 

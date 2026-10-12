@@ -1,3 +1,4 @@
+import { apiBase } from "./environment.ts";
 import type { components } from "./generated/api";
 
 export type Order = components["schemas"]["WorkOrder"];
@@ -26,6 +27,7 @@ export function workspaceApi(
   csrf = "",
   fetcher: typeof fetch = fetch,
 ): RequestApi {
+  const base = apiBase();
   return async <T>(
     path: string,
     body?: unknown,
@@ -35,7 +37,7 @@ export function workspaceApi(
     let response: Response;
     let result;
     try {
-      response = await fetcher(`/api/v1${path}`, {
+      response = await fetcher(`${base}${path}`, {
         method: body === undefined ? "GET" : "POST",
         credentials: "same-origin",
         cache: "no-store",
@@ -73,7 +75,10 @@ export function workspaceApi(
         APPROVAL_STALE: "来源消息已变化，请刷新并重新核对。",
         SCHEDULE_CONFLICT: "该时段与其他预约冲突，不能确认，请刷新查看。",
         CONSENT_REVOKED: "当前处理授权已暂停，请联系接入负责人核对。",
-        CSRF_REJECTED: "登录验证已变化，请退出后重新登录。",
+        CSRF_REJECTED:
+          path === "/auth/login"
+            ? "当前环境尚未允许此网页地址登录，请联系负责配置的队友确认。"
+            : "登录验证已变化，请退出后重新登录。",
         NOT_FOUND: "当前工单或会话不可用，请刷新并检查当前账号和会话授权。",
       };
       throw new WorkspaceError(

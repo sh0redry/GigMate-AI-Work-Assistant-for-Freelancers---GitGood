@@ -18,6 +18,7 @@ const require = createRequire(import.meta.url);
 for (const name of [
   "WorkOrderWorkspace",
   "replay-store",
+  "environment",
   "workspace-api",
   "work-order-view",
 ]) {

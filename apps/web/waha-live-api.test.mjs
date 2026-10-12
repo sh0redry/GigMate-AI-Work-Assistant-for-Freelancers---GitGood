@@ -7,7 +7,12 @@ import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
 const directory = await mkdtemp(join(tmpdir(), "gigmate-http-api-"));
-for (const name of ["connection-api", "waha-live-api", "waha-sync-api"]) {
+for (const name of [
+  "environment",
+  "connection-api",
+  "waha-live-api",
+  "waha-sync-api",
+]) {
   const source = await readFile(
     new URL(`./src/${name}.ts`, import.meta.url),
     "utf8",
@@ -19,6 +24,7 @@ for (const name of ["connection-api", "waha-live-api", "waha-sync-api"]) {
     },
   }).outputText;
   code = code
+    .replaceAll('"./environment.ts"', '"./environment.mjs"')
     .replaceAll('"./connection-api"', '"./connection-api.mjs"')
     .replaceAll('"./waha-live-api"', '"./waha-live-api.mjs"');
   await writeFile(join(directory, name + ".mjs"), code);
@@ -32,6 +38,8 @@ const { synchronizationApi } = await import(
 afterEach(() => {
   globalThis.fetch = original;
   delete globalThis.sessionStorage;
+  delete globalThis.__GIGMATE_ENVIRONMENTS__;
+  delete globalThis.window;
 });
 after(async () => {
   if (
@@ -691,4 +699,20 @@ test("initial version-zero setup retains connect entry without a failed automati
   assert.equal(writes, 0);
   assert.equal((await api.pairing(id, true)).available, true);
   assert.equal(writes, 1);
+});
+
+test("connection and synchronization adapters bind their environment when created and never follow a later route change", async () => {
+  globalThis.__GIGMATE_ENVIRONMENTS__ = { defaultEnvironment: "isolated" };
+  globalThis.window = { location: { pathname: "/environments/real/" } };
+  const connection = liveConnectionApi("synthetic-csrf");
+  const sync = synchronizationApi("synthetic-connection", "synthetic-csrf");
+  globalThis.window.location.pathname = "/environments/isolated/";
+  const urls = [];
+  globalThis.fetch = async (url) => {
+    urls.push(url);
+    return Response.json({ items: [], next_cursor: null });
+  };
+  await connection.connectors();
+  await sync.jobs();
+  assert.ok(urls.every((url) => url.startsWith("/environments/real/api/v1/")));
 });

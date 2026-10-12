@@ -6,34 +6,50 @@ This guide describes D-02 and the current cleanup on `codex/d02-workspace`, **no
 
 ## 1 Current pages and capability
 
-Before login there is only the GigMate account form, without prefilled credentials or a displayed development password. GigMate sign-in is separate from phone WhatsApp login. After login, **业务工作台** is the default, with only **业务工作台** and **WhatsApp 连接** navigation.
+Before login there is only the GigMate account form, with blank inputs and a public development hint (`merchant` / `demo-only-change-me`; changed passwords take precedence). GigMate sign-in is separate from phone WhatsApp login. After login, **业务工作台** is the default, with only **业务工作台** and **WhatsApp 连接** navigation.
 
 D-01 preview, simulated pairing/disconnection and work-order replay controls have been removed from user UI, including their simulator implementation. Synthetic fixtures remain in developer tests without a user entry. Existing seeded records are not deleted by removing buttons.
 
 Kyrie reports team WAHA connections are working; this update did not retest all phones. Connection and consent do not establish extraction/automatic creation/sending. Order creation, lifecycle mutation, reply approval and sending remain unavailable on this branch.
 
-## 2 Start the correct environment
+## 2 Switch environments in one click
 
-Prepare your own backend using [team local setup](role-a-team-local-development.md). In the **D worktree's apps/web**, with pinned Node 24.15.x/npm 11.12.x:
+The persistent banner names the current environment and offers **切换到真实连接 / 切换到隔离测试**. Click once; no frontend restart or code change is needed. Navigation opens a fresh login form and clears page account/password/business/QR state. Sign in again. Session cookies and uncertain request metadata are separated; orders, chats and consent are not copied. Switching is not server logout or cancellation of accepted jobs. Use **退出** before switching if server logout is required; return to the original environment to reconcile unknown results rather than create a new request. Switching is blocked while an operation is busy.
 
-macOS/Linux:
+| Environment | Data and effect | Purpose |
+| --- | --- | --- |
+| **真实连接（本机开发）** | Your own WAHA, local business database and authorized chats; operations affect these records | Verify actual connection/consent and existing business. Still local development, not a production release |
+| **隔离测试（虚构数据）** | A separate test database with fictional orders/messages/calendar/tasks | Practice and verify business flows without real WhatsApp chats |
+
+The initial default is isolated. `/environments/real/` or `/environments/isolated/` preserves selection on reload. The banner shows its backend address; a failed backend never silently falls back to the other environment.
+
+**First-time setup still requires two backends.** The switch routes requests; it does not provision databases or start services. Prepare the actual connection backend with [team local setup](role-a-team-local-development.md), and a separately migrated/seeded database or schema with deterministic worker using [getting started](getting-started.md). Never reuse real data or a WAHA session for fictional fixtures. Different ports can still mistakenly share a database; the maintainer must establish isolation. The frontend cannot inspect that configuration and rejects identical backend ports.
+
+In the **D worktree's apps/web**, using Node 24.15.x/npm 11.12.x:
 
 ```bash
 npm ci
-GIGMATE_API_URL=http://127.0.0.1:18702 npm run dev
+npm run dev
+```
+
+Defaults: actual connection backend `http://127.0.0.1:18702`, isolated backend `http://127.0.0.1:18000`. Configure alternate ports once at startup, then switch in the page:
+
+```bash
+GIGMATE_REAL_API_URL=http://127.0.0.1:18702 GIGMATE_ISOLATED_API_URL=http://127.0.0.1:18012 npm run dev
 ```
 
 Windows PowerShell:
 
 ```powershell
 npm ci
-$env:GIGMATE_API_URL = "http://127.0.0.1:18702"
+$env:GIGMATE_REAL_API_URL = "http://127.0.0.1:18702"
+$env:GIGMATE_ISOLATED_API_URL = "http://127.0.0.1:18012"
 npm run dev
 ```
 
-Open the address printed by Vite, usually http://127.0.0.1:5173/ . 18702 is the team default API port; use your actual local port. Without the variable, development targets 18000. One frontend process targets one backend; navigation does not switch databases.
+18012 is this preview's disposable backend; use your prepared port on another machine. `GIGMATE_DEFAULT_ENV=real` changes the initial default. Legacy `GIGMATE_API_URL` now aliases the **isolated target only**; old WAHA-target commands must migrate to `GIGMATE_REAL_API_URL` to avoid incorrect labels. Restart Vite after address changes. Both backends' `TRUSTED_ORIGINS` must allow the actual frontend origin, e.g. `http://127.0.0.1:5178`; origin/session/CSRF checks remain enforced.
 
-Use the account/password configured for your installation; ask its maintainer if unknown. This remains a development authentication setup, with production provisioning/deployment pending. Never copy teammate credentials/session files or seed fictional orders into a real database. Full backend checks are in [getting started](getting-started.md).
+The public hint applies to default development installations, not WAHA administration or phone credentials. Changed installation passwords take precedence. Production provisioning remains pending. Published `npm run build` output uses its deployment's `/api` and excludes local switching/development-password hints; these are Vite development features.
 
 ## 3 Connection and chat consent
 
@@ -81,4 +97,4 @@ Narrow layouts may require vertical scrolling. Physical devices and native Windo
 
 ## 6 Developer checks
 
-In apps/web: `npm run check:api`, `npm run format:check`, `npm run build` (behavior tests, types and build). Fixed replay code and backend `/replay` remain for isolated developer verification, without user UI. No backend/generated contract/migration/live configuration changed. Removing controls does not establish final product completion.
+In apps/web: `npm run check:api`, `npm run format:check`, `npm run build` (behavior tests, types and build). Fixed replay code and backend `/replay` remain for isolated developer verification, without user UI. No backend source/generated contract/migration changed. This preview adds its loopback frontend origin to the existing ingress API through an ignored Compose override. The API was restarted; the original worker-owned database target was restored after a temporary incorrect target, then health/login rechecked. Provider/consent configuration was preserved. Removing controls does not establish final product completion.
