@@ -1,5 +1,13 @@
 # Role B extraction subsystem
 
+## PDF integration and in-flight model interruption — 2026-10-12
+
+PR #21 includes the PDF branch at `0d91ad1`. Text-layer PDFs are parsed locally before client construction; the model cannot replace locally bound page text. Missing page text forces complete coverage down to partial. Crossing the text bound stops before extracting another page. Scanned PDFs remain unsupported. Output bounds are not a hard CPU/memory sandbox; parser resource isolation remains a real-activation gate.
+
+Cancellation, pause/revocation and derivative expiry retain the attachment/request identity for in-flight processing or unresolved reconciliation. Late model content and reviews are suppressed, including after regrant. The original lease can record a definite return or an explicit pre-submission processing refusal, releasing the gate without restoring content; an uncertain outcome retains result_unknown and blocks another request. Reconciliation cannot start while the original lease is live and performs only read-only lookup. Stopping pending reconciliation retains the original uncertainty. Restoring consent alone never authorizes resubmission; changed/expired sources may prevent automatic lookup and require operator handling. No forced-clear or blind-resend endpoint was added.
+
+The model remains `_ENABLED=False`. Shared DeepSeek deployment, real vision/audio credentials and capability, timestamp grounding, prompt-injection and vendor acceptance are separate work. This does not implement scanned-PDF OCR or WhatsApp sending.
+
 ## Real PDF parser and two-layer extraction — 2026-10-12
 
 `gigmate.media.pdfparse` replaces the `MEDIA_PDF_PARSER_PENDING` stub with a real local parser (`pypdf==6.20.0`, added to `pyproject.toml` and `requirements.lock`). PDF processing is now two layers:

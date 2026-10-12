@@ -144,4 +144,6 @@ There is no browser `send arbitrary text` endpoint. An approved action is queued
 
 ## Skeleton transition
 
+WAHA media interruption: cancelling a running model-processing or reconciliation task can return `result_unknown`. This revokes further result use while retaining a possibly submitted request; it does not certify that the vendor stopped. New requests remain blocked until a definite outcome is recorded. Read-only reconciliation returns `MEDIA_PROCESSING_STILL_IN_FLIGHT` while the original lease is live. Regrant alone does not retry a model request. Download-only cancellation remains local and suppresses staging files.
+
 Pydantic domain generation, implemented OpenAPI, frontend type generation, ownership/CSRF/version tests and drift checks are present. Extend the remaining inventory through source models/routes and regenerate contracts. This document records behavior and planned scope; OpenAPI reflects actual implementation.

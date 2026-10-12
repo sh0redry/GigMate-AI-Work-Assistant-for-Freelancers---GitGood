@@ -1,5 +1,13 @@
 # 已完成工作与验证记录
 
+## PR #21 PDF 集成与模型中止修复 — 2026-10-12
+
+已将队友 PDF 分支 `0d91ad1` 集成到原媒体 PR，保留本地解析器、独立业务提示词、依赖固定及文档 Unicode 修正。补上缺页文字强制 partial 和全文超限后不再读取下一页；修正片段数上限说明，它独立于全文字符上限。扫描件仍拒绝，未声明硬性 CPU/内存沙箱或真实模型已启用。
+
+修复独立评审 P1：取消/撤权及到期保留可能已提交的处理/核对请求身份与附件占用；晚到不确定结果仍阻止新请求，重新授权也不保存晚到内容。原租约有效时不能并行核对；取消排队中的核对也保留原不确定状态。只有原尝试确定返回或提交前明确拒绝，才可解除占用，但不会恢复内容。到期清理与任务修改/完成使用相同的账户/连接锁顺序。无需新字段、迁移或强制重发接口；E 仍需独立验证 PostgreSQL 交错及来源上下文变化导致的核对限制。
+
+实际自动证据：最终到期锁调整前后端全套 **520 通过、8 项 PostgreSQL 依赖检查跳过**，最终受影响媒体测试 **70 通过、1 项 PostgreSQL 检查跳过**。前端 **57 通过**，契约类型/格式/TypeScript/Vite 构建、适用 Ruff/格式、契约导出及隔离 SQLite 升级 0010/check 通过。新增回归覆盖未知/成功/提交前拒绝、取消、暂停后授权、来源变化、到期、排队/在途核对、部分覆盖及提前停止。模型仍关闭，未访问真实媒体/模型/发送、二维码、部署或用户数据库/会话。发送分支及用户两处未提交进度修改原样保留；仅更新 #21，不合 main、不改 #23。
+
 ## 真实 PDF 解析器：两层提取 — 2026-10-12
 
 `gigmate.media.pdfparse` 用真实本地解析器（`pypdf==6.20.0`，已加入 `pyproject.toml` 与 `requirements.lock`）替换 `MEDIA_PDF_PARSER_PENDING` 桩。第一层在本地逐页抽取并施加有界 I/O：至多 200 页、每页文本按至多 4000 字符分块且保留页码、总计至多 100000 字符。`MEDIA_PDF_PAGE_LIMIT`、`MEDIA_PDF_TEXT_LIMIT`、`MEDIA_PDF_NOT_PARSEABLE` 与 `MEDIA_PDF_NO_TEXT_LAYER`（扫描件无文本层）全部在**任何厂家请求之前**拒绝，因此映射为 `ProcessingUnavailable`，不会产生计费；不做任何静默截断。第二层把抽取出的页与专用 prompt `role_b_media_pdf_v1.txt`（版本头 1.0.0，可用 `GIGMATE_MEDIA_PDF_PROMPT_PATH` 覆盖）发给 chat 厂家；模型只产出 coverage / summary / suggestions / unresolved_questions，其输出中的任何 `segments` 键都会被忽略——页面文本由本地绑定，模型永远无法重打、合并或捏造，suggestion 的 `source_indices` 由契约对照本地 segment 校验。可读 PDF 中的空白页以未决问题呈现，不冒充完整覆盖。本批同时修复了 2026-10-11 条目在 `docs/zh/role-b-extraction.md` 与 `docs/zh/progress.md` 留下的乱码（受腐蚀段落已按中文原文恢复）。

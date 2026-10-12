@@ -21,12 +21,13 @@ Bounds (aligned with the ``WahaMediaResult`` contract in
 * page text — split into chunks of at most 4000 characters
   (``WahaMediaSegment.text`` max length); a long page becomes several
   segments that share the same page number.
-* segments — at most 200 after splitting. While the total-text bound is
-  100000, this check is defensive: more than 200 chunks of at most 4000
-  characters each always implies more than 100000 characters of text, so
-  the text bound refuses first. It stays in place to keep the parser safe
-  if a bound is ever relaxed independently.
+* segments — at most 200 after splitting, independently of total text.
+  Many short pages plus a split long page can exceed this limit while
+  remaining below the total-text limit.
 * total text — at most 100000 characters (``WahaMediaResult`` validator).
+
+These are input/output limits, not a hard CPU or memory sandbox. Resource
+isolation for untrusted PDF decompression remains a real-activation gate.
 """
 
 from __future__ import annotations
@@ -115,6 +116,8 @@ def extract(content: bytes) -> PdfExtraction:
             empty_pages += 1
             continue
         total_text += len(text)
+        if total_text > MAX_TOTAL_TEXT:
+            raise PdfParseError(f"MEDIA_PDF_TEXT_LIMIT: {total_text} > {MAX_TOTAL_TEXT}")
         pages.append(PdfPageText(page=index, text=text))
 
     if not pages:

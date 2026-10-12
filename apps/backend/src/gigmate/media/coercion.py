@@ -102,6 +102,8 @@ def coerce_pdf_extraction(
     unresolved = list(parsed.get("unresolved_questions") or [])
     if base_unresolved:
         unresolved = base_unresolved + unresolved
+        if coverage == "complete":
+            coverage = "partial"
 
     proposal: dict[str, Any] = {
         "provider": vendor,
