@@ -245,3 +245,62 @@ footer {
     gap: 4px;
   }
 }
+
+select {
+  font: inherit;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #b8c9bc;
+  border-radius: 7px;
+  background: white;
+  color: inherit;
+}
+select:focus-visible,
+a:focus-visible {
+  outline: 3px solid #c58a2f;
+  outline-offset: 3px;
+}
+.panel {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.business-field {
+  margin-top: 14px;
+}
+.source-reference {
+  display: inline-block;
+  margin-right: 8px;
+}
+.inline-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.inline-check input {
+  width: 18px;
+  flex: 0 0 18px;
+  margin-top: 5px;
+}
+.review-panel {
+  background: #f4faf5;
+  border: 2px solid #176a52;
+}
+.grid section > button {
+  margin: 6px 0;
+  width: 100%;
+}
+.workspace-navigation {
+  flex-wrap: wrap;
+}
+@media (max-width: 700px) {
+  header,
+  .toolbar {
+    flex-wrap: wrap;
+  }
+  .review-panel > button {
+    width: 100%;
+    margin: 6px 0;
+  }
+}

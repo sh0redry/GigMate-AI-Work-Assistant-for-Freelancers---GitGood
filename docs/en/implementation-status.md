@@ -1,5 +1,14 @@
 # Implementation status and validation
 
+## D-02 business workspace — 2026-10-12
+
+Formalized Kyrie's D-01 through D-05 plan and implemented the D-02 workspace on main `bbb0074`: sourced details/all linked conversations, search/status, explicit version-bound schedule review, internal calendar and task/history filters, with fictional replay separated. No backend/contracts/migrations changed. [Acceptance and actual evidence](role-d-stage2-acceptance.md), [roadmap](role-d-development-roadmap.md), [desktop assessment](role-d-desktop-feasibility.md). Desktop packaging is assessed only, not implemented.
+
+Evidence: **65 frontend tests**, TypeScript/Vite, frontend API/format, applicable Ruff, generated-contract check, baseline and whitespace checks passed; unchanged backend **372 PostgreSQL-configured tests passed** with one existing warning (some extraction fixtures use SQLite). Disposable schema migration/no-drift and browser/API/separate-worker flow verified conflict blocking, explicit v3→v4 confirmation/calendar/tasks, source jump, cancelled history, reread persistence, account isolation and 320/375/1280 responsive behavior. No real WhatsApp/model/send or existing-installation change. Independent PR/E review and physical/native-device acceptance pending.
+
+Reviewed open #21 (`d000b26`, original **500 passed**) and #22 (`e79ef7b`, original **387 passed**): one added PostgreSQL regression per head fails. #21 loses in-flight model uncertainty on cancellation and accepts reissue; #22 regenerates reply work on outgoing API echoes. Both received `REQUEST_CHANGES` and remain unmerged. Existing passing suites/CI do not resolve these findings. Local main was already at origin/main `bbb0074`; unrelated local documentation and original D worktrees were preserved.
+
+
 ## PR #18 llm-skeleton review follow-up — 2026-10-10
 
 Owner review of PR #18 (`WillW27/role-b-llm-skeleton`, head `78151a6`) asked for two code corrections before merge plus a PR-description fix. Both code corrections are applied on the PR branch; the PR body is a GitHub-side edit the author must still make.

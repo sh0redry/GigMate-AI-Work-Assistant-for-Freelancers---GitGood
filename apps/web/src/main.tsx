@@ -2,12 +2,14 @@ import { useCallback, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
 import { ConnectionWorkspace } from "./ConnectionWorkspace";
-import { ReplayWorkspace } from "./ReplayWorkspace";
+import { WorkOrderWorkspace } from "./WorkOrderWorkspace";
 import { workspaceApi, type Detail, type Login } from "./workspace-api";
 import { clearConnectionAttempts } from "./connection-api";
 
 function App() {
-  const [view, setView] = useState<"connect" | "replay" | "demo">("connect");
+  const [view, setView] = useState<"connect" | "business" | "replay" | "demo">(
+    "connect",
+  );
   const [login, setLogin] = useState<Login | null>(null);
   const [username, setUsername] = useState("merchant");
   const [password, setPassword] = useState("demo-only-change-me");
@@ -74,7 +76,9 @@ function App() {
             ? "合成演示"
             : view === "connect"
               ? "本地连接工作台"
-              : "虚构数据 · 回放模式"}
+              : view === "business"
+                ? "业务工作台"
+                : "虚构数据 · 回放模式"}
         </div>
       </header>
       <nav className="workspace-navigation" aria-label="工作台页面">
@@ -86,6 +90,16 @@ function App() {
         >
           WhatsApp 连接
         </button>
+        {login && (
+          <button
+            className="secondary"
+            aria-pressed={view === "business"}
+            disabled={busy}
+            onClick={() => navigate("business")}
+          >
+            业务工作台
+          </button>
+        )}
         {login && (
           <button
             className="secondary"
@@ -105,13 +119,13 @@ function App() {
           D-01 演示预览
         </button>
       </nav>
-      {view === "replay" && (
+      {(view === "business" || view === "replay") && (
         <section className="intro">
           <p className="eyebrow">业务协作工作台</p>
           <h1>把变更核对清楚，再落实安排。</h1>
           <p>
-            查看原文、检查冲突、确认业务变化。这里使用固定抽取桩，没有连接真实
-            WhatsApp，也不会发送消息。
+            查看工单和原文、核对变更、同步日历与待办。此页面不会发送消息。
+            {view === "replay" && "回放使用固定虚构样例，不代表真实模型效果。"}
           </p>
         </section>
       )}
@@ -176,7 +190,9 @@ function App() {
               onBusyChange={setBusy}
             />
           ) : (
-            <ReplayWorkspace
+            <WorkOrderWorkspace
+              key={view}
+              mode={view === "replay" ? "replay" : "business"}
               csrf={csrf}
               username={login.username}
               onSessionExpired={expireSession}

@@ -1,5 +1,16 @@
 # GigMate frontend user guide
 
+## Current D-02 business workspace — 2026-10-12
+
+Based on main `bbb0074`; D-01 is delivered and the older dated sections below retain its publication history. Current D-02 [acceptance](role-d-stage2-acceptance.md) records **65 frontend tests** and synthetic browser/API/worker evidence; independent review remains pending. [D modules](role-d-development-roadmap.md) define D-03 reply approval, D-04 creation/lifecycle and D-05 distribution. [Desktop feasibility](role-d-desktop-feasibility.md) is an assessment only.
+
+After login select **业务工作台**. Search **搜索业务** and filter **工单状态**; a hidden selected order stays open with an explicit notice. Details show field state, version and exact source revision; unknown address stays **未提供**. **显示会话** can show all linked conversations or one. Source links jump to canonical loaded revisions; missing/revoked provenance is labeled and cannot authorize confirmation.
+
+**待核对变更** separates proposer, customer confirmation and merchant approval. Check old/new values, source and version before **核对并确认安排**. In the review panel tick the explicit consent checkbox, then **确认并同步安排**. Only main's internal schedule command is available; conflicts, stale/changed sources, terminal orders and unsupported fields are blocked. Refreshing changed data invalidates the old review; no automatic mutation retry. A failed read retains visibly stale data and disables writes until a successful read.
+
+**个人日历** includes current/other orders and tentative/formal states; **查看日期** filters Hong Kong timed intervals, while all-day dates retain their original zone. **当前工单待办 → 全部（含历史）** includes cancelled/completed tasks. A successful schedule confirmation updates formal calendar and preparation tasks through the backend; it does not send a message. Use **刷新业务数据** to reread. The business page has no fictional-input controls; **工单回放** uses the same review flow with separately labeled fixed replay inputs. New/status changes and reply approval/sending remain subsequent modules.
+
+
 ## Review and main integration update — 2026-10-10
 
 Andy PR #14 is merged into main (`ab52d3e`). PR #16 now targets main and preserves the chat-type/pagination behavior described below; earlier references to its dependency branch describe the initial publication. Shared status and D acceptance documents are synchronized. The new three-case DOM/API-fixture regression runs with `npm test` / `npm run build`, giving **53 frontend tests**; use `npm ci` for the updated development lock, including test-only `jsdom`. This does not change production dependencies or startup commands. Automated reread/remount uses synthetic API memory and is not proof of real backend disk persistence. Real nicknames and native Windows acceptance remain pending; PR #16 requires independent approval before merge.
@@ -21,6 +32,7 @@ Role D, 2026-10-09. [中文版](../zh/role-d-frontend-user-guide.md). D-01 uses 
 | View | Purpose | Persistence |
 | --- | --- | --- |
 | D-01 演示预览 | Simulated scan, selection, pause/resume and revocation without login | Browser memory; leaving/reloading resets it |
+| 业务工作台 | Owned orders, source review, internal schedule confirmation, calendar and tasks | Backend database; reload requires login, business state remains |
 | 工单回放 | Fictional messages, conflicts, merchant confirmation, internal calendar/tasks | Replay database; reload/logout do not reset it |
 | WhatsApp 连接 | Your preprovisioned local connection; authenticated setup, QR, consent and issue review | Backend database and durable worker; consent survives reload |
 
@@ -55,7 +67,7 @@ Follow [Andy's local setup](role-a-team-local-development.md), using your own pr
 
 ## Login/logout
 
-Development login: `merchant` / `demo-only-change-me`, or the password selected at initial seed. This is separate from WhatsApp on your phone. After login choose connection or replay. Logout/expiry remove account data and transient QR; successful logout also clears saved request-attempt metadata. Reload requires signing in again, but saved authorization/business state remains in the backend. An unresolved request stores only opaque app IDs and its action/version/key in this tab's session storage where available, never credentials or pairing material.
+Development login: `merchant` / `demo-only-change-me`, or the password selected at initial seed. This is separate from WhatsApp on your phone. After login choose connection, business workspace or replay. Logout/expiry remove account data and transient QR; successful logout also clears saved request-attempt metadata. Reload requires signing in again, but saved authorization/business state remains in the backend. An unresolved request stores only opaque app IDs and its action/version/key in this tab's session storage where available, never credentials or pairing material.
 
 ## WhatsApp connection and authorization
 
@@ -87,13 +99,13 @@ Assumes initial order v3. Dates are fixed 2026 examples in Hong Kong time. An ex
 | 4 | Repeat input | Already-processed notice; still one card/two messages/order v3 |
 | 5 | 回放：16:30 可用时段 | New 10/08 16:30–17:30 proposal awaiting approval; old proposal invalidated/disabled; formal/order v3 unchanged; context v6, three messages |
 | 6 | Click source reference | Scrolls to source with suffix, revision and timestamp |
-| 7 | Confirm 16:30 card | Order v4; formal/calendar updated; card confirmed/disabled; old task cancelled/new pending; address remains missing |
+| 7 | Open 16:30 review, compare values/sources, tick consent, confirm | Order v4; formal/calendar updated; card confirmed/disabled; old task cancelled/new pending; address remains missing |
 | 8 | Inspect new task | Current main title like 10/08 15:30 准备 16:30 的虚构业务预约; due 10/08 15:30. Legacy rows may keep old titles; frontend does not rewrite them |
 | 9 | Repeat 16:30, navigate, reload/sign in | Already processed; v4/two cards/three messages/two tasks persist; notices do not carry into other views |
 | 10 | Logout, wrong password, correct password | Login form without false authentication error; Chinese wrong-password feedback blocks access; correct login succeeds |
 | 11 | Optional: other / same development password | Only its own v3 order; no merchant-v4 data/other booking; replay disabled |
 
-Calendar lists all account events and marks the selected order; tasks are filtered to it. Cancelled tasks remain history. Narrow windows may stack calendar/tasks below other panels; scroll to inspect them.
+Calendar lists all account events and marks the selected order; tasks are filtered to it. Cancelled tasks remain history under **待办范围 → 全部（含历史）**. Narrow windows may stack calendar/tasks below other panels; scroll to inspect them.
 
 Use 刷新回放数据 to reread. Failed reads mark cached data stale and disable writes; successful recovery clears the error/stale marker. Changed sources/versions require review, never automatic confirmation retry. Restore service and refresh to reconcile uncertain write outcomes.
 
@@ -105,8 +117,8 @@ Use 刷新回放数据 to reread. Failed reads mark cached data stale and disabl
 - Apple Silicon: PR #11 includes Andy's image/platform selection. This frontend batch does not verify actual phone pairing or upgrade the existing private installation.
 - Phone rejects linking: retain its actual result for integration-owner review; QR display does not prove linking.
 
-Replay needs further debugging/independent review: multi-conversation orders show only the first conversation; multiple API reads are not an atomic database snapshot; no complete worker-failure/long-queue UI, fixture reset, message-edit/revoke controls or general AI input. Backend remains authoritative for versions, sources, consent/ownership and conflicts. D-01 product consent is now implemented and tested synthetically; real WhatsApp delivery/pairing and automatic replies/sending are not established by this batch. Native Windows acceptance remains pending.
+Replay needs further debugging/independent review: all linked conversations are now loaded, with conservative source/context matching; multiple API reads are not an atomic database snapshot; no complete worker-failure/long-queue UI, fixture reset, message-edit/revoke controls or general AI input. Backend remains authoritative for versions, sources, consent/ownership and conflicts. D-01 product consent is now implemented and tested synthetically; real WhatsApp delivery/pairing and automatic replies/sending are not established by this batch. Native Windows acceptance remains pending.
 
 ## Developer checks
 
-From `apps/web` run `npm test`, `npm run check:api`, `npm run format:check`, `npm run build`. Also run `npx prettier --check *test.mjs` for test-file formatting. Build runs regressions first. Keep edits in D frontend/companion docs; do not patch Andy/B/C or shared contracts to repair demonstration setup. Actual evidence: [D acceptance log](role-d-stage1-acceptance.md).
+From `apps/web` run `npm test`, `npm run check:api`, `npm run format:check`, `npm run build`. Also run `npx prettier --check *test.mjs` for test-file formatting. Build runs regressions first. Keep edits in D frontend/companion docs; do not patch Andy/B/C or shared contracts to repair demonstration setup. Actual current evidence: [D-02 acceptance log](role-d-stage2-acceptance.md); [D-01 history](role-d-stage1-acceptance.md).

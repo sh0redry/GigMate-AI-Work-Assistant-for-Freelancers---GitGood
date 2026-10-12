@@ -137,6 +137,7 @@ export type ReplaySnapshot = {
   changes: Change[];
   messages: Message[];
   contextVersion: number;
+  contexts?: Record<string, number>;
 };
 export type ReplayApi = {
   load(selected: string, signal: AbortSignal): Promise<ReplaySnapshot>;
@@ -169,17 +170,34 @@ export function replayApi(request: RequestApi): ReplayApi {
           "NO_CONVERSATION",
           "当前工单没有可核对的对话，请联系后端负责人。",
         );
-      const [changes, messages, info] = await Promise.all([
+      const [changes, timelines] = await Promise.all([
         allPages<Change>(request, `/work-orders/${order.id}/changes`, signal),
-        allPages<Message>(
-          request,
-          `/conversations/${conversation}/messages`,
-          signal,
-        ),
-        request<Detail<{ context_version: number }>>(
-          `/conversations/${conversation}`,
-          undefined,
-          signal,
+        Promise.all(
+          [...new Set(order.conversation_ids)].map(async (id) => {
+            const [messages, info] = await Promise.all([
+              allPages<Message>(
+                request,
+                `/conversations/${id}/messages`,
+                signal,
+              ),
+              request<Detail<components["schemas"]["Conversation"]>>(
+                `/conversations/${id}`,
+                undefined,
+                signal,
+              ),
+            ]);
+            if (
+              info.data.id !== id ||
+              !Number.isInteger(info.data.context_version) ||
+              info.data.context_version < 1 ||
+              messages.some((message) => message.conversation_id !== id)
+            )
+              throw new WorkspaceError(
+                "INVALID_RESPONSE",
+                "对话范围或版本无效，请刷新核对。",
+              );
+            return { id, messages, version: info.data.context_version };
+          }),
         ),
       ]);
       return {
@@ -188,12 +206,16 @@ export function replayApi(request: RequestApi): ReplayApi {
         calendar,
         selected: order.id,
         changes,
-        messages: messages.sort(
-          (a, b) =>
-            a.occurred_at.localeCompare(b.occurred_at) ||
-            a.id.localeCompare(b.id),
-        ),
-        contextVersion: info.data.context_version,
+        messages: timelines
+          .flatMap((t) => t.messages)
+          .sort(
+            (a, b) =>
+              a.occurred_at.localeCompare(b.occurred_at) ||
+              a.id.localeCompare(b.id) ||
+              a.revision - b.revision,
+          ),
+        contextVersion: timelines[0].version,
+        contexts: Object.fromEntries(timelines.map((t) => [t.id, t.version])),
       };
     },
     async replay(scenario) {
@@ -209,11 +231,39 @@ export function replayApi(request: RequestApi): ReplayApi {
           "VERSION_CONFLICT",
           "业务已切换，请刷新并重新核对。",
         );
+      const context = changeContext(snapshot, change);
+      if (context === null)
+        throw new WorkspaceError(
+          "APPROVAL_STALE",
+          "来源对话或消息版本无法核对，请刷新并重新审核。",
+        );
       await request(`/work-orders/${order.id}/changes/${change.id}/confirm`, {
         expected_version: order.version,
-        expected_context_version: snapshot.contextVersion,
+        expected_context_version: context,
         apply_calendar_update: true,
       });
     },
   };
+}
+
+// ChangeView does not expose conversation_id. Resolve it only from exact canonical
+// source revisions; never guess the first linked conversation for a multi-chat order.
+export function changeContext(
+  snapshot: ReplaySnapshot,
+  change: Change,
+): number | null {
+  if (!snapshot.contexts) return snapshot.contextVersion; // legacy single-chat snapshots
+  const ids = new Set<string>();
+  for (const source of change.sources) {
+    const message = snapshot.messages.find(
+      (m) =>
+        m.id === source.message_id &&
+        m.revision === source.message_revision &&
+        !m.revoked,
+    );
+    if (!message) return null;
+    ids.add(message.conversation_id);
+  }
+  if (ids.size !== 1) return null;
+  return snapshot.contexts[[...ids][0]] ?? null;
 }
