@@ -206,3 +206,41 @@ test("an unauthorized read arriving after unmount cannot expire a newer login", 
   );
   assert.equal(expired, 0);
 });
+
+test("rendering with a denied storage getter shows readable guidance, still loads drafts and sends no mutations", async () => {
+  const f = fixture();
+  const previous = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "sessionStorage",
+  );
+  const oldFetch = globalThis.fetch;
+  Object.defineProperty(globalThis, "sessionStorage", {
+    configurable: true,
+    get() {
+      throw new DOMException("Synthetic denied storage", "SecurityError");
+    },
+  });
+  globalThis.fetch = f.fetcher;
+  try {
+    root = createRoot(document.getElementById("root"));
+    await act(async () =>
+      root.render(
+        createElement(ApprovalsWorkspace, {
+          csrf: "csrf",
+          accountId,
+          onSessionExpired() {},
+          onBusyChange() {},
+        }),
+      ),
+    );
+    assert.match(document.body.textContent, /浏览器不允许保存原请求/);
+    assert.ok(document.body.textContent.includes(f.data.actions[0].body));
+    await review();
+    assert.equal(button("批准这份草稿").disabled, true);
+    await click("刷新审批");
+    assert.equal(f.data.writes.length, 0);
+  } finally {
+    Object.defineProperty(globalThis, "sessionStorage", previous);
+    globalThis.fetch = oldFetch;
+  }
+});

@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import threading
 import time
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -22,6 +23,7 @@ from gigmate.db import (
     WahaConnection,
     WorkOrderRow,
 )
+from gigmate.errors import BusinessError
 from gigmate.extraction import (
     ExtractionRequest,
     persist_changes_for,
@@ -304,14 +306,30 @@ def poll(factory=Session):
         return False
 
 
+def heartbeat_loop(stop, factory=Session, interval=10):
+    """Keep component health fresh during bounded parser/model I/O."""
+    while not stop.is_set():
+        heartbeat(factory)
+        stop.wait(interval)
+
+
 def main():
     logging.basicConfig(level=logging.INFO)
+    stop = threading.Event()
+    pulse = threading.Thread(
+        target=heartbeat_loop, args=(stop,), name="gigmate-heartbeat", daemon=True
+    )
+    pulse.start()
+    try:
+        work_loop()
+    finally:
+        stop.set()
+        pulse.join(timeout=2)
+
+
+def work_loop():
     maintenance_at = 0
-    heartbeat_at = 0
     while True:
-        if time.monotonic() >= heartbeat_at:
-            heartbeat()
-            heartbeat_at = time.monotonic() + 10
         if time.monotonic() >= maintenance_at:
             maintain()
             maintenance_at = time.monotonic() + 3600
@@ -323,6 +341,11 @@ def main():
                 from gigmate.waha_sync import run_once as sync_once
 
                 sync_once()
+                from gigmate.waha_media import run_once as media_once
+
+                media_once()
+            except BusinessError as error:
+                log.error("media_poll_failed code=%s", error.code)
             except SQLAlchemyError:
                 log.error("control_poll_failed code=DATABASE_UNAVAILABLE")
         if not poll():
@@ -350,9 +373,15 @@ def maintain(factory=Session):
         for identifier in identifiers:
             with factory.begin() as db:
                 purge_expired(db, identifier)
+        from gigmate.waha_media import purge as purge_media
+
+        purge_media(factory)
         return True
     except SQLAlchemyError:
         log.error("worker_maintenance_failed code=DATABASE_UNAVAILABLE")
+        return False
+    except (BusinessError, OSError):
+        log.error("worker_maintenance_failed code=MEDIA_STORAGE_UNAVAILABLE")
         return False
 
 

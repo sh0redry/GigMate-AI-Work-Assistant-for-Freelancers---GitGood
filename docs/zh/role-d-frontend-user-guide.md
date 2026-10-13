@@ -1,6 +1,10 @@
 # GigMate 前端使用手册
 
-更新：2026-10-12（香港时间）。[English counterpart](../en/role-d-frontend-user-guide.md)。想学代码原理，读 [Kyrie 入门手册](kyrie-learning-guide.md)。
+**D-03 评审跟进（2026-10-14）：** 审批候选已同步 #24／main，修复浏览器禁止存储时直接报错。即使不能访问存储，也能看草稿，但不能提交。若响应已核对而原记录清理失败，仍保留原请求并禁止新提交；恢复浏览器存储、重新打开后再明确核对原编号。现 D-03 前端 105 项通过。#23 已更新上传／main 兼容，C/A 真正发送仍待接通。
+
+**PR #24 兼容更新：** D-02 分支现包含已接纳 main e066b0c（#21）。附件读取、预览、下载和原编号请求均跟随当前环境；模型仍默认关闭。#24 合并前，main 仍没有 D-02 页面。
+
+更新：2026-10-14（香港时间）。[English counterpart](../en/role-d-frontend-user-guide.md)。想学代码原理，读 [Kyrie 入门手册](kyrie-learning-guide.md)。
 
 本手册现对应 `codex/d03-approvals`：组合尚未合并的 D-02 PR #24 与 C 审批 PR #22，**不是 main 已交付的功能**。#22 仍需修复重复重新提问问题；main 已因 #21 更新到 `e066b0c`，但 #21 不提供 C 审批接口。根据 Kyrie 的新要求，完整 D-02 改动现在准备提交 PR。PR 是请队友检查，创建 PR 不等于功能已经进入 main。普通 main 目录仍可能显示旧演示入口。用 `git worktree list` 找 D 工作目录，不要为了界面版本重置自己的 WhatsApp 会话。
 

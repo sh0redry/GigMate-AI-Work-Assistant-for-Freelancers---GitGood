@@ -1,10 +1,12 @@
 # D-03 reply approval acceptance
 
+**Storage review follow-up, 2026-10-14:** capture refusal of the global sessionStorage getter inside the factory, then guard journal reads/writes/cleanup separately. Denied access leaves draft reads available and mutations blocked. A verified response whose cleanup fails retains the journal, disables fresh intents and requires restoring storage/reopening before explicit original-key recovery. No memory-only fallback or inference that a previous unknown operation was unsubmitted. Nine new API/component cases cover these paths and preservation of a newer journal. Current frontend: **105 passed**; original 91-test evidence below is historical. Latest #23 `99228ca` has the upload-race correction and accepted-media/main compatibility, with peer review; it remains Draft without C/A bridging/real-send acceptance. Its old race description in dated progress is historical.
+
 2026-10-13 · Kyrie · [Chinese counterpart](../zh/role-d-stage3-acceptance.md).
 
 ## Delivered boundary
 
-The pending `codex/d03-approvals` branch composes C PR #22 (`8ef89ac`) and D-02 PR #24 (`5ba294a`). This is a stacked review candidate, not merged main. #21 merged as `e066b0c`; its A media scope is independent. Before main integration, C must fix the repeated-reissue defect, synchronize the accepted main/contracts/migration ancestry, and #24 must land through Andy's review. The D-03 change does not repair those backend issues or rewrite shared migrations.
+The pending `codex/d03-approvals` branch now composes C PR #22 (`8ef89ac`), reconciled D-02 PR #24 (`c0a0d96`) and accepted main `e066b0c`. It remains a stacked Draft. The storage review fix is independent of C’s unresolved repeated-reissue defect. Additive `0014_media_approvals` joins the unchanged `0009_approval_actions` and `0012_waha_media_stop` histories so this composed candidate has one head; contracts/types are regenerated from the merged source models/routes. #22 and #24 still must land, and any subsequent parent migration or contract changes require rechecking before main merge. No C branch or real deployment is changed here.
 
 Both development environments have business/reply approval navigation; isolated testing still has no WhatsApp page/connector queries. The approval workspace loads all owned action/order/message pages, exact recipient conversation/body/sources, draft expiry/revision, bound/current order/chat versions, reason, local status and delivery status. It retains the selected detail under filtering. Empty/denied/stale/offline histories are explicit; no browser fake drafts or success states.
 

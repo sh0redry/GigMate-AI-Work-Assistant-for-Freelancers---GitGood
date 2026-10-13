@@ -1,6 +1,10 @@
 # GigMate frontend user guide
 
-Updated 2026-10-12, Hong Kong time. [中文版](../zh/role-d-frontend-user-guide.md). For code explanations, read [Kyrie's beginner guide](kyrie-learning-guide.md).
+**D-03 review follow-up (2026-10-14):** the approval candidate includes reconciled #24/main and a safe-storage fix. If the browser rejects storage access, the page still reads drafts but cannot submit. If a verified response returns but journal cleanup fails, the saved intent is retained and new submissions remain blocked; restore storage, reopen and explicitly reconcile the original key. Current D-03 frontend suite: 105 passed. #23 has updated its upload/main compatibility; C/A sending still remains pending.
+
+**PR #24 compatibility update:** the D-02 branch now includes accepted main e066b0c (#21). Its private attachment adapter follows the selected environment for reads, previews, downloads and original-key requests; model activation remains disabled by default. Main still does not contain D-02 until #24 merges.
+
+Updated 2026-10-14, Hong Kong time. [中文版](../zh/role-d-frontend-user-guide.md). For code explanations, read [Kyrie's beginner guide](kyrie-learning-guide.md).
 
 This guide now describes `codex/d03-approvals`, composed from the unmerged D-02 PR #24 and C approval PR #22; it is **not merged main**. The approval dependency still needs its repeated-reissue fix. Main has advanced to `e066b0c` through #21, which does not itself add C approvals. The consolidated D-02 changes are now prepared for PR submission under Kyrie’s updated instruction. A PR asks teammates to review; it does not put the feature into main. The ordinary main checkout can still show old demo controls. Locate D with `git worktree list`; do not reset your WhatsApp session to fix a frontend version mismatch.
 

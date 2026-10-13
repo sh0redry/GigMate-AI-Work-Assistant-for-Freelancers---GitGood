@@ -1,5 +1,14 @@
 # 已完成工作与验证记录
 
+## PR #25 存储评审修复与父分支同步 — 2026-10-14
+
+#25 已同步解决冲突后的 #24 c0a0d96，包含已接纳 main e066b0c；三处剩余迁移／进度冲突保留双方内容。修复 sh0redry 的 issuecomment-6145958029 P2：获取默认存储对象移入函数体保护，分别处理 journal 读取／写入／清理。禁止存储时仍可读取草稿，但不能提交，不以纯内存替代。已核实响应后清理失败保留原记录、阻止新意图；恢复存储并重新打开后，才能按原编号明确核对。不会误删另一页面的新记录。新增九项 API／真实组件回归，覆盖 getter／getItem／setItem／removeItem 拒绝、保留旧未知请求、只读页面零 POST 及原编号恢复。
+
+组合后 A 媒体与 C 审批迁移同时存在，新增无业务操作的 **0014_media_approvals**，合并未修改的 0012_waha_media_stop 和 0009_approval_actions；保留 C 尚未修复的再提问逻辑，不修改 #22 分支。迁移保留测试补两边已存在 leaf 升级，验证唯一 head、原回放／连接／评测／媒体停止记录及 Alembic 无漂移。domain／OpenAPI／前端类型从组合源码重生成，不手改生成文件。若父分支随后改变迁移，合 main 前需再兼容。
+
+证据：**105 项前端通过**，类型／Vite／API／Prettier、适用 Ruff／格式（83 文件）、生成契约、基线（此记录加入前 79 份 Markdown／928 个本地链接）及空白检查通过。支持的 Linux Docker＋PostgreSQL 配置全套后端 **576 通过／1 平台跳过**，一项既有 Starlette/httpx 警告；最后追加漂移断言后，受影响 PostgreSQL 迁移 **6 通过**。提取夹具部分仍用 SQLite，不能说全部锁路径证明了。未实际改变浏览器隐私设置／验收实体设备，无真实模型／聊天／发送／既有数据库／部署操作。#23 最新 99228ca 已有队友评审并记录上传／main 兼容修复，旧竞态报告是历史，C/A 发送桥接仍待完成。#22 未更新且已有队友评审，按要求不重复评论／评审他人的 PR。#25 继续 Draft，待 #22 再提问修复及 #24 落地后独立复审。
+
+
 ## D-03 审批候选与仓库审核 — 2026-10-13
 
 在 `codex/d03-approvals` 组合待合并 C #22（`8ef89ac`）和 D-02 #24（`5ba294a`），完成 [D-03 的审批部分](role-d-stage3-acceptance.md)：完整收件会话／正文／原文／有效期／版本核对、明确勾选、带原因本机拒绝／取消、历史、保守再提问，以及按账号／环境保存原编号的未知结果核对。批准仍未发送；C/A 发送桥接和完整外发验收待完成。D-03 提交不改后端／模型／生成文件／迁移，同步双语操作／学习／文件地图／路线／索引／验收。
@@ -34,6 +43,12 @@ PR #22（`lena/approval-actions`，head `e79ef7b`）新增 C 的审批动作：�
 
 证据：`pytest apps/backend/tests/test_approvals.py` 在 SQLite 和本地 PostgreSQL 16 上均 **18 项通过**；SQLite 全套通过；PostgreSQL 全套在该本地环境下出现与未改动 main 相同的 WAHA 计时相关失败，审批/工作流测试无失败。Ruff/格式、契约导出、前端接口检查和双语基线通过。未触碰真实 WhatsApp、发送、模型或部署。
 
+
+## PR #24 与已合并 main 兼容 — 2026-10-14
+
+已 fetch，主目录 main／origin/main 均为 e066b0c，保留原本地文档。#22 仍是 8ef89ac，#23 更新到 99228ca，但均已有队友评审；按 Kyrie 要求，不重复评论／评审或修改这些 PR。#24 合入已接纳 #21 的 main，不重写源码／迁移／生成文件。四处冲突保留双方环境／媒体测试夹具与双语记录，App 测试补齐媒体依赖。继承的媒体适配器在创建时固定 apiBase，私有预览／下载及原编号重试也跟随该地址，真实环境不再错误回退到隔离 root 代理。新增一项有意义的地址绑定回归；**80 项前端**、类型／Vite／API／格式、适用 Ruff（79 文件）、生成契约／基线及空白检查通过。后端源码与已接纳 main 相同，无真实 provider／模型／发送／数据库／部署操作。#25 发布存储修复前将同步本次 #24；C 审批集成仍等 #22。
+
+
 ## 完整 D-02 PR 准备 — 2026-10-12
 
 Kyrie 现要求推送已完成的 D-02 前端分支并创建 PR，取代之前“只 commit”的要求；下方按日期保留的“无 PR”记录描述当时状态。本次统一提交有来源的业务核对／日历／待办、移除用户演示入口、开发环境切换、隔离环境仅业务导航及双语入门／操作／文件参考文档。提交前重新验证：**75 项前端测试通过**，TypeScript／Vite 构建、API 一致性、Prettier、生成契约、基线（**74 份 Markdown／873 个本地链接**）和差异空白检查通过。无后端／schema／迁移修改；下方后端 pytest 为历史证据，本次未重跑。独立评审与合入 main 仍待完成。
@@ -65,6 +80,143 @@ Kyrie 现要求推送已完成的 D-02 前端分支并创建 PR，取代之前�
 
 审核 #21（`d000b26`，原 **500 项通过**）及 #22（`e79ef7b`，原 **387 项通过**），每个 head 新增的一项 PostgreSQL 回归均失败。#21 在取消时丢失已提交模型请求的不确定性并接受再次提交；#22 因 outgoing API 回声重新生成回复工作。均已提交 `REQUEST_CHANGES`，未合并。已有测试／CI 通过不能消除这些问题。本地 main 原已与 origin/main 同为 `bbb0074`，保留原有本地文档修改及 D 工作树。
 
+
+## PR #21 新评审修复：持久化停止使用决定 — 2026-10-13
+
+通过四个合成场景独立复现新增 P2：取消或暂停/恢复后，立即核对成功或连续未知后成功，都会因核对清除唯一停止标记而重新公开结果。现在将首次停止原因单独持久化为 `content_stop_reason`，不依赖状态、临时错误或控制版本。后续核对保留停止决定，不重新调用 process、不公开原任务结果、不恢复核对记录。未知结果仍阻止新任务；确认有效结果后以取消状态解除占用，仅允许另行明确创建新意图。
+
+新增 **0012_waha_media_stop**，接在未改写的 0010 后，编号避开独立发送分支的 0011。新代码运行前需升级 head/check。迁移保留可见停止原因，并保守标记可能已被旧核对擦除决定的未知/核对任务；无法撤销旧实现已公开的结果，这类数据需操作人员复核。#21 合入后 #23 要兼容迁移祖先关系。公开契约结构不变，双语媒体说明及 API 文档同步记录限制。
+
+实际自动验证：Windows 后端全套 **548 通过、9 跳过**（8 项 PostgreSQL 依赖检查及 1 项不适用平台检查），包含迁移/回填/降级及原有媒体/PDF 回归；最后补充明确新意图断言后，四项新增回归再次通过。隔离 SQLite 升级 0012/check 无漂移，不能据此证明 PostgreSQL 锁。前端 **57 通过**，生成类型、格式、TypeScript/build、适用 Ruff/格式、契约导出及 baseline 通过。新提交的 CI 还需确认 PostgreSQL 和系统矩阵；保留已有 Starlette/httpx 警告。无真实模型/媒体/发送、二维码、部署或用户数据库/会话操作；发送分支及两处未提交文档段落未改动。PR 保持 Draft，等待独立复核与人工验收。
+
+## PR #21 PDF 资源隔离批次
+
+生产 PDF 解析已移到私有子进程，默认墙钟 20 秒、内存 512 MiB，限制输入/输出并每个 worker 同时一个解析。Windows 将限制绑定到挂起启动的实际底层解释器，不是 venv 启动器；Linux 使用硬内存/CPU 限制并绑定父进程生命周期。PID 握手确认后才传数据。不继承模型/接入/数据库环境，不落临时原文件，固定 UTF-8 并重验 IPC 输出。原生 macOS 明确拒绝，使用 Linux Docker 后端。这是资源隔离，不是文件系统/网络沙箱或恶意文件扫描。
+
+PDF 明确拒绝码在供应商调用前写入任务；worker 心跳独立于解析/模型等待。私有提交前回调在本地准备后重验授权/租约/来源，阻止解析期间取消后的模型调用。无需新结构/迁移。媒体 Compose 向 API/worker 提供可信限额，CI 增加 Linux/Windows/macOS 资源检查，其中 macOS 验证原生拒绝，不代表原生解析成功。
+
+实际 Windows 证据：超过 128 MiB 的真实分配被拒绝；超时终止并回收私有进程；崩溃、超量输出、错误协议失败；PID 不符不传数据；不继承密钥；Unicode IPC 和心跳连续通过。最终提交前回调加入前全套 **542 通过、9 跳过**（8 个 PostgreSQL 检查及不适用平台测试）；最终受影响解析/任务/授权用例 **40 通过、1 平台跳过**，其它媒体兼容用例 **124 通过、1 项 PostgreSQL 跳过**。前端 **57 通过**，类型/格式/TypeScript/build、Ruff/格式、契约导出及隔离 SQLite 升级 0010/check 通过。保留已有 Starlette/httpx 警告；新矩阵 CI 及独立审核须在最终提交上确认。无真实媒体/模型/发送、二维码、部署或原数据库/会话操作；发送分支及用户未提交进度段落原样保留。
+
+## PR #21 PDF 集成与模型中止修复 — 2026-10-12
+
+已将队友 PDF 分支 `0d91ad1` 集成到原媒体 PR，保留本地解析器、独立业务提示词、依赖固定及文档 Unicode 修正。补上缺页文字强制 partial 和全文超限后不再读取下一页；修正片段数上限说明，它独立于全文字符上限。扫描件仍拒绝，未声明硬性 CPU/内存沙箱或真实模型已启用。
+
+修复独立评审 P1：取消/撤权及到期保留可能已提交的处理/核对请求身份与附件占用；晚到不确定结果仍阻止新请求，重新授权也不保存晚到内容。原租约有效时不能并行核对；取消排队中的核对也保留原不确定状态。只有原尝试确定返回或提交前明确拒绝，才可解除占用，但不会恢复内容。到期清理与任务修改/完成使用相同的账户/连接锁顺序。无需新字段、迁移或强制重发接口；E 仍需独立验证 PostgreSQL 交错及来源上下文变化导致的核对限制。
+
+实际自动证据：最终到期锁调整前后端全套 **520 通过、8 项 PostgreSQL 依赖检查跳过**，最终受影响媒体测试 **70 通过、1 项 PostgreSQL 检查跳过**。前端 **57 通过**，契约类型/格式/TypeScript/Vite 构建、适用 Ruff/格式、契约导出及隔离 SQLite 升级 0010/check 通过。新增回归覆盖未知/成功/提交前拒绝、取消、暂停后授权、来源变化、到期、排队/在途核对、部分覆盖及提前停止。模型仍关闭，未访问真实媒体/模型/发送、二维码、部署或用户数据库/会话。发送分支及用户两处未提交进度修改原样保留；仅更新 #21，不合 main、不改 #23。
+
+## 真实 PDF 解析器：两层提取 — 2026-10-12
+
+`gigmate.media.pdfparse` 用真实本地解析器（`pypdf==6.20.0`，已加入 `pyproject.toml` 与 `requirements.lock`）替换 `MEDIA_PDF_PARSER_PENDING` 桩。第一层在本地逐页抽取并施加有界 I/O：至多 200 页、每页文本按至多 4000 字符分块且保留页码、总计至多 100000 字符。`MEDIA_PDF_PAGE_LIMIT`、`MEDIA_PDF_TEXT_LIMIT`、`MEDIA_PDF_NOT_PARSEABLE` 与 `MEDIA_PDF_NO_TEXT_LAYER`（扫描件无文本层）全部在**任何厂家请求之前**拒绝，因此映射为 `ProcessingUnavailable`，不会产生计费；不做任何静默截断。第二层把抽取出的页与专用 prompt `role_b_media_pdf_v1.txt`（版本头 1.0.0，可用 `GIGMATE_MEDIA_PDF_PROMPT_PATH` 覆盖）发给 chat 厂家；模型只产出 coverage / summary / suggestions / unresolved_questions，其输出中的任何 `segments` 键都会被忽略——页面文本由本地绑定，模型永远无法重打、合并或捏造，suggestion 的 `source_indices` 由契约对照本地 segment 校验。可读 PDF 中的空白页以未决问题呈现，不冒充完整覆盖。本批同时修复了 2026-10-11 条目在 `docs/zh/role-b-extraction.md` 与 `docs/zh/progress.md` 留下的乱码（受腐蚀段落已按中文原文恢复）。
+
+**测试**：`test_media_processor.py` 新增 9 个 PDF 用例——在模型响应里注入 `segments` 键证明本地绑定；无文本层 / 乱字节 / 201 页 / 超总量拒绝均验证**未发起**任何厂家调用；9000 字符长页分块；空白页未决问题；解析成功后厂家 5xx → `ProcessingUncertain`；非法 `source_indices` → 不确定。该文件 50/50 通过；后端全套复跑通过；Ruff check/format 干净；契约导出与基线检查无变化。
+
+**如实限制**：实现仍以未激活状态交付（`_ENABLED=False`），没有发起真实模型请求。扫描/纯图像 PDF 直接拒绝而不是偷偷 OCR（那需要视觉厂家，仍未验证）。显式模型能力 / 按路由凭据核验、时间戳/时区对齐、prompt-injection 用例与真实厂家/编解码验收仍是 2026-10-11 修正清单上的开放项。
+
+## PR #21 队友媒体集成与 main 兼容 — 2026-10-11
+
+复核了队友的评论：工厂 process/reconcile 可调用性与构造函数异常处理已在 `a5aa0a1` 修复。集成了 B 的 `b5d7e84` 未激活媒体接缝，随后合入最新 main `bbb0074`；进展文件的冲突已合并，A/B 历史都保留。未包含 `Andy_WAHA_multitype_sending` 的发送侧改动。
+
+附加边界修复：PDF 处理显式置为 pending 而非二进制转文本；默认未验证视觉路由与 custom 缺失 endpoint 在创建客户端前拒绝；UTF-8/90k TXT 预检；未知 origin 拒绝；prompt 编码回退；客户端关闭；不确定日志稳定；严格的输出/来源索引校验，不做有损截断或重排；ASR 全文保留且 coverage 为 unknown；smoke 拒绝/未知以非零退出。测试补丁经 monkeypatch 恢复客户端工厂，并使用真实 UTF-8 合成 TXT 而非标记为 TXT 的 PNG 字节。新增 14 个评审用例与 B 测试合计 **54 通过**。最后两项 smoke 回归/小边界编辑之前的整套后端运行为 **490 通过、8 跳过**；受影响的最终测试已复跑。前端 **57 通过**，API/格式/TypeScript/Vite 构建、适用的 Ruff/format、契约导出、基线与空白检查通过。一次性 SQLite 升级到 0010/check 无漂移。未执行 PostgreSQL 锁与真实模型/手机验收；仍存在一个既有的 Starlette/httpx 警告。
+
+B 保持 `_ENABLED=False`；PDF 解析、真实视觉/音频模型能力、按路由凭据、时间戳对齐、prompt-injection 与厂家 request-id 对账属于激活工作。未访问真实媒体/模型/客户/二维码/部署。PR #21 保持 Draft；仅更新其自身分支。发送分支上所有者两处未提交的进展文件编辑已保留。
+
+
+## PR #21 处理器工厂评审修复 — 2026-10-10
+
+工厂加载在模型提交前校验 process/reconcile 均可调用，并将构造函数异常与配置错误分开，保留原始构造异常。验证：20 项工厂隔离测试通过；52 项媒体及证据测试通过，未配置测试数据库，跳过 1 项 PostgreSQL 并发测试。Ruff 检查及格式、契约导出检查、基线和空白检查通过。没有真实模型请求、真实媒体读取、部署或前端修改。
+
+## B 媒体处理器：真实模型接缝实现 — 2026-10-10
+
+在 A 的 WAHA 媒体摄取分支（`pr-21-review` →
+`william/role-b-media-processor`）之上落地。实现 PR #21 故意留空的
+`MediaProcessor` 接缝，使 A 可独立合并不依赖 B。按 `LLMProvider` 的双闸门
+安全模式交付真实模型处理器：
+
+* 模块级 `_ENABLED` 标志（默认 `False`）—— 默认在读任何环境变量之前
+  拒绝所有调用。
+* `GIGMATE_MEDIA_LIVE=1` 运维开关——除标志外仍必须设置才能联系厂家。
+* 必须设置 `GIGMATE_MEDIA_API_KEY`，否则抛 `ProcessingUnavailable`。
+* 真实客户附件要送达模型需 `GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN=1`；
+  `synthetic` 来源绕过此闸。
+
+路由覆盖四种允许类型：PNG / JPEG / WebP → OCR（视觉输入 chat
+completions）、Ogg / MP3 / WAV / M4A → ASR（音频转写）、PDF → chat
+completions、纯文本 → chat completions。集合外一律在联系厂家前
+拒绝。
+
+`scripts/smoke_media.py` 为运维侧手动 smoke（不在 CI）。需要两闸门
+同时打开，打印解析后的提案 JSON。
+
+**测试**（`apps/backend/tests/test_media_processor.py` 共 41 例）：
+按轴拆分的两闸门（接缝标志、live 开关、API key、live origin）安全、
+MIME 路由、按厂家调用形态、coercion 校验、4xx / 5xx →
+`ProcessingUncertain`、网络异常 → `ProcessingUncertain`、坏 JSON →
+`ProcessingUncertain`、`reconcile()` 在闸门关闭或无厂家查找时返回
+`None`、安全边界（`MediaInput` 不带凭据；处理器不修改入参）、
+工厂入口经标准 `module:AttrName` 解析。
+
+**PR #21 回归覆盖**：落地实现后跑 `test_waha_media.py`、
+`test_waha_media_evidence.py`、`test_waha_migration.py`，56 通过 /
+1 跳过，与 PR 描述一致；A 侧行为未改变。
+
+**Lint / format / 契约 / baseline**：
+
+* `ruff check apps/backend/src/gigmate/media scripts/smoke_media.py` —
+  通过。
+* `ruff format --check apps/backend/src/gigmate/media scripts/smoke_media.py` —
+  通过。
+* `scripts/export_contracts.py --check` —— 未改生成文件；处理器复用
+  既有 `WahaMediaResult` / `WahaMediaSegment` / `WahaMediaSuggestion`
+  契约，未新增契约。
+* `scripts/check_baseline.py` —— 通过。
+
+**如实记录的限制**：
+
+* 真实厂家来回未执行；测试套件基于 `_FakeClient` mock。真实调用需运维
+  把 `_ENABLED` 翻为 `True` 并提供 `GIGMATE_MEDIA_API_KEY` 与厂家端点。
+* ASR 默认厂家是 `openai`，因为 DeepSeek 不暴露转写端点；仅配 chat
+  凭据时 ASR 路径以 `ProcessingUnavailable` 拒绝。
+* `reconcile()` 一律返回 `None`，因为 chat-completions 厂家一般不暴露
+  基于 request-id 的查找；worker 必须等待人工重试。
+* 媒体附件的 prompt-injection 回归套件尚未补齐，列为开放待办。
+* 本分支未重跑 PostgreSQL / 隔离 HTTP-worker 套件；本次只验证 SQLite。
+
+**本批次附带修复**：`apps/backend/src/gigmate/extraction/evaluator.py` 的
+`_resolve_manifest_path` 原本用 cwd 相对路径，从 `apps/backend/` 跑 pytest
+时 `test_extraction.py` 必然失败。修复后 manifest 路径固定到仓库根
+（`parents[5]`），不影响其他语义。这是个隔离的小改动，没有改变
+evaluator 的行为。
+
+## A 媒体第二批：时间依据与已核对交接 — 2026-10-10
+
+基于 `cb11935`，保留最新 main/PR #16。A 已实现独立的供应商消息发送时间（不从事件/观察时间补造）、商户本次明确选择的合法 IANA 时区、持久固定处理上下文和 B DTO 扩展；新增 0010 接在未改的 0009 后。来源核对绑定版本/哈希/确切结果任务，新增受保护只读 WahaMediaEvidence 0.1.0 接口。建议可定位到来源片段，页面解释日期未知，核对后才提供交接资料，版本/上下文不一致时抑制展示。旧未绑定核对需要重新核对，不重新提交模型。收据身份/指纹语义保留。B 真实 OCR/转写/解析/GenAI 和 C 工单晋升/发送仍待接入，没有引入 PR #18 实现或执行权限。[协议与整批人工步骤](role-a-media-ingestion.md)。
+
+自动证据：后端全套 **395 通过 / 8 跳过**，使用 SQLite（不证明 PostgreSQL 锁），含新增 17 个媒体证据场景及 0009→0010 升级保留旧发送时间/任务上下文为空的回归。原迁移分支升级/降级不丢数据。初期测试夹具选到了其他合成会话、损坏文件断言与原有 HTTP 码不同，已改为本附件归属会话及既有 MEDIA_INTEGRITY_FAILED/503，随后全套通过。前端 **57 通过**，含挂载真实媒体组件的来源链接/核对/交接版本不匹配/暂停清理回归（合成 API），以及丢失响应时保留时区；TypeScript/构建、生成 API、格式、后端 Ruff/format、源契约导出及 baseline 通过。另用一次性 SQLite 完成 Alembic upgrade/check。不声称真实手机/浏览器/模型/解析或网络锁行为通过。
+
+Docker Desktop Linux 引擎不可用（命名管道不存在），未能执行 PostgreSQL/隔离 HTTP 全套。未修改真实数据库/WAHA 部署/会话/授权/附件/模型/发送。当前源码需要 0010；此前记录的部署仍为 0009。四种真实格式预览、B 真实处理器、C 消费与 E 独立验收仍待完成。本开发批次未 commit/push。
+
+## PR #16 与媒体分支兼容同步 — 2026-10-10
+
+PR #16 已合并到 main（`d6b298f`），将最新 main 同步到 `Andy_WAHA_media_ingestion`，保留全部媒体实现。三处重叠文件同时保留聊天分页与媒体的完整 CSS 规则，以及两边的中英文进度记录。真实工作台 DOM 测试增加 WahaMedia/waha-media-api 的模块编译，否则新增分页测试无法加载启用媒体的工作台。本次同步没有修改后端、迁移、生成契约或模型行为；PR #18 仍未合并。
+
+独立隔离兼容验证：前端 **56 项通过**，TypeScript、生产构建、生成 API 漂移及格式检查通过。Windows 检出产生的 CRLF 统一为仓库 LF 后进行格式检查，换行规范化没有改变功能内容。媒体后端 **35 项通过 / 1 项 PostgreSQL 专用测试跳过**（SQLite），适用后端 Ruff/format、契约导出与双语 baseline 通过（66 篇 Markdown、377 条本地链接）。Docker Desktop Linux 引擎不可用，本轮不声称完成新的 PostgreSQL/HTTP 或真实手机/浏览器验收。没有操作真实账号、二维码、聊天、附件、模型或部署。
+
+## A 附件读取 / B 协议交付 — 2026-10-10
+
+Andy_WAHA_media_ingestion 从 56e482e 建立，保留之前未提交的运行恢复文档。用户明确确认 B 尚无真实适配器，先完成 A 管道/协议。实现权限范围内图片/音频/PDF/TXT 的明确下载同意、私有受限文件/哈希、受保护预览/下载、附件版本、持久阶段/租约/重试/取消、不确定模型结果只读核对、刷新恢复任务及绑定附件/上下文/确切结果任务的来源核对。来源/权限变化抑制结果和缓存读取，完整缓存复用、损坏缓存仅在明确同意下重新获取。真实 OCR/ASR/解析/GenAI 由 B 提供，A 仅交付服务端工厂接口和严格片段/建议结构，不授予业务权限；B 未设置时明确失败，无假 AI 成功。新增 0009、源生成契约/类型、可选 Compose/非 root 私有共享卷及双语交接/ADR 0006。
+
+最终自动证据：**385 项 PG 配置测试通过**，含三条迁移路径及双媒体 worker 单次发布；B 部分夹具仍为 SQLite，不当作锁证据。**15 个实际隔离 HTTP/API/worker/评估检查点**（四种媒体传输/预览及 B 未配置处理）、评估 **7/7**、Alembic 检查和专用清理通过。合成音频/PDF 仅证明传输/签名门槛，不证明解码/解析。最终 SQLite 媒体模块 **35 通过/1 项 PG 专用跳过**。前端 **48 通过**，契约漂移/格式/TypeScript/生产构建、后端 Ruff/格式、导出、基线/空白/私有值扫描通过。初期夹具导入/状态/头部断言已修正，再跑最终套件通过。浏览器工具两次无法启动 Node runtime，不声称页面视觉/真实格式自动验收完成。
+
+自有账号本地准备：原数据库升级 0009/check 通过，前后 enabled/control_version/授权聊天 ID 完全相同。API/worker 用 --no-deps 重建、媒体启用/B 工厂未设置，保留原 provider/会话/绑定/数据库/监控。新卷初始需 appuser 权限（0700），已纠正并验证实际非 root 写入/移除，镜像也补初始化供新安装。部署媒体模块哈希与最终源码一致。工作台/登录/capabilities 都 200，enabled=true、processor_configured=false；provider WORKING、pipeline_ready=true、授权版本 9、一个授权聊天，**真实媒体任务/文件为零**。原 provider 全局下载仍关闭。没有读取真实文件/聊天/二维码、发送、provision、确认故障或模型调用。真实图片/音频/PDF/TXT、B 真实模型及 E 独立评审仍待完成；未 commit/push。
+
+## 原本地 WAHA 运行恢复 — 2026-10-10
+
+后续页面过期排查：provider 仍为 WORKING，connected/pipeline_ready 采样新鲜；直接 ingress 的 setup 和最近操作为 200/succeeded，用户后续操作后的 control_version 为 9。5173 前端监听已停止，浏览器保留旧页面却无法刷新状态，授权视图也标记待重载。已把 Vite 以隐藏后台进程在 apps/web 启动，代理到 18702。启动命令结束后，localhost:5173 的页面/登录/setup/最近操作均 200；setup 为 WORKING、sample_stale=false、available=true、无活动操作。用户页面需刷新/重新登录/重新载入已有授权；不得盲目清除待核对原请求。本次没有应用源码或真实授权修改。
+
+按用户要求修复原安装：Docker 重启/恢复时五个 WAHA 服务统一记录退出 255，restart=no 使其保持停止，原数据库则按 unless-stopped 恢复。provider FAILED 采样早于容器退出窗口；安全日志分析发现反复 WEBJS null.on 初始化异常，但未确定最初触发原因。启动相同容器、保留会话/绑定/数据库后，STARTING 转为 WORKING，无需二维码、升级镜像、替换回调或修改授权。仅将原本机这五个容器改为 unless-stopped，私有 local-data/waha-a02/restart-policy.override.yaml 用于以后 Compose 重建；共享默认配置不变，本安装重建时需把该私有覆盖加在 waha.compose.yaml 和 waha-ingress.compose.yaml 后。明确 stop 仍由操作者控制。
+
+运行证据：provider WORKING/WEBJS、connected、enabled/live_connected/pipeline_ready 为 true、四项健康、待处理/处理中/失败任务为零，**7 项不读取内容的 HTTP 检查通过**。授权版本仍为 7、授权聊天数仍为 1。保留原 DB/会话卷，未读取原文件/聊天/二维码、发送、provision、确认故障或修复历史数据库。26 项历史故障待核对，恢复健康不证明漏消息已恢复。原前端已在 5173 启动并指向 ingress18702；WAHA 用 localhost:5173，独立工单演示用 127.0.0.1:18080，分开主机名作用域的浏览器 cookie。无实现代码/迁移/依赖/共享重启默认变更，仅文档及配置检查；未 commit/push。
 
 ## PR #18 llm 骨架评审跟进 — 2026-10-10
 

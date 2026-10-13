@@ -281,3 +281,166 @@ test("a successful HTTP response with the wrong operation state remains uncertai
   assert.ok(api.attempt());
   assert.equal(storage.values.size, 1);
 });
+
+test("a denied global sessionStorage getter returns a protected read-only adapter with zero POSTs", async () => {
+  const { data, fetcher } = fixture();
+  const previous = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "sessionStorage",
+  );
+  Object.defineProperty(globalThis, "sessionStorage", {
+    configurable: true,
+    get() {
+      throw new DOMException("Synthetic getter refused", "SecurityError");
+    },
+  });
+  try {
+    const api = approvalsApi("csrf", accountId, fetcher);
+    assert.match(api.storageError(), /不能提交/);
+    assert.equal((await api.load("a1", signal())).action.id, "a1");
+    await assert.rejects(api.submit(data.actions[0], "approve", 4), {
+      code: "ATTEMPT_STORAGE_UNAVAILABLE",
+    });
+    assert.equal(data.writes.length, 0);
+  } finally {
+    if (previous) Object.defineProperty(globalThis, "sessionStorage", previous);
+    else delete globalThis.sessionStorage;
+  }
+});
+
+for (const method of ["getItem", "setItem"]) {
+  test(`journal ${method} rejection leaves reads usable and blocks dispatch rather than using memory-only state`, async () => {
+    const { data, fetcher } = fixture();
+    const storage = memoryStorage();
+    storage[method] = () => {
+      throw new DOMException("Synthetic storage policy", "SecurityError");
+    };
+    const api = approvalsApi("csrf", accountId, fetcher, storage);
+    assert.equal((await api.load("a1", signal())).action.id, "a1");
+    await assert.rejects(api.submit(data.actions[0], "approve", 4), {
+      code: "ATTEMPT_STORAGE_UNAVAILABLE",
+    });
+    assert.ok(api.storageError());
+    await assert.rejects(api.submit(data.actions[0], "approve", 4), {
+      code: "ATTEMPT_STORAGE_UNAVAILABLE",
+    });
+    assert.equal(data.writes.length, 0);
+  });
+}
+
+for (const method of ["getItem", "removeItem"]) {
+  test(`cleanup ${method} rejection retains a verified original intent, blocks fresh writes, and recovers only with its original key`, async () => {
+    const { data, fetcher } = fixture();
+    const storage = memoryStorage();
+    const originalMethod = storage[method];
+    let refused = false;
+    storage[method] = (...args) => {
+      if (refused)
+        throw new DOMException("Synthetic cleanup refusal", "SecurityError");
+      return originalMethod(...args);
+    };
+    const transport = async (url, options) => {
+      const response = await fetcher(url, options);
+      if (options.method === "POST") refused = true;
+      return response;
+    };
+    const api = approvalsApi("csrf", accountId, transport, storage);
+    const result = await api.submit(data.actions[0], "approve", 4);
+    assert.equal(result.state, "approved");
+    assert.match(api.storageError(), /无法清理/);
+    assert.ok(api.attempt());
+    const record = [...storage.values.values()][0];
+    assert.equal((await api.load("a1", signal())).action.state, "approved");
+    await assert.rejects(api.submit(result, "cancel", 4, "cancel"), {
+      code: "UNRESOLVED_ATTEMPT",
+    });
+    assert.equal([...storage.values.values()][0], record);
+    assert.equal(data.writes.length, 1);
+    refused = false;
+    const restored = approvalsApi("new-csrf", accountId, fetcher, storage);
+    await restored.retryOriginal();
+    assert.equal(
+      data.writes[1].options.headers["Idempotency-Key"],
+      data.writes[0].options.headers["Idempotency-Key"],
+    );
+    assert.equal(data.writes[1].options.body, data.writes[0].options.body);
+    assert.equal(storage.values.size, 0);
+  });
+}
+
+test("storage revocation after initialization blocks submission before dispatch and remains visibly blocked", async () => {
+  const { data, fetcher } = fixture();
+  const storage = memoryStorage();
+  const api = approvalsApi("csrf", accountId, fetcher, storage);
+  storage.getItem = () => {
+    throw new DOMException("Synthetic late policy", "SecurityError");
+  };
+  await assert.rejects(api.submit(data.actions[0], "approve", 4), {
+    code: "ATTEMPT_STORAGE_UNAVAILABLE",
+  });
+  assert.ok(api.storageError());
+  assert.equal(data.writes.length, 0);
+});
+
+test("completion from an old adapter never removes or overwrites a different saved intent", async () => {
+  const { data, fetcher } = fixture();
+  const storage = memoryStorage();
+  const api = approvalsApi(
+    "csrf",
+    accountId,
+    async (url, options) => {
+      const response = await fetcher(url, options);
+      if (options.method === "POST") {
+        const key = [...storage.values.keys()][0];
+        const newer = {
+          ...JSON.parse(storage.getItem(key)),
+          key: crypto.randomUUID(),
+          actionId: "newer-owned-action",
+        };
+        storage.setItem(key, JSON.stringify(newer));
+      }
+      return response;
+    },
+    storage,
+  );
+  assert.equal(
+    (await api.submit(data.actions[0], "approve", 4)).state,
+    "approved",
+  );
+  assert.equal(
+    JSON.parse([...storage.values.values()][0]).actionId,
+    "newer-owned-action",
+  );
+  assert.match(api.storageError(), /另一页面/);
+});
+
+test("a journal read refusal cannot erase an existing unknown request; restoring access recovers its exact key", async () => {
+  const { data, fetcher } = fixture();
+  const storage = memoryStorage();
+  const original = approvalsApi("csrf", accountId, fetcher, storage);
+  data.drop = true;
+  await assert.rejects(original.submit(data.actions[0], "approve", 4), {
+    code: "RESULT_UNKNOWN",
+  });
+  const record = [...storage.values.values()][0];
+  const read = storage.getItem;
+  storage.getItem = () => {
+    throw new DOMException("Synthetic read denial", "SecurityError");
+  };
+  const denied = approvalsApi("csrf", accountId, fetcher, storage);
+  assert.ok(denied.storageError());
+  await denied.load("a1", signal());
+  await assert.rejects(denied.submit(data.actions[0], "approve", 4), {
+    code: "ATTEMPT_STORAGE_UNAVAILABLE",
+  });
+  assert.equal([...storage.values.values()][0], record);
+  assert.equal(data.writes.length, 1);
+  storage.getItem = read;
+  const restored = approvalsApi("csrf", accountId, fetcher, storage);
+  await restored.retryOriginal();
+  assert.equal(
+    data.writes[0].options.headers["Idempotency-Key"],
+    data.writes[1].options.headers["Idempotency-Key"],
+  );
+  assert.equal(storage.values.size, 0);
+});

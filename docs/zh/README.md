@@ -18,6 +18,7 @@
 | [A 的职责](role-a-responsibilities.md) | 消息接入、鉴权、可靠任务、监控和角色交接 |
 | [WAHA 合并适配验收](role-a-integration-acceptance.md) | 统一前后端、升级迁移及团队整批验收步骤 |
 | [WAHA 消息同步验收](role-a-message-sync-acceptance.md) | 历史/时间线/缺口/媒体元数据与整批验收 |
+| [附件读取与 A/B 对接](role-a-media-ingestion.md) | 明确下载/预览、持久任务、来源核对与 B 处理器接口 |
 | [WAHA 当前实现与交接](role-a-waha-handoff.md) | 当前能力矩阵、限制、组员对接与剩余计划 |
 | [团队本地 WAHA 联调](role-a-team-local-development.md) | 自己账号的启动、自助验收及 B/C/D/E 具体开发框架 |
 | [WAHA 接入后端验收](role-a-setup-api-acceptance.md) | 本地连接/扫码/聊天控制接口、异步意图和 D/E 交接 |

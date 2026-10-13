@@ -116,17 +116,43 @@ export function approvalsApi(
   csrf: string,
   accountId: string,
   fetcher: typeof fetch = fetch,
-  storage: Storage | null = typeof sessionStorage === "undefined"
-    ? null
-    : sessionStorage,
+  providedStorage?: Storage | null,
 ) {
   const base = apiBase();
   const request = workspaceApi(csrf, fetcher);
   const storageKey = `gigmate-approval-attempt:${base}:${accountId}`;
   let attempt: Attempt | null = null;
+  let storage: Storage | null = null;
   let storageError = "";
+  let storageErrorCode = "UNRESOLVED_ATTEMPT";
+  const failStorage = (message: string) => {
+    storageError = message;
+    storageErrorCode = "ATTEMPT_STORAGE_UNAVAILABLE";
+  };
+  // Reading the global property itself may throw SecurityError. Resolve it
+  // inside the guard, never in a default parameter evaluated before the body.
   try {
-    const raw = storage?.getItem(storageKey);
+    storage =
+      providedStorage === undefined
+        ? (globalThis.sessionStorage ?? null)
+        : providedStorage;
+    if (!storage) throw new Error();
+  } catch {
+    failStorage(
+      "浏览器不允许保存原请求记录；可以查看审批，但当前不能提交操作。请恢复存储后重新打开页面，不能推断旧请求未提交。",
+    );
+  }
+  let raw: string | null = null;
+  if (!storageError) {
+    try {
+      raw = storage!.getItem(storageKey);
+    } catch {
+      failStorage(
+        "原请求记录无法读取；可以查看审批，但当前不能提交操作。请恢复存储后重新核对旧请求。",
+      );
+    }
+  }
+  try {
     if (raw) {
       const value: unknown = JSON.parse(raw);
       if (!validAttempt(value)) throw new Error();
@@ -142,17 +168,32 @@ export function approvalsApi(
       storage.setItem(storageKey, JSON.stringify(value));
       attempt = value;
     } catch {
-      throw new WorkspaceError(
-        "ATTEMPT_STORAGE_UNAVAILABLE",
-        "无法保存原请求记录，请检查浏览器存储；操作尚未提交。",
+      failStorage(
+        "无法保存原请求记录；本次操作尚未提交，当前不能提交新操作。请恢复存储后重新打开审批页。",
       );
+      throw new WorkspaceError("ATTEMPT_STORAGE_UNAVAILABLE", storageError);
     }
   }
   function clear() {
-    // A stale adapter must not erase a newer intent written by another mount.
-    if (storage?.getItem(storageKey) === JSON.stringify(attempt))
-      storage.removeItem(storageKey);
-    attempt = null;
+    try {
+      if (!storage) throw new Error();
+      // A stale adapter must not erase a newer intent written by another mount.
+      const raw = storage.getItem(storageKey);
+      if (raw !== null && raw !== JSON.stringify(attempt)) {
+        failStorage(
+          "原请求记录已被另一页面更新，本页不会删除它。操作响应已返回，请重新打开审批页核对。",
+        );
+        return;
+      }
+      if (raw !== null) storage.removeItem(storageKey);
+      attempt = null;
+    } catch {
+      // The response was verified, but journal cleanup is not proof that the
+      // old intent never committed. Retain it and block fresh submissions.
+      failStorage(
+        "操作响应已返回，但原请求记录无法清理；记录仍保留，当前不能提交新操作。请恢复存储后重新打开审批页核对。",
+      );
+    }
   }
   async function dispatch(original: Attempt, retry = false) {
     let response: Response;
@@ -362,8 +403,8 @@ export function approvalsApi(
     ) {
       if (attempt || storageError)
         throw new WorkspaceError(
-          "UNRESOLVED_ATTEMPT",
-          "先核对原请求，再提交新操作。",
+          attempt ? "UNRESOLVED_ATTEMPT" : storageErrorCode,
+          storageError || "先核对原请求，再提交新操作。",
         );
       const snapshot = {
         expected_version: action.bound_work_order_version,
@@ -397,10 +438,10 @@ export function approvalsApi(
           );
       } catch (error) {
         if (error instanceof WorkspaceError) throw error;
-        throw new WorkspaceError(
-          "ATTEMPT_STORAGE_UNAVAILABLE",
-          "无法核对浏览器原请求记录，操作尚未提交。",
+        failStorage(
+          "无法核对浏览器原请求记录；本次操作尚未提交，当前不能提交新操作。请恢复存储后重新打开页面。",
         );
+        throw new WorkspaceError("ATTEMPT_STORAGE_UNAVAILABLE", storageError);
       }
       persist(original);
       return dispatch(original);
