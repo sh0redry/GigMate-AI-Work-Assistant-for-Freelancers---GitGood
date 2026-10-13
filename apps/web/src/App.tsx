@@ -91,29 +91,37 @@ export function App() {
           <div className="row">
             <strong>
               当前：
-              {environment === "real"
-                ? "真实连接（本机开发）"
-                : "隔离测试（虚构数据）"}
+              {config.syntheticProvider
+                ? "合成连接自检（虚构数据）"
+                : environment === "real"
+                  ? "真实连接（本机开发）"
+                  : "隔离测试（虚构数据）"}
             </strong>
-            <a
-              className="environment-switch"
-              href={`/environments/${environment === "real" ? "isolated" : "real"}/`}
-              aria-disabled={busy}
-              onClick={(event) => {
-                if (busy) event.preventDefault();
-              }}
-            >
-              切换到{environment === "real" ? "隔离测试" : "真实连接"}
-            </a>
+            {!config.syntheticProvider && (
+              <a
+                className="environment-switch"
+                href={`/environments/${environment === "real" ? "isolated" : "real"}/`}
+                aria-disabled={busy}
+                onClick={(event) => {
+                  if (busy) event.preventDefault();
+                }}
+              >
+                切换到{environment === "real" ? "隔离测试" : "真实连接"}
+              </a>
+            )}
           </div>
           <p>
-            {environment === "real"
-              ? "连接你自己的 WAHA 和本机业务数据库，授权与操作会影响该环境的真实记录。仍是开发环境，尚未正式上线。"
-              : "连接独立测试数据库，只含虚构工单，用来练习核对变更、日历和待办；不接收真实 WhatsApp 聊天。"}
+            {config.syntheticProvider
+              ? "这是自动自检工具的临时数据库和模拟 WhatsApp 服务，没有真实聊天；二维码是不可扫码的图片样例。这里只提供合成连接流程，不切换到你自己的后端。"
+              : environment === "real"
+                ? "连接你自己的 WAHA 和本机业务数据库，授权与操作会影响该环境的真实记录。仍是开发环境，尚未正式上线。"
+                : "连接独立测试数据库，只含虚构工单，用来练习核对变更、日历和待办；不接收真实 WhatsApp 聊天。"}
           </p>
           <small>
             后端地址：{config.targets[environment]}
-            。切换后重新登录；两边的数据、登录凭据和待核对请求分别保留，不搬运数据。操作处理中暂不可切换。
+            {config.syntheticProvider
+              ? "。自检结束后临时资源会被清理。"
+              : "。切换后重新登录；两边的数据、登录凭据和待核对请求分别保留，不搬运数据。操作处理中暂不可切换。"}
           </small>
         </section>
       )}
@@ -174,9 +182,11 @@ export function App() {
                 密码：<code>{config.publicTestAccount.password}</code>
               </p>
               <small>
-                {environment === "isolated"
-                  ? "用于隔离测试数据库。若维护者改过密码，以实际配置为准。"
-                  : "真实连接环境也可能使用此默认开发账号；如果你改过密码，请用自己的配置。它不是 WhatsApp 密码，也不是正式上线账号。"}
+                {config.syntheticProvider
+                  ? "仅用于自动自检的临时数据库；不连接你的 WhatsApp 账号。"
+                  : environment === "isolated"
+                    ? "用于隔离测试数据库。若维护者改过密码，以实际配置为准。"
+                    : "真实连接环境也可能使用此默认开发账号；如果你改过密码，请用自己的配置。它不是 WhatsApp 密码，也不是正式上线账号。"}
               </small>
             </div>
           )}

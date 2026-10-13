@@ -8,6 +8,7 @@ import { createRequire } from "node:module";
 import ts from "typescript";
 import { JSDOM } from "jsdom";
 import { act, createElement } from "react";
+import { developmentEnvironments } from "./vite.config.ts";
 const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost/" });
 globalThis.window = dom.window;
 globalThis.document = dom.window.document;
@@ -212,6 +213,45 @@ function developmentConfig() {
     },
   };
 }
+test("current live startup configuration shows real labels, connector navigation and bound requests", async () => {
+  globalThis.__GIGMATE_ENVIRONMENTS__ = developmentEnvironments({
+    GIGMATE_REAL_API_URL: "http://127.0.0.1:18712",
+    GIGMATE_DEFAULT_ENV: "real",
+  });
+  const calls = fixture();
+  await mount();
+  assert.match(document.body.textContent, /真实连接（本机开发）/);
+  assert.match(document.body.textContent, /127.0.0.1:18712/);
+  await login();
+  await act(async () => button("WhatsApp 连接").click());
+  assert.ok(calls.some((call) => call.url.includes("/connectors")));
+  assert.ok(
+    calls.every((call) => call.url.startsWith("/environments/real/api/v1/")),
+  );
+});
+test("synthetic connector self-check keeps connector navigation but labels fictional data and offers no real-backend switch", async () => {
+  globalThis.__GIGMATE_ENVIRONMENTS__ = developmentEnvironments({
+    GIGMATE_REAL_API_URL: "http://127.0.0.1:18802",
+    GIGMATE_ISOLATED_API_URL: "http://127.0.0.1:18804",
+    GIGMATE_DEFAULT_ENV: "real",
+    GIGMATE_SYNTHETIC_PROVIDER: "1",
+  });
+  // Even a manually entered isolated URL cannot select a maintainer backend.
+  dom.reconfigure({ url: "http://localhost/environments/isolated/" });
+  const calls = fixture();
+  await mount();
+  assert.match(document.body.textContent, /合成连接自检（虚构数据）/);
+  assert.match(document.body.textContent, /不可扫码/);
+  assert.match(document.body.textContent, /127.0.0.1:18802/);
+  assert.doesNotMatch(document.body.textContent, /真实连接（本机开发）/);
+  assert.equal(document.querySelector(".environment-switch"), null);
+  await login();
+  await act(async () => button("WhatsApp 连接").click());
+  assert.ok(calls.some((call) => call.url.includes("/connectors")));
+  assert.ok(
+    calls.every((call) => call.url.startsWith("/environments/real/api/v1/")),
+  );
+});
 test("development login names the isolated environment, shows public test credentials and routes all business reads there", async () => {
   developmentConfig();
   const calls = fixture();
