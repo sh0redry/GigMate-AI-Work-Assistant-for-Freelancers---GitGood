@@ -1,5 +1,6 @@
 export type EnvironmentId = "real" | "isolated";
 export type EnvironmentConfig = {
+  syntheticProvider?: boolean;
   defaultEnvironment: EnvironmentId;
   publicTestAccount: { username: string; password: string };
   targets: Record<EnvironmentId, string>;
@@ -14,6 +15,8 @@ export function environmentConfig(): EnvironmentConfig | null {
 export function currentEnvironment(): EnvironmentId | null {
   const config = environmentConfig();
   if (!config) return null;
+  // The disposable connector check has one synthetic backend and no switch target.
+  if (config.syntheticProvider) return "real";
   const path = typeof window === "undefined" ? "" : window.location.pathname;
   if (path.startsWith("/environments/real/")) return "real";
   if (path.startsWith("/environments/isolated/")) return "isolated";

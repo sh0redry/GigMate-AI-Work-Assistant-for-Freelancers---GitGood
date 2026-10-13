@@ -55,6 +55,8 @@ npm run dev
 
 The public hint applies to default development installations, not WAHA administration or phone credentials. Changed installation passwords take precedence. Production provisioning remains pending. Published `npm run build` output uses its deployment's `/api` and excludes local switching/development-password hints; these are Vite development features.
 
+Developer self-check exception: `python scripts/check_waha_setup.py --run --frontend` creates a disposable synthetic provider and database. Its **合成连接自检（虚构数据）** page has connection controls for testing, a non-scannable fixture QR, and no environment switch. The runner supplies `GIGMATE_SYNTHETIC_PROVIDER=1`, an explicit 18802 connector target and `GIGMATE_DEFAULT_ENV=real`; Vite rejects this mode without an explicit target/default and disables the second proxy. The route name `real` selects the connector workflow, while the label states that all resources are fictional. This is not the ordinary isolated business workspace and does not connect a real phone. Do not set this flag for your actual WAHA installation.
+
 ## 3 Connection and chat consent
 
 This page is available in **真实连接（本机开发）** only. If you are in isolated testing, use the top environment switch and sign in again first.
