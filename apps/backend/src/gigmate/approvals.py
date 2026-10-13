@@ -388,7 +388,10 @@ def reissue(db, account, action_id, command, key, request_id):
         raise BusinessError(
             409, "APPROVAL_STALE", "The time no longer conflicts; this question is outdated"
         )
-    trigger = f"{row.trigger.split('@', 1)[0]}@{conversation.context_version}"
+    # Each round gets its own durable identity: the action it replaces. A row is
+    # reissued at most once (afterwards it is no longer the newest), so repeated
+    # rounds in the same context never collide on the unique trigger.
+    trigger = f"{row.trigger.split('@', 1)[0]}@{conversation.context_version}~{row.id}"
     data = new_draft(
         db, account.id, order, conversation, trigger, row.data["body"], row.data["sources"]
     )

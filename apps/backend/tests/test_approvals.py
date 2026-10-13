@@ -337,6 +337,46 @@ def test_expired_question_can_be_asked_again_after_a_new_message(signed_in):
     assert again.status_code == 201, again.text
 
 
+def test_repeated_expiry_rounds_can_each_be_reissued(signed_in):
+    """Expire → reissue → expire again (no new message) → reissue again (PR #22 review)."""
+    client, factory, _, headers = signed_in
+    action = conflict_draft(client, factory, headers)
+    context = action["bound_context_version"]
+    expire(factory, action)
+    first = reissue(client, headers, action, context)
+    assert first.status_code == 201, first.text
+    second_round = first.json()["data"]
+    expire(factory, second_round)
+    assert detail(client, second_round)["reissuable"] is True
+    key = str(uuid4())
+
+    def again(body):
+        return client.post(
+            f"/api/v1/actions/{second_round['id']}/reissue",
+            json=body,
+            headers={**headers, "Idempotency-Key": key},
+        )
+
+    second = again({"expected_context_version": context})
+    assert second.status_code == 201, second.text
+    third_round = second.json()["data"]
+    assert third_round["id"] != second_round["id"]
+    assert third_round["body"] == action["body"]
+    # Same key, same request: the same result, no extra draft.
+    replay = again({"expected_context_version": context})
+    assert replay.status_code == 201
+    assert replay.json()["data"]["id"] == third_round["id"]
+    # Same key reused for a different request is refused.
+    changed = again({"expected_context_version": context + 1})
+    assert changed.status_code == 409
+    assert changed.json()["error"]["code"] == "IDEMPOTENCY_CONFLICT"
+    # Older rounds are no longer the newest question and cannot come back.
+    assert reissue(client, headers, second_round, context).status_code == 409
+    assert reissue(client, headers, action, context).status_code == 409
+    assert [item["id"] for item in pending(client)] == [third_round["id"]]
+    assert post(client, headers, third_round, "approve").status_code == 202
+
+
 def test_expired_question_does_not_return_after_its_source_was_edited(signed_in):
     client, factory, _, headers = signed_in
     action = conflict_draft(client, factory, headers)
