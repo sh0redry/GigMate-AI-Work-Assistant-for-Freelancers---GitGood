@@ -476,3 +476,39 @@ def test_reissue_asks_only_what_is_still_open(signed_in):
     [asked] = drafts(client, order["id"])
     assert asked["open_items"] == ["missing_schedule"]
     assert asked["body"] == "你好，想跟你确认一下：哪天几点方便？"
+
+
+def expire_draft(factory, draft):
+    from gigmate.approvals import snapshot_hash
+
+    past = (datetime.now(UTC) - timedelta(minutes=1)).isoformat().replace("+00:00", "Z")
+    with factory.begin() as db:
+        row = db.get(ActionRow, draft["id"])
+        data = {**row.data, "expires_at": past}
+        data["snapshot_hash"] = snapshot_hash(data)
+        row.data = data
+
+
+def test_open_item_question_can_be_reissued_in_repeated_rounds(signed_in):
+    client, factory, _, headers = signed_in
+    day = (datetime.now(UTC) + timedelta(days=5)).date().isoformat()
+    order = create(
+        client,
+        headers,
+        schedule={"kind": "date_only", "date": day, "timezone": "Asia/Hong_Kong"},
+    ).json()["data"]
+    [draft] = drafts(client, order["id"])
+    context = draft["bound_context_version"]
+    for _ in range(2):
+        expire_draft(factory, draft)
+        response = client.post(
+            f"/api/v1/actions/{draft['id']}/reissue",
+            json={"expected_context_version": context},
+            headers={**headers, "Idempotency-Key": str(uuid4())},
+        )
+        assert response.status_code == 201, response.text
+        draft = response.json()["data"]
+        assert draft["open_items"] == ["verify_schedule", "missing_time", "missing_address"]
+    with factory() as db:
+        # Longest trigger shape still fits the 128-character column.
+        assert max(len(row.trigger) for row in db.scalars(select(ActionRow))) <= 128

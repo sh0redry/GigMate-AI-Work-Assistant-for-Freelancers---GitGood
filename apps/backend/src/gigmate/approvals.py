@@ -215,7 +215,23 @@ def latest_message_source(db, account_id, conversation_id):
     return [{"message_id": row.id, "message_revision": row.revision}]
 
 
-def ask_open_items(db, account_id, order, conversation, suffix=""):
+def open_items_trigger(order, conversation, items, round_of=None):
+    """Unique per order version, or per reissue round (the action being replaced).
+
+    Kept under the 128-character trigger column: at most about 100 characters.
+    """
+    owner, tag = (
+        (round_of, f"r{conversation.context_version}")
+        if round_of
+        else (
+            order.id,
+            f"v{order.data['version']}",
+        )
+    )
+    return f"open_items:{owner}:{tag}:{'+'.join(items)}"
+
+
+def ask_open_items(db, account_id, order, conversation, round_of=None):
     """Keep one clarification draft per pending order that asks only for open items.
 
     Called after the merchant creates or confirms something on the order (and
@@ -228,7 +244,7 @@ def ask_open_items(db, account_id, order, conversation, suffix=""):
     items, questions = open_items(order.data)
     if not items:
         return None
-    trigger = f"open_items:{order.id}:v{order.data['version']}:{'+'.join(items)}{suffix}"
+    trigger = open_items_trigger(order, conversation, items, round_of)
     if db.scalar(select(ActionRow.id).where(ActionRow.trigger == trigger)):
         return None
     sources = []
@@ -308,7 +324,7 @@ def view(row, reissuable=False):
     return {
         **data,
         "trigger": kind,
-        "open_items": parts[2].split("@", 1)[0].split("+") if kind == "open_items" else [],
+        "open_items": parts[2].split("+") if kind == "open_items" else [],
         "closed_reason": reason,
         "closed_note": row.note,
         "reissuable": reissuable and (data["state"], reason) in REISSUABLE,
@@ -473,13 +489,14 @@ def reissue(db, account, action_id, command, key, request_id):
         )
     if row.trigger.startswith("open_items:"):
         # Ask only what is still open now; an answered item is never asked again.
-        data = ask_open_items(
-            db, account.id, order, conversation, suffix=f"@{conversation.context_version}"
-        )
+        data = ask_open_items(db, account.id, order, conversation, round_of=row.id)
         if data is None:
             raise BusinessError(409, "APPROVAL_STALE", "Nothing is left to ask")
     else:
-        trigger = f"{row.trigger.split('@', 1)[0]}@{conversation.context_version}"
+        # Each round gets its own durable identity: the action it replaces. A row
+        # is reissued at most once (afterwards it is no longer the newest), so
+        # repeated rounds in the same context never collide on the unique trigger.
+        trigger = f"{row.trigger.split('@', 1)[0]}@{conversation.context_version}~{row.id}"
         data = new_draft(
             db, account.id, order, conversation, trigger, row.data["body"], row.data["sources"]
         )
