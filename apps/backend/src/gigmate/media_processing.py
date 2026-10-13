@@ -3,7 +3,7 @@
 import importlib
 import os
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Callable, Protocol
 
 from gigmate.contracts import WahaMediaResult
 
@@ -12,8 +12,33 @@ class ProcessingUnavailable(Exception):
     """No request was submitted. Operator/B configuration is required."""
 
 
+PDF_UNAVAILABLE_CODES = frozenset(
+    {
+        "MEDIA_PDF_INPUT_LIMIT",
+        "MEDIA_PDF_OUTPUT_LIMIT",
+        "MEDIA_PDF_TIMEOUT",
+        "MEDIA_PDF_MEMORY_LIMIT",
+        "MEDIA_PDF_LIMIT_UNAVAILABLE",
+        "MEDIA_PDF_LIMIT_CONFIG_INVALID",
+        "MEDIA_PDF_CHILD_FAILED",
+        "MEDIA_PDF_CHILD_TERMINATED",
+        "MEDIA_PDF_PROTOCOL_INVALID",
+        "MEDIA_PDF_PARSER_LIBRARY_MISSING",
+        "MEDIA_PDF_NOT_PARSEABLE",
+        "MEDIA_PDF_NO_TEXT_LAYER",
+        "MEDIA_PDF_PAGE_LIMIT",
+        "MEDIA_PDF_TEXT_LIMIT",
+        "MEDIA_PDF_SEGMENT_LIMIT",
+        "MEDIA_PDF_BUSY",
+    }
+)
+
+
 class ProcessingUncertain(Exception):
     """Submission may have occurred; reconcile rather than automatic model retry."""
+
+
+UNAVAILABLE_CODES = PDF_UNAVAILABLE_CODES | {"MEDIA_PROCESSING_PERMISSION_CHANGED"}
 
 
 @dataclass(frozen=True)
@@ -36,6 +61,7 @@ class MediaInput:
     timezone: str | None = None
     timezone_source: str = "unknown"
     source_observed_at: str | None = None
+    before_submit: Callable[[], None] | None = field(default=None, repr=False, compare=False)
 
 
 class MediaProcessor(Protocol):

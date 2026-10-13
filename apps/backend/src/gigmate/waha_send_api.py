@@ -25,7 +25,7 @@ from gigmate.contracts import (
     WahaSendUnknownReviewCommand,
     WahaSendUploadView,
 )
-from gigmate.db import WahaSendAction, WahaSendPolicy
+from gigmate.db import WahaSendAction, WahaSendPermission, WahaSendPolicy
 
 
 def install(app, database, setup_actor, detail, page, io_actor):
@@ -146,6 +146,7 @@ def install(app, database, setup_actor, detail, page, io_actor):
         sends.enabled()
         # Authenticate and resolve ownership before accepting any private bytes.
         sends.upload_permission(db, row)
+        authority = (row.control_version, db.get(WahaSendPermission, row.id).version)
         try:
             filename = unquote(filename, errors="strict")
         except UnicodeDecodeError:
@@ -162,6 +163,9 @@ def install(app, database, setup_actor, detail, page, io_actor):
         db.expire_all()
         account = setup_actor(request, db)
         row = row_for(db, account, connection_id, lock=True)
+        current_permission = db.get(WahaSendPermission, row.id)
+        if not current_permission or authority != (row.control_version, current_permission.version):
+            sends.fail("SEND_UPLOAD_AUTHORIZATION_CHANGED", 403)
         return detail(request, sends.upload(db, row, bytes(content), mimetype, filename))
 
     @app.get(base + "/uploads/{upload_id}/content", response_class=Response)

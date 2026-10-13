@@ -250,6 +250,7 @@ class WahaMediaJob(Base):
     lease_token: Mapped[str | None] = mapped_column(String(36))
     retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error_code: Mapped[str | None] = mapped_column(String(64))
+    content_stop_reason: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     __table_args__ = (UniqueConstraint("connection_id", "request_key", name="uq_waha_media_key"),)

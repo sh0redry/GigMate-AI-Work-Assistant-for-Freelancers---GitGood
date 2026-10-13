@@ -5,6 +5,8 @@ services:
     environment:
       WAHA_MEDIA_ENABLED: ${WAHA_MEDIA_ENABLED:-false}
       WAHA_MEDIA_ROOT: /run/waha-media
+      GIGMATE_PDF_TIMEOUT_SECONDS: ${GIGMATE_PDF_TIMEOUT_SECONDS:-20}
+      GIGMATE_PDF_MEMORY_MIB: ${GIGMATE_PDF_MEMORY_MIB:-512}
       GIGMATE_MEDIA_PROCESSOR_FACTORY: ${GIGMATE_MEDIA_PROCESSOR_FACTORY:-}
     volumes:
       - waha-media-data:/run/waha-media
@@ -12,6 +14,8 @@ services:
     environment:
       WAHA_MEDIA_ENABLED: ${WAHA_MEDIA_ENABLED:-false}
       WAHA_MEDIA_ROOT: /run/waha-media
+      GIGMATE_PDF_TIMEOUT_SECONDS: ${GIGMATE_PDF_TIMEOUT_SECONDS:-20}
+      GIGMATE_PDF_MEMORY_MIB: ${GIGMATE_PDF_MEMORY_MIB:-512}
       GIGMATE_MEDIA_PROCESSOR_FACTORY: ${GIGMATE_MEDIA_PROCESSOR_FACTORY:-}
     volumes:
       - waha-media-data:/run/waha-media

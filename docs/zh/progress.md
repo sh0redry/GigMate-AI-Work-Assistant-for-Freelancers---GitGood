@@ -1,5 +1,56 @@
 # 已完成工作与验证记录
 
+## PR #23 兼容已合入的 #21 — 2026-10-13
+
+发送分支已合并 main `e066b0c`（#21 最终提交 `e7a2b8f`），保留双方代码、测试和进度历史，解决迁移测试及双语文档冲突。媒体处理接缝、PDF 隔离解析和不可清除的停止决定均保留；模型任务与发送 outbox 的身份/授权独立。B 真实模型仍关闭，C 动作桥接及真实发送验收仍待后续完成。
+
+新增 **0013_merge_media_send** 合并未改写的 0011/0012，形成唯一迁移 head。测试覆盖任一分支升级，以及回放记录、发送授权版本/取消标识、旧媒体停止原因的保留。运行新代码前升级 head/check；本次未迁移、启用用户数据库、会话或安装。
+
+修复独立复现的上传竞态：落文件和记录前，在账户/连接锁内重新核对归属、白名单及发送授权；收流还绑定原控制/授权版本，拒绝暂停后恢复和撤销发送后恢复的旧上传。五个失败回归验证零记录/零文件，正常上传保留。公开契约结构不变，已按源模型重新导出和检查。
+
+实际本地证据：Windows 后端全套 **607 通过、10 跳过**（9 项 PostgreSQL 依赖检查及 1 项不适用平台检查）；最后补充迁移保留断言前，发送/媒体停止/迁移重点回归 **79 通过、1 项 PostgreSQL 跳过**。前端 **63 通过**，类型/格式/TypeScript/build、适用 Ruff/格式、baseline（**69 篇 Markdown、410 个链接**）及隔离 SQLite 升级 0013/check 通过。SQLite 不证明 PostgreSQL 锁，新提交 CI 和独立复核仍需确认；保留已有 Starlette/httpx 警告。仅使用合成字节、假传输/模型和 DOM；无真实发送、媒体、模型、二维码、部署或私有配置操作。集成后 PR 目标改为 main，保持 Draft；用户未提交的诊断段落不进入 PR。
+
+## PR #21 新评审修复：持久化停止使用决定 — 2026-10-13
+
+通过四个合成场景独立复现新增 P2：取消或暂停/恢复后，立即核对成功或连续未知后成功，都会因核对清除唯一停止标记而重新公开结果。现在将首次停止原因单独持久化为 `content_stop_reason`，不依赖状态、临时错误或控制版本。后续核对保留停止决定，不重新调用 process、不公开原任务结果、不恢复核对记录。未知结果仍阻止新任务；确认有效结果后以取消状态解除占用，仅允许另行明确创建新意图。
+
+新增 **0012_waha_media_stop**，接在未改写的 0010 后，编号避开独立发送分支的 0011。新代码运行前需升级 head/check。迁移保留可见停止原因，并保守标记可能已被旧核对擦除决定的未知/核对任务；无法撤销旧实现已公开的结果，这类数据需操作人员复核。#21 合入后 #23 要兼容迁移祖先关系。公开契约结构不变，双语媒体说明及 API 文档同步记录限制。
+
+实际自动验证：Windows 后端全套 **548 通过、9 跳过**（8 项 PostgreSQL 依赖检查及 1 项不适用平台检查），包含迁移/回填/降级及原有媒体/PDF 回归；最后补充明确新意图断言后，四项新增回归再次通过。隔离 SQLite 升级 0012/check 无漂移，不能据此证明 PostgreSQL 锁。前端 **57 通过**，生成类型、格式、TypeScript/build、适用 Ruff/格式、契约导出及 baseline 通过。新提交的 CI 还需确认 PostgreSQL 和系统矩阵；保留已有 Starlette/httpx 警告。无真实模型/媒体/发送、二维码、部署或用户数据库/会话操作；发送分支及两处未提交文档段落未改动。PR 保持 Draft，等待独立复核与人工验收。
+
+## PR #21 PDF 资源隔离批次
+
+生产 PDF 解析已移到私有子进程，默认墙钟 20 秒、内存 512 MiB，限制输入/输出并每个 worker 同时一个解析。Windows 将限制绑定到挂起启动的实际底层解释器，不是 venv 启动器；Linux 使用硬内存/CPU 限制并绑定父进程生命周期。PID 握手确认后才传数据。不继承模型/接入/数据库环境，不落临时原文件，固定 UTF-8 并重验 IPC 输出。原生 macOS 明确拒绝，使用 Linux Docker 后端。这是资源隔离，不是文件系统/网络沙箱或恶意文件扫描。
+
+PDF 明确拒绝码在供应商调用前写入任务；worker 心跳独立于解析/模型等待。私有提交前回调在本地准备后重验授权/租约/来源，阻止解析期间取消后的模型调用。无需新结构/迁移。媒体 Compose 向 API/worker 提供可信限额，CI 增加 Linux/Windows/macOS 资源检查，其中 macOS 验证原生拒绝，不代表原生解析成功。
+
+实际 Windows 证据：超过 128 MiB 的真实分配被拒绝；超时终止并回收私有进程；崩溃、超量输出、错误协议失败；PID 不符不传数据；不继承密钥；Unicode IPC 和心跳连续通过。最终提交前回调加入前全套 **542 通过、9 跳过**（8 个 PostgreSQL 检查及不适用平台测试）；最终受影响解析/任务/授权用例 **40 通过、1 平台跳过**，其它媒体兼容用例 **124 通过、1 项 PostgreSQL 跳过**。前端 **57 通过**，类型/格式/TypeScript/build、Ruff/格式、契约导出及隔离 SQLite 升级 0010/check 通过。保留已有 Starlette/httpx 警告；新矩阵 CI 及独立审核须在最终提交上确认。无真实媒体/模型/发送、二维码、部署或原数据库/会话操作；发送分支及用户未提交进度段落原样保留。
+
+## PR #21 PDF 集成与模型中止修复 — 2026-10-12
+
+已将队友 PDF 分支 `0d91ad1` 集成到原媒体 PR，保留本地解析器、独立业务提示词、依赖固定及文档 Unicode 修正。补上缺页文字强制 partial 和全文超限后不再读取下一页；修正片段数上限说明，它独立于全文字符上限。扫描件仍拒绝，未声明硬性 CPU/内存沙箱或真实模型已启用。
+
+修复独立评审 P1：取消/撤权及到期保留可能已提交的处理/核对请求身份与附件占用；晚到不确定结果仍阻止新请求，重新授权也不保存晚到内容。原租约有效时不能并行核对；取消排队中的核对也保留原不确定状态。只有原尝试确定返回或提交前明确拒绝，才可解除占用，但不会恢复内容。到期清理与任务修改/完成使用相同的账户/连接锁顺序。无需新字段、迁移或强制重发接口；E 仍需独立验证 PostgreSQL 交错及来源上下文变化导致的核对限制。
+
+实际自动证据：最终到期锁调整前后端全套 **520 通过、8 项 PostgreSQL 依赖检查跳过**，最终受影响媒体测试 **70 通过、1 项 PostgreSQL 检查跳过**。前端 **57 通过**，契约类型/格式/TypeScript/Vite 构建、适用 Ruff/格式、契约导出及隔离 SQLite 升级 0010/check 通过。新增回归覆盖未知/成功/提交前拒绝、取消、暂停后授权、来源变化、到期、排队/在途核对、部分覆盖及提前停止。模型仍关闭，未访问真实媒体/模型/发送、二维码、部署或用户数据库/会话。发送分支及用户两处未提交进度修改原样保留；仅更新 #21，不合 main、不改 #23。
+
+## 真实 PDF 解析器：两层提取 — 2026-10-12
+
+`gigmate.media.pdfparse` 用真实本地解析器（`pypdf==6.20.0`，已加入 `pyproject.toml` 与 `requirements.lock`）替换 `MEDIA_PDF_PARSER_PENDING` 桩。第一层在本地逐页抽取并施加有界 I/O：至多 200 页、每页文本按至多 4000 字符分块且保留页码、总计至多 100000 字符。`MEDIA_PDF_PAGE_LIMIT`、`MEDIA_PDF_TEXT_LIMIT`、`MEDIA_PDF_NOT_PARSEABLE` 与 `MEDIA_PDF_NO_TEXT_LAYER`（扫描件无文本层）全部在**任何厂家请求之前**拒绝，因此映射为 `ProcessingUnavailable`，不会产生计费；不做任何静默截断。第二层把抽取出的页与专用 prompt `role_b_media_pdf_v1.txt`（版本头 1.0.0，可用 `GIGMATE_MEDIA_PDF_PROMPT_PATH` 覆盖）发给 chat 厂家；模型只产出 coverage / summary / suggestions / unresolved_questions，其输出中的任何 `segments` 键都会被忽略——页面文本由本地绑定，模型永远无法重打、合并或捏造，suggestion 的 `source_indices` 由契约对照本地 segment 校验。可读 PDF 中的空白页以未决问题呈现，不冒充完整覆盖。本批同时修复了 2026-10-11 条目在 `docs/zh/role-b-extraction.md` 与 `docs/zh/progress.md` 留下的乱码（受腐蚀段落已按中文原文恢复）。
+
+**测试**：`test_media_processor.py` 新增 9 个 PDF 用例——在模型响应里注入 `segments` 键证明本地绑定；无文本层 / 乱字节 / 201 页 / 超总量拒绝均验证**未发起**任何厂家调用；9000 字符长页分块；空白页未决问题；解析成功后厂家 5xx → `ProcessingUncertain`；非法 `source_indices` → 不确定。该文件 50/50 通过；后端全套复跑通过；Ruff check/format 干净；契约导出与基线检查无变化。
+
+**如实限制**：实现仍以未激活状态交付（`_ENABLED=False`），没有发起真实模型请求。扫描/纯图像 PDF 直接拒绝而不是偷偷 OCR（那需要视觉厂家，仍未验证）。显式模型能力 / 按路由凭据核验、时间戳/时区对齐、prompt-injection 用例与真实厂家/编解码验收仍是 2026-10-11 修正清单上的开放项。
+
+## PR #21 队友媒体集成与 main 兼容 — 2026-10-11
+
+复核了队友的评论：工厂 process/reconcile 可调用性与构造函数异常处理已在 `a5aa0a1` 修复。集成了 B 的 `b5d7e84` 未激活媒体接缝，随后合入最新 main `bbb0074`；进展文件的冲突已合并，A/B 历史都保留。未包含 `Andy_WAHA_multitype_sending` 的发送侧改动。
+
+附加边界修复：PDF 处理显式置为 pending 而非二进制转文本；默认未验证视觉路由与 custom 缺失 endpoint 在创建客户端前拒绝；UTF-8/90k TXT 预检；未知 origin 拒绝；prompt 编码回退；客户端关闭；不确定日志稳定；严格的输出/来源索引校验，不做有损截断或重排；ASR 全文保留且 coverage 为 unknown；smoke 拒绝/未知以非零退出。测试补丁经 monkeypatch 恢复客户端工厂，并使用真实 UTF-8 合成 TXT 而非标记为 TXT 的 PNG 字节。新增 14 个评审用例与 B 测试合计 **54 通过**。最后两项 smoke 回归/小边界编辑之前的整套后端运行为 **490 通过、8 跳过**；受影响的最终测试已复跑。前端 **57 通过**，API/格式/TypeScript/Vite 构建、适用的 Ruff/format、契约导出、基线与空白检查通过。一次性 SQLite 升级到 0010/check 无漂移。未执行 PostgreSQL 锁与真实模型/手机验收；仍存在一个既有的 Starlette/httpx 警告。
+
+B 保持 `_ENABLED=False`；PDF 解析、真实视觉/音频模型能力、按路由凭据、时间戳对齐、prompt-injection 与厂家 request-id 对账属于激活工作。未访问真实媒体/模型/客户/二维码/部署。PR #21 保持 Draft；仅更新其自身分支。发送分支上所有者两处未提交的进展文件编辑已保留。
+
+
 ## PR #20 复核合并与发送分支兼容同步 — 2026-10-10
 
 独立复核 PR #20 的 `1dc716f`：42 项提取测试通过，覆盖合并后的 #18 提示词/证据修复、常闭 skeleton 锁、隔离的 operator/live-origin 开关、假客户端请求、smoke 退出码及元数据序列化。GitHub 必需检查全绿。批准后合入 main，提交为 `bbb0074`；实现仍未启用，来源、endpoint、重试/租约、日期及诊断方面的启用门槛仍需完成。
@@ -17,6 +68,68 @@ Docker Desktop Linux engine 当前不可用，当前版本的隔离 PostgreSQL�
 ## PR #21 处理器工厂评审修复 — 2026-10-10
 
 工厂加载在模型提交前校验 process/reconcile 均可调用，并将构造函数异常与配置错误分开，保留原始构造异常。验证：20 项工厂隔离测试通过；52 项媒体及证据测试通过，未配置测试数据库，跳过 1 项 PostgreSQL 并发测试。Ruff 检查及格式、契约导出检查、基线和空白检查通过。没有真实模型请求、真实媒体读取、部署或前端修改。
+
+## B 媒体处理器：真实模型接缝实现 — 2026-10-10
+
+在 A 的 WAHA 媒体摄取分支（`pr-21-review` →
+`william/role-b-media-processor`）之上落地。实现 PR #21 故意留空的
+`MediaProcessor` 接缝，使 A 可独立合并不依赖 B。按 `LLMProvider` 的双闸门
+安全模式交付真实模型处理器：
+
+* 模块级 `_ENABLED` 标志（默认 `False`）—— 默认在读任何环境变量之前
+  拒绝所有调用。
+* `GIGMATE_MEDIA_LIVE=1` 运维开关——除标志外仍必须设置才能联系厂家。
+* 必须设置 `GIGMATE_MEDIA_API_KEY`，否则抛 `ProcessingUnavailable`。
+* 真实客户附件要送达模型需 `GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN=1`；
+  `synthetic` 来源绕过此闸。
+
+路由覆盖四种允许类型：PNG / JPEG / WebP → OCR（视觉输入 chat
+completions）、Ogg / MP3 / WAV / M4A → ASR（音频转写）、PDF → chat
+completions、纯文本 → chat completions。集合外一律在联系厂家前
+拒绝。
+
+`scripts/smoke_media.py` 为运维侧手动 smoke（不在 CI）。需要两闸门
+同时打开，打印解析后的提案 JSON。
+
+**测试**（`apps/backend/tests/test_media_processor.py` 共 41 例）：
+按轴拆分的两闸门（接缝标志、live 开关、API key、live origin）安全、
+MIME 路由、按厂家调用形态、coercion 校验、4xx / 5xx →
+`ProcessingUncertain`、网络异常 → `ProcessingUncertain`、坏 JSON →
+`ProcessingUncertain`、`reconcile()` 在闸门关闭或无厂家查找时返回
+`None`、安全边界（`MediaInput` 不带凭据；处理器不修改入参）、
+工厂入口经标准 `module:AttrName` 解析。
+
+**PR #21 回归覆盖**：落地实现后跑 `test_waha_media.py`、
+`test_waha_media_evidence.py`、`test_waha_migration.py`，56 通过 /
+1 跳过，与 PR 描述一致；A 侧行为未改变。
+
+**Lint / format / 契约 / baseline**：
+
+* `ruff check apps/backend/src/gigmate/media scripts/smoke_media.py` —
+  通过。
+* `ruff format --check apps/backend/src/gigmate/media scripts/smoke_media.py` —
+  通过。
+* `scripts/export_contracts.py --check` —— 未改生成文件；处理器复用
+  既有 `WahaMediaResult` / `WahaMediaSegment` / `WahaMediaSuggestion`
+  契约，未新增契约。
+* `scripts/check_baseline.py` —— 通过。
+
+**如实记录的限制**：
+
+* 真实厂家来回未执行；测试套件基于 `_FakeClient` mock。真实调用需运维
+  把 `_ENABLED` 翻为 `True` 并提供 `GIGMATE_MEDIA_API_KEY` 与厂家端点。
+* ASR 默认厂家是 `openai`，因为 DeepSeek 不暴露转写端点；仅配 chat
+  凭据时 ASR 路径以 `ProcessingUnavailable` 拒绝。
+* `reconcile()` 一律返回 `None`，因为 chat-completions 厂家一般不暴露
+  基于 request-id 的查找；worker 必须等待人工重试。
+* 媒体附件的 prompt-injection 回归套件尚未补齐，列为开放待办。
+* 本分支未重跑 PostgreSQL / 隔离 HTTP-worker 套件；本次只验证 SQLite。
+
+**本批次附带修复**：`apps/backend/src/gigmate/extraction/evaluator.py` 的
+`_resolve_manifest_path` 原本用 cwd 相对路径，从 `apps/backend/` 跑 pytest
+时 `test_extraction.py` 必然失败。修复后 manifest 路径固定到仓库根
+（`parents[5]`），不影响其他语义。这是个隔离的小改动，没有改变
+evaluator 的行为。
 
 ## A 媒体第二批：时间依据与已核对交接 — 2026-10-10
 

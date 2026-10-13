@@ -226,10 +226,9 @@ def validate_upload(content, mime, filename):
 
 
 def upload(db, row, content, mime, filename):
-    enabled()
-    p = db.get(WahaSendPermission, row.id)
-    if not row.enabled or not p or not p.enabled or not p.expires_at or utc(p.expires_at) <= now():
-        fail("SEND_NOT_AUTHORIZED", 403)
+    # The route holds account/connection locks and reauthenticates after streaming.
+    # Recheck chat authorization here before any durable bytes or row are written.
+    upload_permission(db, row)
     mime = media.base_mime(mime)
     validate_upload(content, mime, filename)
     usage = (
@@ -271,11 +270,18 @@ def upload_permission(db, row):
     p = db.get(WahaSendPermission, row.id)
     if not row.enabled or not p or not p.enabled or not p.expires_at or utc(p.expires_at) <= now():
         fail("SEND_NOT_AUTHORIZED", 403)
-    if not any(
-        db.get(WahaChat, identifier)
-        and db.get(ConversationRow, db.get(WahaChat, identifier).conversation_id).allowlisted
-        for identifier in p.chat_ids
-    ):
+    authorized = db.scalar(
+        select(WahaChat.id)
+        .join(ConversationRow, ConversationRow.id == WahaChat.conversation_id)
+        .where(
+            WahaChat.id.in_(p.chat_ids),
+            WahaChat.connection_id == row.id,
+            ConversationRow.account_id == row.account_id,
+            ConversationRow.allowlisted.is_(True),
+        )
+        .limit(1)
+    )
+    if not authorized:
         fail("SEND_NOT_AUTHORIZED", 403)
 
 

@@ -22,6 +22,7 @@ from gigmate.db import (
     Session,
     WahaAttachment,
     WahaChat,
+    WahaConnection,
     WahaMediaJob,
     WahaSnapshot,
 )
@@ -291,6 +292,22 @@ def enqueue(db, row, command, key):
     return job_view(job)
 
 
+def stop_job(job, reason):
+    """Stop content use without forgetting a possibly submitted model request."""
+    # This decision belongs to the request, not to a transient error or lease.
+    # Regrant/reconciliation may inspect its outcome but cannot undo the stop.
+    job.content_stop_reason = job.content_stop_reason or reason
+    uncertain = (
+        job.state == "result_unknown"
+        or job.stage == "reconciling"
+        or (job.state == "running" and job.stage == "processing")
+    )
+    job.state = "result_unknown" if uncertain else "cancelled"
+    if not uncertain:
+        job.active_key, job.lease_token, job.lease_until = None, None, None
+    job.error_code, job.updated_at = job.content_stop_reason, datetime.now(UTC)
+
+
 def cancel(db, row, identifier):
     job = db.get(WahaMediaJob, identifier)
     if not job or job.connection_id != row.id:
@@ -298,8 +315,7 @@ def cancel(db, row, identifier):
     if job.state == "result_unknown":
         fail("MEDIA_PROCESSING_RECONCILIATION_REQUIRED")
     if job.active_key:
-        job.state, job.active_key, job.lease_token = "cancelled", None, None
-        job.error_code, job.updated_at = "MEDIA_CANCELLED", datetime.now(UTC)
+        stop_job(job, "MEDIA_CANCELLED")
     return job_view(job)
 
 
@@ -327,9 +343,7 @@ def _revoke_jobs(db, row, chat_id=None):
         snap = db.get(WahaSnapshot, asset.snapshot_id)
         if chat_id is None or snap.chat_id == chat_id:
             # Keep uncertain model submissions blocking reissue until separate review.
-            if job.state != "result_unknown":
-                job.state, job.active_key, job.lease_token = "cancelled", None, None
-            job.error_code, job.updated_at = "CONSENT_REVOKED", datetime.now(UTC)
+            stop_job(job, "CONSENT_REVOKED")
             asset.review = None
 
 
@@ -339,11 +353,14 @@ def reconcile(db, row, identifier):
         fail("NOT_FOUND", 404)
     if job.state != "result_unknown":
         fail("MEDIA_RECONCILIATION_NOT_REQUIRED")
+    if job.lease_token and job.lease_until and utc(job.lease_until) > datetime.now(UTC):
+        fail("MEDIA_PROCESSING_STILL_IN_FLIGHT")
     _, snap, _, conv = attachment_owned(db, row, job.attachment_id)
     if fingerprint(snap) != job.source_fingerprint or conv.context_version != job.context_version:
         fail("MEDIA_SOURCE_CHANGED")
     job.version, job.stage, job.state = row.control_version, "reconciling", "pending"
-    job.attempts, job.retry_at, job.error_code = 0, None, None
+    job.lease_token, job.lease_until = None, None
+    job.attempts, job.retry_at, job.error_code = 0, None, job.content_stop_reason
     job.updated_at = datetime.now(UTC)
     return job_view(job)
 
@@ -461,6 +478,38 @@ def evidence(db, row, identifier, attachment_version, context_version, result_jo
     )
 
 
+def check_model_submission(factory, account_id, connection_id, identifier, token, asset_version):
+    """Recheck after local preparation without holding business locks over I/O."""
+    try:
+        with factory.begin() as db:
+            account = db.scalar(select(Account).where(Account.id == account_id).with_for_update())
+            if not account or not account.active:
+                fail("CONSENT_REVOKED", 403)
+            row = controls.owned(db, account, connection_id, lock=True)
+            job = db.get(WahaMediaJob, identifier)
+            if (
+                job.state != "running"
+                or job.lease_token != token
+                or not job.lease_until
+                or utc(job.lease_until) <= datetime.now(UTC)
+            ):
+                fail("MEDIA_PROCESSING_PERMISSION_CHANGED")
+            asset = db.get(WahaAttachment, job.attachment_id)
+            snap, _, conv = source(db, row, asset.snapshot_id)
+            if (
+                row.control_version != job.version
+                or conv.context_version != job.context_version
+                or fingerprint(snap) != job.source_fingerprint
+                or asset.version != asset_version
+                or utc(asset.expires_at) <= datetime.now(UTC)
+            ):
+                fail("MEDIA_SOURCE_CHANGED")
+    except BusinessError:
+        raise media_processing.ProcessingUnavailable(
+            "MEDIA_PROCESSING_PERMISSION_CHANGED"
+        ) from None
+
+
 def run_once(
     factory=Session, *, make_client=controls.client_for, make_processor=media_processing.processor
 ):
@@ -490,8 +539,6 @@ def run_once(
         if not candidate:
             return False
         connection_id = candidate.connection_id
-        from gigmate.db import WahaConnection
-
         connection = db.get(WahaConnection, connection_id)
         account = db.scalar(
             select(Account).where(Account.id == connection.account_id).with_for_update()
@@ -510,7 +557,10 @@ def run_once(
         if job.state == "running":
             if not job.lease_until or utc(job.lease_until) <= now:
                 if job.stage != "download":
-                    job.state, job.error_code = "result_unknown", "MEDIA_PROCESSING_INTERRUPTED"
+                    job.state, job.error_code = (
+                        "result_unknown",
+                        job.content_stop_reason or "MEDIA_PROCESSING_INTERRUPTED",
+                    )
                     job.lease_token, job.lease_until = None, None
                     return True
                 job.state = "pending"
@@ -533,8 +583,7 @@ def run_once(
                 fail("MEDIA_RETRY_EXHAUSTED")
             root()
         except BusinessError as error:
-            job.state, job.active_key, job.error_code = "cancelled", None, error.code
-            job.updated_at = now
+            stop_job(job, error.code)
             return True
         token = str(uuid4())
         job.state, job.lease_token, job.lease_until = "running", token, now + timedelta(seconds=180)
@@ -570,7 +619,10 @@ def run_once(
             client = make_client(row) if stage == "download" and not cached_key else None
             mime, digest = asset.mimetype, asset.sha256
         except (BusinessError, AdapterError) as error:
-            job.state, job.active_key, job.error_code = "failed", None, error.code
+            job.state = "result_unknown" if stage == "reconciling" else "failed"
+            if stage != "reconciling":
+                job.active_key = None
+            job.error_code = job.content_stop_reason or error.code
             job.lease_token, job.lease_until = None, None
             return True
     # Provider/model I/O occurs after lease commit, never under business locks.
@@ -615,6 +667,9 @@ def run_once(
                 timezone=input_context.get("timezone"),
                 timezone_source=input_context.get("timezone_source", "unknown"),
                 source_observed_at=input_context.get("source_observed_at"),
+                before_submit=lambda: check_model_submission(
+                    factory, account_id, connection_id, identifier, token, asset_version
+                ),
             )
             if stage == "reconciling":
                 lookup = getattr(model, "reconcile", None)
@@ -630,8 +685,11 @@ def run_once(
                 if isinstance(raw_result, WahaMediaResult)
                 else raw_result
             ).model_dump(mode="json")
-    except media_processing.ProcessingUnavailable:
-        error = "MEDIA_PROCESSOR_NOT_CONFIGURED"
+    except media_processing.ProcessingUnavailable as exc:
+        code = str(exc).split(":", 1)[0]
+        error = (
+            code if code in media_processing.UNAVAILABLE_CODES else "MEDIA_PROCESSOR_NOT_CONFIGURED"
+        )
         unknown = stage == "reconciling"
     except media_processing.ProcessingUncertain:
         error, unknown = "MEDIA_PROCESSING_RESULT_UNKNOWN", True
@@ -657,8 +715,10 @@ def run_once(
             row = controls.owned(db, account, connection_id, lock=True)
             job = db.get(WahaMediaJob, identifier)
             asset = db.get(WahaAttachment, job.attachment_id)
-            if job.state != "running" or job.lease_token != token:
+            interrupted = job.content_stop_reason is not None
+            if (job.state != "running" and not interrupted) or job.lease_token != token:
                 return True
+            stop_reason = job.content_stop_reason
             try:
                 if not account.active:
                     fail("CONSENT_REVOKED", 403)
@@ -671,9 +731,17 @@ def run_once(
                 ):
                     fail("MEDIA_SOURCE_CHANGED")
             except BusinessError as exc:
-                error, unknown = exc.code, False
-                job.state = "cancelled"
-            if error:
+                job.content_stop_reason = job.content_stop_reason or exc.code
+                interrupted, stop_reason = True, job.content_stop_reason
+            if interrupted:
+                # The original lease proves the outcome belongs to this attempt.
+                # Suppress late content even after regrant. Only a definite return
+                # (or process refusal before submission) can release the gate.
+                asset.review = None
+                job.state = "result_unknown" if stage != "download" and unknown else "cancelled"
+                job.error_code = stop_reason
+                error = stop_reason
+            elif error:
                 job.error_code = error
                 if job.state != "cancelled":
                     if unknown:
@@ -746,7 +814,31 @@ def purge(factory=Session):
     now = datetime.now(UTC)
     removed = []
     with factory.begin() as db:
-        for asset in db.scalars(select(WahaAttachment).where(WahaAttachment.expires_at <= now)):
+        candidates = list(
+            db.scalars(
+                select(WahaAttachment)
+                .where(WahaAttachment.expires_at <= now)
+                .order_by(
+                    WahaAttachment.account_id, WahaAttachment.connection_id, WahaAttachment.id
+                )
+            )
+        )
+        for candidate in candidates:
+            # Serialize expiry with enqueue, cancellation and worker completion.
+            db.scalar(select(Account).where(Account.id == candidate.account_id).with_for_update())
+            db.scalar(
+                select(WahaConnection)
+                .where(WahaConnection.id == candidate.connection_id)
+                .with_for_update()
+            )
+            asset = db.scalar(
+                select(WahaAttachment)
+                .where(WahaAttachment.id == candidate.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if utc(asset.expires_at) > now:
+                continue
             if asset.blob_key:
                 removed.append(asset.blob_key)
             asset.blob_key, asset.result, asset.review = None, None, None
@@ -756,9 +848,13 @@ def purge(factory=Session):
                 None,
                 "expired",
             )
-            for job in db.scalars(select(WahaMediaJob).where(WahaMediaJob.active_key == asset.id)):
-                job.state, job.active_key, job.lease_token = "cancelled", None, None
-                job.error_code = "MEDIA_SOURCE_EXPIRED"
+            for job in db.scalars(
+                select(WahaMediaJob)
+                .where(WahaMediaJob.active_key == asset.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            ):
+                stop_job(job, "MEDIA_SOURCE_EXPIRED")
         live = set(
             db.scalars(select(WahaAttachment.blob_key).where(WahaAttachment.blob_key.is_not(None)))
         )

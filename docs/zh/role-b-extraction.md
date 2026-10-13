@@ -1,5 +1,45 @@
 # Role B 抽取子系统
 
+## PDF 资源隔离
+
+供应商调用前的 PDF 解析已改为私有子进程，不在业务 worker 内运行 pypdf。默认墙钟 20 秒、内存 512 MiB、每个 worker 同时一个解析进程、输入 20 MiB、序列化输出 1 MiB。可信服务端设置 `GIGMATE_PDF_TIMEOUT_SECONDS`（1–60）与 `GIGMATE_PDF_MEMORY_MIB`（128–1024）由媒体 Compose 覆盖传给 API/worker，不接受 HTTP 修改。原页数、片段、文字上限及 partial 校验保留。
+
+Windows 挂起启动实际底层解释器，先绑定带已提交内存、CPU、进程数量限制及关闭即终止的私有 Job Object，再恢复执行；不能把限额只设在 venv 启动器上。Linux 使用硬性 RLIMIT_AS/RLIMIT_CPU、关闭 core dump、限制描述符，并绑定父进程生命周期。启动响应确认实际 PID 后才传 PDF 字节。原生 macOS 明确返回 MEDIA_PDF_LIMIT_UNAVAILABLE，后端使用项目 Linux Docker 镜像，不宣称不可靠的原生内存兜底。
+
+子进程通过管道收发，不落临时原文件；固定 UTF-8，不继承模型/WAHA/数据库环境或 worker PYTHONPATH，只加载固定 pypdf 路径。父进程再验输出结构、数量、页码及文字长度。超时、输出超限会终止并回收私有进程、关闭管道；崩溃不视为成功。模型请求前的 PDF 错误码写入媒体任务，不再误报处理器未配置。worker 解析/模型等待期间由独立线程维持心跳；无需新迁移。
+
+本地准备可能耗时。A 新增私有 `MediaInput.before_submit` 回调，当前 B 处理器在解析完成、创建客户端前调用，在短事务中重验账户/连接/授权、原租约、来源/上下文/控制版本及附件版本/到期。准备期间取消会阻止后续模型提交。回调不进入提示词、HTTP 或持久证据，第三方处理器须遵守该交接；最终检查之后的变化不能撤回已经开始的外部 I/O。墙钟预算包含启动与 IPC，有限的进程回收可能增加几秒。
+
+这是资源隔离，不是完整文件系统/网络沙箱或恶意文件扫描。限额按 worker 生效，部署时仍需控制 worker 数量和主机资源。扫描件 OCR、真实模型与共享 AI 服务不在本批；原部署与会话没有改变。Linux/Windows/macOS CI 检查保护机制，其中 macOS 验证原生明确拒绝，不代表原生解析成功。Apple Silicon Docker、真实文件及编解码仍需队友自己的账号验收。
+
+## PDF 集成与在途模型中止 — 2026-10-12
+
+PR #21 包含 PDF 分支的 `0d91ad1`。有文本层 PDF 在创建客户端前本地解析，模型不能替换本地绑定的页面文字。缺页文字时 complete 降为 partial，全文超限后不再解析下一页。扫描件仍不支持；输出上限不是硬性 CPU/内存沙箱，解析资源隔离仍需在真实启用前完成。
+
+取消、暂停/撤权及内容到期时，在途处理或未解决的核对保留附件/请求身份。晚到模型内容及 review 不会保存，重新授权也不恢复。原租约可记录确定返回或提交前明确拒绝，从而解除占用但不恢复内容；结果不确定则保留 result_unknown，阻止新请求。原租约有效时不能开始核对，核对只读；中止尚未开始的核对也保留原不确定状态。恢复授权不允许重发；来源变更/过期可能阻止自动核对，需要人工处理，没有新增强制清除或盲重发接口。
+
+模型保持 `_ENABLED=False`。共享 DeepSeek 部署、真实视觉/语音凭据与能力、日期依据、提示注入及供应商验收仍是独立工作；本次不实现扫描件 OCR 或 WhatsApp 发送。
+
+## 真实 PDF 解析器与两层提取 — 2026-10-12
+
+`gigmate.media.pdfparse` 用真实本地解析器（`pypdf==6.20.0`，已加入 `pyproject.toml` 与 `requirements.lock`）替换 `MEDIA_PDF_PARSER_PENDING` 桩。PDF 处理现在是两层：
+
+1. **本地解析（确定性，先于任何厂家调用）。** 逐页原文抽取并施加有界 I/O：至多 200 页（`WahaMediaSegment.page` 上界）、每页文本按至多 4000 字符分块且保留页码、总文本至多 100000 字符（契约上界）。超限输入以 `MEDIA_PDF_PAGE_LIMIT` / `MEDIA_PDF_TEXT_LIMIT` 拒绝——绝不静默截断。不可读字节以 `MEDIA_PDF_NOT_PARSEABLE` 拒绝；无文本层的扫描件以 `MEDIA_PDF_NO_TEXT_LAYER` 拒绝，而不是把像素塞给文本模型。这些拒绝都发生在厂家请求之前，因此处理器映射为 `ProcessingUnavailable`（没有产生任何计费）。可读 PDF 中无文本的页以未决问题形式呈现（"N of M pages carried no extractable text"），不冒充完整覆盖。
+2. **业务提取（厂家）。** 抽取出的页与专用 prompt `role_b_media_pdf_v1.txt`（版本头 `1.0.0`，可用 `GIGMATE_MEDIA_PDF_PROMPT_PATH` 覆盖）一起发给 chat 模型。模型只产出 coverage、summary、suggestions 与 unresolved_questions；其输出中的任何 `segments` 键都被忽略，因为最终 `WahaMediaResult` 的 segment 由本地解析器绑定。模型永远无法重打、合并或捏造页面文本；suggestion 的 `source_indices` 由契约对照本地 segment 校验。
+
+验证：`test_media_processor.py` 新增 9 个 PDF 用例（两页真实解析并在模型输出注入 `segments` 键证明本地绑定、无文本层、乱字节、201 页上界、文本总量上界、长页分块、空白页未决问题、解析成功后厂家 5xx、非法 `source_indices`）——该文件 50 例全过，后端全套复跑通过。Ruff check/format 干净；契约导出与基线检查无变化。
+
+这关闭了 2026-10-11 修正清单中的"真实 PDF 解析器"一项。清单中仍开放的项：显式模型能力与按路由凭据核验、时间戳/时区对齐、prompt-injection 测试、真实厂家/编解码验收——实现仍以未激活状态交付（`_ENABLED=False`），没有发起真实模型请求。
+
+## PR #21 媒体集成安全修正 — 2026-10-11
+
+媒体实现以**未激活**状态交付（`_ENABLED=False`），尚未对真实厂家验证。`a5aa0a1` 的工厂契约修复保留。PDF 路由可识别但处理以 `MEDIA_PDF_PARSER_PENDING` 拒绝；把 PDF 二进制当文本解码不是解析。默认 DeepSeek 图像路由以 `MEDIA_VISION_VENDOR_UNVERIFIED` 拒绝；显式的 OpenAI/custom fake-client 形态不能证明模型具备视觉能力。custom 厂家必须显式给出 endpoint。TXT 必须是 UTF-8 且至多 90,000 字符；更长的文件需要后续分块，不允许静默截断。
+
+响应校验保留每个 segment 和来源索引：无效/超长的结果按不确定处理，不静默缩短或重排索引。厂家 segment 未能逐字复现全文时，ASR 全文被拆成有界 segment；coverage 保持 unknown，不支持的时间不臆造。客户端在成功与失败后都会关闭；不确定日志不含原始厂家异常/响应文本。畸形 UTF-8 prompt 在提交前拒绝。smoke 拒绝/未知结果以非零退出。
+
+启用真实媒体前，B 仍需：真实 PDF 解析器、显式的模型能力与按路由的凭据核验、时间戳/时区对齐、prompt-injection 测试、有界 I/O 以及真实厂家/编解码验收。A 的请求身份与来源/版本绑定仍由服务器持有；厂家 request-id 对账未实现，`reconcile()` 保持只读返回 None。未知结果不会被自动或盲目重发。商户证据核对与 C 的业务批准保持分离。本次修正没有访问真实模型、账号、媒体或部署。
+
+
 2026-10-10 媒体第二批：A 已提供固定的供应商发送时间/商户本次选择时区及已核对只读证据。B 须单独实现 MediaProcessor.process/reconcile，不能把文本提取接口当作媒体实现；C 须约定附件来源并在业务晋升前重新校验。时间不足保留待确认，本批不启用外部发送。见[媒体协议](role-a-media-ingestion.md)。
 
 2026-10-10 媒体对接：[A 的媒体协议](role-a-media-ingestion.md)提供权限范围内字节、不可变请求/来源/哈希标识、绑定来源/上下文的结果存储及核对。真实 OCR/ASR/解析/GenAI 工厂和只读核对由 B 实现。A 没有新增真实适配器，原 deterministic 拒绝 live 输入的边界保留。不能把媒体快照冒充 canonical 消息修订或直接写成已确认工单变化。核对还绑定 expected_result_job_id，防止新结果继承旧核对。
@@ -250,17 +290,132 @@ provider 对 live 来源一律拒绝（与文本无关），因此当前真实 W
 或任何运维相关文本绝不能写进受跟踪样例。模型密钥留服务端；provider
 接口 DTO 不接受密钥，日志只写 ID、延迟和稳定错误码。
 
+## 媒体处理器（WAHA 附件的 Role B 实现）
+
+更新日期：2026-10-10。本节交付填充 [WAHA 媒体摄取批次](role-a-waha-handoff.md)
+所留接缝的真实模型处理器。A 拥有存储、租约、授权与审核；B 通过本处理器
+拥有 OCR / ASR / 解析 / GenAI。处理器只产出 `WahaMediaResult` 提案——
+商家确认由下游 `WahaMediaEvidence.business_confirmation_required` 强制，
+B 侧永不把字段标为 `confirmed`、永不授予执行权限。
+
+### 接缝契约
+
+`gigmate.media_processing.MediaProcessor`（Protocol）定义两个方法：
+
+* `process(request: MediaInput) -> WahaMediaResult` —— B 用 `request_id`
+  做厂家侧幂等与对账；输出仅为提案。
+* `reconcile(request_id) -> WahaMediaResult | None` —— 只读查询，永不
+  重新提交。`None` 表示结果仍未知，worker 必须下次再调而不是重发
+  `process()`。
+
+A 通过环境变量
+`GIGMATE_MEDIA_PROCESSOR_FACTORY="gigmate.media.processor:MediaProcessorImpl"`
+加载实现。`MediaInput` 故意不暴露 `api_key`、`provider_url`、
+`authorization` 属性；`test_waha_media.py` 中的接缝测试与
+`test_media_processor.py` 中的类型测试共同锁定这一约束。
+
+### 两闸门安全网
+
+处理器联系任何厂家前必须同时打开两个闸门：
+
+1. **`apps/backend/src/gigmate/media/processor.py` 模块级 `_ENABLED` 标志**
+   —— 本批次为 `False`。在 `False` 时，处理器在读取任何环境变量**之前**
+   以 `ProcessingUnavailable` 拒绝所有调用。这是防止未来贡献者单靠导出
+   运维开关就把接缝打开的安全网。
+2. **`GIGMATE_MEDIA_LIVE=1`** —— 运维开关。即便类标志翻为 `True`，处理
+   器仍然拒绝所有调用，除非导出该变量。检查顺序：类标志 → 运维开关 →
+   API key 是否设置 → live-origin 闸 → 厂家调用。当类标志为 `False` 时
+   在读取任何配置之前就拒绝，配置错误的部署不可能意外发出真实网络请求。
+
+附加守门：
+
+* 必须设置 `GIGMATE_MEDIA_API_KEY`，否则抛 `ProcessingUnavailable`。
+* 真实客户附件要送达模型必须有 `GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN=1`；
+  没有时处理器拒绝 `request.origin == "live"`、只允许 `synthetic`。
+* 处理器绝不接受经 HTTP 传入的凭据或模型端点。工厂字符串只来自服务端
+  环境变量，由 `importlib` 解析；HTTP 参数无法注入代码。
+
+### 厂家路由与配置
+
+| 变量 | 用途 |
+| --- | --- |
+| `GIGMATE_MEDIA_CHAT_VENDOR` | chat-completions 厂家（`deepseek`/`openai`/`custom`）。默认 `deepseek`。 |
+| `GIGMATE_MEDIA_CHAT_MODEL` | chat-completions 模型 ID（如 `deepseek-chat`、`gpt-4o-mini`），厂家默认。 |
+| `GIGMATE_MEDIA_AUDIO_VENDOR` | 转写厂家（`openai`/`custom`）。默认 `openai`。 |
+| `GIGMATE_MEDIA_AUDIO_MODEL` | 转写模型 ID（如 `whisper-1`）。 |
+| `GIGMATE_MEDIA_ENDPOINT` | 可选基地址覆盖。 |
+| `GIGMATE_MEDIA_PROMPT_PATH` | 可选 prompt 文件覆盖。 |
+| `GIGMATE_MEDIA_PDF_PROMPT_PATH` | 可选 PDF 提取 prompt 文件覆盖。 |
+
+MIME 路由（`gigmate.media.routing`）：
+
+| MIME | 派发键 | 厂家适配器 |
+| --- | --- | --- |
+| `image/png`、`image/jpeg`、`image/webp` | `ocr` | chat-completions 视觉输入 |
+| `audio/ogg`、`audio/mpeg`、`audio/wav`、`audio/mp4`、`audio/x-m4a` | `asr` | `/v1/audio/transcriptions` |
+| `application/pdf` | `pdf` | 本地逐页抽取（`gigmate.media.pdfparse`）后走 chat-completions 业务提取 |
+| `text/plain` | `text` | chat-completions |
+
+集合外的 MIME 在联系厂家前以 `ProcessingUnavailable` 拒绝。A 的白名单
+仍是权威，B 仅消费规范化类型。
+
+### 异常语义
+
+处理器遵循 `gigmate.media_processing` 中记录的契约：
+
+* `ProcessingUnavailable` —— 未提交任何厂家请求。闸门未开、厂家未知、
+  API key 缺失、prompt 文件异常或 MIME 不支持时抛出。worker 翻译为
+  `MEDIA_PROCESSOR_NOT_CONFIGURED`，下载产物保留供重试。
+* `ProcessingUncertain` —— 厂家调用可能已提交（已计费）。4xx / 5xx、
+  超时、网络错误、厂家侧 schema 失败时抛出。worker 翻译为
+  `MEDIA_PROCESSING_RESULT_UNKNOWN`，走 `reconcile()` 而非自动重发。
+* `MediaIntegrationPending`（私有）—— 配置未完成时厂家适配器内部抛出；
+  处理器翻译为 `ProcessingUnavailable`。
+* `MediaVendorRejected`（私有）—— 4xx / 5xx 时厂家适配器内部抛出；
+  处理器翻译为 `ProcessingUncertain`。
+
+本批次 `reconcile()` 一律返回 `None`，因为 chat-completions 厂家一般
+不暴露基于 request-id 的查询。需要厂家侧查找的运维必须显式扩展处理
+器；默认永不静默重发。
+
+### prompt 加载失败模式
+
+prompt 默认从 `apps/backend/src/gigmate/media/prompts/role_b_media_v1.txt`
+加载（可经 `GIGMATE_MEDIA_PROMPT_PATH` 覆盖）。匹配 `prompt_version: X.Y.Z`
+的第一行被读入结果的 `prompt_version` 字段。所有失败模式都被显式捕获：
+
+* 文件缺失 / `OSError` → `ProcessingUnavailable` 拒绝。
+* 非 UTF-8 字节（`UnicodeDecodeError`）→ `ProcessingUnavailable` 拒绝。
+* `prompt_version:` 头行缺失 → `ProcessingUnavailable` 拒绝。
+* 头存在但值为空 → `ProcessingUnavailable` 拒绝。
+
+任意失败下 worker 记录为 `MEDIA_PROCESSOR_NOT_CONFIGURED`，不会用错误
+prompt 重试。
+
+### 运维 smoke
+
+`scripts/smoke_media.py` 是运维侧手动 smoke（不在 CI）。需要两闸门
+同时打开，并打印解析后的提案 JSON：
+
+```text
+.venv/bin/python scripts/smoke_media.py --mime image/png --file path/to/sample.png
+.venv/bin/python scripts/smoke_media.py --mime audio/ogg --file path/to/sample.ogg
+```
+
+未打开接缝标志时脚本打印拒绝原因并以 `0` 退出。CI 不跑本脚本；真实调用
+需要运维侧的厂家密钥。
+
 ## 验证
 
 本批次权威检查：
 
 ```text
-.venv/bin/python -m ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py
-.venv/bin/python -m ruff format --check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py
+.venv/bin/python -m ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/smoke_media.py scripts/run_evaluation.py
+.venv/bin/python -m ruff format --check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/smoke_media.py scripts/run_evaluation.py
 .venv/bin/python scripts/export_contracts.py --check
 .venv/bin/python -m alembic -c apps/backend/alembic.ini upgrade head
 .venv/bin/python -m alembic -c apps/backend/alembic.ini check
-.venv/bin/python -m pytest apps/backend/tests -q --basetemp=local-data/pytest
+.venv/bin/python -m pytest apps/backend/tests/test_media_processor.py apps/backend/tests -q --basetemp=local-data/pytest
 .venv/bin/python scripts/check_baseline.py
 ```
 
@@ -347,3 +502,9 @@ PostgreSQL 测试是有意义的运行；SQLite 不证明行锁，只验证条�
 - D 前端面向真实 provider 输出的 `pending_change_ids` 展示；当前
   Replay 卡片已能呈现，但真实 provider 来回之前不更新前端。
 - 真实 provider 上线后细化 `unresolved_questions` 给商户的人工核对呈现。
+- 媒体侧的厂家 `reconcile()`：chat-completions 厂家一般不暴露基于
+  request-id 的查找，当前实现返回 `None`，worker 需等待人工重试。
+  后续批次可在接缝标志开启后追加厂家特定查找。
+- B 侧的 prompt-injection 回归套件（图像 OCR + 音频 ASR + PDF 解析）。
+  当前处理器只信任捆绑的 prompt、对格式异常输入拒绝调用；后续授权
+  批次应加入对抗输入夹具。

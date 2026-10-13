@@ -1,5 +1,13 @@
 # WAHA sending batch 1: interfaces and unified acceptance
 
+## PR #21 compatibility update — 2026-10-13
+
+This branch now includes main `e066b0c`, including PR #21's final media processor seam, PDF resource isolation and persistent content-stop decision. Processing/reconciliation and sending outbox requests remain separate identities: no stopped model output becomes sending approval, and a send acceptance is not model extraction success. All eleven sending adapters and explicit approval/fixed-policy paths remain in scope; the real B model stays disabled.
+
+Additive **0013_merge_media_send** joins the unchanged shared `0011_waha_multitype_sending` and `0012_waha_media_stop` revisions. Upgrade to `head` and run Alembic `check` before rebuilding API/worker; either previously installed branch can advance to the merged head. Migration regressions preserve replay rows, send permission versions/cancellation fences and legacy media stop evidence. No permissions are granted and no private installation/session/database was upgraded by this batch.
+
+The previously disclosed upload revocation race is fixed. Ownership/allowlist are checked before streaming and again under account/connection serialization before writing a file/row. The original control/send-permission versions must also match, so pause/regrant or send-revoke/regrant cannot silently resume an upload. `SEND_UPLOAD_AUTHORIZATION_CHANGED` (403) requires a fresh explicit upload after checking authorization. Tests verify revoked chat, pause, send revocation and both regrant paths leave zero upload rows/blobs. Existing no-resend, original late receipt, API echo and media-stop regressions are retained. Real phone/codec/Agent/C-bridge acceptance is still separate.
+
 2026-10-10 · `Andy_WAHA_multitype_sending`, based on media PR #21's `a5aa0a1`. The owner authorized multi-type sending with manual, Agent-assisted and Agent-automatic entry points. This development branch adds A's sending gateway; it has not enabled or deployed sending in the original installation. [Chinese instructions](../zh/role-a-waha-sending.md) and [ADR 0007](adr/0007-owned-waha-sending.md).
 
 ## Implemented scope

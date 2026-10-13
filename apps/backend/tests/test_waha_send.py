@@ -74,6 +74,42 @@ def upload_request(s, filename, mime, content):
     )
 
 
+@pytest.mark.parametrize(
+    "operation", ["chat", "pause", "permission", "pause-regrant", "permission-regrant"]
+)
+def test_upload_rechecks_authority_after_stream_without_persisting(setup, monkeypatch, operation):
+    from starlette.requests import Request
+
+    original = Request.stream
+    changed = []
+
+    async def interrupted(request):
+        async for chunk in original(request):
+            yield chunk
+        if request.url.path.endswith("/sending/uploads"):
+            with setup[1].begin() as db:
+                row = db.get(WahaConnection, setup[3].connection_id)
+                permission = db.get(WahaSendPermission, row.id)
+                if operation == "chat":
+                    chat = db.scalar(select(WahaChat))
+                    db.get(ConversationRow, chat.conversation_id).allowlisted = False
+                elif operation.startswith("pause"):
+                    row.enabled = operation.endswith("regrant")
+                    row.control_version += 2 if operation.endswith("regrant") else 1
+                else:
+                    permission.enabled = operation.endswith("regrant")
+                    permission.version += 2 if operation.endswith("regrant") else 1
+            changed.append(operation)
+
+    monkeypatch.setattr(Request, "stream", interrupted)
+    response = upload_request(setup, "synthetic.png", "image/png", PNG)
+    assert changed == [operation]
+    assert response.status_code == 403, response.text
+    with setup[1]() as db:
+        assert db.scalar(select(func.count()).select_from(WahaSendUpload)) == 0
+    assert not list(sends.storage_path("0" * 32 + ".blob").parent.glob("*.blob"))
+
+
 def expiry():
     return (datetime.now(UTC) + timedelta(hours=1)).isoformat().replace("+00:00", "Z")
 

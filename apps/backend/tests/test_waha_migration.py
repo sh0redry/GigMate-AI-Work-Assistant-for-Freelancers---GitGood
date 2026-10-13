@@ -38,12 +38,18 @@ def migration_database(tmp_path):
 
 @pytest.mark.parametrize(
     "existing_revision",
-    ["0004_waha_recovery", "0005_extraction_evidence", "0006_waha_provider_sample"],
+    [
+        "0004_waha_recovery",
+        "0005_extraction_evidence",
+        "0006_waha_provider_sample",
+        "0011_waha_multitype_sending",
+        "0012_waha_media_stop",
+    ],
 )
 def test_versioned_migration_preserves_replay_rows(migration_database, existing_revision):
     root = Path(__file__).resolve().parents[3]
     assert ScriptDirectory(str(root / "apps/backend/migrations")).get_heads() == [
-        "0011_waha_multitype_sending"
+        "0013_merge_media_send"
     ]
     url = migration_database
     environment = {**os.environ, "DATABASE_URL": url, "PYTHONPATH": str(root / "apps/backend/src")}
@@ -108,6 +114,19 @@ def test_versioned_migration_preserves_replay_rows(migration_database, existing_
                     "VALUES ('synthetic-evaluation','synthetic-account','2026-10-09 00:00:00','2026-10-09 00:00:01','deterministic','synthetic','v1',1,1,0,'synthetic-manifest')"
                 )
             )
+        if existing_revision == "0011_waha_multitype_sending":
+            db.execute(
+                text(
+                    "INSERT INTO waha_send_permissions (connection_id,version,enabled,chat_ids) "
+                    "VALUES ('synthetic-connection',9,false,'[]')"
+                )
+            )
+            db.execute(
+                text(
+                    "INSERT INTO waha_send_request_fences (connection_id,request_key,cancelled_at) "
+                    "VALUES ('synthetic-connection','synthetic-cancelled-intent','2026-10-13 00:00:00')"
+                )
+            )
     engine.dispose()
     migrate("upgrade", "head")
 
@@ -115,6 +134,10 @@ def test_versioned_migration_preserves_replay_rows(migration_database, existing_
     assert "waha_connections" in inspect(engine).get_table_names()
     assert "waha_operations" in inspect(engine).get_table_names()
     assert "waha_controls" in inspect(engine).get_table_names()
+    assert "waha_send_permissions" in inspect(engine).get_table_names()
+    assert "content_stop_reason" in {
+        column["name"] for column in inspect(engine).get_columns("waha_media_jobs")
+    }
     assert "waha_candidates" in inspect(engine).get_table_names()
     assert {"proposals", "model_call_traces", "evaluation_runs", "evaluation_cases"} <= set(
         inspect(engine).get_table_names()
@@ -125,7 +148,7 @@ def test_versioned_migration_preserves_replay_rows(migration_database, existing_
     with engine.connect() as db:
         assert (
             db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0011_waha_multitype_sending"
+            == "0013_merge_media_send"
         )
         assert db.execute(text("SELECT accepted,duplicates,state FROM waha_connections")).one() == (
             3,
@@ -140,6 +163,15 @@ def test_versioned_migration_preserves_replay_rows(migration_database, existing_
             assert db.execute(text("SELECT id,passed FROM evaluation_runs")).one() == (
                 "synthetic-evaluation",
                 1,
+            )
+        if existing_revision == "0011_waha_multitype_sending":
+            assert db.execute(text("SELECT version,enabled FROM waha_send_permissions")).one() == (
+                9,
+                False,
+            )
+            assert (
+                db.execute(text("SELECT request_key FROM waha_send_request_fences")).scalar_one()
+                == "synthetic-cancelled-intent"
             )
         payload, connection_id = db.execute(text("SELECT payload, connection_id FROM inbox")).one()
         # PostgreSQL returns JSON objects; SQLite text queries return JSON text.
@@ -270,6 +302,36 @@ def test_media_evidence_upgrade_does_not_invent_old_sending_times(migration_data
                 updated_at=at,
             )
         )
+        legacy_cases = [
+            ("cancel", "result_unknown", "processing", "MEDIA_CANCELLED"),
+            ("pause", "result_unknown", "processing", "CONSENT_REVOKED"),
+            ("expired", "result_unknown", "processing", "MEDIA_SOURCE_EXPIRED"),
+            ("cancelled", "cancelled", "processing", None),
+            ("erased", "result_unknown", "reconciling", "MEDIA_PROCESSING_RESULT_UNKNOWN"),
+            ("lookup", "pending", "reconciling", None),
+            ("fresh", "pending", "processing", None),
+        ]
+        for suffix, state, stage, error_code in legacy_cases:
+            db.execute(
+                tables["waha_media_jobs"]
+                .insert()
+                .values(
+                    id="synthetic-" + suffix,
+                    attachment_id=asset_id,
+                    connection_id=connection_id,
+                    request_key="synthetic-" + suffix,
+                    command={"synthetic": True},
+                    version=0,
+                    context_version=0,
+                    source_fingerprint="synthetic",
+                    state=state,
+                    stage=stage,
+                    error_code=error_code,
+                    attempts=1,
+                    created_at=at,
+                    updated_at=at,
+                )
+            )
     engine.dispose()
     migrate("head")
     engine = create_engine(migration_database)
@@ -292,4 +354,13 @@ def test_media_evidence_upgrade_does_not_invent_old_sending_times(migration_data
             ).scalar_one()
             == "succeeded"
         )
+        stopped = dict(db.execute(text("SELECT id,content_stop_reason FROM waha_media_jobs")).all())
+        assert stopped[job_id] is None
+        assert stopped["synthetic-fresh"] is None
+        assert stopped["synthetic-cancel"] == "MEDIA_CANCELLED"
+        assert stopped["synthetic-pause"] == "CONSENT_REVOKED"
+        assert stopped["synthetic-expired"] == "MEDIA_SOURCE_EXPIRED"
+        assert stopped["synthetic-cancelled"] == "MEDIA_CANCELLED"
+        assert stopped["synthetic-erased"] == "MEDIA_LEGACY_REVIEW_REQUIRED"
+        assert stopped["synthetic-lookup"] == "MEDIA_LEGACY_REVIEW_REQUIRED"
     engine.dispose()

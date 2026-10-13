@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import threading
 import time
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -294,14 +295,30 @@ def poll(factory=Session):
         return False
 
 
+def heartbeat_loop(stop, factory=Session, interval=10):
+    """Keep component health fresh during bounded parser/model I/O."""
+    while not stop.is_set():
+        heartbeat(factory)
+        stop.wait(interval)
+
+
 def main():
     logging.basicConfig(level=logging.INFO)
+    stop = threading.Event()
+    pulse = threading.Thread(
+        target=heartbeat_loop, args=(stop,), name="gigmate-heartbeat", daemon=True
+    )
+    pulse.start()
+    try:
+        work_loop()
+    finally:
+        stop.set()
+        pulse.join(timeout=2)
+
+
+def work_loop():
     maintenance_at = 0
-    heartbeat_at = 0
     while True:
-        if time.monotonic() >= heartbeat_at:
-            heartbeat()
-            heartbeat_at = time.monotonic() + 10
         if time.monotonic() >= maintenance_at:
             maintain()
             maintenance_at = time.monotonic() + 3600
