@@ -64,6 +64,8 @@ def compose(*args):
     ]
     if architecture in {"arm64", "aarch64"}:
         command.extend(["-f", str(ROOT / "infra/waha-arm64.compose.yaml")])
+    if os.environ.get("WAHA_MEDIA_ENABLED") == "true":
+        command.extend(["-f", str(ROOT / "infra/waha-media.compose.yaml")])
     return [*command, *args]
 
 
