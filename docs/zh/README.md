@@ -24,6 +24,12 @@
 | [WhatsApp 连接与消息获取](whatsapp-connection-flow.md) | 用户扫码、会话白名单、实时事件和历史同步 |
 | [A 的技术开发演进](role-a-development-roadmap.md) | 完整批次开发、依赖、异常测试和统一验收 |
 | [A 的异常恢复验收](role-a-recovery-acceptance.md) | 分组件健康、故障恢复、遗漏人工核对与 E 可复现测试 |
+| [D 前端模块计划](role-d-development-roadmap.md) | D-01 至 D-05、接口依赖与范围 |
+| [D-02 业务工作台验收](role-d-stage2-acceptance.md) | 当前功能、异常保护与实际证据 |
+| [前端使用说明](role-d-frontend-user-guide.md) | 连接、业务核对与回放操作 |
+| [桌面应用可行性](role-d-desktop-feasibility.md) | PWA／Tauri／Electron 与后端部署边界 |
+| [Kyrie 从零学习手册](kyrie-learning-guide.md) | 生活例子、代码小课、练习与版本说明 |
+| [Kyrie 文件地图](kyrie-file-atlas.md) | 先读几个文件，再查完整参考 |
 | [已完成工作](progress.md) | 实际实现、验证结果与未完成范围 |
 | [英文架构决策](../en/adr/README.md) | 选型与决策依据 |
 | [契约](../../contracts/README.md) | 字段、枚举、样例与接口约定 |

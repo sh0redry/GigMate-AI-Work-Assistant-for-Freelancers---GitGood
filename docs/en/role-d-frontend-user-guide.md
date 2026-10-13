@@ -1,112 +1,102 @@
 # GigMate frontend user guide
 
-## Review and main integration update — 2026-10-10
+Updated 2026-10-12, Hong Kong time. [中文版](../zh/role-d-frontend-user-guide.md). For code explanations, read [Kyrie's beginner guide](kyrie-learning-guide.md).
 
-Andy PR #14 is merged into main (`ab52d3e`). PR #16 now targets main and preserves the chat-type/pagination behavior described below; earlier references to its dependency branch describe the initial publication. Shared status and D acceptance documents are synchronized. The new three-case DOM/API-fixture regression runs with `npm test` / `npm run build`, giving **53 frontend tests**; use `npm ci` for the updated development lock, including test-only `jsdom`. This does not change production dependencies or startup commands. Automated reread/remount uses synthetic API memory and is not proof of real backend disk persistence. Real nicknames and native Windows acceptance remain pending; PR #16 requires independent approval before merge.
+This guide describes D-02 and the current cleanup on `codex/d02-workspace`, **not merged main**. The consolidated D-02 changes are now prepared for PR submission under Kyrie’s updated instruction. A PR asks teammates to review; it does not put the feature into main. The ordinary main checkout can still show old demo controls. Locate D with `git worktree list`; do not reset your WhatsApp session to fix a frontend version mismatch.
 
-## Chat types, names and pages — 2026-10-10
+## 1 Current pages and capability
 
-The chat-list follow-up is based on Andy's [PR #14](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/pull/14), on `codex/d01-chat-list`, with `Andy_WAHA_message_sync` as the PR base. It depends on that branch's canonical chat-kind metadata. PR #15's October 9 delivery below has already merged into main; the original `Kyrie_Frontend` / `c702f0c` remains separate.
+Before login there is only the GigMate account form, with blank inputs and a public development hint (`merchant` / `demo-only-change-me`; changed passwords take precedence). GigMate sign-in is separate from phone WhatsApp login. After login, **业务工作台** is the default. The isolated environment has only **业务工作台**; **WhatsApp 连接** appears only in the actual connection environment (or the published deployment). Isolated use never mounts the connection page or issues its connector requests.
 
-Rows show **个人聊天** (direct), **群聊** (group) or **类型未提供** (missing type). Search applies to loaded names/numbers. **会话类型 → 已授权** filters saved server authorization; pending checkbox changes are counted separately. Page controls offer 8/16/24 rows with previous/next and result counts. Filtering, paging or changing the page size retains all pending selections, including hidden ones. **保存会话授权** saves the full pending selection; **撤销全部授权** includes all pages. **放弃更改** reloads saved authorization. Search is local to the loaded catalog. If more server choices are available, explicitly use **载入更多会话（每批最多 100 个）**, then browse the expanded catalog with the page controls.
+D-01 preview, simulated pairing/disconnection and work-order replay controls have been removed from user UI, including their simulator implementation. Synthetic fixtures remain in developer tests without a user entry. Existing seeded records are not deleted by removing buttons.
 
-Names come from the integration service. A phone-only direct label shows **未提供昵称**; the frontend does not manufacture a nickname. **发现最近会话** refreshes labels provided by the server and may be unavailable while disconnected/paused. In the current upstream adapter, only provider `name` is used, so an available nickname elsewhere is not necessarily returned. The integration owner must fix that server mapping; rediscovery alone is not guaranteed to restore nicknames. Saved authorization may show an explicit unnamed/authorized fallback after candidate metadata expires. Neither paging nor discovering grants processing permission until you save.
+Kyrie reports team WAHA connections are working; this update did not retest all phones. Connection and consent do not establish extraction/automatic creation/sending. Order creation, lifecycle mutation, reply approval and sending remain unavailable on this branch.
 
-For a safe preview, choose **D-01 演示预览 → 模拟扫码成功 → 发现最近会话**: 24 fictional choices cover three default pages. It does not connect a real account; leaving/reloading clears demo state. Native Windows and real nickname acceptance remain unverified in this batch.
+## 2 Switch environments in one click
 
-Role D, 2026-10-09. [中文版](../zh/role-d-frontend-user-guide.md). D-01 uses main `5f9df37` / Andy's PR #11. Work in the attached `d01-pr11` worktree; the original `Kyrie_Frontend` / `c702f0c` checkout has not been merged. Replay still needs independent review; do not merge this batch yet.
+The persistent banner names the current environment and offers **切换到真实连接 / 切换到隔离测试**. Click once; no frontend restart or code change is needed. Navigation opens a fresh login form and clears page account/password/business/QR state. Sign in again. Session cookies and uncertain request metadata are separated; orders, chats and consent are not copied. Switching is not server logout or cancellation of accepted jobs. Use **退出** before switching if server logout is required; return to the original environment to reconcile unknown results rather than create a new request. Switching is blocked while an operation is busy.
 
-## Environments and startup
-
-| View | Purpose | Persistence |
+| Environment | Data and effect | Purpose |
 | --- | --- | --- |
-| D-01 演示预览 | Simulated scan, selection, pause/resume and revocation without login | Browser memory; leaving/reloading resets it |
-| 工单回放 | Fictional messages, conflicts, merchant confirmation, internal calendar/tasks | Replay database; reload/logout do not reset it |
-| WhatsApp 连接 | Your preprovisioned local connection; authenticated setup, QR, consent and issue review | Backend database and durable worker; consent survives reload |
+| **真实连接（本机开发）** | Your own WAHA, local business database and authorized chats; operations affect these records | Verify actual connection/consent and existing business. Still local development, not a production release |
+| **隔离测试（虚构数据）** | A separate test database with fictional orders/messages/calendar/tasks | Practice and verify business flows without real WhatsApp chats |
 
-One frontend process selects one backend. WAHA team setup creates a development login but no fictional orders. Check the environment rather than seeding fictional data into the WAHA database. Use the latest-main worktree for this frontend; an older backend without PR #11's routes must be upgraded by its maintainer before connection testing.
+The initial default is isolated. `/environments/real/` or `/environments/isolated/` preserves selection on reload. The banner shows its backend address; a failed backend never silently falls back to the other environment.
 
-For replay, use the existing repository-root setup:
+**First-time setup still requires two backends.** The switch routes requests; it does not provision databases or start services. Prepare the actual connection backend with [team local setup](role-a-team-local-development.md), and a separately migrated/seeded database or schema with deterministic worker using [getting started](getting-started.md). Never reuse real data or a WAHA session for fictional fixtures. Different ports can still mistakenly share a database; the maintainer must establish isolation. The frontend cannot inspect that configuration and rejects identical backend ports.
 
-```text
-docker compose --env-file .env.example -f infra/compose.yaml up --build -d --wait
-```
-
-Workspace: http://127.0.0.1:18080/ . Replay API: 18000; PostgreSQL host port: 54329. Existing data persists. Backend preparation is in [onboarding](getting-started.md). Do not reset another installation's database or volumes for these frontend tests.
-
-For frontend development use Node 24.15.x/npm 11.12.x. Run `npm ci`, `npm run dev` from this worktree's `apps/web`, then open http://127.0.0.1:5173/ . The default proxy targets replay API 18000. Preview needs no Docker/API; login/replay require them.
-
-For your already upgraded and running Andy team setup, use only the backend URL:
-
-macOS/Linux:
+In the **D worktree's apps/web**, using Node 24.15.x/npm 11.12.x:
 
 ```bash
-GIGMATE_API_URL=http://127.0.0.1:18702 npm run dev
+npm ci
+npm run dev
+```
+
+Defaults: actual connection backend `http://127.0.0.1:18702`, isolated backend `http://127.0.0.1:18000`. Configure alternate ports once at startup, then switch in the page:
+
+```bash
+GIGMATE_REAL_API_URL=http://127.0.0.1:18702 GIGMATE_ISOLATED_API_URL=http://127.0.0.1:18012 npm run dev
 ```
 
 Windows PowerShell:
 
 ```powershell
-$env:GIGMATE_API_URL = "http://127.0.0.1:18702"
+npm ci
+$env:GIGMATE_REAL_API_URL = "http://127.0.0.1:18702"
+$env:GIGMATE_ISOLATED_API_URL = "http://127.0.0.1:18012"
 npm run dev
 ```
 
-Follow [Andy's local setup](role-a-team-local-development.md), using your own private configuration/session. `GIGMATE_LOCAL_PAIRING` and the Vite/Python bridge are retired. Development and deployed frontends use the same authenticated `/api/v1` routes. Provider credentials, session names and raw provider chat IDs stay server-side. Native Windows frontend runtime acceptance is still pending.
+18012 is this preview's disposable backend; use your prepared port on another machine. `GIGMATE_DEFAULT_ENV=real` changes the initial default. Legacy `GIGMATE_API_URL` now aliases the **isolated target only**; old WAHA-target commands must migrate to `GIGMATE_REAL_API_URL` to avoid incorrect labels. Restart Vite after address changes. Both backends' `TRUSTED_ORIGINS` must allow the actual frontend origin, e.g. `http://127.0.0.1:5178`; origin/session/CSRF checks remain enforced.
 
-## Login/logout
+The public hint applies to default development installations, not WAHA administration or phone credentials. Changed installation passwords take precedence. Production provisioning remains pending. Published `npm run build` output uses its deployment's `/api` and excludes local switching/development-password hints; these are Vite development features.
 
-Development login: `merchant` / `demo-only-change-me`, or the password selected at initial seed. This is separate from WhatsApp on your phone. After login choose connection or replay. Logout/expiry remove account data and transient QR; successful logout also clears saved request-attempt metadata. Reload requires signing in again, but saved authorization/business state remains in the backend. An unresolved request stores only opaque app IDs and its action/version/key in this tab's session storage where available, never credentials or pairing material.
+## 3 Connection and chat consent
 
-## WhatsApp connection and authorization
+This page is available in **真实连接（本机开发）** only. If you are in isolated testing, use the top environment switch and sign in again first.
 
-1. Sign in and select **WhatsApp 连接**. No connection record means the integration owner must provision your installation; use **刷新连接** afterwards. The browser does not create arbitrary accounts/sessions or request provider credentials.
-2. Use **开始连接** for an available initial setup, or **重新连接并获取二维码** for an eligible FAILED/STOPPED session. Wait for the operation result. A completed operation does not prove phone linking; only a fresh WORKING sample shows **WhatsApp 已连接**. Pending operations block another provider action.
-3. When waiting for scan, QR loads automatically in memory. Scan it on the phone's linked-devices screen. **刷新二维码** replaces it; an image hides 30 seconds after retrieval and refreshes every 20 seconds while visible. Provider rotation may invalidate it sooner. Failed/stale reads, pause, logout and leaving the workspace clear it. Preview is not scannable.
-4. For a lost response use **使用原请求核对**: it keeps the same body/version/key and backend idempotency. For `result_unknown`, use **核对未知操作（不重发）**, which queues read-only verification. Refresh to inspect pending/terminal results; never start a different restart merely because an old response was lost. Backend rejection, lease expiry and reconciliation remain authoritative.
-5. **载入会话与授权** reads saved authorization and existing valid options, including when disconnected or paused. **发现最近会话** explicitly discovers up to 100 recent chats while connected. It may omit other/older chats; this is not history import. New choices expire after ten minutes. Labels are plain text and app UUIDs remain opaque.
-6. Check the intended conversations, then **保存会话授权**. The summary shows unsaved vs server-synchronized choices and the saved count. Save obtains persistent selected IDs from the backend. Read consent does not enable automatic replies, send messages or confirm work orders. **放弃更改** restores the loaded choices.
-7. Uncheck an existing chat and save to reduce consent, or use **撤销全部授权**. These actions work while disconnected, paused or provider configuration is unavailable, using the last successfully read authority version. A version change/read failure/lost save response disables another save until **重新载入会话**; with dirty choices the button says **放弃勾选并重新载入**. After expired choices, reload and rediscover before granting. Writes are never automatically repeated.
-8. **暂停消息接收** denies reception without deleting the session/choices; **恢复消息接收** explicitly restores existing authorization. It does not promise to import missed messages. Reload authorization after its version changes. Keep browser and CLI authorization changes coordinated: CLI provision can intentionally replace the browser-saved allowlist.
-9. Check provider connectivity, freshness, receiving permission and processing readiness separately. Review recovered outage intervals only after checking that no history import is needed, then check the confirmation and use **清除已恢复故障（count）**. This retains audit history and imports/deletes no messages. Active faults cannot be cleared.
+1. Sign in and choose **WhatsApp 连接**. A fresh connected state needs no new pairing, but processing still requires explicitly saved conversation authorization.
+2. Missing connection records require account provisioning review and **刷新连接**. Read failure is different from an unconfigured account.
+3. If pairing is required, use the available **开始连接** or **重新连接并获取二维码**, then phone WhatsApp → Linked devices. Wait for the durable operation. A displayed QR is not successful phone pairing; inspect fresh state.
+4. QR stays in memory, hides after 30 seconds, and refreshes about every 20 seconds while visible; provider rotation can be earlier. Pause, logout, navigation and unreliable reads clear it. Refresh state before retry, without reusing stale images.
+5. **载入会话与授权** reads saved choices. While connected, **发现最近会话** loads up to 100 candidates per batch, with explicit load-more. Discovery is not complete history import.
+6. Check and **保存会话授权** to grant processing. Search/type filters and 8/16/24-row pages use loaded choices, preserving hidden selections. **已授权** filters saved facts, not unsaved checks.
+7. Uncheck/save to reduce consent; **撤销全部授权** covers all pages. Existing consent remains readable/withdrawable while disconnected, paused or provider configuration is unavailable. **放弃更改** restores saved facts.
+8. New candidates normally expire after ten minutes. Expiry, changed authority, read failure or a lost save response requires reload/review before another save. Rediscovery may refresh labels but cannot guarantee recovery of an upstream-missing nickname; number-only labels explain it.
+9. **暂停消息接收** suspends reception; **恢复消息接收** restores existing consent without promising gap import. Read/process permission is not automatic reply permission or formal order confirmation.
 
-Real phone linking, independent teammate review and native Windows runtime acceptance remain pending. See [D evidence](role-d-stage1-acceptance.md) and [Andy's implemented setup API](role-a-setup-api-acceptance.md).
+Lost response: **使用原请求核对** keeps the original command/parameters/identity. A server `result_unknown` requires **核对未知操作（不重发）**; do not substitute a fresh restart. Provider connectivity, processing health and history completeness are separate.
 
-## D-01 preview
+After a fault recovers, inspect its interval and explicitly confirm no history import is needed before **清除已恢复故障**. It removes a pending marker while retaining audit, cannot clear active faults, and imports/deletes no messages. Timeline/sync progress and media metadata do not prove work-order extraction or attachment parsing.
 
-Select **D-01 演示预览** → **模拟扫码成功** → **载入会话与授权** (or **发现最近会话**). Select fictional chats, save and check the count; edit/discard choices, pause/resume, simulate disconnection and revoke existing consent. A pause/version change requires rereading choices, as in live mode. Leaving/re-entering resets the preview. These operations create no real authorization and issue no business API requests.
+## 4 Business workspace
 
-## Replay acceptance
+Search and filter order status. A hidden selected order remains open with a notice, without automatic selection changes. Empty orders can be truthful; a connection does not create them. The page explains unavailable automatic/manual creation and supplies no fake-data button.
 
-Assumes initial order v3. Dates are fixed 2026 examples in Hong Kong time. An existing database may already be v4; repeat/reload never resets it. Wait for each proposal before the next input; rapid different inputs can supersede earlier work before extraction.
+Details show version, schedule, address and field state; missing address remains missing. Sources identify exact message revisions. Choose all or one linked conversation; switch to all if a source target is hidden. Missing revisions remain labeled for review rather than silently replaced with newer text.
 
-| Step | Action | Expected display |
-| --- | --- | --- |
-| 1 | Login → 工单回放 → 虚构业务预约 | Order v3/context v4; formal 10/07 15:00–16:00, missing address; no proposal, original source and preparation task |
-| 2 | Select 另一项已确认预约, return | Formal/source/current-vs-other labels follow selection; other booking 10/08 15:00–16:00 with no task; replay disabled with target guidance |
-| 3 | 回放：15:00 冲突改期 | 10/08 15:00–16:00 proposal, conflict/disabled confirmation; formal/calendar/tasks unchanged; context v5, two messages |
-| 4 | Repeat input | Already-processed notice; still one card/two messages/order v3 |
-| 5 | 回放：16:30 可用时段 | New 10/08 16:30–17:30 proposal awaiting approval; old proposal invalidated/disabled; formal/order v3 unchanged; context v6, three messages |
-| 6 | Click source reference | Scrolls to source with suffix, revision and timestamp |
-| 7 | Confirm 16:30 card | Order v4; formal/calendar updated; card confirmed/disabled; old task cancelled/new pending; address remains missing |
-| 8 | Inspect new task | Current main title like 10/08 15:30 准备 16:30 的虚构业务预约; due 10/08 15:30. Legacy rows may keep old titles; frontend does not rewrite them |
-| 9 | Repeat 16:30, navigate, reload/sign in | Already processed; v4/two cards/three messages/two tasks persist; notices do not carry into other views |
-| 10 | Logout, wrong password, correct password | Login form without false authentication error; Chinese wrong-password feedback blocks access; correct login succeeds |
-| 11 | Optional: other / same development password | Only its own v3 order; no merchant-v4 data/other booking; replay disabled |
+Proposal cards separate proposer, customer confirmation and merchant approval. Only schedule confirmation is enabled: **核对并确认安排**, compare old/new/source/versions, check explicit consent, then **确认并同步安排**. Conflict, invalidation, missing/revoked/ambiguous provenance, stale reads, terminal orders and unsupported fields are blocked. Refreshed changes invalidate the old review rather than transfer consent to new content.
 
-Calendar lists all account events and marks the selected order; tasks are filtered to it. Cancelled tasks remain history. Narrow windows may stack calendar/tasks below other panels; scroll to inspect them.
+Success updates formal order, internal calendar and generated preparation tasks through the backend, cancelling old generated tasks with history retained. It sends no customer message and synchronizes no phone calendar. Account calendar distinguishes current/other orders and tentative/formal entries; timed values display in Hong Kong and all-day dates retain their original zone. Day filtering includes overnight overlap.
 
-Use 刷新回放数据 to reread. Failed reads mark cached data stale and disable writes; successful recovery clears the error/stale marker. Changed sources/versions require review, never automatic confirmation retry. Restore service and refresh to reconcile uncertain write outcomes.
+Tasks default to pending/blocked; **全部（含历史）** includes completed/cancelled with deadlines, dependencies and sources. **刷新业务数据** rereads. Failed reads visibly mark retained data stale and disable confirmation until recovery. Unknown writes are reconciled by reading, without automatic resend.
 
-## Troubleshooting and remaining limits
+## 5 Logout and troubleshooting
 
-- Empty list: check for WAHA 18702; use seeded replay.
-- No proposal: check API/worker; duplicate fixtures create no fresh proposal. Persistent queued work needs backend-owner investigation.
-- WAHA_ENGINE_MISMATCH: the backend could not verify the pinned server/engine. Ask the integration owner to check configuration; do not bypass validation. PR #11 handles its verified STOPPED case.
-- Apple Silicon: PR #11 includes Andy's image/platform selection. This frontend batch does not verify actual phone pairing or upgrade the existing private installation.
-- Phone rejects linking: retain its actual result for integration-owner review; QR display does not prove linking.
+Logout/expiry clears account UI, QR and request-attempt metadata; the form does not retain password. Full reload requires sign-in, while saved facts remain backend-owned. A failed logout request is reported rather than claiming success.
 
-Replay needs further debugging/independent review: multi-conversation orders show only the first conversation; multiple API reads are not an atomic database snapshot; no complete worker-failure/long-queue UI, fixture reset, message-edit/revoke controls or general AI input. Backend remains authoritative for versions, sources, consent/ownership and conflicts. D-01 product consent is now implemented and tested synthetically; real WhatsApp delivery/pairing and automatic replies/sending are not established by this batch. Native Windows acceptance remains pending.
+| Symptom | Check |
+| --- | --- |
+| Login fails | GigMate account, configured password, backend destination/readiness |
+| Old demo controls | Whether an old/main checkout is serving; restart from D checkout |
+| No orders | Account ownership and unavailable creation, without seeding real data |
+| Stale connection/business data | Restore service, refresh and review before acting |
+| Authority changed | Reload and compare the other window's saved state |
+| Timeout/unknown result | Read original server facts; avoid repeat clicks/new request identities |
+| Phone refuses pairing | Provide sanitized actual feedback to integration maintainer; QR display is not success |
 
-## Developer checks
+Narrow layouts may require vertical scrolling. Physical devices and native Windows remain independent acceptance; cleanup neither retests pairing nor changes real consent.
 
-From `apps/web` run `npm test`, `npm run check:api`, `npm run format:check`, `npm run build`. Also run `npx prettier --check *test.mjs` for test-file formatting. Build runs regressions first. Keep edits in D frontend/companion docs; do not patch Andy/B/C or shared contracts to repair demonstration setup. Actual evidence: [D acceptance log](role-d-stage1-acceptance.md).
+## 6 Developer checks
+
+In apps/web: `npm run check:api`, `npm run format:check`, `npm run build` (behavior tests, types and build). Fixed replay code and backend `/replay` remain for isolated developer verification, without user UI. No backend source/generated contract/migration changed. This preview adds its loopback frontend origin to the existing ingress API through an ignored Compose override. The API was restarted; the original worker-owned database target was restored after a temporary incorrect target, then health/login rechecked. Provider/consent configuration was preserved. Removing controls does not establish final product completion.
