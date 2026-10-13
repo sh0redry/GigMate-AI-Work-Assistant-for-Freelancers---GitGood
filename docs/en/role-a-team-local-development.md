@@ -1,5 +1,7 @@
 # Team local WAHA development and integration framework
 
+2026-10-10 opt-in extension: [media ingestion and A/B protocol](role-a-media-ingestion.md). Upgrade head (0009), set WAHA_MEDIA_ENABLED=true and use team up to include the private media volume. A supplies bytes/preview/jobs/source review; B must install its real processor separately. Missing B configuration is explicit, not a synthetic fallback. Original-file reading is per-request consent; no automatic downloads, business confirmation or sending.
+
 Current extension: [message synchronization acceptance](role-a-message-sync-acceptance.md). After upgrading to 0008 and rebuilding, use the local message/sync panel for bounded history and group/media metadata. Legacy operators can explicitly remember a verified database URL privately; no original media reading/GenAI in this batch.
 
 2026-10-08: after bootstrapping below, use the [merged integration guide](role-a-integration-acceptance.md) for the implemented browser setup/authorization and legacy journal upgrade. D now uses A's canonical backend; no local-pairing bridge is needed.
