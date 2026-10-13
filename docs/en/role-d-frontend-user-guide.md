@@ -1,6 +1,8 @@
 # GigMate frontend user guide
 
-Updated 2026-10-12, Hong Kong time. [中文版](../zh/role-d-frontend-user-guide.md). For code explanations, read [Kyrie's beginner guide](kyrie-learning-guide.md).
+**PR #24 compatibility update:** the D-02 branch now includes accepted main e066b0c (#21). Its private attachment adapter follows the selected environment for reads, previews, downloads and original-key requests; model activation remains disabled by default. Main still does not contain D-02 until #24 merges.
+
+Updated 2026-10-14, Hong Kong time. [中文版](../zh/role-d-frontend-user-guide.md). For code explanations, read [Kyrie's beginner guide](kyrie-learning-guide.md).
 
 This guide describes D-02 and the current cleanup on `codex/d02-workspace`, **not merged main**. The consolidated D-02 changes are now prepared for PR submission under Kyrie’s updated instruction. A PR asks teammates to review; it does not put the feature into main. The ordinary main checkout can still show old demo controls. Locate D with `git worktree list`; do not reset your WhatsApp session to fix a frontend version mismatch.
 

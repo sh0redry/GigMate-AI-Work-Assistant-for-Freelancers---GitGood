@@ -1,6 +1,8 @@
 # GigMate 前端使用手册
 
-更新：2026-10-12（香港时间）。[English counterpart](../en/role-d-frontend-user-guide.md)。想学代码原理，读 [Kyrie 入门手册](kyrie-learning-guide.md)。
+**PR #24 兼容更新：** D-02 分支现包含已接纳 main e066b0c（#21）。附件读取、预览、下载和原编号请求均跟随当前环境；模型仍默认关闭。#24 合并前，main 仍没有 D-02 页面。
+
+更新：2026-10-14（香港时间）。[English counterpart](../en/role-d-frontend-user-guide.md)。想学代码原理，读 [Kyrie 入门手册](kyrie-learning-guide.md)。
 
 本手册对应 `codex/d02-workspace` 的 D-02 与当前界面整理，**尚未合入 main**。根据 Kyrie 的新要求，完整 D-02 改动现在准备提交 PR。PR 是请队友检查，创建 PR 不等于功能已经进入 main。普通 main 目录仍可能显示旧演示入口。用 `git worktree list` 找 D 工作目录，不要为了界面版本重置自己的 WhatsApp 会话。
 

@@ -1,5 +1,10 @@
 # Implementation status and validation
 
+## PR #24 compatibility with merged main — 2026-10-14
+
+Fetched and confirmed primary main/origin/main at e066b0c; unrelated local docs preserved. #22 is unchanged at 8ef89ac and #23 updated to 99228ca, but both have peer review comments; per Kyrie's instruction no duplicate review/comment or changes to those PRs. #24 merges accepted main #21 without rewriting source/migrations/generated artifacts. Resolve four conflicts by retaining both environment/media test fixtures and paired evidence; add missing media modules to App tests. The inherited media adapter now binds apiBase when created, including private preview/download and exact-key retries, so real-environment media never falls back to the isolated root proxy. One meaningful adapter regression added; **80 frontend tests**, types/Vite/API/format, applicable Ruff (79 files), generated-contract/baseline and whitespace checks pass. Backend source is exactly main's accepted implementation; no real provider/model/send/database/deployment operation. #25 must take this updated #24 before its storage review fix is published; C approval integration remains pending #22.
+
+
 ## Consolidated D-02 PR preparation — 2026-10-12
 
 Kyrie now requests pushing and opening a PR for the completed D-02 frontend branch. This supersedes the earlier commit-only instruction; dated no-PR records below describe their original stage. The candidate combines sourced business review/calendar/tasks, removal of user demo controls, development environment switching and isolated business-only navigation, with paired beginner/user/reference documentation. Fresh pre-submission checks: **75 frontend tests passed**, TypeScript/Vite build, API consistency, Prettier, generated contracts, baseline (**74 Markdown files / 873 local links**) and diff whitespace passed. No backend/schema/migration changes; backend pytest evidence below is historical, not rerun for submission. Independent review and main merge remain pending.
@@ -31,6 +36,152 @@ Evidence: **65 frontend tests**, TypeScript/Vite, frontend API/format, applicabl
 
 Reviewed open #21 (`d000b26`, original **500 passed**) and #22 (`e79ef7b`, original **387 passed**): one added PostgreSQL regression per head fails. #21 loses in-flight model uncertainty on cancellation and accepts reissue; #22 regenerates reply work on outgoing API echoes. Both received `REQUEST_CHANGES` and remain unmerged. Existing passing suites/CI do not resolve these findings. Local main was already at origin/main `bbb0074`; unrelated local documentation and original D worktrees were preserved.
 
+
+## PR #21 review: persistent content-stop decision — 2026-10-13
+
+Independently reproduced the new P2 in four synthetic cancel/pause-resume + immediate/repeated-unknown lookup cases: reconciliation erased the only stop marker and a later valid result became public. The job now persists its first `content_stop_reason` separately from state, errors and control versions. Subsequent lookups retain that decision, never call process again and never publish the stopped request's output or restore review. Unknown outcomes still block a new request; a known valid return releases the gate as cancelled and permits only a new explicit intent.
+
+Additive **0012_waha_media_stop** follows unchanged 0010, avoiding the separate sending branch's 0011 number. Upgrade head/check before running new code. The migration preserves visible stop reasons and conservatively flags pre-upgrade unknown/reconciling jobs whose decision may already have been erased; it cannot undo previously published results. Those need operator review. #23 must reconcile migration ancestry after #21 lands. Public contracts are unchanged; bilingual media/API notes explain these limits.
+
+Actual automatic evidence: Windows full backend **548 passed / 9 skipped** (8 PostgreSQL-dependent cases and one unsupported-platform case), with migration/backfill/downgrade and existing media/PDF tests. Final four regressions also pass after adding the explicit-new-intent assertion. Disposable SQLite upgrade to 0012/check has no drift; SQLite does not prove PostgreSQL locking. Frontend **57 passed**, generated types, format, TypeScript/build, applicable Ruff/format, contract export and baseline passed. CI on the new pushed head must independently confirm PostgreSQL and the OS matrix. Existing Starlette/httpx warning remains. No real model/media/send, QR, deployment or user database/session operation; the sending branch and its two uncommitted documentation sections remain untouched. PR stays Draft for independent review and manual acceptance.
+
+## PR #21 PDF resource isolation batch
+
+Production PDF parsing now uses a private child with a 20-second default wall budget, 512 MiB memory budget, bounded input/output and one parser per worker. Windows attaches limits to a suspended real base interpreter (not a venv launcher); Linux uses hard memory/CPU limits and parent-death binding. A PID handshake precedes data handoff. No model/connector/database environment is inherited, input is not staged, UTF-8 is fixed and IPC results are validated. Native macOS fails closed; use the Linux Docker backend. This is resource isolation, not a filesystem/network sandbox or malware scanner.
+
+Known PDF refusal codes are persisted before vendor submission. The worker heartbeat runs independently of parser/model waits. A private before-submit callback revalidates permission/lease/source after local preparation, preventing a model call when the task was cancelled during parsing. No new schema or migration. Media Compose exposes trusted limits to API/worker; CI adds native Linux/Windows/macOS resource checks (macOS validates refusal, not native parsing).
+
+Actual Windows evidence: real memory allocation over a 128 MiB cap is refused, timeout kills/reaps the owned process, crashes/output overflow/invalid packets fail, wrong PID cannot receive data, keys are not inherited, Unicode IPC and heartbeat continuity pass. Full regression before the final pre-submit callback: **542 passed / 9 skipped** (8 PostgreSQL checks plus unsupported-platform test). Final affected parser/task/authority cases: **40 passed / 1 platform skip**; remaining media compatibility cases **124 passed / 1 PostgreSQL skip**. Frontend **57 passed**, types/format/TypeScript/build, Ruff/format, contract export and disposable SQLite migration 0010/check passed. Existing Starlette/httpx warning remains. New matrix CI and independent review must finish on the pushed head. No real media/model/send, QR, deployment or original DB/session operation; the owner's sending branch and uncommitted progress sections are preserved.
+
+## PR #21 PDF integration and model interruption correction — 2026-10-12
+
+Integrated teammate PDF branch `0d91ad1` into the existing media PR, preserving its local parser, dedicated business prompt, dependency pin and Unicode documentation repair. Added server-enforced partial coverage for missing page text and early text-limit refusal before reading another page. Corrected the segment-limit explanation: it is independent of total text. Scanned PDFs remain refused; no hard parser CPU/memory sandbox or actual model activation is claimed.
+
+Fixed the independent-review P1: cancellation/revocation and expiry retain possibly submitted processing/reconciliation request identity and the active attachment gate; late uncertain results remain blocking and late content is discarded even after regrant. Read-only reconciliation cannot overlap the original live lease; cancelling queued reconciliation retains prior uncertainty. A definite original return or explicit pre-submit processing refusal can release the gate without restoring content. Expiry cleanup uses the same account/connection locking order as task mutations and completion. No new schema fields/migration or forced resend endpoint were needed. E must independently verify PostgreSQL interleavings and any still-open source-context lookup limitations.
+
+Actual automatic evidence: full backend **520 passed / 8 PostgreSQL-only skipped** before the final expiry-lock refinement; final affected media tests **70 passed / 1 PostgreSQL-only skipped**. Frontend **57 passed**, API types/format/TypeScript/Vite build, applicable Ruff/format, contract export and disposable SQLite migration 0010/check passed. New interruption and PDF-bound regressions cover unknown/success/pre-submit refusal, cancel, pause/regrant, source change, expiry, pending/running reconciliation, partial coverage and early stopping. Models remain disabled; no real media/model/send, QR, deployment or user DB/session changes. The owner's sending branch and its two uncommitted progress edits are preserved. This updates PR #21 only, not main or PR #23.
+
+## Real PDF parser: two-layer extraction — 2026-10-12
+
+`gigmate.media.pdfparse` replaces the `MEDIA_PDF_PARSER_PENDING` stub with a real local parser (`pypdf==6.20.0`, added to `pyproject.toml` and `requirements.lock`). Layer 1 parses pages locally with bounded I/O: at most 200 pages, per-page text split into at most 4000-character chunks that keep the page number, at most 100000 characters total. `MEDIA_PDF_PAGE_LIMIT`, `MEDIA_PDF_TEXT_LIMIT`, `MEDIA_PDF_NOT_PARSEABLE` and `MEDIA_PDF_NO_TEXT_LAYER` (scanned, no text layer) all refuse **before** any vendor request, so they map to `ProcessingUnavailable` and nothing is charged; nothing is silently truncated. Layer 2 ships the extracted pages to the chat vendor with the dedicated `role_b_media_pdf_v1.txt` prompt (version header 1.0.0, overridable via `GIGMATE_MEDIA_PDF_PROMPT_PATH`); the model only contributes coverage / summary / suggestions / unresolved_questions and any `segments` key in its output is ignored — page text is bound locally, so the model can never retype, merge or invent it, and suggestion `source_indices` are validated against the local segments by the contract. Blank pages inside an otherwise readable PDF surface as an unresolved question instead of faking coverage. This batch also repairs the mojibake the 2026-10-11 entries left in `docs/zh/role-b-extraction.md` and `docs/zh/progress.md` (the corrupted paragraphs are restored in Chinese).
+
+**Tests**: 9 new PDF cases in `test_media_processor.py` — local binding proven by injecting a `segments` key into the model response; no-text-layer / garbage-bytes / 201-page / oversized-total refusals all verified to make **no** vendor call; 9000-char page splitting; blank-page unresolved question; post-parse vendor 5xx → `ProcessingUncertain`; bad `source_indices` → uncertain. File passes 50/50; full backend suite re-run green; Ruff check/format clean; contract export and baseline checks unchanged.
+
+**Honest limits**: the implementation still ships inactive (`_ENABLED=False`) and no real model request was made. Scanned/image-only PDFs refuse rather than silently OCR (that needs a vision-capable vendor, still unverified). Explicit model capability / per-route credential verification, timestamp/timezone grounding, prompt-injection fixtures and real vendor/codec acceptance remain open from the 2026-10-11 correction list.
+
+## PR #21 teammate media integration and main compatibility — 2026-10-11
+
+Reviewed the teammate comments: factory process/reconcile callability and constructor exception handling were already fixed in `a5aa0a1`. Integrated B's `b5d7e84` inactive media seam, then latest main `bbb0074`; progress conflicts were combined, preserving A and B histories. No sending changes from `Andy_WAHA_multitype_sending` are included.
+
+Additional boundary fixes: PDF processing explicitly pending instead of binary-to-text decoding; default unverified vision route and custom missing endpoint refuse before client creation; UTF-8/90k TXT preflight; unknown origin refused; prompt encoding fallback; client closure; stable uncertain logs; strict output/source-index validation without lossy truncation/reindexing; complete ASR text retained with unknown coverage; smoke refusal/unknown exits nonzero. Test patches restore client factories through monkeypatch and use real UTF-8 synthetic TXT, not PNG bytes labelled TXT. The 14 added review cases and B tests total **54 passed** after final corrections. The whole-backend run before the last two smoke regressions/minor boundary edits was **490 passed, 8 skipped**; final affected tests were rerun. Frontend **57 passed**, API/format/TypeScript/Vite build, applicable Ruff/format, contract export, baseline and whitespace checks passed. Disposable SQLite upgrade to 0010/check found no drift. PostgreSQL locking and real model/phone acceptance were not performed; one existing Starlette/httpx warning remains.
+
+B remains `_ENABLED=False`; PDF parsing, actual vision/audio model capability, per-route credentials, timestamp grounding, prompt-injection and vendor request-id reconciliation are activation work. No real media/model/customer/QR/deployment was accessed. PR #21 remains Draft; only its own branch is updated. The owner's two uncommitted progress-file edits on the sending branch were preserved.
+
+
+## PR #21 processor factory review correction — 2026-10-10
+
+Factory loading now requires callable process/reconcile methods before model submission and preserves constructor exceptions separately from configuration errors. Validation: 20 isolated factory tests passed; 52 media/evidence tests passed, with one PostgreSQL concurrency test skipped without a configured test database. Ruff check/format, contract export check, baseline and whitespace checks passed. No live model request, real media read, deployment or frontend change was performed.
+
+## B media processor: real-model seam implementation — 2026-10-10
+
+Built on top of A's WAHA media ingestion branch (`pr-21-review` →
+`william/role-b-media-processor`). Implements the `MediaProcessor` seam that
+PR #21 deliberately left empty so A could merge without depending on B. Ships
+the real-model processor with the same two-gate safety pattern as
+`LLMProvider`:
+
+* Module-level `_ENABLED` flag (default `False`) — the shipping default
+  refuses every call before reading any environment variable.
+* `GIGMATE_MEDIA_LIVE=1` operator switch — required in addition to the
+  flag to actually contact a vendor.
+* `GIGMATE_MEDIA_API_KEY` must be set; otherwise `ProcessingUnavailable`.
+* `GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN=1` is required to send real customer
+  attachments to the model; synthetic origin bypasses the gate.
+
+Routing covers the four accepted types: PNG / JPEG / WebP → OCR (chat
+completions with vision input), Ogg / MP3 / WAV / M4A → ASR (audio
+transcriptions), PDF → chat completions, plain text → chat completions.
+Anything outside that set is refused before the vendor is contacted.
+
+`scripts/smoke_media.py` is the operator-side manual smoke (not in CI). It
+requires both gates to be open and prints the parsed proposal JSON.
+
+**Tests** (41 cases in `apps/backend/tests/test_media_processor.py`): two-gate
+safety per axis (seam flag, live switch, API key, live origin), MIME routing,
+per-vendor call shape, coercion validation, 4xx / 5xx → `ProcessingUncertain`,
+network error → `ProcessingUncertain`, malformed JSON → `ProcessingUncertain`,
+`reconcile()` returns `None` when closed and when no vendor lookup is wired,
+security boundary (`MediaInput` carries no credentials; processor does not
+mutate the input), factory entry point resolves through the standard
+`module:AttrName` syntax.
+
+**PR #21 regression coverage**: ran the existing `test_waha_media.py`,
+`test_waha_media_evidence.py` and `test_waha_migration.py` after the
+implementation lands — 56 passed / 1 skipped, same as the PR description.
+No A-side behaviour was changed.
+
+**Lint / format / contracts / baseline**:
+
+* `ruff check apps/backend/src/gigmate/media scripts/smoke_media.py` — clean.
+* `ruff format --check apps/backend/src/gigmate/media scripts/smoke_media.py` —
+  clean.
+* `scripts/export_contracts.py --check` — no changes to generated files;
+  processor reads existing `WahaMediaResult` / `WahaMediaSegment` /
+  `WahaMediaSuggestion` contracts, adds no new contracts.
+* `scripts/check_baseline.py` — clean.
+
+**Honest limits**:
+
+* Real vendor round-trip not exercised; the suite is mock-based with
+  `_FakeClient`. A real call requires the operator to flip `_ENABLED=True`
+  and supply `GIGMATE_MEDIA_API_KEY` plus a vendor endpoint.
+* ASR vendor is `openai` by default because DeepSeek does not expose a
+  transcription endpoint; the processor refuses ASR with
+  `ProcessingUnavailable` when only chat-completions credentials are set.
+* `reconcile()` returns `None` because chat-completions vendors do not expose
+  a stable request-id lookup; the worker must wait for a manual retry.
+* No prompt-injection regression suite for media attachments yet; this is
+  carried as an open follow-up.
+* PostgreSQL/隔离 HTTP-worker 套件 was not re-run for this branch; SQLite
+  is the only environment verified here.
+
+**Side fix in this batch**: `apps/backend/src/gigmate/extraction/evaluator.py`
+had a cwd-relative `_resolve_manifest_path` that broke `test_extraction.py`
+when pytest was invoked from `apps/backend/` instead of the repo root. The
+fix anchors the manifest path to the repository root (`parents[5]`); without
+it the full backend suite reports 1 failure even though every individual
+behaviour is correct. This is an isolated, well-documented change that does
+not alter evaluator semantics.
+
+## A media batch 2: time evidence and reviewed handoff — 2026-10-10
+
+Built on `cb11935` with latest merged main/PR #16 retained. A implemented separate provider message sending time (never backfilled from event/observation), merchant-selected validated per-request IANA timezone, frozen durable processing context and B DTO additions; additive 0010 follows unchanged 0009. Added version/hash/result-bound source review and a protected read-only WahaMediaEvidence 0.1.0 endpoint. Suggestions link to source segments; the page explains unknown dates and exposes business handoff only after review, suppressing mismatched/expired context displays. Old unbound reviews require rereview, not model resubmission. Source receipt identity/fingerprint semantics remain intact. B real OCR/ASR/parsing/GenAI and C work-order promotion/sending remain pending; no PR #18 implementation or authority was imported. [Protocol and one-batch manual steps](role-a-media-ingestion.md).
+
+Automatic evidence: complete backend suite **395 passed / 8 skipped**, using SQLite (not PostgreSQL locking evidence), including 17 new media-evidence cases and the 0009→0010 upgrade preserving null legacy sending times/job contexts. Existing migration branches upgrade/downgrade without data loss. Initial test fixture selected the wrong seeded conversation and assumed a different corrupt-file HTTP code; assertions were corrected to the owned conversation and existing MEDIA_INTEGRITY_FAILED/503, then the full suite passed. Frontend **57 passed**, including actual mounted media review/source links/version mismatch/pause clearing against a synthetic API fixture and timezone preservation across lost responses; TypeScript/build, generated API, format, backend Ruff/format, source contract export and baseline passed. A disposable SQLite Alembic upgrade/check also passed. No real phone/browser/model/parsing/network-lock behaviour is claimed.
+
+Docker Desktop Linux engine was unavailable (named pipe absent), so the PostgreSQL/isolated HTTP suite could not run. No actual database/WAHA deployment/session/authorization/file/model/send was changed. Current source requires 0010; the previously recorded deployment remains on 0009. Physical four-format previews, B's real processor, C consumption and E independent acceptance remain outstanding. No commit/push for this development batch.
+
+## PR #16 / media branch compatibility — 2026-10-10
+
+PR #16 merged to main as `d6b298f`; synchronized latest main into `Andy_WAHA_media_ingestion` while retaining all media implementation. Resolved three overlapping files by retaining complete chat-pagination and media CSS rule sets and both bilingual progress records. Extended the actual workspace DOM test's module compilation to include WahaMedia/waha-media-api; otherwise the newly added pagination tests cannot load the media-enabled workspace. No backend, migration, generated contract or model behaviour changed in this synchronization; PR #18 remains unmerged.
+
+Independent isolated compatibility evidence: frontend **56 tests passed**, TypeScript/production build, generated API drift and format checks passed. On Windows, checkout CRLF was normalized to the repository's LF for the format check; no functional content was changed by normalization. Media backend **35 passed / 1 PostgreSQL-only skipped** (SQLite), applicable backend Ruff/format, contract export and bilingual baseline passed (66 Markdown files, 377 local links). Docker Desktop Linux engine was unavailable, so no fresh PostgreSQL/HTTP or real-phone/browser acceptance is claimed. No real account, QR, chat, media, model or deployment operations performed.
+
+## A media ingestion / B contract delivery — 2026-10-10
+
+Branch Andy_WAHA_media_ingestion from 56e482e; retained prior uncommitted runtime-recovery documents. User explicitly confirmed B has no real adapter and requested A's plumbing/contract first. Implemented owned consented image/audio/PDF/TXT downloads, private bounded blobs/hashes, protected previews/downloads, attachment versions, durable stages/leases/retry/cancellation, unknown-model read-only reconciliation, reloadable jobs and source review bound to attachment/context/exact result job. Source/permission changes suppress output and cache reads; intact bytes are reused, damaged caches refetched under explicit consent. B owns real OCR/ASR/parser/GenAI; A supplies a server-only factory seam with strict segments/suggestions and no business authority. B unset fails clearly without fake AI results. Added 0009, source-generated contracts/types, opt-in Compose/shared non-root volume and bilingual handoff/ADR 0006.
+
+Final automatic evidence: **385 PostgreSQL-configured tests passed**, including three migration paths and concurrent media-worker publication; some B fixtures remain SQLite and are not locking evidence. **15 actual isolated HTTP/API/worker/evaluation checkpoints** passed (four media transports/previews plus missing-B handling), evaluation **7/7**, Alembic check and dedicated cleanup passed. Synthetic audio/PDF samples prove transport/signature checks only, not decoders/parsers. Final SQLite media module **35 passed / 1 PostgreSQL-only skipped**. Frontend **48 passed**, generated-API drift, formatting, TypeScript and production build passed; backend Ruff/format, export, baseline and whitespace/private-value scans passed. Initial fixture import/state/header assertions were corrected, then final suites passed. Browser tool failed to start Node runtime twice; no automated page visual/real-format acceptance claimed.
+
+Local own-account preparation: original DB upgraded to 0009/check passed, pre/post enabled/control_version/authorized-chat IDs identical. API/worker rebuilt with --no-deps and media enabled, B factory unset; original provider/session/binding/database/monitor retained. New volume required appuser ownership (0700); corrected and verified actual non-root write/remove, then image initialization fixed for fresh installs. Deployed media module hash matches final source. Workspace/login/capabilities all 200; enabled=true, processor_configured=false. Provider WORKING, pipeline_ready=true, control version 9, one authorized chat and **zero real media jobs/files**. Original global provider downloads remain false. No real files/chats/QR fetched, sending, provisioning, incident acknowledgement or model calls. Physical image/audio/PDF/TXT acceptance and B real-model/independent E review remain required. No commit/push.
+
+## Existing local WAHA runtime recovery — 2026-10-10
+
+Follow-up stale-page diagnosis: provider remained WORKING with fresh connected/pipeline_ready samples; direct ingress setup and latest operation were 200/succeeded, control_version 9 after the user's later actions. The 5173 frontend listener had stopped, leaving the loaded browser page unable to refresh and its authorization view marked stale. Restored Vite as a hidden background process rooted at apps/web, targeting 18702. After the launch command exited, page/login/setup/latest-operation via localhost:5173 all returned 200; setup was WORKING, sample_stale=false, available=true and no active operation. Refresh/relogin/reload saved authorization on the user's page; do not clear unresolved original requests blindly. No application source or real authorization changes were made by this follow-up.
+
+Operator-authorized repair of the original installation: Docker restart/resume recorded all five WAHA services exited with 255; their restart=no policy left them stopped while the original database recovered with unless-stopped. Independently, the persisted provider FAILED sample preceded that exit window; safe log analysis identified repeated WEBJS null.on initialization errors, but did not establish the original triggering cause. Starting the same containers with the same session/binding/database restored STARTING then WORKING without a QR, image upgrade, callback replacement or consent change. Set only these existing local containers to unless-stopped; private local-data/waha-a02/restart-policy.override.yaml preserves the policy for future Compose recreation. Shared Compose defaults remain unchanged; include that private override after waha.compose.yaml and waha-ingress.compose.yaml for this installation. Explicit stop remains an operator choice.
+
+Runtime evidence: provider WORKING/WEBJS, state connected, enabled/live_connected/pipeline_ready true, four components healthy, pending/processing/failed jobs zero, **7 content-free HTTP checks passed**. Control version remains 7 and authorized chat count remains 1. Original DB/session volumes retained; no original files/chats/QR read, sends, provisioning, incident acknowledgement or historical database repair. Historical 26 review issues remain separate; resumed health does not prove missing-message recovery. Original frontend restored on 5173 targeting ingress18702; use localhost:5173 for WAHA and 127.0.0.1:18080 for the separate order demo to separate hostname-scoped browser cookies. No source implementation, migrations, dependencies or shared restart defaults changed. Documentation/configuration validation only; no commit/push.
 
 ## PR #18 llm-skeleton review follow-up — 2026-10-10
 

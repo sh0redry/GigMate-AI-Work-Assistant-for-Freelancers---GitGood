@@ -12,6 +12,7 @@ for (const name of [
   "connection-api",
   "waha-live-api",
   "waha-sync-api",
+  "waha-media-api",
 ]) {
   const source = await readFile(
     new URL(`./src/${name}.ts`, import.meta.url),
@@ -34,6 +35,9 @@ const { liveConnectionApi, ConnectionError, clearConnectionAttempts } =
 const original = globalThis.fetch;
 const { synchronizationApi } = await import(
   pathToFileURL(join(directory, "waha-sync-api.mjs"))
+);
+const { mediaApi } = await import(
+  pathToFileURL(join(directory, "waha-media-api.mjs"))
 );
 afterEach(() => {
   globalThis.fetch = original;
@@ -83,6 +87,93 @@ const json = (data, status = 200) =>
   });
 const error = (code, status) =>
   new Response(JSON.stringify({ error: { code, message: code } }), { status });
+
+test("media lost response retains exact source, consent, version and key", async () => {
+  const posts = [];
+  globalThis.fetch = async (url, init) => {
+    if (url.endsWith("/setup"))
+      return json(setup({ control_version: posts.length ? 99 : 7 }));
+    assert.equal(url, base + "/media/jobs");
+    assert.equal(init.headers["X-CSRF-Token"], "synthetic-csrf");
+    posts.push([JSON.parse(init.body), init.headers["Idempotency-Key"]]);
+    if (posts.length === 1)
+      throw new TypeError("Synthetic lost media response");
+    return json({ id: opid, attachment_id: choice, state: "pending" });
+  };
+  const api = mediaApi(id, "synthetic-csrf");
+  const input = {
+    snapshot_id: choice,
+    consent_download: true,
+    process: true,
+    consent_model: true,
+    timezone: "Asia/Hong_Kong",
+  };
+  await assert.rejects(
+    api.start(input, "original"),
+    (e) => e.code === "MEDIA_REQUEST_UNKNOWN",
+  );
+  assert.equal((await api.start(input, "original")).id, opid);
+  assert.deepEqual(posts[0], posts[1]);
+  assert.equal(posts[1][0].expected_version, 7);
+  assert.equal(posts[1][0].timezone, "Asia/Hong_Kong");
+  await assert.rejects(
+    api.start({ ...input, timezone: "UTC" }, "original"),
+    (e) => e.code === "IDEMPOTENCY_CONFLICT",
+  );
+  await assert.rejects(
+    api.start({ ...input, consent_model: false }, "original"),
+    (e) => e.code === "IDEMPOTENCY_CONFLICT",
+  );
+  assert.equal(posts.length, 2);
+});
+
+test("media preview, review and read-only result lookup use owned backend without provider URLs", async () => {
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    assert.ok(url.startsWith(base));
+    assert.equal(init.credentials, "same-origin");
+    assert.equal(init.cache, "no-store");
+    calls.push([url, init.body ? JSON.parse(init.body) : null]);
+    if (url.endsWith("/setup")) return json(setup());
+    if (url.endsWith("/content"))
+      return new Response("Synthetic text", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    return json({ id: choice });
+  };
+  const api = mediaApi(id, "synthetic-csrf");
+  assert.equal(await (await api.preview(choice)).text(), "Synthetic text");
+  await api.reconcile(opid);
+  await api.review(
+    { id: choice, version: 2, context_version: 8, result_job_id: opid },
+    "Synthetic checked source",
+  );
+  assert.deepEqual(calls.at(-1)[1], {
+    expected_attachment_version: 2,
+    expected_context_version: 8,
+    expected_result_job_id: opid,
+    reviewed: true,
+    note: "Synthetic checked source",
+  });
+  assert.ok(calls.some(([url]) => url.endsWith("/reconcile")));
+  assert.ok(!JSON.stringify(calls).includes("api/files"));
+});
+
+test("old media backend and revoked source fail clearly without automatic retry", async () => {
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return error("NOT_FOUND", 404);
+  };
+  const api = mediaApi(id, "synthetic-csrf");
+  await assert.rejects(
+    api.capabilities(),
+    (e) => e.code === "MEDIA_API_NOT_INSTALLED",
+  );
+  assert.equal(calls, 1);
+  globalThis.fetch = async () => error("SOURCE_REVOKED", 409);
+  await assert.rejects(api.preview(choice), (e) => e.code === "SOURCE_REVOKED");
+});
 
 test("sync lost response replays exact consent range and authority rather than creating another intent", async () => {
   const writes = [];
@@ -715,4 +806,51 @@ test("connection and synchronization adapters bind their environment when create
   await connection.connectors();
   await sync.jobs();
   assert.ok(urls.every((url) => url.startsWith("/environments/real/api/v1/")));
+});
+
+test("media API binds its environment including preview/download and exact-key mutation retry", async () => {
+  globalThis.__GIGMATE_ENVIRONMENTS__ = { defaultEnvironment: "isolated" };
+  globalThis.window = { location: { pathname: "/environments/real/" } };
+  const { mediaApi } = await import(
+    pathToFileURL(join(directory, "waha-media-api.mjs"))
+  );
+  const api = mediaApi("synthetic-connection", "synthetic-csrf");
+  globalThis.window.location.pathname = "/environments/isolated/";
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url, init });
+    if (url.endsWith("/setup")) return json(setup({ control_version: 7 }));
+    if (init.method === "POST")
+      return json({
+        id: "synthetic-job",
+        attachment_id: "synthetic-asset",
+        state: "result_unknown",
+      });
+    if (url.includes("/content"))
+      return new Response("synthetic preview", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    return json({});
+  };
+  const input = {
+    snapshot_id: "synthetic-snapshot",
+    consent_download: true,
+    consent_model: true,
+    process: true,
+  };
+  await api.capabilities();
+  await api.start(input, "original-media-key");
+  await api.start(input, "original-media-key");
+  await api.preview("synthetic-asset");
+  assert.ok(calls.every((c) => c.url.startsWith("/environments/real/api/v1/")));
+  assert.ok(
+    api.downloadUrl("synthetic-asset").startsWith("/environments/real/api/v1/"),
+  );
+  const writes = calls.filter((c) => c.init.method === "POST");
+  assert.equal(writes.length, 2);
+  assert.equal(
+    writes[0].init.headers["Idempotency-Key"],
+    writes[1].init.headers["Idempotency-Key"],
+  );
+  assert.equal(writes[0].init.body, writes[1].init.body);
 });
