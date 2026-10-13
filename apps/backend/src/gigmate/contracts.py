@@ -645,6 +645,10 @@ class ApproveActionCommand(Model):
     snapshot_hash: Annotated[str, Field(pattern=r"^sha256:[a-f0-9]{64}$")]
 
 
+class ReissueActionCommand(Model):
+    expected_context_version: Positive
+
+
 class RejectActionCommand(ApproveActionCommand):
     reason: Text
 

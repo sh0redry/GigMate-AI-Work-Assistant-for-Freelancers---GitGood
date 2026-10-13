@@ -8,8 +8,16 @@ from sqlalchemy import func, select
 
 from gigmate.approvals import draft_for_change, snapshot_hash
 from gigmate.config import ROOT
-from gigmate.db import ActionRow, AuditRow, ChangeRow, ConversationRow, WorkOrderRow
-from gigmate.messaging import fixture
+from gigmate.db import (
+    ActionRow,
+    AuditRow,
+    CalendarRow,
+    ChangeRow,
+    ConversationRow,
+    Job,
+    WorkOrderRow,
+)
+from gigmate.messaging import fixture, ingest
 from gigmate.seed import uid
 from gigmate.worker import run_once
 
@@ -159,28 +167,6 @@ def thanks_event():
     return event
 
 
-def test_unrelated_message_keeps_the_question(signed_in):
-    client, factory, _, headers = signed_in
-    action = conflict_draft(client, factory, headers)
-    custom_event(client, headers, thanks_event())
-    # Until the new message has been read, nothing can be approved.
-    assert pending(client) == []
-    assert post(client, headers, action, "approve").status_code == 409
-    run_once(factory)
-    [carried] = pending(client)
-    # Same question, re-issued against the newer conversation context.
-    assert carried["id"] != action["id"]
-    assert carried["body"] == action["body"]
-    assert carried["sources"] == action["sources"]
-    assert carried["bound_context_version"] == action["bound_context_version"] + 1
-    old = client.get(f"/api/v1/actions/{action['id']}").json()["data"]
-    assert old["state"] == "cancelled"
-    assert old["closed_reason"] == "superseded"
-    # The old text can never be approved; the re-issued one can.
-    assert post(client, headers, action, "approve").status_code == 409
-    assert post(client, headers, carried, "approve").status_code == 202
-
-
 def test_customer_offering_a_free_time_answers_the_question(signed_in):
     client, factory, _, headers = signed_in
     conflict_draft(client, factory, headers)
@@ -230,22 +216,6 @@ def test_cancel_after_approval_before_dispatch(signed_in):
     assert again.status_code == 409
 
 
-def test_expired_draft_cannot_be_approved(signed_in):
-    client, factory, _, headers = signed_in
-    action = conflict_draft(client, factory, headers)
-    past = (datetime.now(UTC) - timedelta(minutes=1)).isoformat().replace("+00:00", "Z")
-    with factory.begin() as db:
-        row = db.get(ActionRow, action["id"])
-        data = {**row.data, "expires_at": past}
-        data["snapshot_hash"] = snapshot_hash(data)
-        row.data = data
-    stale = client.get(f"/api/v1/actions/{action['id']}").json()["data"]
-    assert stale["state"] == "expired"
-    response = post(client, headers, stale, "approve")
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "APPROVAL_STALE"
-
-
 def test_other_account_cannot_see_or_approve(signed_in):
     client, factory, _, headers = signed_in
     action = conflict_draft(client, factory, headers)
@@ -255,35 +225,6 @@ def test_other_account_cannot_see_or_approve(signed_in):
     assert client.get(f"/api/v1/actions/{action['id']}").status_code == 404
     assert post(client, headers, action, "approve").status_code == 404
     assert pending(client) == []
-
-
-def test_approved_but_unsent_reply_is_reissued_after_new_message(signed_in):
-    client, factory, _, headers = signed_in
-    action = conflict_draft(client, factory, headers)
-    assert post(client, headers, action, "approve").status_code == 202
-    custom_event(client, headers, thanks_event())
-    run_once(factory)
-    # The merchant approved text for an older context, so it must be approved again.
-    old = client.get(f"/api/v1/actions/{action['id']}").json()["data"]
-    assert (old["state"], old["closed_reason"]) == ("cancelled", "superseded")
-    [again] = pending(client)
-    assert again["body"] == action["body"]
-
-
-def test_expired_question_comes_back_with_next_message(signed_in):
-    client, factory, _, headers = signed_in
-    action = conflict_draft(client, factory, headers)
-    past = (datetime.now(UTC) - timedelta(minutes=1)).isoformat().replace("+00:00", "Z")
-    with factory.begin() as db:
-        row = db.get(ActionRow, action["id"])
-        data = {**row.data, "expires_at": past}
-        data["snapshot_hash"] = snapshot_hash(data)
-        row.data = data
-    assert pending(client) == []
-    custom_event(client, headers, thanks_event())
-    run_once(factory)
-    [regenerated] = pending(client)
-    assert regenerated["body"] == action["body"]
 
 
 def test_one_unsent_draft_per_order(signed_in):
@@ -298,3 +239,145 @@ def test_one_unsent_draft_per_order(signed_in):
         ]
     assert len(open_rows) == 1
     assert open_rows[0].active_key == ORDER
+
+
+def expire(factory, action):
+    past = (datetime.now(UTC) - timedelta(minutes=1)).isoformat().replace("+00:00", "Z")
+    with factory.begin() as db:
+        row = db.get(ActionRow, action["id"])
+        data = {**row.data, "expires_at": past}
+        data["snapshot_hash"] = snapshot_hash(data)
+        row.data = data
+
+
+def reissue(client, headers, action, context_version):
+    return client.post(
+        f"/api/v1/actions/{action['id']}/reissue",
+        json={"expected_context_version": context_version},
+        headers={**headers, "Idempotency-Key": str(uuid4())},
+    )
+
+
+def detail(client, action):
+    return client.get(f"/api/v1/actions/{action['id']}").json()["data"]
+
+
+def test_unclear_message_keeps_question_for_the_merchant(signed_in):
+    client, factory, _, headers = signed_in
+    action = conflict_draft(client, factory, headers)
+    custom_event(client, headers, thanks_event())
+    run_once(factory)
+    # Not understanding "谢谢" is not proof the question is still open: no automatic re-ask.
+    assert pending(client) == []
+    old = detail(client, action)
+    assert (old["state"], old["closed_reason"], old["reissuable"]) == (
+        "cancelled",
+        "superseded",
+        True,
+    )
+    assert post(client, headers, action, "approve").status_code == 409
+    # The merchant decides to ask again, against the newest context.
+    stale = reissue(client, headers, action, action["bound_context_version"])
+    assert stale.status_code == 409
+    again = reissue(client, headers, action, action["bound_context_version"] + 1)
+    assert again.status_code == 201, again.text
+    fresh = again.json()["data"]
+    assert fresh["body"] == action["body"]
+    assert fresh["bound_context_version"] == action["bound_context_version"] + 1
+    assert post(client, headers, fresh, "approve").status_code == 202
+    # The superseded one is no longer the newest, so it cannot be reissued twice.
+    assert reissue(client, headers, action, fresh["bound_context_version"]).status_code == 409
+
+
+def test_own_api_send_echo_never_creates_a_new_question(signed_in):
+    client, factory, _, headers = signed_in
+    action = conflict_draft(client, factory, headers)
+    echo = thanks_event()
+    echo.update(connector="waha", source="api", direction="outgoing")
+    echo["payload"]["text"] = action["body"]
+    with factory.begin() as db:
+        from gigmate.db import Account
+
+        ingest(db, db.get(Account, uid(1)), echo, trusted_waha=True)
+    assert run_once(factory)
+    with factory() as db:
+        job = db.scalar(select(Job).where(Job.event_id == echo["event_id"]))
+        assert (job.state, job.error_code) == ("completed", "OWN_SEND_ECHO")
+    # The echo still advances the context and supersedes the old draft ...
+    assert detail(client, action)["closed_reason"] == "superseded"
+    # ... but it is not customer input, so nothing is re-asked automatically.
+    assert pending(client) == []
+
+
+def test_reading_expired_drafts_never_writes(signed_in):
+    client, factory, _, headers = signed_in
+    action = conflict_draft(client, factory, headers)
+    expire(factory, action)
+    assert detail(client, action)["state"] == "expired"
+    assert pending(client) == []
+    with factory() as db:
+        # GET only computes the view; the stored row is changed by commands.
+        assert db.get(ActionRow, action["id"]).data["state"] == "pending_approval"
+    stale = detail(client, action)
+    response = post(client, headers, stale, "approve")
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "APPROVAL_STALE"
+    with factory() as db:
+        assert db.get(ActionRow, action["id"]).data["approved_by"] is None
+
+
+def test_expired_question_can_be_asked_again_after_a_new_message(signed_in):
+    client, factory, _, headers = signed_in
+    action = conflict_draft(client, factory, headers)
+    expire(factory, action)
+    custom_event(client, headers, thanks_event())
+    run_once(factory)
+    assert detail(client, action)["reissuable"] is True
+    again = reissue(client, headers, action, action["bound_context_version"] + 1)
+    assert again.status_code == 201, again.text
+
+
+def test_expired_question_does_not_return_after_its_source_was_edited(signed_in):
+    client, factory, _, headers = signed_in
+    action = conflict_draft(client, factory, headers)
+    expire(factory, action)
+    custom_event(client, headers, fixture("message-edited"))
+    run_once(factory)
+    old = detail(client, action)
+    assert (old["state"], old["closed_reason"], old["reissuable"]) == (
+        "expired",
+        "source_changed",
+        False,
+    )
+    assert reissue(client, headers, action, action["bound_context_version"] + 1).status_code == 409
+    assert all(item["body"] != action["body"] for item in pending(client))
+
+
+def test_question_is_outdated_once_the_time_is_free(signed_in):
+    client, factory, _, headers = signed_in
+    action = conflict_draft(client, factory, headers)
+    # The other appointment moved away, so the proposed time no longer collides.
+    with factory.begin() as db:
+        other = db.scalar(select(CalendarRow).where(CalendarRow.work_order_id == uid(13)))
+        other.data = {
+            **other.data,
+            "schedule": {
+                **other.data["schedule"],
+                "start_at": "2030-01-01T01:00:00Z",
+                "end_at": "2030-01-01T02:00:00Z",
+            },
+        }
+    response = post(client, headers, action, "approve")
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "APPROVAL_STALE"
+
+
+def test_approved_but_unsent_reply_needs_new_approval_after_new_message(signed_in):
+    client, factory, _, headers = signed_in
+    action = conflict_draft(client, factory, headers)
+    assert post(client, headers, action, "approve").status_code == 202
+    custom_event(client, headers, thanks_event())
+    run_once(factory)
+    old = detail(client, action)
+    assert (old["state"], old["closed_reason"]) == ("cancelled", "superseded")
+    assert pending(client) == []

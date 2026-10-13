@@ -1,5 +1,19 @@
 # 已完成工作与验证记录
 
+## PR #22 审批动作评审跟进（C）— 2026-10-13
+
+PR #22（`lena/approval-actions`，head `e79ef7b`）新增 C 的审批动作：改期提议与已确认预约撞期时，生成一条 `send_text` 草稿（`pending_approval`、固定模板、24 小时过期）；GET /actions、GET /actions/{id}、批准（202，核对快照哈希、版本和来源）、拒绝和取消（只改本地状态，保留原因）。批准只记录决定，不发送。已按 Kyrie（要求修改）和 Andy 的评审修正：
+
+- **自身 API 发送回显（P1/P2）：** `source=api` 的受信任 WAHA 事件仍推进上下文、在接收时作废旧草稿，但 worker 以 `OWN_SEND_ECHO` 完成、不进入提取，因此不会产生回复。
+- **看不懂不等于问题仍未回答（P1）：** 去掉自动“原样再问”。新消息之后只有明确结果自动处理（新撞期 → 新草稿；空闲时间 → `answered`）；其他情况把最新的已作废/已过期问题标为 `reissuable`，由商户用 POST /actions/{id}/reissue（带当前 `expected_context_version`）重新生成。
+- **过期后来源被改（P2）：** 接收时把来源已变的过期草稿标为 `source_changed`；重新生成会再核对来源并拒绝。
+- **GET 写回覆盖批准（P2）：** GET 列表和详情只计算 `expired` 视图；过期只在已加锁的行上写入（命令与接收，接收现在会锁住它要更新的动作）。
+- **撞期依据已变化：** 批准和重新生成都会再查触发提议是否仍与已确认预约重叠，否则 409 `APPROVAL_STALE`。
+
+不在本批、未改动：审批页面（D）、真实发送以及 C 动作到 A 发送网关的桥接（`ActionRow(state=approved)` 不是发送授权，会话 UUID 也不是 provider 聊天 ID）、工单取消/完成命令。迁移 `0009_approval_actions` 接在 `0008` 后；若 #21（0009/0010）先合并，需要补加性合并迁移。
+
+证据：`pytest apps/backend/tests/test_approvals.py` 在 SQLite 和本地 PostgreSQL 16 上均 **18 项通过**；SQLite 全套通过；PostgreSQL 全套在该本地环境下出现与未改动 main 相同的 WAHA 计时相关失败，审批/工作流测试无失败。Ruff/格式、契约导出、前端接口检查和双语基线通过。未触碰真实 WhatsApp、发送、模型或部署。
+
 ## PR #18 llm 骨架评审跟进 — 2026-10-10
 
 负责人对 PR #18（`WillW27/role-b-llm-skeleton`，head `78151a6`）的审查要求合并前修正两处代码并校正 PR 描述。两处代码修正已落在 PR 分支上；PR 正文属于 GitHub 侧编辑，仍需作者自行更新。

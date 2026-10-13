@@ -72,6 +72,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/actions/{action_id}/reissue": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Reissue Action */
+    post: operations["reissue_action_api_v1_actions__action_id__reissue_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/actions/{action_id}/reject": {
     parameters: {
       query?: never;
@@ -694,6 +711,8 @@ export interface components {
       provider_message_id: string | null;
       /** Recipient */
       recipient: string;
+      /** Reissuable */
+      reissuable: boolean;
       /** Revision */
       revision: number;
       /** Snapshot Hash */
@@ -1372,6 +1391,11 @@ export interface components {
        */
       started_at: string;
     };
+    /** ReissueActionCommand */
+    ReissueActionCommand: {
+      /** Expected Context Version */
+      expected_context_version: number;
+    };
     /** RejectActionCommand */
     RejectActionCommand: {
       /** Expected Action Revision */
@@ -1991,6 +2015,43 @@ export interface operations {
     responses: {
       /** @description Successful Response */
       200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_ActionView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  reissue_action_api_v1_actions__action_id__reissue_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        action_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReissueActionCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
         headers: {
           [name: string]: unknown;
         };

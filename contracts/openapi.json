@@ -185,6 +185,10 @@
             "title": "Recipient",
             "type": "string"
           },
+          "reissuable": {
+            "title": "Reissuable",
+            "type": "boolean"
+          },
           "revision": {
             "minimum": 1.0,
             "title": "Revision",
@@ -239,7 +243,8 @@
           "sources",
           "trigger",
           "closed_reason",
-          "closed_note"
+          "closed_note",
+          "reissuable"
         ],
         "title": "ActionView",
         "type": "object"
@@ -1955,6 +1960,21 @@
         "title": "RecoveryIssue",
         "type": "object"
       },
+      "ReissueActionCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_context_version": {
+            "minimum": 1.0,
+            "title": "Expected Context Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_context_version"
+        ],
+        "title": "ReissueActionCommand",
+        "type": "object"
+      },
       "RejectActionCommand": {
         "additionalProperties": false,
         "properties": {
@@ -3426,6 +3446,65 @@
           }
         },
         "summary": "Cancel Action"
+      }
+    },
+    "/api/v1/actions/{action_id}/reissue": {
+      "post": {
+        "operationId": "reissue_action_api_v1_actions__action_id__reissue_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Action Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReissueActionCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_ActionView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reissue Action"
       }
     },
     "/api/v1/actions/{action_id}/reject": {

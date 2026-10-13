@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 
 from gigmate.contracts import ApprovalAction, AuditLog
-from gigmate.db import ActionRow, AuditRow, ConversationRow, MessageRow, WorkOrderRow
+from gigmate.db import ActionRow, AuditRow, ChangeRow, ConversationRow, MessageRow, WorkOrderRow
 from gigmate.errors import BusinessError
 from gigmate.planning import conflicts
 from gigmate.workorders import command_cache, owned, save_result, validate
@@ -62,12 +62,15 @@ def close(row, state, reason):
     row.reason = reason
 
 
+def is_due(row, now=None):
+    return row.data["state"] == "pending_approval" and datetime.fromisoformat(
+        row.data["expires_at"]
+    ) <= (now or datetime.now(UTC))
+
+
 def expire_if_due(row, now=None):
-    now = now or datetime.now(UTC)
-    if (
-        row.data["state"] == "pending_approval"
-        and datetime.fromisoformat(row.data["expires_at"]) <= now
-    ):
+    """Persist expiry. Only call on rows the caller has locked (commands, ingestion)."""
+    if is_due(row, now):
         close(row, "expired", "expired")
     return row
 
@@ -161,68 +164,84 @@ def draft_for_change(db, account_id, order, conversation, change, draft_text=Non
 
 
 def latest_by_order(db, account_id, conversation_id):
+    """Newest action per order in a conversation, locked for the caller's transaction."""
     latest = {}
     for row in db.scalars(
         select(ActionRow)
         .where(ActionRow.account_id == account_id, ActionRow.conversation_id == conversation_id)
         .order_by(ActionRow.created_at, ActionRow.id)
+        .with_for_update()
     ):
-        latest[row.work_order_id] = expire_if_due(row)
+        latest[row.work_order_id] = row
     return latest
 
 
-def hold_for_new_message(db, account_id, conversation, changed_message_id):
-    """Step 1, when a message is accepted: nothing old stays approvable.
+def source_changed(row, changed_message_id):
+    return any(source["message_id"] == changed_message_id for source in row.data["sources"])
 
-    contracts/api-v1.md sections 3–4: the non-dispatched draft (pending, or
-    approved but not yet sent) is closed with reason ``superseded``. What to
-    ask next is decided only after the new message is read (step 2,
-    ``follow_up``). If the message edits or revokes the draft's own source,
-    the question's basis is gone (``source_changed``).
+
+def hold_for_new_message(db, account_id, conversation, changed_message_id):
+    """A new message (customer, merchant's own app reply or our own API echo) arrived.
+
+    contracts/api-v1.md sections 3–4: nothing written for the previous context
+    stays approvable, so the non-dispatched draft (pending, or approved but
+    not yet sent) is closed with reason ``superseded``. The question is not
+    lost: the worker reacts when the message clearly answers or changes it,
+    and otherwise the merchant decides whether to ask again (``reissue``),
+    because "the extractor did not understand" is not proof the question is
+    still open. If the message edits or revokes the draft's own source, the
+    question's basis is gone (``source_changed``), even for an expired draft.
     """
     for row in latest_by_order(db, account_id, conversation.id).values():
-        if row.data["state"] not in NOT_DISPATCHED:
-            continue
-        close(row, "cancelled", "superseded")
-        if any(source["message_id"] == changed_message_id for source in row.data["sources"]):
-            row.reason = "source_changed"
+        expire_if_due(row)
+        state = row.data["state"]
+        if state in NOT_DISPATCHED:
+            close(row, "cancelled", "superseded")
+        if state in NOT_DISPATCHED or state == "expired":
+            if source_changed(row, changed_message_id):
+                row.reason = "source_changed"
     db.flush()
 
 
-def follow_up(db, account_id, conversation):
-    """Step 2, after the worker has read the new message.
-
-    Per order, decided by what the new message said:
-    - it raised a new conflict → a new question was already drafted;
-    - it offered a free time → the question is answered (``answered``);
-    - it did not touch the question (e.g. "谢谢") → the open question is still
-      open, so the same question is asked again against the current context.
-    An expired, never-approved question is also asked again here.
-    """
-    for order_id, row in latest_by_order(db, account_id, conversation.id).items():
-        if (row.data["state"], row.reason) not in {
-            ("cancelled", "superseded"),
-            ("expired", "expired"),
-        }:
-            continue
-        order = db.get(WorkOrderRow, order_id)
-        if order is None or order.data["status"] in {"cancelled", "completed"}:
-            continue
-        trigger = f"{row.trigger.split('@', 1)[0]}@{conversation.context_version}"
-        if db.scalar(select(ActionRow.id).where(ActionRow.trigger == trigger)):
-            continue
-        new_draft(
-            db, account_id, order, conversation, trigger, row.data["body"], row.data["sources"]
-        )
+def conflict_basis(db, account_id, row):
+    """The conflicting proposal a schedule_conflict draft was written for, if still valid."""
+    kind, _, rest = row.trigger.partition(":")
+    if kind != "schedule_conflict":
+        return True
+    change = db.get(ChangeRow, rest.split("@", 1)[0])
+    if change is None or change.account_id != account_id:
+        return False
+    return bool(conflicts(db, account_id, row.work_order_id, change.data["new_value"]))
 
 
-def view(row):
+REISSUABLE = {("cancelled", "superseded"), ("expired", "expired")}
+
+
+def view(row, reissuable=False):
+    """Read-only projection: an overdue draft is shown as expired without a write."""
+    data, reason = row.data, row.reason
+    if is_due(row):
+        data = {**data, "state": "expired"}
+        reason = "expired"
     return {
-        **row.data,
+        **data,
         "trigger": row.trigger.split(":", 1)[0],
-        "closed_reason": row.reason,
+        "closed_reason": reason,
         "closed_note": row.note,
+        "reissuable": reissuable and (data["state"], reason) in REISSUABLE,
     }
+
+
+def views(db, rows):
+    """Mark which closed questions the merchant may ask again (the newest per order)."""
+    newest = {}
+    for row in db.scalars(
+        select(ActionRow)
+        .where(ActionRow.work_order_id.in_({row.work_order_id for row in rows}))
+        .order_by(ActionRow.created_at, ActionRow.id)
+    ):
+        newest[row.work_order_id] = row.id
+    return [view(row, newest.get(row.work_order_id) == row.id) for row in rows]
 
 
 def locked(db, account_id, action_id):
@@ -253,6 +272,21 @@ def audit(db, account_id, row, operation, request_id):
         },
     )
     db.add(AuditRow(id=audit_id, account_id=account_id, data=entry))
+
+
+def require_current_sources(db, account_id, conversation_id, sources):
+    for source in sources:
+        latest = db.scalar(
+            select(MessageRow)
+            .where(
+                MessageRow.id == source["message_id"],
+                MessageRow.account_id == account_id,
+                MessageRow.conversation_id == conversation_id,
+            )
+            .order_by(MessageRow.revision.desc())
+        )
+        if not latest or latest.revision != source["message_revision"] or latest.data["revoked"]:
+            raise BusinessError(409, "APPROVAL_STALE", "Source message changed")
 
 
 def check_snapshot(row, command):
@@ -286,18 +320,11 @@ def approve(db, account, action_id, command, key, request_id):
         or command.expected_context_version != row.data["bound_context_version"]
     ):
         raise BusinessError(409, "VERSION_CONFLICT", "Refresh and review the current draft")
-    for source in row.data["sources"]:
-        latest = db.scalar(
-            select(MessageRow)
-            .where(
-                MessageRow.id == source["message_id"],
-                MessageRow.account_id == account.id,
-                MessageRow.conversation_id == conversation.id,
-            )
-            .order_by(MessageRow.revision.desc())
+    require_current_sources(db, account.id, conversation.id, row.data["sources"])
+    if not conflict_basis(db, account.id, row):
+        raise BusinessError(
+            409, "APPROVAL_STALE", "The time no longer conflicts; this question is outdated"
         )
-        if not latest or latest.revision != source["message_revision"] or latest.data["revoked"]:
-            raise BusinessError(409, "APPROVAL_STALE", "Source message changed")
     row.data = validate(
         ApprovalAction,
         {
@@ -328,5 +355,45 @@ def reject(db, account, action_id, command, key, request_id, *, operation):
     row.note = command.reason[:500]
     audit(db, account.id, row, f"{operation}_action", request_id)
     result = view(row)
+    save_result(db, account.id, scope, key, digest, result)
+    return result
+
+
+def reissue(db, account, action_id, command, key, request_id):
+    """The merchant asks the same question again against the current context.
+
+    Allowed only for the newest action of its order when it was superseded by
+    a new message or expired unapproved — never for answered, rejected,
+    resolved or source-changed questions. Sources and the conflict itself are
+    re-checked, so an outdated question cannot come back.
+    """
+    scope = f"reissue:{action_id}"
+    digest, cached = command_cache(db, account.id, scope, key, command.model_dump())
+    if cached:
+        return cached.data
+    row = expire_if_due(locked(db, account.id, action_id))
+    conversation = owned(db, ConversationRow, row.conversation_id, account.id)
+    newest = latest_by_order(db, account.id, conversation.id).get(row.work_order_id)
+    if newest is None or newest.id != row.id or (row.data["state"], row.reason) not in REISSUABLE:
+        raise BusinessError(409, "APPROVAL_STALE", "This question cannot be asked again")
+    if not conversation.allowlisted:
+        raise BusinessError(403, "CONSENT_REVOKED", "Conversation processing is paused")
+    if command.expected_context_version != conversation.context_version:
+        raise BusinessError(409, "VERSION_CONFLICT", "Read the newest messages first")
+    order = owned(db, WorkOrderRow, row.work_order_id, account.id)
+    if order.data["status"] in {"cancelled", "completed"}:
+        raise BusinessError(409, "VERSION_CONFLICT", "Work order is closed")
+    require_current_sources(db, account.id, conversation.id, row.data["sources"])
+    if not conflict_basis(db, account.id, row):
+        raise BusinessError(
+            409, "APPROVAL_STALE", "The time no longer conflicts; this question is outdated"
+        )
+    trigger = f"{row.trigger.split('@', 1)[0]}@{conversation.context_version}"
+    data = new_draft(
+        db, account.id, order, conversation, trigger, row.data["body"], row.data["sources"]
+    )
+    fresh = db.get(ActionRow, data["id"])
+    audit(db, account.id, fresh, "reissue_action", request_id)
+    result = view(fresh, True)
     save_result(db, account.id, scope, key, digest, result)
     return result

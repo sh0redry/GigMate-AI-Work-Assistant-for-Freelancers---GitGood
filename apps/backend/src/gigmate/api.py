@@ -14,7 +14,7 @@ from starlette.concurrency import run_in_threadpool
 
 from gigmate import identity
 from gigmate import waha_controls as controls
-from gigmate.approvals import approve, expire_if_due, reject, view
+from gigmate.approvals import approve, reissue, reject, views
 from gigmate.config import COOKIE_SECURE, TRUSTED_ORIGINS
 from gigmate.contracts import (
     ActionState,
@@ -30,6 +30,7 @@ from gigmate.contracts import (
     Model,
     Page,
     RecoveryIssue,
+    ReissueActionCommand,
     RejectActionCommand,
     RequirementChange,
     Task,
@@ -105,6 +106,7 @@ class ActionView(ApprovalAction):
     trigger: Literal["schedule_conflict"]
     closed_reason: str | None
     closed_note: str | None
+    reissuable: bool
 
 
 class ConnectionInfo(Model):
@@ -377,15 +379,16 @@ def actions(
     query = select(ActionRow).where(ActionRow.account_id == account.id)
     if work_order_id:
         query = query.where(ActionRow.work_order_id == str(work_order_id))
-    rows = [expire_if_due(row) for row in db.scalars(query)]
+    rows = list(db.scalars(query))
+    shown = {item["id"]: item for item in views(db, rows)}
     if state:
-        rows = [row for row in rows if row.data["state"] == state]
-    return page(request, rows, cursor, limit, view)
+        rows = [row for row in rows if shown[row.id]["state"] == state]
+    return page(request, rows, cursor, limit, lambda row: shown[row.id])
 
 
 @app.get("/api/v1/actions/{action_id}", response_model=Detail[ActionView])
 def action_detail(action_id: UUID, request: Request, account=Depends(actor), db=Depends(database)):
-    return detail(request, view(expire_if_due(owned(db, ActionRow, str(action_id), account.id))))
+    return detail(request, views(db, [owned(db, ActionRow, str(action_id), account.id)])[0])
 
 
 @app.post("/api/v1/actions/{action_id}/approve", status_code=202, response_model=Detail[ActionView])
@@ -400,6 +403,21 @@ def approve_action(
     return detail(
         request,
         approve(db, account, str(action_id), command, idempotency_key, request.state.request_id),
+    )
+
+
+@app.post("/api/v1/actions/{action_id}/reissue", status_code=201, response_model=Detail[ActionView])
+def reissue_action(
+    action_id: UUID,
+    command: ReissueActionCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    return detail(
+        request,
+        reissue(db, account, str(action_id), command, idempotency_key, request.state.request_id),
     )
 
 

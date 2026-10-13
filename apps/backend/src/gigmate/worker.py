@@ -8,7 +8,7 @@ from uuid import uuid4
 from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
-from gigmate.approvals import draft_for_change, follow_up
+from gigmate.approvals import draft_for_change
 from gigmate.contracts import RequirementChange
 from gigmate.db import (
     Account,
@@ -34,6 +34,7 @@ from gigmate.waha_recovery import worker_heartbeat
 log = logging.getLogger("gigmate.worker")
 
 EXTRACTION_NEEDS_REVIEW = "EXTRACTION_NEEDS_REVIEW"
+OWN_SEND_ECHO = "OWN_SEND_ECHO"
 
 
 def run_once(factory=Session):
@@ -106,6 +107,11 @@ def run_once(factory=Session):
                 or latest.data["revoked"]
             ):
                 job.state, job.error_code = "completed", "SOURCE_SUPERSEDED"
+            elif event["connector"] == "waha" and event["source"] == "api":
+                # Our own sent message echoed back: it advanced the context and
+                # superseded older drafts at ingestion, but it is not customer
+                # input, so it never drives extraction or new questions.
+                job.state, job.error_code = "completed", OWN_SEND_ECHO
             elif event["connector"] == "waha":
                 linked = list(
                     db.scalars(
@@ -179,9 +185,6 @@ def run_once(factory=Session):
                         "completed",
                         None if proposal else "STUB_UNSUPPORTED_INPUT",
                     )
-            if job.state == "completed" and job.error_code != "SOURCE_SUPERSEDED":
-                # Decide the next question only after reading this message.
-                follow_up(db, account_id, conversation)
             if job.lease_until.replace(tzinfo=UTC) <= datetime.now(UTC):
                 raise RuntimeError("LEASE_EXPIRED")
             job.lease_owner, job.lease_until = None, None

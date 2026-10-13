@@ -1,5 +1,19 @@
 # Implementation status and validation
 
+## PR #22 approval actions review follow-up (role C) — 2026-10-13
+
+PR #22 (`lena/approval-actions`, head `e79ef7b`) adds role C approval actions: a schedule proposal overlapping a confirmed appointment creates one `send_text` draft (`pending_approval`, fixed template, 24 h expiry); GET /actions, GET /actions/{id}, approve (202, exact snapshot hash, versions and sources), reject and cancel (local only, reason kept). Approval only persists the decision; nothing is sent. Reviews by Kyrie (changes requested) and Andy were addressed:
+
+- **API send echoes (P1/P2):** a trusted WAHA event with `source=api` still advances the context and supersedes older drafts at ingestion, but the worker completes it as `OWN_SEND_ECHO` without extraction, so it can never create a reply.
+- **Unclear extraction is not proof (P1):** the automatic "same question again" step was removed. After a new message only clear outcomes act automatically (new conflict → new draft; free time → `answered`). Otherwise the newest superseded or expired question is `reissuable` and the merchant may call POST /actions/{id}/reissue with the current `expected_context_version`.
+- **Expired + edited source (P2):** ingestion marks an expired draft whose source changed as `source_changed`; reissue re-checks sources and refuses it.
+- **GET expiry overwrite (P2):** GET /actions and detail only compute an `expired` view; expiry is written only on locked rows (commands, ingestion, which now locks the actions it updates).
+- **Conflict basis changed:** approve and reissue re-check that the triggering proposal still overlaps a confirmed appointment; otherwise 409 `APPROVAL_STALE`.
+
+Not in scope and unchanged: approval UI (D), real sending and the bridge from C actions to A's send gateway (`ActionRow(state=approved)` is not send authority and the conversation UUID is not a provider chat ID), order cancel/complete commands. Migration `0009_approval_actions` follows `0008`; if #21 (0009/0010) merges first, an additive merge revision is needed.
+
+Evidence: `pytest apps/backend/tests/test_approvals.py` **18 passed** on SQLite and on a local PostgreSQL 16; full SQLite suite passed; full PostgreSQL run shows the same WAHA timing-related failures as unchanged main in that local environment and no approval/workflow failures. Ruff/format, contract export, frontend API check and bilingual baseline passed. No real WhatsApp, send, model or deployment was touched.
+
 ## PR #18 llm-skeleton review follow-up — 2026-10-10
 
 Owner review of PR #18 (`WillW27/role-b-llm-skeleton`, head `78151a6`) asked for two code corrections before merge plus a PR-description fix. Both code corrections are applied on the PR branch; the PR body is a GitHub-side edit the author must still make.
