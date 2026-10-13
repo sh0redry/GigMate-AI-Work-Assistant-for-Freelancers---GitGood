@@ -78,6 +78,14 @@ Limits: 100 outstanding drafts/queued actions per connection, 100 dispatches per
 
 Additive migration **0011_waha_multitype_sending** follows unchanged 0010. It adds five sending tables without granting/backfilling consent or rewriting media/ingress data. Source contracts generate domain/OpenAPI/frontend types. Do not edit generated files or remove WhatsApp session volumes to upgrade.
 
+## Cleanup and unknown-outcome recovery runbook
+
+Expired uploads remain unusable even if cleanup fails. For an expired tracked upload, an `OSError` during deletion leaves its blob reference intact for a later maintenance pass. Restore storage access, then allow maintenance to retry; do not extend expiry or restore sending permission to expose the file. Orphan-file deletion errors propagate and roll back this purge transaction; worker maintenance records `MEDIA_STORAGE_UNAVAILABLE`. Database errors are recorded as `DATABASE_UNAVAILABLE`. Neither implies a provider send.
+
+Filesystem deletion and database commit are not atomic. If deletion succeeds but the transaction rolls back, an expired upload row may still reference a missing file. After restoring database/storage health, the next successful maintenance pass uses `unlink(missing_ok=True)` and clears that reference. Preserve upload hashes, action snapshots and receipt identities; do not recreate the missing bytes, delete audit records or reset actions to queued. Worker maintenance normally runs hourly; check its health and logs before expecting recovery. Synthetic regressions cover deletion failure followed by retry and deletion followed by database rollback. They do not prove real disk/database crash durability or PostgreSQL locking.
+
+`run_once` performs one action/recovery operation per call; the worker loop calls it repeatedly. An expired `preparing` lease can return to queued because no provider submission has started. An expired `dispatching` lease becomes `result_unknown`, preserving the dispatch fence and blocking later sends to that chat. It must never return to queued for automatic resend. With an exact returned provider ID, use the explicit receipt lookup on the original action; an original late response or matching signed receipt can also establish evidence. With no ID, or an inconclusive lookup, inspect the original request/action and consenting test phone, then use `review-unknown` only to acknowledge possible delivery and release later independent work. The original outcome remains unknown; no new key, automatic retry or delivery claim is justified. The sending page exposes receipt lookup and unknown review; the separate C/D business-approval bridge remains pending.
+
 ## Unified own-account acceptance
 
 Do this once after automatic checks, in a deliberately authorized own-account test chat. No actual sends were performed during development.

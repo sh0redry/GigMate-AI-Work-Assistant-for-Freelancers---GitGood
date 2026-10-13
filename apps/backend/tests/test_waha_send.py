@@ -1,6 +1,7 @@
 """Synthetic real HTTP routes and outbox execution; no real external sends."""
 
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
 from uuid import uuid4
@@ -624,6 +625,65 @@ def test_purge_expires_files_and_preserves_unknown_identity(setup):
     path = sends.storage_path(key)
     sends.purge(s[1])
     assert not path.exists()
+    with s[1]() as db:
+        assert db.get(WahaSendUpload, result["id"]).blob_key is None
+
+
+def test_purge_retries_expired_upload_after_unlink_failure(setup, monkeypatch):
+    s = setup
+    result = upload_request(s, "synthetic.txt", "text/plain", b"Synthetic").json()["data"]
+    with s[1].begin() as db:
+        asset = db.get(WahaSendUpload, result["id"])
+        key = asset.blob_key
+        asset.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+    path = sends.storage_path(key)
+    original_unlink = type(path).unlink
+
+    def unavailable(file, *args, **kwargs):
+        if file == path:
+            raise OSError("Synthetic storage failure")
+        return original_unlink(file, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(type(path), "unlink", unavailable)
+        sends.purge(s[1])
+    assert path.exists()
+    with s[1]() as db:
+        assert db.get(WahaSendUpload, result["id"]).blob_key == key
+    response = s[0].get(base(s) + f"/uploads/{result['id']}/content")
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "SEND_UPLOAD_EXPIRED"
+    sends.purge(s[1])
+    assert not path.exists()
+    with s[1]() as db:
+        assert db.get(WahaSendUpload, result["id"]).blob_key is None
+
+
+def test_purge_recovers_deleted_blob_after_database_rollback(setup):
+    s = setup
+    result = upload_request(s, "synthetic.txt", "text/plain", b"Synthetic").json()["data"]
+    with s[1].begin() as db:
+        asset = db.get(WahaSendUpload, result["id"])
+        key = asset.blob_key
+        asset.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+    path = sends.storage_path(key)
+
+    class FailedCommit:
+        @contextmanager
+        def begin(self):
+            with s[1].begin() as db:
+                yield db
+                raise RuntimeError("Synthetic database commit failure")
+
+    with pytest.raises(RuntimeError, match="Synthetic database commit failure"):
+        sends.purge(FailedCommit())
+    assert not path.exists()
+    with s[1]() as db:
+        assert db.get(WahaSendUpload, result["id"]).blob_key == key
+    response = s[0].get(base(s) + f"/uploads/{result['id']}/content")
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "SEND_UPLOAD_EXPIRED"
+    sends.purge(s[1])
     with s[1]() as db:
         assert db.get(WahaSendUpload, result["id"]).blob_key is None
 

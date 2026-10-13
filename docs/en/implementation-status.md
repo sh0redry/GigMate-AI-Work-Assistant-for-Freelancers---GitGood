@@ -1,5 +1,11 @@
 # Implementation status and validation
 
+## PR #23 review recovery notes — 2026-10-14
+
+The two latest Role B comments repeat the same nonblocking review. Confirmed that one-action worker iterations and unknown-outcome review are intentional, not automatic-resend defects. Added a bilingual recovery runbook covering tracked-file deletion errors versus orphan cleanup rollback, non-atomic filesystem/database cleanup, hourly worker maintenance and exact-ID versus no-ID receipt recovery. The existing sending UI already exposes lookup/unknown review; the separate C/D business bridge remains pending.
+
+Added two synthetic HTTP/database regressions: failed unlink preserves the expired reference until successful retry; deletion followed by database rollback leaves a missing-file reference that a subsequent purge clears. Both verify that expiry still denies content access. Production code/contracts/migrations are unchanged. Focused sending suite: **55 passed / 1 PostgreSQL skip**; applicable Ruff/format, contract export check, baseline (**69 Markdown / 410 links**) and whitespace checks passed. No real send, phone, provider, model or deployment was accessed. No new PostgreSQL or crash-durability claim; frontend unchanged and not rerun. PR stays Draft; owner's pre-existing uncommitted diagnosis sections are excluded.
+
 ## PR #23 compatible with merged #21 — 2026-10-13
 
 Merged main `e066b0c` (PR #21 final head `e7a2b8f`) into the sending branch, preserving both sides' code, tests and progress history. Resolved migration-test and bilingual documentation conflicts. The processor seam, isolated PDF parser and immutable media content-stop decision remain intact; model tasks and sending outbox identity/authority stay separate. B's real model remains disabled, with C action bridging and physical sending still pending.
