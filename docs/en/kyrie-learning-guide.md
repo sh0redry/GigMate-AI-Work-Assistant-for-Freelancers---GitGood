@@ -1,5 +1,7 @@
 # Kyrie's GigMate learning guide: start from zero
 
+**D-03 update, 2026-10-13:** the new `codex/d03-approvals` branch uses the pending C approval API and D-02 UI. Main `e066b0c` includes #21; #22/#24 and D-03 remain separate review work. Approval saves your decision; the message has not been sent. A lost response is like a missing receipt: keep the original numbered request, read its status and only explicitly repeat that same request. See the [updated user guide](role-d-frontend-user-guide.md#d-03-review-a-reply-before-approving-it). Older version labels below are historical.
+
 Version 2.0 · 2026-10-12, Hong Kong time. For Kyrie, a first-year student learning programming and working on Role D.
 
 [完整中文教程](../zh/kyrie-learning-guide.md) · [File map](kyrie-file-atlas.md) · [Page instructions](role-d-frontend-user-guide.md)

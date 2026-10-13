@@ -1,6 +1,7 @@
 import { currentEnvironment, environmentConfig } from "./environment";
 import { useCallback, useState } from "react";
 import { ConnectionWorkspace } from "./ConnectionWorkspace";
+import { ApprovalsWorkspace } from "./ApprovalsWorkspace";
 import { WorkOrderWorkspace } from "./WorkOrderWorkspace";
 import { workspaceApi, type Detail, type Login } from "./workspace-api";
 import { clearConnectionAttempts } from "./connection-api";
@@ -9,11 +10,13 @@ export function App() {
   const environment = currentEnvironment();
   const config = environmentConfig();
   const canConnect = environment !== "isolated";
-  const [view, setView] = useState<"connect" | "business">("business");
+  const [view, setView] = useState<"connect" | "business" | "approvals">(
+    "business",
+  );
   const [login, setLogin] = useState<Login | null>(null);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const activeView = canConnect ? view : "business";
+  const activeView = !canConnect && view === "connect" ? "business" : view;
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const csrf = login?.csrf_token ?? "";
@@ -79,7 +82,9 @@ export function App() {
           {login
             ? activeView === "connect"
               ? "WhatsApp 连接"
-              : "业务工作台"
+              : activeView === "approvals"
+                ? "回复审批"
+                : "业务工作台"
             : "欢迎使用"}
         </div>
       </header>
@@ -126,6 +131,14 @@ export function App() {
             onClick={() => navigate("business")}
           >
             业务工作台
+          </button>
+          <button
+            className="secondary"
+            aria-pressed={activeView === "approvals"}
+            disabled={busy}
+            onClick={() => navigate("approvals")}
+          >
+            回复审批
           </button>
           {canConnect && (
             <button
@@ -220,6 +233,13 @@ export function App() {
           {activeView === "connect" ? (
             <ConnectionWorkspace
               csrf={csrf}
+              onSessionExpired={expireSession}
+              onBusyChange={setBusy}
+            />
+          ) : activeView === "approvals" ? (
+            <ApprovalsWorkspace
+              csrf={csrf}
+              accountId={login.account_id}
               onSessionExpired={expireSession}
               onBusyChange={setBusy}
             />

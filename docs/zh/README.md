@@ -49,3 +49,5 @@ python scripts/check_baseline.py
 ```
 
 该命令只校验文档与样例；应用启动、迁移、Ruff、类型与业务测试的真实命令已写入开发入口，实际结果见已完成工作记录。
+
+- [D-03 回复审批验收](role-d-stage3-acceptance.md)

@@ -1,5 +1,25 @@
 # 已完成工作与验证记录
 
+## D-03 审批候选与仓库审核 — 2026-10-13
+
+在 `codex/d03-approvals` 组合待合并 C #22（`8ef89ac`）和 D-02 #24（`5ba294a`），完成 [D-03 的审批部分](role-d-stage3-acceptance.md)：完整收件会话／正文／原文／有效期／版本核对、明确勾选、带原因本机拒绝／取消、历史、保守再提问，以及按账号／环境保存原编号的未知结果核对。批准仍未发送；C/A 发送桥接和完整外发验收待完成。D-03 提交不改后端／模型／生成文件／迁移，同步双语操作／学习／文件地图／路线／索引／验收。
+
+新证据：**91 项前端通过**，零失败／跳过；TypeScript／Vite、API／Prettier、生成契约、基线（此证据加入前 76 份 Markdown／893 个本地链接）和空白检查通过。全新专属 PostgreSQL schema 升级 0009／无漂移，认证合成撞期＋确定性 worker＋真实 HTTP／Vite 浏览器核对明确勾选、已批准／not_submitted、历史及刷新／重登录持久保留。默认 749 像素无横向溢出、无控制台警告／错误。无真实聊天／模型／发送／二维码，未改既有部署或数据库。
+
+#21 最新 `e7a2b8f` 独立 Linux Docker／PostgreSQL 配置全套 **559 通过／1 跳过**，含旧三条独立复现；原生中断／资源定向 **32 通过／11 平台跳过**。原生全套 12 个 PDF 拒绝失败对应已声明不支持 macOS 原生解析，不能说该全套通过。Ruff／格式（79 文件）、契约／基线及 head 六项 CI 通过。[独立批准](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/pull/21#pullrequestreview-5501660753)，核实后解决原两条反馈，在 Kyrie 明确授权“可接受 PR 合并”的范围转 ready 并合入 `e066b0c`。真实模型默认关闭，真实账号／原生／实体设备验收仍待完成。本地 main 已快进到该远端 head；原未提交学习／手册／进度已保留，忽略目录备份和限定文件 stash 可恢复。
+
+#22 `8ef89ac` 原 PostgreSQL 配置 **390 通过**，契约／基线通过；新增“重新提问又过期再提问”回归因 trigger 唯一约束 **返回 503 而失败**。原回显／未知提取自动提问、过期 GET 写回、撞期依据问题已修正。[新修改请求](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/pull/22#pullrequestreview-5501636922)，未合并。#23 `6e01279` 源码／依赖审核确认上传开始检查白名单，但保存前未重新检查授权聊天；尚未同步新 #21／桥接 C 动作／最终统一检查。[请求修改](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/pull/23#pullrequestreview-5501637234)，保留 Draft；不宣称新跑 #23 全套或真实发送。#24 留给 Andy 合并。GitHub 连接器评审写入返回 integration 403，已有授权的本机 gh 身份成功发布。
+
+四个开放 issue 已只读审阅，未冒充完成／关闭，也未发 issue 评论：
+
+| Issue | 结论／依赖 |
+| --- | --- |
+| [#1 入门验收](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/issues/1) | 仍需另一位队友独立 fresh clone 的报告，代理测试不能代替。#24 后需把旧回放按钮步骤改为开发夹具流程。 |
+| [#7 新建工单](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/issues/7) | 重要 P0 提议：先 C 手动保存接口，再 D-04 表单；B 预填可后补。计划契约不等于已实现；本次 D-03 不加建单／状态接口。 |
+| [#10 启动校验／评测 CI](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/issues/10) | 评测脚本已在现 CI 两条 Ruff 命令里；worker 入口仍无 provider 启动校验，只完成一半，不关闭。 |
+| [#12 手机日历导出](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/issues/12) | P0 后可选；需 C 的账号所属只读 .ics 接口，再加 D 按钮。先约定正式安排／时区／缺地址／重复导入行为，再测设备及账号隔离；本批不实现或外部同步。 |
+
+
 ## PR #22 审批动作评审跟进（C）— 2026-10-13
 
 PR #22（`lena/approval-actions`，head `e79ef7b`）新增 C 的审批动作：改期提议与已确认预约撞期时，生成一条 `send_text` 草稿（`pending_approval`、固定模板、24 小时过期）；GET /actions、GET /actions/{id}、批准（202，核对快照哈希、版本和来源）、拒绝和取消（只改本地状态，保留原因）。批准只记录决定，不发送。已按 Kyrie（要求修改）和 Andy 的评审修正：

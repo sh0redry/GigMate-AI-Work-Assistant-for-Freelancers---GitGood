@@ -343,3 +343,60 @@ a:focus-visible {
 .test-account p {
   margin: 8px 0;
 }
+
+.approval-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(0, 2fr);
+  gap: 20px;
+  align-items: start;
+}
+.approval-grid aside {
+  min-width: 0;
+}
+.approval-grid select,
+.approval-grid textarea {
+  width: 100%;
+  font: inherit;
+  padding: 8px;
+  border: 1px solid #b6c9bd;
+  border-radius: 6px;
+}
+.approval-grid textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+.approval-grid code {
+  overflow-wrap: anywhere;
+}
+.approval-facts dd {
+  margin: 0 0 16px;
+  overflow-wrap: anywhere;
+}
+.approval-facts dt {
+  font-weight: 600;
+  color: #476859;
+}
+.reply-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: #f1f5f1;
+  border-radius: 8px;
+  padding: 14px;
+  margin: 8px 0;
+}
+.approval-review {
+  margin-top: 16px;
+  border-top: 1px solid #cbd9cf;
+  padding-top: 16px;
+}
+.approval-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 14px 0;
+}
+@media (max-width: 760px) {
+  .approval-grid {
+    grid-template-columns: 1fr;
+  }
+}

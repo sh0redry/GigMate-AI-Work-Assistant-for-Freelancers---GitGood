@@ -33,3 +33,5 @@ The replay skeleton and optional local WAHA durable ingress/monitoring are imple
 Accepted ADRs govern architecture; Pydantic models generate domain shapes and implemented OpenAPI; event/AI schemas remain independently maintained. A schema-valid object is not proof of authorization. Update source models, generated contracts/types, samples, tests and bilingual rules together. Module contacts coordinate work without exclusive permissions or approval rights.
 
 The earlier kickoff proposal is retained as planning history and superseded by this baseline for engineering requirements. The supplied v2 product plan remains source context, not proof of implemented features or user results.
+
+- [D-03 reply approval acceptance](role-d-stage3-acceptance.md)

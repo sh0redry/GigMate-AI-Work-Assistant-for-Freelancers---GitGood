@@ -1,5 +1,7 @@
 # Kyrie 的文件地图：先读哪几个，其他以后查
 
+D-03 新文件：[ApprovalsWorkspace.tsx](../../apps/web/src/ApprovalsWorkspace.tsx) 画核对与历史页面；[approvals-api.ts](../../apps/web/src/approvals-api.ts) 请求后端，并记住断网前那笔原请求；[approval-view.ts](../../apps/web/src/approval-view.ts) 解释状态和为什么不能批准。它们在待评审的 D-03 分支，不是 main 的文件。
+
 更新：2026-10-12。[English atlas](../en/kyrie-file-atlas.md) · [从零学习手册](kyrie-learning-guide.md)。
 
 这不是“今天必须学完”的清单。先学 5 个位置：`App.tsx` 看登录／页面选择；`chat-choices.ts` 看怎么算一页；`ChatChoices.tsx` 看怎么画勾选；`WorkOrderWorkspace.tsx` 看业务核对；`workspace-api.ts` 看请求。长连接页和后端最后再查。

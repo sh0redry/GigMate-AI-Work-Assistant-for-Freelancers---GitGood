@@ -514,7 +514,7 @@ export function WorkOrderWorkspace({
           ))}
           {detailReady && !tasks.length && <p>当前工单在该范围暂无待办。</p>}
           <small>
-            新建工单、修改工单状态和回复审批功能尚未开放。此页面不会发送消息。
+            新建工单与工单状态修改尚未开放。回复草稿请到“回复审批”核对；此页面不会发送消息。
           </small>
         </aside>
       </div>

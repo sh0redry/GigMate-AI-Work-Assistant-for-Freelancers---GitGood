@@ -1,0 +1,26 @@
+# D-03 reply approval acceptance
+
+2026-10-13 · Kyrie · [Chinese counterpart](../zh/role-d-stage3-acceptance.md).
+
+## Delivered boundary
+
+The pending `codex/d03-approvals` branch composes C PR #22 (`8ef89ac`) and D-02 PR #24 (`5ba294a`). This is a stacked review candidate, not merged main. #21 merged as `e066b0c`; its A media scope is independent. Before main integration, C must fix the repeated-reissue defect, synchronize the accepted main/contracts/migration ancestry, and #24 must land through Andy's review. The D-03 change does not repair those backend issues or rewrite shared migrations.
+
+Both development environments have business/reply approval navigation; isolated testing still has no WhatsApp page/connector queries. The approval workspace loads all owned action/order/message pages, exact recipient conversation/body/sources, draft expiry/revision, bound/current order/chat versions, reason, local status and delivery status. It retains the selected detail under filtering. Empty/denied/stale/offline histories are explicit; no browser fake drafts or success states.
+
+Review and explicit consent bind the displayed snapshot. Source/context/content/order changes invalidate review; expiry, wrong recipient, missing/revoked/ambiguous provenance and terminal orders block approval. Reject/cancel requires a reason and reviewed exact snapshot; it remains local even when conversation content is denied. Executing/unknown actions are read-only; no blind external resend.
+
+Each submitted intent is journaled before dispatch with its exact command and key, scoped by account and captured environment API base. No credentials or reply text are stored in this journal; reject/cancel contains the merchant-entered reason. Lost/partial/5xx responses preserve uncertainty. Poll/remount/refresh does not retry. Explicit original-key retry requires renewed review, uses the original versions/command and can complete an initially unreceived intent. Authentication/CSRF rejection of retry preserves earlier uncertainty. A stale adapter cannot overwrite another mount's saved intent. Malformed/unavailable tab session storage blocks dispatch clearly. Logout/environment switching clears screen state without erasing this account/environment's pending journal.
+
+Reissue produces a new pending draft, not a send. Until C fixes its confirmed same-context repeated-expiry uniqueness defect, the UI blocks repeated reissue of the same source/context round. Backend validation remains final authority. **Approved** is shown as **已批准，尚未发送**; actual WhatsApp recipient mapping, C/A sending bridge, outbox/dispatch and read-only external reconciliation are not implemented by this frontend batch. Thus the approval portion of D-03 is delivered; end-to-end sending acceptance remains pending #23 and C/A integration.
+
+## Evidence
+
+- Frontend **91 tests passed** (75 existing + 16 API/actual-component regressions), TypeScript and Vite build passed. Coverage includes full-page source reads, exact commands/CSRF, no approval before checkbox, changed-review invalidation, expiry/recipient/source/version blockers, account/environment binding, failed storage, lost approval/reissue responses, original-key restoration, auth-expiry lookup preservation, no automatic resend, same-context reissue guard, stale/denied reads, reason-bound local rejection, busy/double-click blocking, and late unauthorized reads after unmount.
+- Existing backend at C `8ef89ac`, independently tested with PostgreSQL configured: **390 passed**, one existing Starlette/httpx warning. Some extraction fixtures remain SQLite; this is not proof of every PostgreSQL lock path. D-03 does not change backend source/models or generated outputs.
+- A fresh owned disposable PostgreSQL schema upgraded through `0009_approval_actions`; Alembic reported no drift. Synthetic replay via authenticated API and deterministic worker created one pending conflict draft. Browser at API 18103/Vite 5179 verified isolated business/approval navigation without WhatsApp, exact source text/versions, checkbox blocking, approval saved with not_submitted status, full history and persistence after reload/relogin. No real WhatsApp/model/send/QR/deployment operation. DOM fixtures are not disk-persistence proof; this separate HTTP/browser/schema flow is the persistence evidence.
+- Applicable API/format/generated-contract/bilingual baseline and whitespace checks are run before commit; results recorded in the progress records. Native PDF parsing is unrelated; no native-device or real-send acceptance is claimed.
+
+## Reproduce
+
+Use a fresh disposable seeded installation with C's canonical approval API and deterministic worker; see [getting started](getting-started.md) and the [user guide](role-d-frontend-user-guide.md). Prepare the synthetic conflict through the backend replay/test workflow, since the product has no replay button. Open the approval page, compare body/recipient/source/expiry/versions, check that approval is disabled before consent, then approve. Verify approved + not_submitted and reread after login. Review automated failure tests for lost responses, original-key replay and denied content. Never seed/reset a real installation to run these steps.
