@@ -1,5 +1,11 @@
 # WAHA sending batch 1: interfaces and unified acceptance
 
+## Expiry cleanup and dispatch race repair — 2026-10-14
+
+A synthetic PostgreSQL interleaving reproduced the P1 review: cleanup selected an expired `preparing` action, dispatch committed and submitted once, then cleanup overwrote it as cancelled and discarded the original response. Cleanup now selects candidate identities, locks Account then Connection in the same order as dispatch, and reloads the action before checking state, expiry and the dispatch marker. Candidates are ordered by account/connection/action to keep multi-candidate lock acquisition consistent. Already-dispatched identities, leases and outcomes are preserved; cleanup winning before dispatch prevents submission.
+
+The sending regression suite passed **59 tests on disposable PostgreSQL**, including controlled successful-response and unknown-response interleavings and cleanup winning during preflight. The original failing reproduction used only a fake provider; no real message was sent for this repair. No schema, provider configuration or send permission was changed. Independent review remains required; no thread was self-resolved.
+
 ## Owner-operated live acceptance — 2026-10-14
 
 On code head `863bd09`, the owner used one explicitly authorized personal test chat and approved the final messages in the real page. Reported WhatsApp observations and content-free database checks cover text, image, PDF file, ordinary WAV attachment, Ogg/Opus voice bubble, WebP sticker, location, contact card, poll, reaction addition/removal, quoted reply, manually supplied Agent-assisted drafts and one exact-policy automatic submission. The revoked policy retained one use out of five. These are sending gateway tests, not real Agent generation or C approval-to-send bridging.

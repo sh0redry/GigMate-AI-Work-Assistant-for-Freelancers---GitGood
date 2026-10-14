@@ -1,5 +1,9 @@
 # Implementation status and validation
 
+## PR #23 expiry cleanup serialization — 2026-10-14
+
+Reproduced the new P1 using synthetic PostgreSQL interleaving: one provider submission was incorrectly stored as cancelled after stale cleanup. Cleanup now uses dispatch's Account/Connection locks and a fresh state/expiry/dispatch-marker check. Sending tests: **59 passed on disposable PostgreSQL**, including both ordering outcomes and preservation of accepted/unknown results without another submission. Full PostgreSQL backend: **646 passed / 1 platform skip**; after strengthening test callback assertions, the six affected cleanup tests passed again. Frontend **63 passed**, typecheck/build, API type check, formatting, applicable Ruff, generated contracts and baseline (**69 Markdown / 414 links**) passed. See [sending evidence](role-a-waha-sending.md). The original live voice uncertainty remains unchanged; independent review is still required.
+
 ## PR #23 live sending acceptance — 2026-10-14
 
 Owner-operated Windows/native x86 live testing on `863bd09` now covers the eleven declared message kinds through the gateway and the quoted/manual/assisted/exact-policy entry points; physical observations are operator reports, while database checks use state metadata only. Text/image/PDF/audio/sticker/location/contact/poll/reaction/video accepted records exist; original voice remains unknown without an ID despite reported phone playback. Possible-delivery review released later work without replay. Stale-context cancellation, manual cancellation, policy revocation and total send-permission cancellation of an unapproved draft were observed. MP4 playback was reported normal after the pinned Chrome switch. See [actual scope and limits](role-a-waha-sending.md); this is not blanket receipt/codec/Agent/production certification.

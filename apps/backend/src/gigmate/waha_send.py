@@ -980,12 +980,32 @@ def purge(factory=Session):
             except OSError:
                 continue
             asset.blob_key = None
-        for action in db.scalars(
-            select(WahaSendAction).where(
-                WahaSendAction.expires_at <= now(),
-                WahaSendAction.state.in_(["draft", "queued", "preparing"]),
+        candidates = list(
+            db.execute(
+                select(WahaSendAction.id, WahaSendAction.connection_id)
+                .join(WahaConnection, WahaConnection.id == WahaSendAction.connection_id)
+                .where(
+                    WahaSendAction.expires_at <= now(),
+                    WahaSendAction.state.in_(["draft", "queued", "preparing"]),
+                )
+                .order_by(WahaConnection.account_id, WahaConnection.id, WahaSendAction.id)
             )
-        ):
+        )
+        for action_id, connection_id in candidates:
+            # Match dispatch's lock order, then discard the candidate's old state.
+            locks(db, connection_id, require_active=False)
+            action = db.scalar(
+                select(WahaSendAction)
+                .where(WahaSendAction.id == action_id)
+                .execution_options(populate_existing=True)
+            )
+            if (
+                not action
+                or action.state not in {"draft", "queued", "preparing"}
+                or action.dispatched_at is not None
+                or utc(action.expires_at) > now()
+            ):
+                continue
             action.state, action.error_code, action.dispatch_key = (
                 "cancelled",
                 "SEND_APPROVAL_EXPIRED",

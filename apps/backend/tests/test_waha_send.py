@@ -3,6 +3,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+from threading import Event
 from urllib.parse import quote
 from uuid import uuid4
 
@@ -627,6 +628,118 @@ def test_purge_expires_files_and_preserves_unknown_identity(setup):
     assert not path.exists()
     with s[1]() as db:
         assert db.get(WahaSendUpload, result["id"]).blob_key is None
+
+
+@pytest.mark.parametrize("unknown", [False, True])
+def test_postgres_purge_stale_candidate_preserves_dispatch_result(setup, monkeypatch, unknown):
+    s = setup
+    if s[1].kw["bind"].dialect.name != "postgresql":
+        pytest.skip("PostgreSQL interleaving requires TEST_DATABASE_URL")
+    identifier = draft(s).json()["data"]["id"]
+    with s[1].begin() as db:
+        action = db.get(WahaSendAction, identifier)
+        action.expires_at = sends.now() + timedelta(seconds=2)
+        action.snapshot_hash = sends.digest(
+            [action.command, action.bindings, sends.stamp(action.expires_at), action.revision]
+        )
+        deadline = action.expires_at
+    assert change(s, identifier).status_code == 200
+    selected, dispatched, cleaned = Event(), Event(), Event()
+    dispatch_preserved = Event()
+    original_payload = sends.provider_payload
+    future = None
+
+    class PurgeSession:
+        def __init__(self, db):
+            self.db = db
+
+        def __getattr__(self, name):
+            return getattr(self.db, name)
+
+        def execute(self, statement):
+            rows = list(self.db.execute(statement))
+            if "waha_send_actions" in str(statement):
+                assert rows == [(identifier, s[3].connection_id)]
+                selected.set()
+                assert dispatched.wait(10)
+            return rows
+
+    class PurgeFactory:
+        @contextmanager
+        def begin(self):
+            with s[1].begin() as db:
+                yield PurgeSession(db)
+
+    def clean():
+        try:
+            sends.purge(PurgeFactory())
+        finally:
+            cleaned.set()
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+
+        def prepare_payload(db, row, action):
+            nonlocal future
+            result = original_payload(db, row, action)
+            monkeypatch.setattr(sends, "now", lambda: sends.utc(deadline) + timedelta(seconds=1))
+            future = pool.submit(clean)
+            assert selected.wait(10)
+            return result
+
+        def after_fence():
+            dispatched.set()
+            assert cleaned.wait(10)
+            future.result(timeout=10)
+            with s[1]() as db:
+                action = db.get(WahaSendAction, identifier)
+                assert action.state == "dispatching"
+                assert action.dispatch_key and action.lease_token and action.dispatch_token
+            dispatch_preserved.set()
+
+        provider = Provider()
+        provider.before_send = after_fence
+        if unknown:
+            provider.error = AdapterError("WAHA_RESULT_UNKNOWN")
+        monkeypatch.setattr(sends, "provider_payload", prepare_payload)
+        try:
+            assert execute(s, provider)
+        finally:
+            dispatched.set()
+        assert len(provider.calls) == 1
+        assert dispatch_preserved.is_set()
+        future.result(timeout=10)
+        with s[1]() as db:
+            action = db.get(WahaSendAction, identifier)
+            assert action.state == ("result_unknown" if unknown else "accepted")
+            assert action.dispatched_at is not None
+            assert bool(action.provider_message_id) is not unknown
+            assert bool(action.dispatch_key) is unknown
+            assert action.error_code == ("SEND_RESULT_UNKNOWN" if unknown else None)
+        assert not execute(s, provider)
+        assert len(provider.calls) == 1
+
+
+def test_purge_wins_before_dispatch_without_provider_submission(setup, monkeypatch):
+    s = setup
+    identifier = draft(s).json()["data"]["id"]
+    assert change(s, identifier).status_code == 200
+    with s[1]() as db:
+        deadline = db.get(WahaSendAction, identifier).expires_at
+
+    def expire_during_preflight():
+        monkeypatch.setattr(sends, "now", lambda: sends.utc(deadline) + timedelta(seconds=1))
+        sends.purge(s[1])
+
+    provider = Provider()
+    provider.before_status = expire_during_preflight
+    assert execute(s, provider)
+    assert provider.calls == []
+    with s[1]() as db:
+        action = db.get(WahaSendAction, identifier)
+        assert action.state == "cancelled"
+        assert action.error_code == "SEND_APPROVAL_EXPIRED"
+        assert action.dispatched_at is None
+        assert action.dispatch_key is None and action.lease_token is None
 
 
 def test_purge_retries_expired_upload_after_unlink_failure(setup, monkeypatch):
