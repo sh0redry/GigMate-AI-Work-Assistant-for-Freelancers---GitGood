@@ -254,7 +254,7 @@ def test_input_during_preflight_cancels_and_echo_does_not_call_model(setup, ingr
     assert text_worker(s[1])
     assert text_worker(s[1])
     with s[1]() as db:
-        assert db.scalar(select(Job).where(Job.error_code == "API_SEND_ECHO"))
+        assert db.scalar(select(Job).where(Job.error_code == "OWN_SEND_ECHO"))
         assert db.get(WahaSendAction, identifier).state == "accepted"
 
 

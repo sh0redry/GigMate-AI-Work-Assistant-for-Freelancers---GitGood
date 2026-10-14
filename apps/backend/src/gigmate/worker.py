@@ -9,6 +9,7 @@ from uuid import uuid4
 from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
+from gigmate.approvals import draft_for_change
 from gigmate.contracts import RequirementChange
 from gigmate.db import (
     Account,
@@ -35,6 +36,7 @@ from gigmate.waha_recovery import worker_heartbeat
 log = logging.getLogger("gigmate.worker")
 
 EXTRACTION_NEEDS_REVIEW = "EXTRACTION_NEEDS_REVIEW"
+OWN_SEND_ECHO = "OWN_SEND_ECHO"
 
 
 def run_once(factory=Session):
@@ -107,9 +109,12 @@ def run_once(factory=Session):
                 or latest.data["revoked"]
             ):
                 job.state, job.error_code = "completed", "SOURCE_SUPERSEDED"
-            elif event["source"] == "api" and event["direction"] == "outgoing":
-                # API echoes update context in ingress, never trigger another reply/model.
-                job.state, job.error_code = "completed", "API_SEND_ECHO"
+            elif event["source"] == "api" and (
+                event["connector"] == "waha" or event["direction"] == "outgoing"
+            ):
+                # Ingress advances context and invalidates pending drafts; echoes
+                # never trigger extraction, another question or another send.
+                job.state, job.error_code = "completed", OWN_SEND_ECHO
             elif event["connector"] == "waha":
                 linked = list(
                     db.scalars(
@@ -177,6 +182,8 @@ def run_once(factory=Session):
                                 change_id,
                             ],
                         }
+                        db.flush()
+                        draft_for_change(db, account_id, order, conversation, payload)
                     job.state, job.error_code = (
                         "completed",
                         None if proposal else "STUB_UNSUPPORTED_INPUT",
@@ -265,6 +272,11 @@ def _route_through_provider(
                 **order.data,
                 "pending_change_ids": list(order.data.get("pending_change_ids", [])) + new_ids,
             }
+            db.flush()
+            for change in db.scalars(select(ChangeRow).where(ChangeRow.id.in_(new_ids))):
+                # Role B's draft_text is a merchant-facing summary (prompt v1), not a
+                # customer reply, so the customer-facing body uses the role C template.
+                draft_for_change(db, account.id, order, conversation, change.data)
             return True
     return False
 

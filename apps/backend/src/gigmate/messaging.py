@@ -7,6 +7,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 from referencing import Registry, Resource
 from sqlalchemy import select
 
+from gigmate.approvals import hold_for_new_message
 from gigmate.config import ROOT
 from gigmate.db import ChangeRow, ConversationRow, Inbox, Job, MessageRow
 from gigmate.errors import BusinessError
@@ -181,6 +182,8 @@ def ingest(db, account, event, *, trusted_waha=False):
         if change.data["status"] == "proposed":
             change.data = {**change.data, "status": "needs_review"}
     db.flush()
+    # Old drafts stop being approvable; the worker decides what to ask after reading it.
+    hold_for_new_message(db, account.id, conversation, message_id)
     db.add(
         Job(
             id=str(uuid4()),

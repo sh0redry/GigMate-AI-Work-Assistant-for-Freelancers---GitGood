@@ -1734,6 +1734,21 @@
       "title": "RecoveryIssue",
       "type": "object"
     },
+    "ReissueActionCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_context_version": {
+          "minimum": 1,
+          "title": "Expected Context Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "expected_context_version"
+      ],
+      "title": "ReissueActionCommand",
+      "type": "object"
+    },
     "RejectActionCommand": {
       "additionalProperties": false,
       "properties": {

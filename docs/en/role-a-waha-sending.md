@@ -1,5 +1,11 @@
 # WAHA sending batch 1: interfaces and unified acceptance
 
+## PR #22/main compatibility update — 2026-10-14
+
+The sending branch now includes main `c5c22ef` and C's approval actions, including repeated-expiry reissue recovery. Both Replay and live extraction can create C review drafts; these remain business proposals, not `WahaSendAction` or sending consent. No automatic approval-to-send bridge is enabled. Own WAHA API echoes still advance context and supersede pending reviews without another model call, question or send. The shared worker now uses main's `OWN_SEND_ECHO` diagnostic instead of the earlier sending-branch `API_SEND_ECHO`; the suppression behavior remains intact.
+
+Additive **0014_merge_approval_send** joins unchanged `0013_merge_approval_media` and `0013_merge_media_send`. This is the new single head; upgrade to `head` and run Alembic `check` before rebuilding API/worker. Existing approved C records, sending permission versions/cancellation fences, media-stop markers and audit history must remain intact. Migration regressions cover both previously published merge heads. No original installation or permission was changed. The dated #21/#23 notes below retain their historical verification scope. Real models, C/A execution bridging, physical sending and independent acceptance remain pending.
+
 ## PR #21 compatibility update — 2026-10-13
 
 This branch now includes main `e066b0c`, including PR #21's final media processor seam, PDF resource isolation and persistent content-stop decision. Processing/reconciliation and sending outbox requests remain separate identities: no stopped model output becomes sending approval, and a send acceptance is not model extraction success. All eleven sending adapters and explicit approval/fixed-policy paths remain in scope; the real B model stays disabled.

@@ -1,5 +1,15 @@
 # 已完成工作与验证记录
 
+## PR #23 兼容审批 main — 2026-10-14
+
+在隔离工作区将 main `c5c22ef`（#22）合入发送 head `4917d3c`；用户独立的 Oracle 部署规划分支及全部未提交文件保持原样。最新 Role B 评审认可上一轮修复，仅有流程备注，没有新增代码缺陷。其他评审者的状态与评论由其本人更新，本次不删除重复评论。
+
+解决 worker、迁移测试及双语进度冲突，保留 Replay/真实提取生成审批草稿与全部发送路径。API 回流继续抑制提取/回复，诊断码统一为 main 的 `OWN_SEND_ECHO`；上下文推进、C 旧草稿失效，以及 A 已派发结果不被追溯取消仍由两侧回归覆盖。C 审批与 A 发送权限/outbox 独立，未新增执行桥接或启用模型。
+
+新增 **0014_merge_approval_send**，汇合未改写的共享 `0013_merge_approval_media` 与 `0013_merge_media_send`。迁移回归覆盖两条合并 head，保留 C 已批准记录、发送权限版本/取消标识及既有数据。从合并后的源码重新生成 domain/OpenAPI/前端类型。重建新代码前升级 `head` 并执行 Alembic `check`；本次不升级私有安装。
+
+实际本地验证：Windows 后端全套 **634 通过、10 跳过**（9 项 PostgreSQL 依赖、1 项不适用平台）；补充已批准记录保留断言后的最终迁移专项 **12 通过**。前端 **63 通过**，API/格式/TypeScript/Vite build 通过。适用 Ruff/格式（**46 文件**）、源契约检查、baseline（**69 篇 Markdown、410 个链接**）、空白检查及隔离 SQLite 升级/结构检查通过，唯一 head 为 0014。Windows 检出换行仅在隔离副本规范，无内容格式改写。SQLite 不证明 PostgreSQL 锁；新 CI 与独立复核仍需确认，PR 保持 Draft。保留已有 Starlette/httpx 警告。未操作真实手机/发送/媒体/模型、凭据、二维码或部署。
+
 ## PR #23 评审恢复说明 — 2026-10-14
 
 最新两条 Role B 评论内容相同，均为不阻塞的建议。确认每轮处理一个动作、未知结果需要核对是刻意的安全设计，无需改成自动重发。补充中英文恢复说明：已登记文件删除失败与孤立文件清理回滚的区别、文件系统与数据库清理不能原子提交、每小时 worker 维护，以及有准确 ID 和无 ID 时的回执核对边界。发送页面已有查询与未知结果核对，独立 C/D 业务桥接仍待接入。
@@ -16,6 +26,27 @@
 
 实际本地证据：Windows 后端全套 **607 通过、10 跳过**（9 项 PostgreSQL 依赖检查及 1 项不适用平台检查）；最后补充迁移保留断言前，发送/媒体停止/迁移重点回归 **79 通过、1 项 PostgreSQL 跳过**。前端 **63 通过**，类型/格式/TypeScript/build、适用 Ruff/格式、baseline（**69 篇 Markdown、410 个链接**）及隔离 SQLite 升级 0013/check 通过。SQLite 不证明 PostgreSQL 锁，新提交 CI 和独立复核仍需确认；保留已有 Starlette/httpx 警告。仅使用合成字节、假传输/模型和 DOM；无真实发送、媒体、模型、二维码、部署或私有配置操作。集成后 PR 目标改为 main，保持 Draft；用户未提交的诊断段落不进入 PR。
 
+
+## PR #22 第二轮评审：重新生成轮次与 main 兼容（C）— 2026-10-14
+
+- **重复重新生成（P2，Andy 和 Kyrie）：** 过期 → 重新生成 → 没有新消息又过期 → 再次重新生成会返回 503，因为第二轮生成了相同的 `<change>@<context>` trigger，撞上唯一约束。现在每轮重新生成都有持久的独立身份 `<change>@<context>~<被替换的草稿 id>`；一条草稿只能被重新生成一次（之后它就不是最新的），所以轮次不会冲突。同一个幂等键重放返回原结果，同键换内容返回 409 `IDEMPOTENCY_CONFLICT`，旧轮次返回 409，每单仍只有一条活动草稿。回归测试：`test_repeated_expiry_rounds_can_each_be_reissued`（未修复时得到 503）。
+- **#21 合并后与 main 兼容：** 合并 `main`（`e066b0c`），不改写任一分支。新增只做合并的迁移 **0013_merge_approval_media**（父迁移为 `0009_approval_actions` 与 `0012_waha_media_stop`，不改表结构）。`test_merge_revision_joins_approval_and_media_branches` 从任一父迁移、带数据的数据库升级到唯一 head，并检查数据和双方的表都保留。`test_waha_migration.py` 和中英文进度记录的冲突按保留双方解决；契约和前端类型按源模型重新检查，无漂移。
+
+证据：SQLite 全套 **569 通过、9 跳过**；审批和迁移测试在本地 PostgreSQL 16 上也通过；Ruff/格式（main 上已有的 `scripts/check_baseline.py` F401 与本 PR 无关）、契约导出检查、前端接口检查和基线通过。未触碰真实 WhatsApp、发送、模型或部署。
+
+## PR #22 审批动作评审跟进（C）— 2026-10-13
+
+PR #22（`lena/approval-actions`，head `e79ef7b`）新增 C 的审批动作：改期提议与已确认预约撞期时，生成一条 `send_text` 草稿（`pending_approval`、固定模板、24 小时过期）；GET /actions、GET /actions/{id}、批准（202，核对快照哈希、版本和来源）、拒绝和取消（只改本地状态，保留原因）。批准只记录决定，不发送。已按 Kyrie（要求修改）和 Andy 的评审修正：
+
+- **自身 API 发送回显（P1/P2）：** `source=api` 的受信任 WAHA 事件仍推进上下文、在接收时作废旧草稿，但 worker 以 `OWN_SEND_ECHO` 完成、不进入提取，因此不会产生回复。
+- **看不懂不等于问题仍未回答（P1）：** 去掉自动“原样再问”。新消息之后只有明确结果自动处理（新撞期 → 新草稿；空闲时间 → `answered`）；其他情况把最新的已作废/已过期问题标为 `reissuable`，由商户用 POST /actions/{id}/reissue（带当前 `expected_context_version`）重新生成。
+- **过期后来源被改（P2）：** 接收时把来源已变的过期草稿标为 `source_changed`；重新生成会再核对来源并拒绝。
+- **GET 写回覆盖批准（P2）：** GET 列表和详情只计算 `expired` 视图；过期只在已加锁的行上写入（命令与接收，接收现在会锁住它要更新的动作）。
+- **撞期依据已变化：** 批准和重新生成都会再查触发提议是否仍与已确认预约重叠，否则 409 `APPROVAL_STALE`。
+
+不在本批、未改动：审批页面（D）、真实发送以及 C 动作到 A 发送网关的桥接（`ActionRow(state=approved)` 不是发送授权，会话 UUID 也不是 provider 聊天 ID）、工单取消/完成命令。迁移 `0009_approval_actions` 接在 `0008` 后；若 #21（0009/0010）先合并，需要补加性合并迁移。
+
+证据：`pytest apps/backend/tests/test_approvals.py` 在 SQLite 和本地 PostgreSQL 16 上均 **18 项通过**；SQLite 全套通过；PostgreSQL 全套在该本地环境下出现与未改动 main 相同的 WAHA 计时相关失败，审批/工作流测试无失败。Ruff/格式、契约导出、前端接口检查和双语基线通过。未触碰真实 WhatsApp、发送、模型或部署。
 ## PR #21 新评审修复：持久化停止使用决定 — 2026-10-13
 
 通过四个合成场景独立复现新增 P2：取消或暂停/恢复后，立即核对成功或连续未知后成功，都会因核对清除唯一停止标记而重新公开结果。现在将首次停止原因单独持久化为 `content_stop_reason`，不依赖状态、临时错误或控制版本。后续核对保留停止决定，不重新调用 process、不公开原任务结果、不恢复核对记录。未知结果仍阻止新任务；确认有效结果后以取消状态解除占用，仅允许另行明确创建新意图。
