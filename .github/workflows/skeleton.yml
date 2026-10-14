@@ -54,7 +54,8 @@ jobs:
       - run: alembic -c apps/backend/alembic.ini upgrade head
       - run: alembic -c apps/backend/alembic.ini check
       - run: pytest apps/backend/tests -q
-  frontend:
+  frontend_platforms:
+    name: frontend (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -82,3 +83,9 @@ jobs:
         working-directory: apps/web
       - run: npm run build
         working-directory: apps/web
+  frontend:
+    runs-on: ubuntu-latest
+    needs: frontend_platforms
+    if: ${{ always() }}
+    steps:
+      - run: test "${{ needs.frontend_platforms.result }}" = "success"
