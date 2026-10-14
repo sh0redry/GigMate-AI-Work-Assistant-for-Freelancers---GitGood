@@ -1,5 +1,13 @@
 # Implementation status and validation
 
+## PR #23 live sending acceptance — 2026-10-14
+
+Owner-operated Windows/native x86 live testing on `863bd09` now covers the eleven declared message kinds through the gateway and the quoted/manual/assisted/exact-policy entry points; physical observations are operator reports, while database checks use state metadata only. Text/image/PDF/audio/sticker/location/contact/poll/reaction/video accepted records exist; original voice remains unknown without an ID despite reported phone playback. Possible-delivery review released later work without replay. Stale-context cancellation, manual cancellation, policy revocation and total send-permission cancellation of an unapproved draft were observed. MP4 playback was reported normal after the pinned Chrome switch. See [actual scope and limits](role-a-waha-sending.md); this is not blanket receipt/codec/Agent/production certification.
+
+Existing private database backed up and migrated/checked at 0014; original session volume retained. Only original ingress/worker/monitor and the video browser were prepared. Private artifacts and the owner's unrelated Oracle planning files are excluded. Documentation-only follow-up: baseline/link and source-contract checks run; earlier `863bd09` full backend 634 passed/10 skipped, final migration 12 passed and frontend 63 passed remain dated evidence, not rerun results. Independent rereview of the final PR head is still required; Ready for review does not dismiss CHANGES_REQUESTED or authorize a merge.
+
+Final state checked after video playback: total send permission **disabled, version 4, zero authorized chats**; the single exact-policy record is revoked with one use retained. Across 18 acceptance actions, 14 were accepted, three cancelled before submission and the one reviewed voice outcome remains unknown. No pending send remains. These counts contain no content or recipient identities.
+
 ## PR #23 compatible with approval main — 2026-10-14
 
 Merged main `c5c22ef` (#22) into sending head `4917d3c` in an isolated worktree; the owner's separate Oracle planning branch and all its pending files were untouched. The latest Role B review is LGTM with process notes, not a new code defect. Other reviewers' review states/comments remain theirs to update; duplicates were not removed.
