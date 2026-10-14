@@ -1,4 +1,5 @@
 import { ConnectionError } from "./connection-api";
+import { apiBase } from "./environment.ts";
 import type { components } from "./generated/api";
 
 export type SendPayload = components["schemas"]["WahaSendPayload"];
@@ -40,7 +41,7 @@ export function sendingMime(file: Pick<File, "name" | "type">, override = "") {
 }
 
 export function sendingApi(connection: string, csrf: string) {
-  const base = `/api/v1/connectors/${encodeURIComponent(connection)}/sending`;
+  const base = `${apiBase()}/connectors/${encodeURIComponent(connection)}/sending`;
   async function request<T>(
     path: string,
     body?: object | File,

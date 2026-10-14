@@ -143,7 +143,7 @@ worker 先保存 `preparing`，在业务锁外做 GET 检查，再重新校验�
 
    **只有需要视频时才选择 Chrome：**默认保留原 ARM/Chromium 环境。先暂停/撤销发送，再同时设置发送、媒体和 `WAHA_SEND_CHROME=true`，运行团队 `up`；工具会在 ARM 覆盖之后追加 `infra/waha-send-chrome.compose.yaml`，使用固定 Chrome 2026.9.1 的 linux/amd64 镜像。Intel 原生运行，Apple Silicon 使用模拟。仅只读查验了公开镜像清单，没有拉取/运行，模拟性能及手机表现待验收。旧安装可把这个文件加在所有覆盖之后，明确重建 WAHA 并保留会话卷；核对状态，仅确需时重新关联。代码不会自动切换镜像或浏览器。
 
-2. 在 `apps/web` 启动真实前端。Windows：`$env:GIGMATE_API_URL='http://127.0.0.1:18702'; npm run dev`；Mac/Linux：`GIGMATE_API_URL=http://127.0.0.1:18702 npm run dev`。打开 Vite 提供的地址，登录，确认 WhatsApp 已连接，在消息区域选择测试会话；勾选并保存单独的发送授权。
+2. 在 `apps/web` 启动真实前端。Windows：`$env:GIGMATE_REAL_API_URL='http://127.0.0.1:18702'; $env:GIGMATE_DEFAULT_ENV='real'; npm run dev`；Mac/Linux：`GIGMATE_REAL_API_URL=http://127.0.0.1:18702 GIGMATE_DEFAULT_ENV=real npm run dev`。打开 Vite 提供的地址，登录，确认 WhatsApp 已连接，在消息区域选择测试会话；勾选并保存单独的发送授权。
 3. 文字/链接：先保存草稿，手机此时应没有收到；核对最终内容再批准。检查手机、任务状态及只读回执，刷新页面不应再发。选一条已载入消息测试引用回复。改输入应重新核对新草稿。
 4. 准备小型真实图片、音频、Ogg/Opus、MP4、WebP、PDF/TXT/CSV/Office 文件；每次上传一个，检查预览、附件名及 SHA256，再批准。检查手机图片/贴纸、音频附件与语音气泡、视频播放、说明及文件名。等待前一条回流并刷新上下文后再批准下一条。自动签名夹具不能代替播放验收。
 5. 用虚构的地点、联系人、简单问题测试位置/名片/投票；检查选项及多选。对测试消息加回应，再留空移除。表情成功不应被描述成另一条已送达消息。
