@@ -1,5 +1,12 @@
 # Implementation status and validation
 
+## PR #25 follows merged C approvals and repaired D-02 — 2026-10-14
+
+Synchronize #24 **a90a9b6** and accepted main **c5c22ef**, including C’s independently accepted repeated-reissue fix. Keep both sides of the migration tests and paired evidence. Published **0013_merge_approval_media** and **0014_media_approvals** remain unchanged; additive no-op **0015_d03_approval_heads** joins them. Extend retained migration cases through either existing merge point, keeping replay/connection/evaluation records, no drift and one head. Update current bilingual dependency/manual/acceptance wording; older dated evidence stays historical. The conservative same-source/context UI repeat restriction remains, while C’s backend defect is fixed. Approval/storage/source review behavior is otherwise unchanged.
+
+Fresh composed evidence: frontend **110 passed**, TypeScript/Vite/API/Prettier, Ruff check/format (**87 files**, including setup runner), generated contracts, baseline (**79 Markdown / 928 links**) and whitespace pass. Native PostgreSQL migration suite **10 passed**. Supported Linux Docker + PostgreSQL-configured full backend **583 passed / 1 platform skip**, existing Starlette/httpx warning; some extraction fixtures remain SQLite. Production backend source/contracts match accepted main; only this candidate’s additive migration composition differs. No real WhatsApp/model/send, browser/privacy/device test, original database upgrade or deployment. Retarget #25 to main now that #22 has merged; remain Draft awaiting #24 and independent review. Existing local runtimes were not upgraded.
+
+
 ## PR #25 follows the D-02 caller fix — 2026-10-14
 
 Merge #24 **2564182** into this approval candidate, retaining both languages' parent/storage evidence and the existing approval UI, journal recovery and migration join. Current A startup callers and the synthetic setup frontend now share the parent's explicit targets/default and fictional-data labeling. Fresh composed verification: **110 frontend tests passed**, TypeScript/Vite/API/Prettier, Ruff check/format (**85 files**), generated contracts, baseline (**79 Markdown / 928 links**), two focused Python setup-environment tests and whitespace checks passed. Existing Starlette/httpx warning remains. Backend production source/migrations/contracts and approval storage behavior are unchanged by this synchronization; the earlier 576/1 Linux/PostgreSQL full suite is historical, not rerun for this caller change. No full Docker setup/real phone/model/send/deployment test. #25 remains a stacked Draft pending #22/#24 and independent review.
@@ -42,17 +49,20 @@ Four open issues reviewed (read-only; no fabricated completion or issue comments
 
 ## PR #22 approval actions review follow-up (role C) — 2026-10-13
 
-PR #22 (`lena/approval-actions`, head `e79ef7b`) adds role C approval actions: a schedule proposal overlapping a confirmed appointment creates one `send_text` draft (`pending_approval`, fixed template, 24 h expiry); GET /actions, GET /actions/{id}, approve (202, exact snapshot hash, versions and sources), reject and cancel (local only, reason kept). Approval only persists the decision; nothing is sent. Reviews by Kyrie (changes requested) and Andy were addressed:
+## PR #24 compatibility after approval backend merge — 2026-10-14
 
-- **API send echoes (P1/P2):** a trusted WAHA event with `source=api` still advances the context and supersedes older drafts at ingestion, but the worker completes it as `OWN_SEND_ECHO` without extraction, so it can never create a reply.
-- **Unclear extraction is not proof (P1):** the automatic "same question again" step was removed. After a new message only clear outcomes act automatically (new conflict → new draft; free time → `answered`). Otherwise the newest superseded or expired question is `reissuable` and the merchant may call POST /actions/{id}/reissue with the current `expected_context_version`.
-- **Expired + edited source (P2):** ingestion marks an expired draft whose source changed as `source_changed`; reissue re-checks sources and refuses it.
-- **GET expiry overwrite (P2):** GET /actions and detail only compute an `expired` view; expiry is written only on locked rows (commands, ingestion, which now locks the actions it updates).
-- **Conflict basis changed:** approve and reissue re-check that the triggering proposal still overlaps a confirmed appointment; otherwise 409 `APPROVAL_STALE`.
+Merge accepted main **c5c22ef** (#22) into D-02. Only the paired progress documents conflict; retain both C's reissue/main-compatibility records and D's earlier evidence. Backend production/migrations and generated contracts match main; no authored backend change. Fresh frontend **85 passed**, TypeScript/Vite/API/Prettier, Ruff check/format (**85 files**, including setup runner), source-contract export, baseline (**77 Markdown / 906 links**), focused setup-environment Python tests **2 passed** and whitespace checks pass. The just-completed independent C full-suite 577/1 is previous review evidence, not rerun here. No real phone/model/send/database/deployment operation. Synchronize this parent into #25 and retain published migrations with an additive join for the now-landed C merge point; independent review still required.
+
 
 Not in scope and unchanged: approval UI (D), real sending and the bridge from C actions to A's send gateway (`ActionRow(state=approved)` is not send authority and the conversation UUID is not a provider chat ID), order cancel/complete commands. Migration `0009_approval_actions` follows `0008`; if #21 (0009/0010) merges first, an additive merge revision is needed.
 
 Evidence: `pytest apps/backend/tests/test_approvals.py` **18 passed** on SQLite and on a local PostgreSQL 16; full SQLite suite passed; full PostgreSQL run shows the same WAHA timing-related failures as unchanged main in that local environment and no approval/workflow failures. Ruff/format, contract export, frontend API check and bilingual baseline passed. No real WhatsApp, send, model or deployment was touched.
+
+## PR #24 current WAHA caller migration — 2026-10-14
+
+Address peer review P2 on c0a0d96: current A integration/message-sync startup instructions now use `GIGMATE_REAL_API_URL` plus `GIGMATE_DEFAULT_ENV=real`, in both languages and macOS/PowerShell commands. Separate isolated backend provisioning remains required. D-01 dated acceptance records are preserved. The setup runner's frontend pins its disposable 18802 ingress, filters private backend/model configuration from the frontend child environment, and enables a development-only synthetic-provider label. This special self-check retains connector navigation with fictional-data/non-scannable-QR guidance, disables switching and the second proxy, and requires an explicit target/default. It never selects the maintainer's real backend implicitly. Ordinary isolated testing remains business-only; same-port/remote-target protection and production `/api` behavior remain intact.
+
+Fresh evidence: **85 frontend tests passed**, including current documented shell configurations, custom ingress, actual runner environment helper, synthetic proxy restriction and actual App labels/navigation/request paths. TypeScript/Vite, API/Prettier, Ruff check/format (**81 files**, including the changed runner), generated contracts, baseline (**77 Markdown / 906 links**) and diff whitespace pass. Focused Python setup-environment tests **2 passed**, with the existing Starlette/httpx warning. No backend domain/route/migration or generated contract changed. Full Docker setup runner, full backend suite, native Windows, real phone/model/send and deployment were not rerun; earlier evidence remains dated. Synchronize this parent into #25 before publication; independent rereview remains required.
 
 
 ## PR #24 compatibility with merged main — 2026-10-14
@@ -92,6 +102,27 @@ Evidence: **65 frontend tests**, TypeScript/Vite, frontend API/format, applicabl
 Reviewed open #21 (`d000b26`, original **500 passed**) and #22 (`e79ef7b`, original **387 passed**): one added PostgreSQL regression per head fails. #21 loses in-flight model uncertainty on cancellation and accepts reissue; #22 regenerates reply work on outgoing API echoes. Both received `REQUEST_CHANGES` and remain unmerged. Existing passing suites/CI do not resolve these findings. Local main was already at origin/main `bbb0074`; unrelated local documentation and original D worktrees were preserved.
 
 
+
+## PR #22 second review round: reissue rounds and main compatibility (role C) — 2026-10-14
+
+- **Repeated reissue (P2, Andy and Kyrie):** expire → reissue → expire again without a new message → reissue again returned 503, because the second round rebuilt the same `<change>@<context>` trigger and hit its unique constraint. Each reissue round now gets a durable identity, `<change>@<context>~<replaced action id>`; a row can be reissued only once (afterwards it is no longer the newest), so rounds never collide. Same-key replay returns the original result, reusing a key for another payload returns 409 `IDEMPOTENCY_CONFLICT`, older rounds return 409, and one active draft per order is kept. Regression: `test_repeated_expiry_rounds_can_each_be_reissued` (503 without the fix).
+- **Main compatibility after #21:** merged `main` (`e066b0c`) without rewriting either branch. Added the additive merge revision **0013_merge_approval_media** (parents `0009_approval_actions` and `0012_waha_media_stop`, no schema change). `test_merge_revision_joins_approval_and_media_branches` upgrades a database from either parent with data to the single head and checks rows and both branches' tables are kept. Conflicts in `test_waha_migration.py` and both progress notes resolved by keeping both sides; generated contracts/types re-checked from source with no drift.
+
+Evidence: full SQLite suite **569 passed, 9 skipped**; approval and migration tests also pass on local PostgreSQL 16; Ruff/format (the pre-existing `scripts/check_baseline.py` F401 on main is unrelated), contract export check, frontend API check and baseline passed. No real WhatsApp, send, model or deployment.
+
+## PR #22 approval actions review follow-up (role C) — 2026-10-13
+
+PR #22 (`lena/approval-actions`, head `e79ef7b`) adds role C approval actions: a schedule proposal overlapping a confirmed appointment creates one `send_text` draft (`pending_approval`, fixed template, 24 h expiry); GET /actions, GET /actions/{id}, approve (202, exact snapshot hash, versions and sources), reject and cancel (local only, reason kept). Approval only persists the decision; nothing is sent. Reviews by Kyrie (changes requested) and Andy were addressed:
+
+- **API send echoes (P1/P2):** a trusted WAHA event with `source=api` still advances the context and supersedes older drafts at ingestion, but the worker completes it as `OWN_SEND_ECHO` without extraction, so it can never create a reply.
+- **Unclear extraction is not proof (P1):** the automatic "same question again" step was removed. After a new message only clear outcomes act automatically (new conflict → new draft; free time → `answered`). Otherwise the newest superseded or expired question is `reissuable` and the merchant may call POST /actions/{id}/reissue with the current `expected_context_version`.
+- **Expired + edited source (P2):** ingestion marks an expired draft whose source changed as `source_changed`; reissue re-checks sources and refuses it.
+- **GET expiry overwrite (P2):** GET /actions and detail only compute an `expired` view; expiry is written only on locked rows (commands, ingestion, which now locks the actions it updates).
+- **Conflict basis changed:** approve and reissue re-check that the triggering proposal still overlaps a confirmed appointment; otherwise 409 `APPROVAL_STALE`.
+
+Not in scope and unchanged: approval UI (D), real sending and the bridge from C actions to A's send gateway (`ActionRow(state=approved)` is not send authority and the conversation UUID is not a provider chat ID), order cancel/complete commands. Migration `0009_approval_actions` follows `0008`; if #21 (0009/0010) merges first, an additive merge revision is needed.
+
+Evidence: `pytest apps/backend/tests/test_approvals.py` **18 passed** on SQLite and on a local PostgreSQL 16; full SQLite suite passed; full PostgreSQL run shows the same WAHA timing-related failures as unchanged main in that local environment and no approval/workflow failures. Ruff/format, contract export, frontend API check and bilingual baseline passed. No real WhatsApp, send, model or deployment was touched.
 ## PR #21 review: persistent content-stop decision — 2026-10-13
 
 Independently reproduced the new P2 in four synthetic cancel/pause-resume + immediate/repeated-unknown lookup cases: reconciliation erased the only stop marker and a later valid result became public. The job now persists its first `content_stop_reason` separately from state, errors and control versions. Subsequent lookups retain that decision, never call process again and never publish the stopped request's output or restore review. Unknown outcomes still block a new request; a known valid return releases the gate as cancelled and permits only a new explicit intent.

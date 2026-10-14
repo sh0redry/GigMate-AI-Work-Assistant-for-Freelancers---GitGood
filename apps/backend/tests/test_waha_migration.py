@@ -44,12 +44,14 @@ def migration_database(tmp_path):
         "0006_waha_provider_sample",
         "0009_approval_actions",
         "0012_waha_media_stop",
+        "0013_merge_approval_media",
+        "0014_media_approvals",
     ],
 )
 def test_versioned_migration_preserves_replay_rows(migration_database, existing_revision):
     root = Path(__file__).resolve().parents[3]
     assert ScriptDirectory(str(root / "apps/backend/migrations")).get_heads() == [
-        "0014_media_approvals"
+        "0015_d03_approval_heads"
     ]
     url = migration_database
     environment = {**os.environ, "DATABASE_URL": url, "PYTHONPATH": str(root / "apps/backend/src")}
@@ -146,7 +148,7 @@ def test_versioned_migration_preserves_replay_rows(migration_database, existing_
     with engine.connect() as db:
         assert (
             db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0014_media_approvals"
+            == "0015_d03_approval_heads"
         )
         assert db.execute(text("SELECT accepted,duplicates,state FROM waha_connections")).one() == (
             3,
@@ -352,4 +354,90 @@ def test_media_evidence_upgrade_does_not_invent_old_sending_times(migration_data
         assert stopped["synthetic-cancelled"] == "MEDIA_CANCELLED"
         assert stopped["synthetic-erased"] == "MEDIA_LEGACY_REVIEW_REQUIRED"
         assert stopped["synthetic-lookup"] == "MEDIA_LEGACY_REVIEW_REQUIRED"
+    engine.dispose()
+
+
+@pytest.mark.parametrize("existing_revision", ["0009_approval_actions", "0012_waha_media_stop"])
+def test_merge_revision_joins_approval_and_media_branches(migration_database, existing_revision):
+    """A database on either parent branch upgrades to the single merge head and keeps its rows."""
+    root = Path(__file__).resolve().parents[3]
+    environment = {
+        **os.environ,
+        "DATABASE_URL": migration_database,
+        "PYTHONPATH": str(root / "apps/backend/src"),
+    }
+
+    def migrate(revision):
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "alembic",
+                "-c",
+                "apps/backend/alembic.ini",
+                "upgrade",
+                revision,
+            ],
+            cwd=root,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+    migrate(existing_revision)
+    engine = create_engine(migration_database)
+    with engine.begin() as db:
+        db.execute(
+            text(
+                "INSERT INTO accounts (id,username,password_hash,active) "
+                "VALUES ('synthetic-account','synthetic','synthetic',true)"
+            )
+        )
+        db.execute(
+            text(
+                "INSERT INTO conversations (id,account_id,context_version,allowlisted) "
+                "VALUES ('synthetic-conversation','synthetic-account',4,true)"
+            )
+        )
+        db.execute(
+            text(
+                "INSERT INTO work_orders (id,account_id,data) "
+                "VALUES ('synthetic-order','synthetic-account',:data)"
+            ),
+            {"data": json.dumps({"synthetic": True})},
+        )
+        if existing_revision == "0009_approval_actions":
+            db.execute(
+                text(
+                    "INSERT INTO approval_actions "
+                    "(id,account_id,work_order_id,conversation_id,trigger,active_key,reason,note,created_at,data) "
+                    "VALUES ('synthetic-action','synthetic-account','synthetic-order',"
+                    "'synthetic-conversation','schedule_conflict:synthetic','synthetic-order',"
+                    "NULL,NULL,'2026-10-13 00:00:00',:data)"
+                ),
+                {"data": json.dumps({"state": "pending_approval"})},
+            )
+    engine.dispose()
+    migrate("head")
+
+    engine = create_engine(migration_database)
+    tables = set(inspect(engine).get_table_names())
+    assert {"approval_actions", "waha_media_jobs"} <= tables
+    assert "content_stop_reason" in {
+        item["name"] for item in inspect(engine).get_columns("waha_media_jobs")
+    }
+    with engine.connect() as db:
+        assert (
+            db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            == "0015_d03_approval_heads"
+        )
+        assert db.execute(text("SELECT context_version FROM conversations")).scalar_one() == 4
+        actions = db.execute(text("SELECT id,trigger,active_key FROM approval_actions")).all()
+        if existing_revision == "0009_approval_actions":
+            assert [tuple(row) for row in actions] == [
+                ("synthetic-action", "schedule_conflict:synthetic", "synthetic-order")
+            ]
+        else:
+            assert actions == []
     engine.dispose()

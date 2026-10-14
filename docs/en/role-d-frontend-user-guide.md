@@ -6,7 +6,7 @@
 
 Updated 2026-10-14, Hong Kong time. [中文版](../zh/role-d-frontend-user-guide.md). For code explanations, read [Kyrie's beginner guide](kyrie-learning-guide.md).
 
-This guide now describes `codex/d03-approvals`, composed from the unmerged D-02 PR #24 and C approval PR #22; it is **not merged main**. The approval dependency still needs its repeated-reissue fix. Main has advanced to `e066b0c` through #21, which does not itself add C approvals. The consolidated D-02 changes are now prepared for PR submission under Kyrie’s updated instruction. A PR asks teammates to review; it does not put the feature into main. The ordinary main checkout can still show old demo controls. Locate D with `git worktree list`; do not reset your WhatsApp session to fix a frontend version mismatch.
+This guide describes `codex/d03-approvals`: the approval backend C #22 has merged into main **c5c22ef**, but the D-02 #24 and D-03 #25 frontend changes are still awaiting merge/review. Opening a PR does not deploy the frontend. The ordinary main checkout can still show old demo controls. Locate D with `git worktree list`; keep your existing WhatsApp session when changing the frontend checkout.
 
 ## 1 Current pages and capability
 
@@ -115,4 +115,4 @@ Reject/cancel requires a reason and exact reviewed snapshot. It is local, so una
 
 Unknown results retain the original request key and command in tab session storage, separated by environment/account. Refresh only reads. After reviewing the original snapshot, **核对后重试原请求** repeats the same intent/key/versions explicitly; it can complete an initially unreceived request. Never submit a new approval as a substitute. Authentication/CSRF rejection of that lookup does not erase the preceding uncertainty. Logout/remount/environment switching clears visible data but preserves this journal for that account/environment. If storage is unavailable or malformed, new writes fail clearly before dispatch.
 
-**重新生成待审批问题** creates a fresh draft requiring fresh review. C PR #22 still has a repeated-expiry uniqueness defect; this UI blocks another same-source reissue at the same context. That guard does not repair the backend. No automatic generation, message editing, real sending or send reconciliation endpoint is added here. See [D-03 acceptance](role-d-stage3-acceptance.md).
+**重新生成待审批问题** creates a fresh draft requiring fresh review. C’s repeated-expiry uniqueness defect is now fixed in merged #22. This frontend retains its conservative same-source/context repeat guard; changing that UI policy can be a later task. No automatic generation, message editing, real sending or send reconciliation endpoint is added here. See [D-03 acceptance](role-d-stage3-acceptance.md).
