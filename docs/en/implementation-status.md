@@ -1,5 +1,11 @@
 # Implementation status and validation
 
+## PR #23 independent repair review and D-02 compatibility — 2026-10-14
+
+Rechecked Andy's d6f3acd maintenance/dispatch fix independently. The original PostgreSQL barrier repro, adjusted only for candidate identity selection, passes for both accepted and unknown responses: **2 passed**, one submission and no automatic resend. Native PostgreSQL send/approval/migration **90 passed**. The author's personal-device acceptance is attributed to the author; the reviewed voice outcome remains unknown, and this review performed no live send.
+
+Main advanced through #24 to 40614a4. Resolve main.tsx and both progress conflicts by retaining the exported D-02 App and paired records. Preserve sending under WahaMessages, bind its adapter to the selected API base, include send modules in App DOM tests, and update paired real-send startup instructions. A regression checks upload/preview/original-key recovery after a route change. These are authored frontend compatibility edits; backend production/contracts/migrations match d6f3acd unchanged. Fresh composed frontend **97 passed**, API/Prettier/TypeScript/Vite, Ruff check/format **91 files**, source contracts, baseline **80 Markdown / 935 links** and whitespace passed. Independent Linux full-suite dependency installation is still pending with no result; verify final composed CI before merge. No real data/model/phone/send/QR, original database or deployment operation.
+
 ## PR #23 expiry cleanup serialization — 2026-10-14
 
 Reproduced the new P1 using synthetic PostgreSQL interleaving: one provider submission was incorrectly stored as cancelled after stale cleanup. Cleanup now uses dispatch's Account/Connection locks and a fresh state/expiry/dispatch-marker check. Sending tests: **59 passed on disposable PostgreSQL**, including both ordering outcomes and preservation of accepted/unknown results without another submission. Full PostgreSQL backend: **646 passed / 1 platform skip**; after strengthening test callback assertions, the six affected cleanup tests passed again. Frontend **63 passed**, typecheck/build, API type check, formatting, applicable Ruff, generated contracts and baseline (**69 Markdown / 414 links**) passed. See [sending evidence](role-a-waha-sending.md). The original live voice uncertainty remains unchanged; independent review is still required.
