@@ -57,6 +57,14 @@ npm run dev
 
 开发者自检的特别情况：`python scripts/check_waha_setup.py --run --frontend` 会创建临时数据库和模拟 WhatsApp。页面标明 **合成连接自检（虚构数据）**，保留连接按钮是为了测试流程，二维码不能扫码；这里没有环境切换。工具自动设置 `GIGMATE_SYNTHETIC_PROVIDER=1`、明确的 18802 接入地址和 `GIGMATE_DEFAULT_ENV=real`，缺少明确地址／默认选择时 Vite 会拒绝启动，并关闭第二个代理。路径里的 `real` 只是选择连接流程，页面标签会说明资源都是虚构的。这与日常练习工单的隔离工作台不同，也不会连接真实手机。使用你自己的 WAHA 时不要设置这个自检开关。
 
+### 前端测试和构建
+
+前端测试会调用真正的合成自检 Python 函数。Mac／Linux 自动找当前项目的 `.venv/bin/python`，Windows 自动找 `.venv/Scripts/python.exe`；不用激活虚拟环境，也不依赖电脑上有没有叫 `python` 的全局命令。先按[项目安装步骤](../en/getting-started.md)准备虚拟环境。缺少它或指定路径不可用时，测试／构建会给出安装提示并明确失败，不偷偷跳过。
+
+如果 D 的 worktree 工作目录没有自己的 `.venv`，可以明确使用主项目已有的 Python。Mac／Linux：`GIGMATE_TEST_PYTHON=/你的项目绝对路径/.venv/bin/python npm run build`；PowerShell：先设 `$env:GIGMATE_TEST_PYTHON='C:\你的项目\.venv\Scripts\python.exe'`，再执行 `npm run build`。把示例换成你实际的路径。这只是告诉测试去哪里找 Python，不是切换业务后端，也不是 WhatsApp 密码。CI 会创建固定 Python 3.12.10 的虚拟环境，分别在 Linux、Windows、Mac 检查前端。
+
+旧 `GIGMATE_API_URL` 别名实际被用作隔离地址时，现在会打印明确警告。按上文换成 real／isolated 的明确变量；程序不能仅凭地址判断后端里是否真的都是虚构数据。
+
 ## 3 连接和管理聊天授权
 
 这个页面仅在 **真实连接（本机开发）** 中提供。隔离测试里没有入口；需要连接时先点顶部环境切换，再重新登录。

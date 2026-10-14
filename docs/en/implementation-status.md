@@ -1,5 +1,18 @@
 # Implementation status and validation
 
+## PR #25 portable frontend acceptance follows #24 — 2026-10-14
+
+Synchronize #24's interpreter selection, PATH-empty real-child regression, explicit/missing-path checks, alias deprecation warning and paired setup guides. Keep D-03 approval tests and its existing migration history. CI now provisions pinned Python and checks frontend on Linux/Windows/macOS, retaining the protected branch's required `frontend` name through an all-platform success gate. Fresh composed frontend **115 passed**, TypeScript/Vite/API/Prettier passed with only Node/system PATH and no Python override/venv activation; worktree-local ignored .venv uses the existing project interpreter. Ruff/format (87 files), source contracts, baseline and whitespace checked; backend/migrations/contracts unchanged, previous full 583/1 evidence not rerun for this tooling change. Native Windows/cross-platform evidence will come from current-head CI. No model/send/real-data/deployment change; #25 remains Draft awaiting #24 and independent review.
+
+
+## PR #24 missed Python portability feedback addressed — 2026-10-14
+
+The earlier Will review already identified the default `python` PATH dependency; it was missed while validation added the project's venv to PATH. Address the renewed P2 on a90a9b6 with an explicit test interpreter selector: this checkout's `.venv/bin/python` (POSIX) / `.venv/Scripts/python.exe` (Windows), or an explicit `GIGMATE_TEST_PYTHON` override. Missing/unusable paths fail with platform-specific setup guidance; no global alias fallback or skipped tests. Four regressions include a real Node child running the entire seven-case environment suite with PATH pointing to an empty directory and no override, plus executable override, missing venv guidance and invalid override rejection. The existing project venv is exposed through an ignored worktree-local symlink for local validation. Paired guides document checkout/worktree setup. CI explicitly creates pinned Python 3.12.10 venvs and runs frontend checks on Linux/Windows/macOS with LF checkout.
+
+Also address the P3 alias warning: only when legacy GIGMATE_API_URL actually supplies the isolated target, warn about that meaning and direct users to explicit real/isolated variables; routing and separation guards remain unchanged. Local evidence: **90 frontend tests passed**, including the PATH-empty child; normal npm build/checks ran with only Node/system tool paths and no Python override/venv activation. TypeScript/Vite/API/Prettier, Ruff check/format (85 files), source contracts, baseline (77 Markdown / 909 links) and whitespace pass. Cross-platform CI results must be checked on the new head, not inferred from this Mac run. No backend/migration/generated source or real provider/model/send/deployment change; full backend/Docker/phone tests not rerun. Synchronize this helper/CI/docs into #25; independent rereview remains required.
+
+
+
 ## PR #25 follows merged C approvals and repaired D-02 — 2026-10-14
 
 Synchronize #24 **a90a9b6** and accepted main **c5c22ef**, including C’s independently accepted repeated-reissue fix. Keep both sides of the migration tests and paired evidence. Published **0013_merge_approval_media** and **0014_media_approvals** remain unchanged; additive no-op **0015_d03_approval_heads** joins them. Extend retained migration cases through either existing merge point, keeping replay/connection/evaluation records, no drift and one head. Update current bilingual dependency/manual/acceptance wording; older dated evidence stays historical. The conservative same-source/context UI repeat restriction remains, while C’s backend defect is fixed. Approval/storage/source review behavior is otherwise unchanged.
