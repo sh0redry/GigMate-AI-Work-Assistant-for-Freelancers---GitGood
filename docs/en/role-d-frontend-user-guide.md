@@ -1,12 +1,12 @@
 # GigMate frontend user guide
 
-**D-03 review follow-up (2026-10-14):** the approval candidate includes reconciled #24/main and a safe-storage fix. If the browser rejects storage access, the page still reads drafts but cannot submit. If a verified response returns but journal cleanup fails, the saved intent is retained and new submissions remain blocked; restore storage, reopen and explicitly reconcile the original key. Current D-03 frontend suite: 105 passed. #23 has updated its upload/main compatibility; C/A sending still remains pending.
+**Current integration, 2026-10-14:** #22, D-02 #24 and A sending #23 have merged into main **4177d1a**. #25 is Ready for teammate review/merge; the approval candidate now includes that main and preserves both migration branches with additive **0016_d03_sending_heads**. Frontend: **122 passed**, including isolated navigation and environment-bound approval/send adapters. Approval is still saved as **已批准，尚未发送**: C business approvals do not automatically dispatch through A sending.
 
 **PR #24 compatibility update:** the D-02 branch now includes accepted main e066b0c (#21). Its private attachment adapter follows the selected environment for reads, previews, downloads and original-key requests; model activation remains disabled by default. Main still does not contain D-02 until #24 merges.
 
 Updated 2026-10-14, Hong Kong time. [中文版](../zh/role-d-frontend-user-guide.md). For code explanations, read [Kyrie's beginner guide](kyrie-learning-guide.md).
 
-This guide describes `codex/d03-approvals`: the approval backend C #22 has merged into main **c5c22ef**, but the D-02 #24 and D-03 #25 frontend changes are still awaiting merge/review. Opening a PR does not deploy the frontend. The ordinary main checkout can still show old demo controls. Locate D with `git worktree list`; keep your existing WhatsApp session when changing the frontend checkout.
+This guide describes `codex/d03-approvals`, the unmerged #25 approval candidate on main **4177d1a**. Main already includes the D-02 environment switch and A’s separate manual sending page. Opening or updating #25 does not deploy the approval frontend. Locate the candidate with `git worktree list`; keep your existing WhatsApp session when changing the frontend checkout.
 
 ## 1 Current pages and capability
 

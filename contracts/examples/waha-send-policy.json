@@ -1,0 +1,8 @@
+{
+  "expected_control_version": 3,
+  "expected_permission_version": 1,
+  "chat_id": "00000000-0000-4000-8000-000000000072",
+  "payload": {"kind": "poll", "title": "Synthetic preferred option", "options": ["A", "B"], "multiple_answers": false},
+  "expires_at": "2026-10-11T00:00:00Z",
+  "maximum_uses": 5
+}

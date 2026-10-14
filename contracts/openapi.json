@@ -1275,6 +1275,120 @@
         "title": "Detail[WahaMediaJobView]",
         "type": "object"
       },
+      "Detail_WahaSendActionView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/WahaSendActionView"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[WahaSendActionView]",
+        "type": "object"
+      },
+      "Detail_WahaSendCapabilities_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/WahaSendCapabilities"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[WahaSendCapabilities]",
+        "type": "object"
+      },
+      "Detail_WahaSendPermissionView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/WahaSendPermissionView"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[WahaSendPermissionView]",
+        "type": "object"
+      },
+      "Detail_WahaSendPolicyView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/WahaSendPolicyView"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[WahaSendPolicyView]",
+        "type": "object"
+      },
+      "Detail_WahaSendRequestView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/WahaSendRequestView"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[WahaSendRequestView]",
+        "type": "object"
+      },
+      "Detail_WahaSendUploadView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/WahaSendUploadView"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[WahaSendUploadView]",
+        "type": "object"
+      },
       "Detail_WahaSetup_": {
         "additionalProperties": false,
         "properties": {
@@ -1330,6 +1444,29 @@
           "request_id"
         ],
         "title": "Detail[WorkOrder]",
+        "type": "object"
+      },
+      "Detail_dict_str__int__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Data",
+            "type": "object"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[dict[str, int]]",
         "type": "object"
       },
       "Detail_list_WahaChoice__": {
@@ -1736,6 +1873,76 @@
           "request_id"
         ],
         "title": "Page[WahaAttachmentView]",
+        "type": "object"
+      },
+      "Page_WahaSendActionView_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WahaSendActionView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor",
+          "request_id"
+        ],
+        "title": "Page[WahaSendActionView]",
+        "type": "object"
+      },
+      "Page_WahaSendPolicyView_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WahaSendPolicyView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor",
+          "request_id"
+        ],
+        "title": "Page[WahaSendPolicyView]",
         "type": "object"
       },
       "Page_WahaSourceGapView_": {
@@ -3309,6 +3516,898 @@
           "consent"
         ],
         "title": "WahaSelectionCommand",
+        "type": "object"
+      },
+      "WahaSendActionView": {
+        "additionalProperties": false,
+        "properties": {
+          "approved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "pattern": "Z$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "chat_id": {
+            "format": "uuid",
+            "title": "Chat Id",
+            "type": "string"
+          },
+          "context_version": {
+            "minimum": 0.0,
+            "title": "Context Version",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "pattern": "Z$",
+            "title": "Created At",
+            "type": "string"
+          },
+          "delivery_status": {
+            "enum": [
+              "not_submitted",
+              "accepted",
+              "sent",
+              "delivered",
+              "read",
+              "unknown"
+            ],
+            "title": "Delivery Status",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "pattern": "Z$",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "manual",
+              "agent_assisted",
+              "agent_auto"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/WahaSendPayload"
+          },
+          "provider_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Message Id"
+          },
+          "revision": {
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "draft",
+              "queued",
+              "preparing",
+              "dispatching",
+              "accepted",
+              "failed",
+              "cancelled",
+              "result_unknown"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "unknown_reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "pattern": "Z$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unknown Reviewed At"
+          },
+          "upload": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WahaSendUploadView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "work_order_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Order Id"
+          },
+          "work_order_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Order Version"
+          },
+          "work_order_versions": {
+            "additionalProperties": {
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            "propertyNames": {
+              "format": "uuid"
+            },
+            "title": "Work Order Versions",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "chat_id",
+          "mode",
+          "revision",
+          "state",
+          "delivery_status",
+          "payload",
+          "context_version",
+          "expires_at",
+          "approved_at",
+          "provider_message_id",
+          "error_code",
+          "created_at",
+          "unknown_reviewed_at",
+          "upload",
+          "work_order_id",
+          "work_order_version",
+          "work_order_versions"
+        ],
+        "title": "WahaSendActionView",
+        "type": "object"
+      },
+      "WahaSendCapabilities": {
+        "additionalProperties": false,
+        "properties": {
+          "automatic_mode": {
+            "const": "exact_preapproved_payload",
+            "title": "Automatic Mode",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "kinds": {
+            "items": {
+              "enum": [
+                "text",
+                "image",
+                "file",
+                "audio",
+                "voice",
+                "video",
+                "sticker",
+                "location",
+                "contact",
+                "poll",
+                "reaction"
+              ],
+              "type": "string"
+            },
+            "title": "Kinds",
+            "type": "array"
+          },
+          "max_upload_bytes": {
+            "minimum": 1.0,
+            "title": "Max Upload Bytes",
+            "type": "integer"
+          },
+          "real_agent_configured": {
+            "title": "Real Agent Configured",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "kinds",
+          "max_upload_bytes",
+          "automatic_mode",
+          "real_agent_configured"
+        ],
+        "title": "WahaSendCapabilities",
+        "type": "object"
+      },
+      "WahaSendContact": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "phone": {
+            "pattern": "^\\+[1-9][0-9]{6,14}$",
+            "title": "Phone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "phone"
+        ],
+        "title": "WahaSendContact",
+        "type": "object"
+      },
+      "WahaSendDraftCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "chat_id": {
+            "format": "uuid",
+            "title": "Chat Id",
+            "type": "string"
+          },
+          "expected_context_version": {
+            "minimum": 0.0,
+            "title": "Expected Context Version",
+            "type": "integer"
+          },
+          "expected_control_version": {
+            "minimum": 0.0,
+            "title": "Expected Control Version",
+            "type": "integer"
+          },
+          "expected_permission_version": {
+            "minimum": 1.0,
+            "title": "Expected Permission Version",
+            "type": "integer"
+          },
+          "expected_work_order_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Work Order Version"
+          },
+          "mode": {
+            "enum": [
+              "manual",
+              "agent_assisted",
+              "agent_auto"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/WahaSendPayload"
+          },
+          "policy_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Id"
+          },
+          "work_order_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Order Id"
+          }
+        },
+        "required": [
+          "expected_control_version",
+          "expected_permission_version",
+          "chat_id",
+          "expected_context_version",
+          "mode",
+          "payload"
+        ],
+        "title": "WahaSendDraftCommand",
+        "type": "object"
+      },
+      "WahaSendPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "caption": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          },
+          "contacts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/WahaSendContact"
+                },
+                "maxItems": 10,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contacts"
+          },
+          "kind": {
+            "enum": [
+              "text",
+              "image",
+              "file",
+              "audio",
+              "voice",
+              "video",
+              "sticker",
+              "location",
+              "contact",
+              "poll",
+              "reaction"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "maximum": 90.0,
+                "minimum": -90.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "maximum": 180.0,
+                "minimum": -180.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "multiple_answers": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Multiple Answers"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 12,
+                "minItems": 2,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options"
+          },
+          "reaction": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reaction"
+          },
+          "reply_snapshot_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply Snapshot Id"
+          },
+          "target_snapshot_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Snapshot Id"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "upload_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upload Id"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "WahaSendPayload",
+        "type": "object"
+      },
+      "WahaSendPermissionCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "chat_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Chat Ids",
+            "type": "array"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "expected_version": {
+            "minimum": 0.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "pattern": "Z$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          }
+        },
+        "required": [
+          "expected_version",
+          "enabled",
+          "chat_ids"
+        ],
+        "title": "WahaSendPermissionCommand",
+        "type": "object"
+      },
+      "WahaSendPermissionView": {
+        "additionalProperties": false,
+        "properties": {
+          "chat_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Chat Ids",
+            "type": "array"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "pattern": "Z$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "version": {
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "enabled",
+          "chat_ids",
+          "expires_at"
+        ],
+        "title": "WahaSendPermissionView",
+        "type": "object"
+      },
+      "WahaSendPolicyCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "chat_id": {
+            "format": "uuid",
+            "title": "Chat Id",
+            "type": "string"
+          },
+          "expected_control_version": {
+            "minimum": 0.0,
+            "title": "Expected Control Version",
+            "type": "integer"
+          },
+          "expected_permission_version": {
+            "minimum": 1.0,
+            "title": "Expected Permission Version",
+            "type": "integer"
+          },
+          "expected_work_order_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Work Order Version"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "pattern": "Z$",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "maximum_uses": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Maximum Uses",
+            "type": "integer"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/WahaSendPayload"
+          },
+          "work_order_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Order Id"
+          }
+        },
+        "required": [
+          "expected_control_version",
+          "expected_permission_version",
+          "chat_id",
+          "payload",
+          "expires_at",
+          "maximum_uses"
+        ],
+        "title": "WahaSendPolicyCommand",
+        "type": "object"
+      },
+      "WahaSendPolicyView": {
+        "additionalProperties": false,
+        "properties": {
+          "chat_id": {
+            "format": "uuid",
+            "title": "Chat Id",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "pattern": "Z$",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "maximum_uses": {
+            "minimum": 1.0,
+            "title": "Maximum Uses",
+            "type": "integer"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/WahaSendPayload"
+          },
+          "uses": {
+            "minimum": 0.0,
+            "title": "Uses",
+            "type": "integer"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          },
+          "work_order_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Order Id"
+          },
+          "work_order_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Order Version"
+          }
+        },
+        "required": [
+          "id",
+          "chat_id",
+          "version",
+          "enabled",
+          "payload",
+          "expires_at",
+          "maximum_uses",
+          "uses",
+          "work_order_id",
+          "work_order_version"
+        ],
+        "title": "WahaSendPolicyView",
+        "type": "object"
+      },
+      "WahaSendRequestView": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WahaSendActionView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "request_key": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Request Key",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "cancelled",
+              "recorded"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_key",
+          "state",
+          "action"
+        ],
+        "title": "WahaSendRequestView",
+        "type": "object"
+      },
+      "WahaSendRevisionCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "WahaSendRevisionCommand",
+        "type": "object"
+      },
+      "WahaSendUnknownReviewCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "acknowledge_possible_delivery": {
+            "const": true,
+            "title": "Acknowledge Possible Delivery",
+            "type": "boolean"
+          },
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "note": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "acknowledge_possible_delivery",
+          "note"
+        ],
+        "title": "WahaSendUnknownReviewCommand",
+        "type": "object"
+      },
+      "WahaSendUploadView": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "pattern": "Z$",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "filename": {
+            "minLength": 1,
+            "title": "Filename",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "mimetype": {
+            "minLength": 1,
+            "title": "Mimetype",
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "size_bytes": {
+            "minimum": 1.0,
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "filename",
+          "mimetype",
+          "size_bytes",
+          "sha256",
+          "expires_at"
+        ],
+        "title": "WahaSendUploadView",
         "type": "object"
       },
       "WahaSetup": {
@@ -5791,6 +6890,1025 @@
           }
         },
         "summary": "Connector Resume"
+      }
+    },
+    "/api/v1/connectors/{connection_id}/sending/actions": {
+      "get": {
+        "operationId": "actions_api_v1_connectors__connection_id__sending_actions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "chat_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_WahaSendActionView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Actions"
+      }
+    },
+    "/api/v1/connectors/{connection_id}/sending/actions/{action_id}": {
+      "get": {
+        "operationId": "action_api_v1_connectors__connection_id__sending_actions__action_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Action Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WahaSendActionView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Action"
+      }
+    },
+    "/api/v1/connectors/{connection_id}/sending/actions/{action_id}/approve": {
+      "post": {
+        "operationId": "approve_api_v1_connectors__connection_id__sending_actions__action_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Action Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WahaSendRevisionCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WahaSendActionView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve"
+      }
+    },
+    "/api/v1/connectors/{connection_id}/sending/actions/{action_id}/cancel": {
+      "post": {
+        "operationId": "cancel_api_v1_connectors__connection_id__sending_actions__action_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Action Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WahaSendRevisionCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WahaSendActionView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel"
+      }
+    },
+    "/api/v1/connectors/{connection_id}/sending/actions/{action_id}/reconcile": {
+      "post": {
+        "operationId": "reconcile_api_v1_connectors__connection_id__sending_actions__action_id__reconcile_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Action Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WahaSendRevisionCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WahaSendActionView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reconcile"
+      }
+    },
+    "/api/v1/connectors/{connection_id}/sending/actions/{action_id}/review-unknown": {
+      "post": {
+        "operationId": "review_unknown_api_v1_connectors__connection_id__sending_actions__action_id__review_unknown_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Action Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WahaSendUnknownReviewCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WahaSendActionView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Unknown"
+      }
+    },
+    "/api/v1/connectors/{connection_id}/sending/capabilities": {
+      "get": {
+        "operationId": "capabilities_api_v1_connectors__connection_id__sending_capabilities_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WahaSendCapabilities_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Capabilities"
+      }
+    },
+    "/api/v1/connectors/{connection_id}/sending/context/{chat_id}": {
+      "get": {
+        "operationId": "context_api_v1_connectors__connection_id__sending_context__chat_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "chat_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Chat Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_dict_str__int__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Context"
+      }
+    },
+    "/api/v1/connectors/{connection_id}/sending/drafts": {
+      "post": {
+        "operationId": "draft_api_v1_connectors__connection_id__sending_drafts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WahaSendDraftCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WahaSendActionView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Draft"
+      }
+    },
+    "/api/v1/connectors/{connection_id}/sending/permission": {
+      "get": {
+        "operationId": "permission_api_v1_connectors__connection_id__sending_permission_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WahaSendPermissionView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Permission"
+      },
+      "post": {
+        "operationId": "set_permission_api_v1_connectors__connection_id__sending_permission_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WahaSendPermissionCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WahaSendPermissionView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Permission"
+      }
+    },
+    "/api/v1/connectors/{connection_id}/sending/policies": {
+      "get": {
+        "operationId": "policies_api_v1_connectors__connection_id__sending_policies_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "chat_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_WahaSendPolicyView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Policies"
+      },
+      "post": {
+        "operationId": "policy_api_v1_connectors__connection_id__sending_policies_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WahaSendPolicyCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WahaSendPolicyView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Policy"
+      }
+    },
+    "/api/v1/connectors/{connection_id}/sending/policies/{policy_id}/revoke": {
+      "post": {
+        "operationId": "revoke_policy_api_v1_connectors__connection_id__sending_policies__policy_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Policy Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WahaSendRevisionCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WahaSendPolicyView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Policy"
+      }
+    },
+    "/api/v1/connectors/{connection_id}/sending/requests/{request_key}": {
+      "get": {
+        "operationId": "request_lookup_api_v1_connectors__connection_id__sending_requests__request_key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "request_key",
+            "required": true,
+            "schema": {
+              "title": "Request Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WahaSendRequestView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Lookup"
+      }
+    },
+    "/api/v1/connectors/{connection_id}/sending/requests/{request_key}/cancel": {
+      "post": {
+        "operationId": "request_cancel_api_v1_connectors__connection_id__sending_requests__request_key__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "request_key",
+            "required": true,
+            "schema": {
+              "title": "Request Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WahaSendRequestView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Cancel"
+      }
+    },
+    "/api/v1/connectors/{connection_id}/sending/uploads": {
+      "post": {
+        "operationId": "upload_api_v1_connectors__connection_id__sending_uploads_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-File-Name",
+            "required": true,
+            "schema": {
+              "maxLength": 1536,
+              "minLength": 1,
+              "title": "X-File-Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-File-Mimetype",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "X-File-Mimetype",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WahaSendUploadView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload"
+      }
+    },
+    "/api/v1/connectors/{connection_id}/sending/uploads/{upload_id}/content": {
+      "get": {
+        "operationId": "preview_api_v1_connectors__connection_id__sending_uploads__upload_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Upload Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview"
       }
     },
     "/api/v1/connectors/{connection_id}/setup": {

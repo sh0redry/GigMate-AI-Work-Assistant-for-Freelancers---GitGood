@@ -13,6 +13,7 @@ for (const name of [
   "waha-live-api",
   "waha-sync-api",
   "waha-media-api",
+  "waha-send-api",
 ]) {
   const source = await readFile(
     new URL(`./src/${name}.ts`, import.meta.url),
@@ -39,6 +40,9 @@ const { synchronizationApi } = await import(
 const { mediaApi } = await import(
   pathToFileURL(join(directory, "waha-media-api.mjs"))
 );
+const { sendingApi, sendingMime } = await import(
+  pathToFileURL(join(directory, "waha-send-api.mjs"))
+);
 afterEach(() => {
   globalThis.fetch = original;
   delete globalThis.sessionStorage;
@@ -57,6 +61,115 @@ const id = "00000000-0000-4000-8000-000000000070";
 const opid = "00000000-0000-4000-8000-000000000071";
 const choice = "00000000-0000-4000-8000-000000000072";
 const base = `/api/v1/connectors/${id}`;
+
+test("sending file declarations use supported extensions across browser MIME aliases; server still checks bytes", () => {
+  assert.equal(
+    sendingMime({ name: "synthetic.WAV", type: "audio/x-wav" }),
+    "audio/wav",
+  );
+  assert.equal(
+    sendingMime({ name: "synthetic.docx", type: "" }),
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  );
+  assert.equal(
+    sendingMime({ name: "synthetic.mp3", type: "audio/mp3" }),
+    "audio/mpeg",
+  );
+});
+
+test("sending mutation failures remain unknown and never retry or reach WAHA administration", async () => {
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url, init });
+    return new Response("<html>lost response</html>", { status: 200 });
+  };
+  const api = sendingApi(id, "synthetic-csrf");
+  const command = {
+    expected_control_version: 7,
+    expected_permission_version: 1,
+    chat_id: choice,
+    expected_context_version: 9,
+    mode: "agent_auto",
+    payload: { kind: "text", text: "Synthetic fixed message" },
+    policy_id: opid,
+  };
+  await assert.rejects(
+    api.draft(command, "synthetic-send-key"),
+    (e) => e.code === "SEND_REQUEST_UNKNOWN",
+  );
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, base + "/sending/drafts");
+  assert.equal(calls[0].init.headers["Idempotency-Key"], "synthetic-send-key");
+  assert.equal(calls[0].init.headers["X-CSRF-Token"], "synthetic-csrf");
+  assert.equal(calls[0].init.credentials, "same-origin");
+});
+
+test("sending lookup uses original intent key and rejects mismatched action response", async () => {
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url, init });
+    return new Response(
+      JSON.stringify({
+        data: {
+          id: opid,
+          chat_id: id,
+          state: "queued",
+          payload: { kind: "text", text: "Synthetic" },
+        },
+      }),
+      { status: 200 },
+    );
+  };
+  const api = sendingApi(id, "synthetic-csrf");
+  await assert.rejects(
+    api.draft(
+      {
+        expected_control_version: 7,
+        expected_permission_version: 1,
+        chat_id: choice,
+        expected_context_version: 9,
+        mode: "manual",
+        payload: { kind: "text", text: "Synthetic" },
+      },
+      "synthetic-send-key",
+    ),
+    (e) => e.code === "SEND_REQUEST_UNKNOWN",
+  );
+  await api.request("synthetic-send-key");
+  assert.equal(calls[1].url, base + "/sending/requests/synthetic-send-key");
+  assert.equal(calls[1].init.method, "GET");
+  assert.equal(calls.length, 2);
+});
+
+test("sending upload transfers original bytes rather than JSON file metadata", async () => {
+  let observed;
+  globalThis.fetch = async (url, init) => {
+    observed = { url, init };
+    return new Response(
+      JSON.stringify({
+        data: {
+          id: opid,
+          filename: "synthetic.txt",
+          mimetype: "text/plain",
+          size_bytes: 9,
+          sha256: "a".repeat(64),
+          expires_at: "2026-12-01T00:00:00Z",
+        },
+      }),
+      { status: 201 },
+    );
+  };
+  const file = new File(["Synthetic"], "synthetic.txt", { type: "text/plain" });
+  await sendingApi(id, "synthetic-csrf").upload(file, "text/plain");
+  assert.equal(observed.init.body, file);
+  assert.equal(
+    observed.init.headers["Content-Type"],
+    "application/octet-stream",
+  );
+  assert.equal(observed.url, base + "/sending/uploads");
+  assert.equal(observed.init.headers["X-File-Name"], "synthetic.txt");
+  assert.equal(observed.init.headers["X-File-Mimetype"], "text/plain");
+});
 const setup = (extra = {}) => ({
   connection_id: id,
   control_version: 7,
@@ -853,4 +966,53 @@ test("media API binds its environment including preview/download and exact-key m
     writes[1].init.headers["Idempotency-Key"],
   );
   assert.equal(writes[0].init.body, writes[1].init.body);
+});
+
+test("sending binds the selected environment for upload, preview and original-key recovery", async () => {
+  globalThis.__GIGMATE_ENVIRONMENTS__ = { defaultEnvironment: "isolated" };
+  globalThis.window = { location: { pathname: "/environments/real/" } };
+  const api = sendingApi(id, "synthetic-csrf");
+  globalThis.window.location.pathname = "/environments/isolated/";
+  const calls = [];
+  const action = {
+    id: opid,
+    chat_id: choice,
+    state: "draft",
+    revision: 1,
+    payload: { kind: "text", text: "Synthetic outbound" },
+  };
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, options });
+    return json(action);
+  };
+  await api.capabilities();
+  const file = new File(["synthetic bytes"], "synthetic.txt", {
+    type: "text/plain",
+  });
+  await api.upload(file, "text/plain");
+  const command = { chat_id: choice, payload: action.payload };
+  await api.draft(command, "original-send-key");
+  await api.draft(command, "original-send-key");
+  await api.request("original-send-key");
+  await api.mutate(action, "approve");
+  assert.ok(
+    calls.every(({ url }) =>
+      url.startsWith(`/environments/real/api/v1/connectors/${id}/sending/`),
+    ),
+  );
+  assert.equal(calls[1].options.body, file);
+  assert.equal(
+    calls[2].options.headers["Idempotency-Key"],
+    "original-send-key",
+  );
+  assert.equal(
+    calls[3].options.headers["Idempotency-Key"],
+    "original-send-key",
+  );
+  assert.equal(calls[2].options.body, calls[3].options.body);
+  assert.match(api.previewUrl(opid), /^\/environments\/real\/api\/v1\//);
+  assert.match(
+    sendingApi(id, "synthetic-csrf").previewUrl(opid),
+    /^\/environments\/isolated\/api\/v1\//,
+  );
 });

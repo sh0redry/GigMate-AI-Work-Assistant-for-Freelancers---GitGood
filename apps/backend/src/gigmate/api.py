@@ -76,6 +76,7 @@ from gigmate.waha_adapter import AdapterError
 from gigmate.waha_ingress import binding_for, configured_binding, receive, status_view
 from gigmate.waha_probe import MAX_BODY, _non_json_constant, _pairs, verify_hmac
 from gigmate.waha_recovery import issue_view, record_rejection
+from gigmate.waha_send_api import install as install_sending
 from gigmate.workorders import command_cache, confirm, owned, save_result
 
 app = FastAPI(title="GigMate replay skeleton", version="0.2.0")
@@ -588,6 +589,22 @@ def setup_actor(request: Request, db=Depends(database, scope="function")):
         db.execute(text("SET LOCAL lock_timeout = '3s'"))
         db.execute(text("SET LOCAL statement_timeout = '5s'"))
     return actor(request, db)
+
+
+def sending_io_actor(request: Request, db=Depends(database, scope="function")):
+    # Check login/CSRF before bounded upload/GET I/O, then reacquire mutation
+    # authorization before committing. Do not hold Account across external I/O.
+    if db.bind.dialect.name == "postgresql":
+        db.execute(text("SET LOCAL lock_timeout = '3s'"))
+        db.execute(text("SET LOCAL statement_timeout = '5s'"))
+    origin_check(request)
+    return identity.authenticate(
+        db,
+        request.cookies.get("gigmate_session"),
+        request.headers.get("X-CSRF-Token"),
+        mutation=True,
+        lock=False,
+    )
 
 
 @app.get("/api/v1/connectors/{connection_id}/setup", response_model=Detail[WahaSetup])
@@ -1260,3 +1277,6 @@ def replay_custom(
     if not cache:
         save_result(db, account.id, "replay/events", idempotency_key, digest, result)
     return detail(request, result)
+
+
+install_sending(app, database, setup_actor, detail, page, sending_io_actor)

@@ -2,7 +2,7 @@
 
 Milestone: **0.2 replay skeleton**. Updated: **2026-10-01**.
 
-The replay skeleton and optional local WAHA durable ingress/monitoring are implemented and tested. Production onboarding, general live extraction and external sending remain pending. Start with the current WAHA handoff below; earlier stage documents retain development history.
+The replay skeleton and optional local WAHA durable ingress/monitoring are implemented and tested. The current sending development branch adds opt-in owned multi-type sending and exact preauthorization; real-account/B/PostgreSQL acceptance remains pending. Production onboarding and general live extraction remain separate gates. Start with the current WAHA handoff below; earlier stage documents retain development history.
 
 | Document | Purpose |
 | --- | --- |
@@ -11,6 +11,7 @@ The replay skeleton and optional local WAHA durable ingress/monitoring are imple
 | [WAHA merged integration acceptance](role-a-integration-acceptance.md) | Canonical frontend/backend control, migration and unified team acceptance |
 | [WAHA message sync acceptance](role-a-message-sync-acceptance.md) | Bounded history, timeline, gaps, media metadata and complete batch acceptance |
 | [Owned media and A/B handoff](role-a-media-ingestion.md) | Explicit download/preview, durable tasks, source review and B processing seam |
+| [WAHA multi-type sending](role-a-waha-sending.md) | Separate send permission, immutable approval/outbox, fixed automatic policies, recovery and own-account batch acceptance |
 | [Getting started](getting-started.md) | Checks available now and next implementation gate |
 | [Contributing](contributing.md) | Task, branch, review and completion rules |
 | [Role A responsibilities](role-a-responsibilities.md) | Ingestion, authentication, durable events, monitoring and handoffs |

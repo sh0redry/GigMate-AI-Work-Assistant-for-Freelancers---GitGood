@@ -44,6 +44,7 @@ DateString = Annotated[
 ]
 Timezone = Annotated[str, AfterValidator(valid_timezone), Field(min_length=1)]
 Positive = Annotated[int, Field(ge=1)]
+NonNegative = Annotated[int, Field(ge=0)]
 Text = Annotated[str, Field(min_length=1)]
 
 
@@ -380,6 +381,207 @@ class AccountConsent(Model):
     scopes: list[Literal["process_text", "prepare_drafts", "approved_send"]]
     status: Literal["active", "paused", "revoked"]
     expires_at: UtcTimestamp | None
+
+
+SendKind = Literal[
+    "text",
+    "image",
+    "file",
+    "audio",
+    "voice",
+    "video",
+    "sticker",
+    "location",
+    "contact",
+    "poll",
+    "reaction",
+]
+
+
+class WahaSendContact(Model):
+    name: Annotated[str, Field(min_length=1, max_length=128)]
+    phone: Annotated[str, Field(pattern=r"^\+[1-9][0-9]{6,14}$")]
+
+
+class WahaSendPayload(Model):
+    kind: SendKind
+    text: Annotated[str, Field(min_length=1, max_length=4096)] | None = None
+    caption: Annotated[str, Field(max_length=1024)] | None = None
+    upload_id: Id | None = None
+    reply_snapshot_id: Id | None = None
+    target_snapshot_id: Id | None = None
+    latitude: Annotated[float, Field(ge=-90, le=90, allow_inf_nan=False)] | None = None
+    longitude: Annotated[float, Field(ge=-180, le=180, allow_inf_nan=False)] | None = None
+    title: Annotated[str, Field(min_length=1, max_length=256)] | None = None
+    contacts: Annotated[list[WahaSendContact], Field(min_length=1, max_length=10)] | None = None
+    options: (
+        Annotated[
+            list[Annotated[str, Field(min_length=1, max_length=100)]],
+            Field(min_length=2, max_length=12),
+        ]
+        | None
+    ) = None
+    multiple_answers: bool | None = None
+    reaction: Annotated[str, Field(max_length=32)] | None = None
+
+    @model_validator(mode="after")
+    def fields_match_kind(self):
+        required = {
+            "text": {"text"},
+            "image": {"upload_id"},
+            "file": {"upload_id"},
+            "audio": {"upload_id"},
+            "voice": {"upload_id"},
+            "video": {"upload_id"},
+            "sticker": {"upload_id"},
+            "location": {"latitude", "longitude", "title"},
+            "contact": {"contacts"},
+            "poll": {"title", "options", "multiple_answers"},
+            "reaction": {"target_snapshot_id", "reaction"},
+        }[self.kind]
+        allowed = required | ({"reply_snapshot_id"} if self.kind != "reaction" else set())
+        if self.kind in {"image", "file", "video", "audio"}:
+            allowed.add("caption")
+        present = {k for k, v in self.model_dump().items() if v is not None and k != "kind"}
+        if not required <= present or not present <= allowed:
+            raise ValueError("Fields do not match the message kind")
+        if self.options and (
+            len(set(self.options)) != len(self.options) or any(not s.strip() for s in self.options)
+        ):
+            raise ValueError("Poll options must be distinct and nonblank")
+        if self.text is not None and not self.text.strip():
+            raise ValueError("Text must not be blank")
+        if self.title is not None and not self.title.strip():
+            raise ValueError("Title must not be blank")
+        if self.contacts and any(not c.name.strip() for c in self.contacts):
+            raise ValueError("Contact names must not be blank")
+        return self
+
+
+class WahaSendPermissionCommand(Model):
+    expected_version: NonNegative
+    enabled: bool
+    chat_ids: Annotated[list[Id], Field(max_length=100)]
+    expires_at: UtcTimestamp | None = None
+
+
+class WahaSendPermissionView(Model):
+    version: NonNegative
+    enabled: bool
+    chat_ids: list[Id]
+    expires_at: UtcTimestamp | None
+
+
+class WahaSendCapabilities(Model):
+    enabled: bool
+    kinds: list[SendKind]
+    max_upload_bytes: Positive
+    automatic_mode: Literal["exact_preapproved_payload"]
+    real_agent_configured: bool
+
+
+class WahaSendUploadView(Model):
+    id: Id
+    filename: Text
+    mimetype: Text
+    size_bytes: Positive
+    sha256: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
+    expires_at: UtcTimestamp
+
+
+class WahaSendDraftCommand(Model):
+    expected_control_version: NonNegative
+    expected_permission_version: Positive
+    chat_id: Id
+    expected_context_version: NonNegative
+    work_order_id: Id | None = None
+    expected_work_order_version: Positive | None = None
+    mode: Literal["manual", "agent_assisted", "agent_auto"]
+    payload: WahaSendPayload
+    policy_id: Id | None = None
+
+    @model_validator(mode="after")
+    def paired_bindings(self):
+        if (self.work_order_id is None) != (self.expected_work_order_version is None):
+            raise ValueError("Work order and version must be supplied together")
+        if (self.mode == "agent_auto") != (self.policy_id is not None):
+            raise ValueError("Automatic mode requires a policy; other modes do not use one")
+        return self
+
+
+class WahaSendPolicyCommand(Model):
+    expected_control_version: NonNegative
+    expected_permission_version: Positive
+    chat_id: Id
+    payload: WahaSendPayload
+    expires_at: UtcTimestamp
+    maximum_uses: Annotated[int, Field(ge=1, le=100)]
+    work_order_id: Id | None = None
+    expected_work_order_version: Positive | None = None
+
+    @model_validator(mode="after")
+    def paired_work_order(self):
+        if (self.work_order_id is None) != (self.expected_work_order_version is None):
+            raise ValueError("Work order and version must be supplied together")
+        return self
+
+
+class WahaSendPolicyView(Model):
+    id: Id
+    chat_id: Id
+    version: Positive
+    enabled: bool
+    payload: WahaSendPayload
+    expires_at: UtcTimestamp
+    maximum_uses: Positive
+    uses: NonNegative
+    work_order_id: Id | None
+    work_order_version: Positive | None
+
+
+class WahaSendRevisionCommand(Model):
+    expected_revision: Positive
+
+
+class WahaSendUnknownReviewCommand(WahaSendRevisionCommand):
+    acknowledge_possible_delivery: Literal[True]
+    note: Annotated[str, Field(min_length=1, max_length=500)]
+
+
+class WahaSendActionView(Model):
+    id: Id
+    chat_id: Id
+    mode: Literal["manual", "agent_assisted", "agent_auto"]
+    revision: Positive
+    state: Literal[
+        "draft",
+        "queued",
+        "preparing",
+        "dispatching",
+        "accepted",
+        "failed",
+        "cancelled",
+        "result_unknown",
+    ]
+    delivery_status: Literal["not_submitted", "accepted", "sent", "delivered", "read", "unknown"]
+    payload: WahaSendPayload
+    context_version: NonNegative
+    expires_at: UtcTimestamp
+    approved_at: UtcTimestamp | None
+    provider_message_id: str | None
+    error_code: str | None
+    created_at: UtcTimestamp
+    unknown_reviewed_at: UtcTimestamp | None
+    upload: WahaSendUploadView | None
+    work_order_id: Id | None
+    work_order_version: Positive | None
+    work_order_versions: dict[Id, Positive]
+
+
+class WahaSendRequestView(Model):
+    request_key: Annotated[str, Field(min_length=1, max_length=128)]
+    state: Literal["cancelled", "recorded"]
+    action: WahaSendActionView | None
 
 
 class Conversation(Model):

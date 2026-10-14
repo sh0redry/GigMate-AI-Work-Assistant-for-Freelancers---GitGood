@@ -7,6 +7,7 @@ import {
 } from "./waha-sync-api";
 import type { Choice, Issue } from "./connection-api";
 import { WahaMedia } from "./WahaMedia";
+import { WahaSend } from "./WahaSend";
 
 const labels: Record<string, string> = {
   completed: "已处理",
@@ -264,6 +265,18 @@ export function WahaMessages({
         <button disabled={busy} onClick={() => void action(() => load(true))}>
           加载更早消息
         </button>
+      )}
+      {chat && (
+        <WahaSend
+          key={chat}
+          connection={connection}
+          csrf={csrf}
+          chat={chat}
+          label={chats.find((c) => c.id === chat)?.label ?? "当前会话"}
+          enabled={enabled}
+          messages={messages}
+          onSessionExpired={onSessionExpired}
+        />
       )}
       <fieldset disabled={busy || !enabled || !chat || waiting}>
         <legend>近期历史导入</legend>
