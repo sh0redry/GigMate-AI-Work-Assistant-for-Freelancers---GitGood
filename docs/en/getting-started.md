@@ -80,6 +80,8 @@ New-Item -ItemType Directory -Path local-data -Force | Out-Null
 
 Pytest explicitly adds backend `src` and the repository root from its backend configuration. Both `pytest` and `python -m pytest` can therefore import application modules and the shared `scripts` tooling; test collection does not depend on an incidental current-directory entry from one launcher.
 
+Frontend tests/build automatically select this checkout’s `.venv/bin/python` (macOS/Linux) or `.venv/Scripts/python.exe` (Windows). Create the project virtual environment first; activating it or installing a global `python` alias is unnecessary. For an existing interpreter elsewhere (e.g. a worktree), set `GIGMATE_TEST_PYTHON` to its executable path. Missing/unusable paths fail with setup guidance. See the paired [frontend guide](role-d-frontend-user-guide.md) for shell examples. CI provisions Python 3.12.10 and tests the frontend on Linux/Windows/macOS.
+
 From apps/web:
 
 ```text

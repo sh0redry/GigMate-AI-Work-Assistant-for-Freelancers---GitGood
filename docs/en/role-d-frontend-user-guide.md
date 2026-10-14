@@ -55,6 +55,14 @@ The public hint applies to default development installations, not WAHA administr
 
 Developer self-check exception: `python scripts/check_waha_setup.py --run --frontend` creates a disposable synthetic provider and database. Its **合成连接自检（虚构数据）** page has connection controls for testing, a non-scannable fixture QR, and no environment switch. The runner supplies `GIGMATE_SYNTHETIC_PROVIDER=1`, an explicit 18802 connector target and `GIGMATE_DEFAULT_ENV=real`; Vite rejects this mode without an explicit target/default and disables the second proxy. The route name `real` selects the connector workflow, while the label states that all resources are fictional. This is not the ordinary isolated business workspace and does not connect a real phone. Do not set this flag for your actual WAHA installation.
 
+### Frontend tests and building
+
+The frontend test checks the real synthetic-setup Python helper. It uses this checkout’s `.venv/bin/python` on macOS/Linux or `.venv/Scripts/python.exe` on Windows automatically; no virtual-environment activation or global `python` alias is required. Prepare the project virtual environment using [getting started](getting-started.md). If it is missing or an explicit path is unusable, tests/build fail with an installation hint instead of skipping the check.
+
+A worktree with no local `.venv` can explicitly point to your existing project interpreter. macOS/Linux: `GIGMATE_TEST_PYTHON=/absolute/path/to/project/.venv/bin/python npm run build`. PowerShell: `$env:GIGMATE_TEST_PYTHON='C:\absolute\project\.venv\Scripts\python.exe'`, then `npm run build`. Replace these example paths with your own. This sets a test tool path, not a backend address or WhatsApp credential. CI creates the pinned Python 3.12.10 virtual environment and runs the frontend checks on Linux, Windows and macOS.
+
+The deprecated `GIGMATE_API_URL` alias now prints a warning when it actually selects the isolated target. Migrate to the explicit real/isolated variables above; it does not automatically identify what data your backend contains.
+
 ## 3 Connection and chat consent
 
 This page is available in **真实连接（本机开发）** only. If you are in isolated testing, use the top environment switch and sign in again first.

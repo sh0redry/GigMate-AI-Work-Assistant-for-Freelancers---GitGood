@@ -9,6 +9,11 @@ export function developmentEnvironments(
     throw new Error("GIGMATE_SYNTHETIC_PROVIDER must be 0 or 1");
   if (syntheticProvider && !env.GIGMATE_REAL_API_URL)
     throw new Error("Synthetic provider requires an explicit local API target");
+  if (env.GIGMATE_API_URL && !env.GIGMATE_ISOLATED_API_URL)
+    console.warn(
+      "GIGMATE_API_URL is deprecated and selects the ISOLATED target only. " +
+        "Use GIGMATE_ISOLATED_API_URL for isolated testing, or GIGMATE_REAL_API_URL with GIGMATE_DEFAULT_ENV=real for your actual WAHA backend.",
+    );
   const targets = {
     real: env.GIGMATE_REAL_API_URL ?? "http://127.0.0.1:18702",
     isolated:

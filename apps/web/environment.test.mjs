@@ -11,6 +11,22 @@ import {
   environmentProxy,
 } from "./vite.config.ts";
 import { currentEnvironment, apiBase } from "./src/environment.ts";
+import { testPython } from "./test-python.mjs";
+
+test("legacy target selection warns about its isolated-only meaning without changing routing", (context) => {
+  const warning = context.mock.method(console, "warn", () => {});
+  const config = developmentEnvironments({
+    GIGMATE_API_URL: "http://127.0.0.1:18712",
+  });
+  assert.equal(config.defaultEnvironment, "isolated");
+  assert.equal(config.targets.isolated, "http://127.0.0.1:18712");
+  assert.match(warning.mock.calls[0].arguments[0], /ISOLATED target only/);
+  developmentEnvironments({
+    GIGMATE_API_URL: "http://127.0.0.1:18712",
+    GIGMATE_ISOLATED_API_URL: "http://127.0.0.1:18000",
+  });
+  assert.equal(warning.mock.callCount(), 1);
+});
 
 test("current A acceptance shell commands select their real ingress, including custom ports", async () => {
   for (const language of ["en", "zh"]) {
@@ -69,7 +85,7 @@ test("setup runner's actual frontend configuration pins its synthetic ingress an
   );
   const env = JSON.parse(
     execFileSync(
-      process.env.GIGMATE_TEST_PYTHON ?? "python",
+      testPython(),
       [
         "-c",
         "import json, runpy, sys; module = runpy.run_path(sys.argv[1]); print(json.dumps(module['synthetic_frontend_environment'](json.loads(sys.argv[2]))))",

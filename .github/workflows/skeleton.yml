@@ -55,9 +55,18 @@ jobs:
       - run: alembic -c apps/backend/alembic.ini check
       - run: pytest apps/backend/tests -q
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
+      - run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+      - run: python -m venv .venv
       - uses: actions/setup-node@v4
         with:
           node-version: '24.15.0'
