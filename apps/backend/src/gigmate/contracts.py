@@ -661,6 +661,13 @@ class ReissueActionCommand(Model):
     expected_context_version: Positive
 
 
+class SetWorkOrderStatusCommand(Model):
+    """Merchant moves an order along its life cycle (see TRANSITIONS in workorders)."""
+
+    status: Literal["in_progress", "waiting_customer", "completed", "cancelled"]
+    expected_version: Positive
+
+
 class RejectActionCommand(ApproveActionCommand):
     reason: Text
 

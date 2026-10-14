@@ -1,5 +1,15 @@
 # 已完成工作与验证记录
 
+## 工单状态命令（C）— 2026-10-14
+
+叠在新建工单 PR 之上。新增 `POST /work-orders/{id}/status`（`SetWorkOrderStatusCommand`：`status`、`expected_version`；必须带 `Idempotency-Key`）。
+
+- **状态流转：** 已确认 → 进行中 / 等客人 / 已完成 / 已取消；进行中 ↔ 等客人，两者都可 → 已完成 / 已取消；待确认或未分类只能 → 已取消（工单只能通过确认流程变成已确认）；已完成和已取消是终态。其他情况返回 409 `INVALID_TRANSITION`，附当前状态和允许的目标；版本过期返回 409 `VERSION_CONFLICT`。每次变更版本加一并写审计。
+- **关闭（已完成或已取消）：** 日历时段不再占用；未发送的草稿取消（`order_completed` / `order_cancelled`，契约第 4 节）；自动生成的未完成待办标为完成或取消；待确认的提议退回 `needs_review`。不删除任何数据，也不发送任何消息。
+- **新消息：** worker 只把会话中未关闭的工单交给提取，已取消的工单不再接收改动，改动会落到会话中仍在进行的工单。
+
+证据：`test_order_status.py` **5 项通过**；C 的测试（状态、新建、审批、工作流）在本地 PostgreSQL 16 上 69 项通过；SQLite 全套 598 通过、9 跳过；Ruff/格式、契约导出、前端接口检查和类型检查通过。未触碰真实 WhatsApp、发送、模型或部署。
+
 ## PR #22 第二轮评审：重新生成轮次与 main 兼容（C）— 2026-10-14
 
 - **重复重新生成（P2，Andy 和 Kyrie）：** 过期 → 重新生成 → 没有新消息又过期 → 再次重新生成会返回 503，因为第二轮生成了相同的 `<change>@<context>` trigger，撞上唯一约束。现在每轮重新生成都有持久的独立身份 `<change>@<context>~<被替换的草稿 id>`；一条草稿只能被重新生成一次（之后它就不是最新的），所以轮次不会冲突。同一个幂等键重放返回原结果，同键换内容返回 409 `IDEMPOTENCY_CONFLICT`，旧轮次返回 409，每单仍只有一条活动草稿。回归测试：`test_repeated_expiry_rounds_can_each_be_reissued`（未修复时得到 503）。

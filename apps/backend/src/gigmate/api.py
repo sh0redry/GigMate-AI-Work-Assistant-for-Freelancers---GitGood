@@ -34,6 +34,7 @@ from gigmate.contracts import (
     ReissueActionCommand,
     RejectActionCommand,
     RequirementChange,
+    SetWorkOrderStatusCommand,
     Task,
     Text,
     WahaAttachmentView,
@@ -77,7 +78,7 @@ from gigmate.waha_adapter import AdapterError
 from gigmate.waha_ingress import binding_for, configured_binding, receive, status_view
 from gigmate.waha_probe import MAX_BODY, _non_json_constant, _pairs, verify_hmac
 from gigmate.waha_recovery import issue_view, record_rejection
-from gigmate.workorders import command_cache, confirm, create, owned, save_result
+from gigmate.workorders import command_cache, confirm, create, owned, save_result, set_status
 
 app = FastAPI(title="GigMate replay skeleton", version="0.2.0")
 
@@ -390,6 +391,21 @@ def confirm_change(
             idempotency_key,
             request.state.request_id,
         ),
+    )
+
+
+@app.post("/api/v1/work-orders/{order_id}/status", response_model=Detail[WorkOrder])
+def set_order_status(
+    order_id: UUID,
+    command: SetWorkOrderStatusCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    return detail(
+        request,
+        set_status(db, account, str(order_id), command, idempotency_key, request.state.request_id),
     )
 
 

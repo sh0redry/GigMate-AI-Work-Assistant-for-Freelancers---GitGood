@@ -1,5 +1,15 @@
 # Implementation status and validation
 
+## Work-order status command (role C) — 2026-10-14
+
+Stacked on the work-order creation PR. Adds `POST /work-orders/{id}/status` (`SetWorkOrderStatusCommand`: `status`, `expected_version`; `Idempotency-Key` required).
+
+- **Transitions:** confirmed → in_progress / waiting_customer / completed / cancelled; in_progress ↔ waiting_customer, either → completed / cancelled; pending_confirmation or unclassified → cancelled only (an order becomes confirmed only through confirmation); completed and cancelled are final. Others return 409 `INVALID_TRANSITION` with the current status and allowed targets; a stale version returns 409 `VERSION_CONFLICT`. Each change bumps the version and writes an audit record.
+- **Closing (completed or cancelled):** the calendar slot no longer blocks; unsent drafts are cancelled (`order_completed` / `order_cancelled`, contract section 4); open generated tasks become completed or cancelled; pending proposals return to `needs_review`. Nothing is deleted or sent.
+- **New messages:** the worker now offers only open orders of a conversation to extraction, so a cancelled order no longer takes changes and the conversation's remaining open order receives them.
+
+Evidence: `test_order_status.py` **5 passed**; role C tests (status, creation, approvals, workflow) 69 passed on local PostgreSQL 16; full SQLite suite 598 passed, 9 skipped; Ruff/format, contract export, frontend API check and typecheck passed. No real WhatsApp, send, model or deployment.
+
 ## PR #22 second review round: reissue rounds and main compatibility (role C) — 2026-10-14
 
 - **Repeated reissue (P2, Andy and Kyrie):** expire → reissue → expire again without a new message → reissue again returned 503, because the second round rebuilt the same `<change>@<context>` trigger and hit its unique constraint. Each reissue round now gets a durable identity, `<change>@<context>~<replaced action id>`; a row can be reissued only once (afterwards it is no longer the newest), so rounds never collide. Same-key replay returns the original result, reusing a key for another payload returns 409 `IDEMPOTENCY_CONFLICT`, older rounds return 409, and one active draft per order is kept. Regression: `test_repeated_expiry_rounds_can_each_be_reissued` (503 without the fix).

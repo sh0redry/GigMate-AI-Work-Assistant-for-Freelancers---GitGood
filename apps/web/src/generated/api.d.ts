@@ -789,6 +789,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/work-orders/{order_id}/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Set Order Status */
+    post: operations["set_order_status_api_v1_work_orders__order_id__status_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/health": {
     parameters: {
       query?: never;
@@ -1684,6 +1701,19 @@ export interface components {
       duplicate: boolean;
       /** Event Id */
       event_id: string;
+    };
+    /**
+     * SetWorkOrderStatusCommand
+     * @description Merchant moves an order along its life cycle (see TRANSITIONS in workorders).
+     */
+    SetWorkOrderStatusCommand: {
+      /** Expected Version */
+      expected_version: number;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "in_progress" | "waiting_customer" | "completed" | "cancelled";
     };
     /** SourceRef */
     SourceRef: {
@@ -4053,6 +4083,43 @@ export interface operations {
     requestBody: {
       content: {
         "application/json": components["schemas"]["ConfirmChangeCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkOrder_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  set_order_status_api_v1_work_orders__order_id__status_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        order_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetWorkOrderStatusCommand"];
       };
     };
     responses: {

@@ -2255,6 +2255,33 @@
         "title": "ReplayResult",
         "type": "object"
       },
+      "SetWorkOrderStatusCommand": {
+        "additionalProperties": false,
+        "description": "Merchant moves an order along its life cycle (see TRANSITIONS in workorders).",
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "in_progress",
+              "waiting_customer",
+              "completed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "expected_version"
+        ],
+        "title": "SetWorkOrderStatusCommand",
+        "type": "object"
+      },
       "SourceRef": {
         "additionalProperties": false,
         "properties": {
@@ -6770,6 +6797,65 @@
           }
         },
         "summary": "Confirm Change"
+      }
+    },
+    "/api/v1/work-orders/{order_id}/status": {
+      "post": {
+        "operationId": "set_order_status_api_v1_work_orders__order_id__status_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetWorkOrderStatusCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WorkOrder_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Order Status"
       }
     },
     "/health": {
