@@ -1,0 +1,8 @@
+# Optional video-capable WEBJS browser. Explicit operator choice, never automatic.
+# Pinned public linux/amd64 manifest, verified read-only on 2026-10-10.
+# Apple Silicon runs this variant under emulation; native ARM remains the default.
+# Append AFTER the normal ARM/media/send overlays, preserve session volumes.
+services:
+  waha:
+    platform: linux/amd64
+    image: devlikeapro/waha:chrome-2026.9.1@sha256:4518bced9c24e93ef34679399ce8be9c976f743de64b388214ba1fd7800b72dc

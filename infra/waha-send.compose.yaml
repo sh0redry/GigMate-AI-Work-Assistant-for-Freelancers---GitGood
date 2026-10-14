@@ -1,0 +1,18 @@
+# Explicit opt-in. Migrate to head; never apply this just to restore reception.
+services:
+  ingress:
+    environment:
+      WAHA_SEND_ENABLED: ${WAHA_SEND_ENABLED:-false}
+      WAHA_MEDIA_ENABLED: ${WAHA_MEDIA_ENABLED:-false}
+      WAHA_MEDIA_ROOT: /run/waha-media
+    volumes:
+      - waha-media-data:/run/waha-media
+  ingress-worker:
+    environment:
+      WAHA_SEND_ENABLED: ${WAHA_SEND_ENABLED:-false}
+      WAHA_MEDIA_ENABLED: ${WAHA_MEDIA_ENABLED:-false}
+      WAHA_MEDIA_ROOT: /run/waha-media
+    volumes:
+      - waha-media-data:/run/waha-media
+volumes:
+  waha-media-data:

@@ -38,12 +38,20 @@ def migration_database(tmp_path):
 
 @pytest.mark.parametrize(
     "existing_revision",
-    ["0004_waha_recovery", "0005_extraction_evidence", "0006_waha_provider_sample"],
+    [
+        "0004_waha_recovery",
+        "0005_extraction_evidence",
+        "0006_waha_provider_sample",
+        "0011_waha_multitype_sending",
+        "0012_waha_media_stop",
+        "0013_merge_media_send",
+        "0013_merge_approval_media",
+    ],
 )
 def test_versioned_migration_preserves_replay_rows(migration_database, existing_revision):
     root = Path(__file__).resolve().parents[3]
     assert ScriptDirectory(str(root / "apps/backend/migrations")).get_heads() == [
-        "0013_merge_approval_media"
+        "0014_merge_approval_send"
     ]
     url = migration_database
     environment = {**os.environ, "DATABASE_URL": url, "PYTHONPATH": str(root / "apps/backend/src")}
@@ -108,6 +116,19 @@ def test_versioned_migration_preserves_replay_rows(migration_database, existing_
                     "VALUES ('synthetic-evaluation','synthetic-account','2026-10-09 00:00:00','2026-10-09 00:00:01','deterministic','synthetic','v1',1,1,0,'synthetic-manifest')"
                 )
             )
+        if existing_revision in {"0011_waha_multitype_sending", "0013_merge_media_send"}:
+            db.execute(
+                text(
+                    "INSERT INTO waha_send_permissions (connection_id,version,enabled,chat_ids) "
+                    "VALUES ('synthetic-connection',9,false,'[]')"
+                )
+            )
+            db.execute(
+                text(
+                    "INSERT INTO waha_send_request_fences (connection_id,request_key,cancelled_at) "
+                    "VALUES ('synthetic-connection','synthetic-cancelled-intent','2026-10-13 00:00:00')"
+                )
+            )
     engine.dispose()
     migrate("upgrade", "head")
 
@@ -115,6 +136,10 @@ def test_versioned_migration_preserves_replay_rows(migration_database, existing_
     assert "waha_connections" in inspect(engine).get_table_names()
     assert "waha_operations" in inspect(engine).get_table_names()
     assert "waha_controls" in inspect(engine).get_table_names()
+    assert "waha_send_permissions" in inspect(engine).get_table_names()
+    assert "content_stop_reason" in {
+        column["name"] for column in inspect(engine).get_columns("waha_media_jobs")
+    }
     assert "waha_candidates" in inspect(engine).get_table_names()
     assert {
         "proposals",
@@ -129,7 +154,7 @@ def test_versioned_migration_preserves_replay_rows(migration_database, existing_
     with engine.connect() as db:
         assert (
             db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0013_merge_approval_media"
+            == "0014_merge_approval_send"
         )
         assert db.execute(text("SELECT accepted,duplicates,state FROM waha_connections")).one() == (
             3,
@@ -144,6 +169,15 @@ def test_versioned_migration_preserves_replay_rows(migration_database, existing_
             assert db.execute(text("SELECT id,passed FROM evaluation_runs")).one() == (
                 "synthetic-evaluation",
                 1,
+            )
+        if existing_revision in {"0011_waha_multitype_sending", "0013_merge_media_send"}:
+            assert db.execute(text("SELECT version,enabled FROM waha_send_permissions")).one() == (
+                9,
+                False,
+            )
+            assert (
+                db.execute(text("SELECT request_key FROM waha_send_request_fences")).scalar_one()
+                == "synthetic-cancelled-intent"
             )
         payload, connection_id = db.execute(text("SELECT payload, connection_id FROM inbox")).one()
         # PostgreSQL returns JSON objects; SQLite text queries return JSON text.
@@ -338,7 +372,15 @@ def test_media_evidence_upgrade_does_not_invent_old_sending_times(migration_data
     engine.dispose()
 
 
-@pytest.mark.parametrize("existing_revision", ["0009_approval_actions", "0012_waha_media_stop"])
+@pytest.mark.parametrize(
+    "existing_revision",
+    [
+        "0009_approval_actions",
+        "0012_waha_media_stop",
+        "0013_merge_approval_media",
+        "0013_merge_media_send",
+    ],
+)
 def test_merge_revision_joins_approval_and_media_branches(migration_database, existing_revision):
     """A database on either parent branch upgrades to the single merge head and keeps its rows."""
     root = Path(__file__).resolve().parents[3]
@@ -388,7 +430,7 @@ def test_merge_revision_joins_approval_and_media_branches(migration_database, ex
             ),
             {"data": json.dumps({"synthetic": True})},
         )
-        if existing_revision == "0009_approval_actions":
+        if existing_revision in {"0009_approval_actions", "0013_merge_approval_media"}:
             db.execute(
                 text(
                     "INSERT INTO approval_actions "
@@ -397,7 +439,7 @@ def test_merge_revision_joins_approval_and_media_branches(migration_database, ex
                     "'synthetic-conversation','schedule_conflict:synthetic','synthetic-order',"
                     "NULL,NULL,'2026-10-13 00:00:00',:data)"
                 ),
-                {"data": json.dumps({"state": "pending_approval"})},
+                {"data": json.dumps({"state": "approved"})},
             )
     engine.dispose()
     migrate("head")
@@ -411,14 +453,16 @@ def test_merge_revision_joins_approval_and_media_branches(migration_database, ex
     with engine.connect() as db:
         assert (
             db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0013_merge_approval_media"
+            == "0014_merge_approval_send"
         )
         assert db.execute(text("SELECT context_version FROM conversations")).scalar_one() == 4
         actions = db.execute(text("SELECT id,trigger,active_key FROM approval_actions")).all()
-        if existing_revision == "0009_approval_actions":
+        if existing_revision in {"0009_approval_actions", "0013_merge_approval_media"}:
             assert [tuple(row) for row in actions] == [
                 ("synthetic-action", "schedule_conflict:synthetic", "synthetic-order")
             ]
+            data = db.execute(text("SELECT data FROM approval_actions")).scalar_one()
+            assert (json.loads(data) if isinstance(data, str) else data)["state"] == "approved"
         else:
             assert actions == []
     engine.dispose()

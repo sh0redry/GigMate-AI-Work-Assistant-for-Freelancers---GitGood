@@ -25,6 +25,7 @@ const components = [
   "ChatChoices",
   "WahaMessages",
   "WahaMedia",
+  "WahaSend",
 ];
 for (const name of [
   ...components,
@@ -36,6 +37,7 @@ for (const name of [
   "waha-live-api",
   "waha-sync-api",
   "waha-media-api",
+  "waha-send-api",
   "connection-state",
   "chat-choices",
 ]) {

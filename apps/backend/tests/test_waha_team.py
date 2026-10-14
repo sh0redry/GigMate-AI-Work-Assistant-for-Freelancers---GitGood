@@ -218,6 +218,20 @@ def test_unknown_daemon_architecture_fails_clearly(monkeypatch):
         team.compose("up")
 
 
+def test_sending_chrome_overlay_is_explicit_and_follows_native_arm_choice(monkeypatch):
+    monkeypatch.setattr(team, "run", lambda args: "arm64")
+    monkeypatch.setenv("WAHA_SEND_ENABLED", "true")
+    monkeypatch.setenv("WAHA_MEDIA_ENABLED", "true")
+    monkeypatch.delenv("WAHA_SEND_CHROME", raising=False)
+    default = team.compose("up")
+    assert not any("send-chrome" in part for part in default)
+    monkeypatch.setenv("WAHA_SEND_CHROME", "true")
+    selected = team.compose("up")
+    arm = next(i for i, p in enumerate(selected) if "waha-arm64" in p)
+    chrome = next(i for i, p in enumerate(selected) if "waha-send-chrome" in p)
+    assert chrome > arm
+
+
 @pytest.mark.parametrize("matching", [True, False])
 def test_legacy_database_profile_is_explicit_verified_and_workspace_bound(
     tmp_path, monkeypatch, matching
