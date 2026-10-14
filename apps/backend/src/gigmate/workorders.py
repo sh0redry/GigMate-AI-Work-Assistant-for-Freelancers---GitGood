@@ -134,6 +134,10 @@ def confirm(db, account, work_order_id, change_id, command, key, request_id):
     ):
         if other.data["status"] == "proposed":
             other.data = {**other.data, "status": "needs_review"}
+    from gigmate.approvals import cancel_pending
+
+    # The confirmed time resolves any open conflict question for this order.
+    cancel_pending(db, account.id, work_order_id=order.id, reason="resolved")
     calendar = db.scalar(
         select(CalendarRow).where(
             CalendarRow.work_order_id == order.id, CalendarRow.account_id == account.id

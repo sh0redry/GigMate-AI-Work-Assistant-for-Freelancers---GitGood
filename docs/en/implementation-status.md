@@ -1,5 +1,25 @@
 # Implementation status and validation
 
+## PR #22 second review round: reissue rounds and main compatibility (role C) — 2026-10-14
+
+- **Repeated reissue (P2, Andy and Kyrie):** expire → reissue → expire again without a new message → reissue again returned 503, because the second round rebuilt the same `<change>@<context>` trigger and hit its unique constraint. Each reissue round now gets a durable identity, `<change>@<context>~<replaced action id>`; a row can be reissued only once (afterwards it is no longer the newest), so rounds never collide. Same-key replay returns the original result, reusing a key for another payload returns 409 `IDEMPOTENCY_CONFLICT`, older rounds return 409, and one active draft per order is kept. Regression: `test_repeated_expiry_rounds_can_each_be_reissued` (503 without the fix).
+- **Main compatibility after #21:** merged `main` (`e066b0c`) without rewriting either branch. Added the additive merge revision **0013_merge_approval_media** (parents `0009_approval_actions` and `0012_waha_media_stop`, no schema change). `test_merge_revision_joins_approval_and_media_branches` upgrades a database from either parent with data to the single head and checks rows and both branches' tables are kept. Conflicts in `test_waha_migration.py` and both progress notes resolved by keeping both sides; generated contracts/types re-checked from source with no drift.
+
+Evidence: full SQLite suite **569 passed, 9 skipped**; approval and migration tests also pass on local PostgreSQL 16; Ruff/format (the pre-existing `scripts/check_baseline.py` F401 on main is unrelated), contract export check, frontend API check and baseline passed. No real WhatsApp, send, model or deployment.
+
+## PR #22 approval actions review follow-up (role C) — 2026-10-13
+
+PR #22 (`lena/approval-actions`, head `e79ef7b`) adds role C approval actions: a schedule proposal overlapping a confirmed appointment creates one `send_text` draft (`pending_approval`, fixed template, 24 h expiry); GET /actions, GET /actions/{id}, approve (202, exact snapshot hash, versions and sources), reject and cancel (local only, reason kept). Approval only persists the decision; nothing is sent. Reviews by Kyrie (changes requested) and Andy were addressed:
+
+- **API send echoes (P1/P2):** a trusted WAHA event with `source=api` still advances the context and supersedes older drafts at ingestion, but the worker completes it as `OWN_SEND_ECHO` without extraction, so it can never create a reply.
+- **Unclear extraction is not proof (P1):** the automatic "same question again" step was removed. After a new message only clear outcomes act automatically (new conflict → new draft; free time → `answered`). Otherwise the newest superseded or expired question is `reissuable` and the merchant may call POST /actions/{id}/reissue with the current `expected_context_version`.
+- **Expired + edited source (P2):** ingestion marks an expired draft whose source changed as `source_changed`; reissue re-checks sources and refuses it.
+- **GET expiry overwrite (P2):** GET /actions and detail only compute an `expired` view; expiry is written only on locked rows (commands, ingestion, which now locks the actions it updates).
+- **Conflict basis changed:** approve and reissue re-check that the triggering proposal still overlaps a confirmed appointment; otherwise 409 `APPROVAL_STALE`.
+
+Not in scope and unchanged: approval UI (D), real sending and the bridge from C actions to A's send gateway (`ActionRow(state=approved)` is not send authority and the conversation UUID is not a provider chat ID), order cancel/complete commands. Migration `0009_approval_actions` follows `0008`; if #21 (0009/0010) merges first, an additive merge revision is needed.
+
+Evidence: `pytest apps/backend/tests/test_approvals.py` **18 passed** on SQLite and on a local PostgreSQL 16; full SQLite suite passed; full PostgreSQL run shows the same WAHA timing-related failures as unchanged main in that local environment and no approval/workflow failures. Ruff/format, contract export, frontend API check and bilingual baseline passed. No real WhatsApp, send, model or deployment was touched.
 ## PR #21 review: persistent content-stop decision — 2026-10-13
 
 Independently reproduced the new P2 in four synthetic cancel/pause-resume + immediate/repeated-unknown lookup cases: reconciliation erased the only stop marker and a later valid result became public. The job now persists its first `content_stop_reason` separately from state, errors and control versions. Subsequent lookups retain that decision, never call process again and never publish the stopped request's output or restore review. Unknown outcomes still block a new request; a known valid return releases the gate as cancelled and permits only a new explicit intent.
