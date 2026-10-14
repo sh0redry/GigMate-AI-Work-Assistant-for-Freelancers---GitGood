@@ -7,6 +7,8 @@
 
 ## PR #24 补上漏处理的 Python 兼容性反馈 — 2026-10-14
 
+首轮矩阵 CI 的 Windows 90 项测试全部通过（含 PATH 无 Python），Mac／Linux 前端检查也通过；Windows 格式检查发现 `.mjs`／`.html` 缺少 LF 规则。本次补仓库明确属性，并移除未解决该问题的全局检出设置；保留分支要求的 frontend 汇总检查。跨平台全绿以重跑结果为准。
+
 Will 上一轮已指出默认依赖 PATH 中的 `python`，我当时验证时把项目虚拟环境加进 PATH，漏掉了这条反馈。本次修复 a90a9b6 上重申的 P2：测试明确选择当前工作目录的 `.venv/bin/python`（Mac／Linux）或 `.venv/Scripts/python.exe`（Windows），也保留 `GIGMATE_TEST_PYTHON` 明确覆盖；缺少／不可用时给平台安装提示并失败，不依赖系统别名、不跳过。四条回归包含真实 Node 子进程：PATH 指向空目录、无覆盖变量，仍跑完环境七项测试；另测有效覆盖、缺虚拟环境提示和错误覆盖拒绝。本机用被忽略的 worktree `.venv` 链接使用已有项目环境。双语手册说明工作目录／worktree 配置；CI 明确创建固定 Python 3.12.10 环境，在 Linux／Windows／Mac 检查前端并保持 LF 检出。
 
 同时处理旧别名 P3：只有旧 GIGMATE_API_URL 实际选中隔离地址时，才警告其含义并提示换成 real／isolated 明确变量，原代理／分离保护保留。本机 **90 项前端通过**，含 PATH 空目录子进程；正常 npm 构建／检查仅使用 Node／系统工具 PATH，未设 Python 覆盖或激活虚拟环境。类型／Vite／API／Prettier、Ruff 检查／格式（85 文件）、源契约、基线（77 Markdown／909 链接）及空白检查通过；不能把 Mac 结果冒充新 head 的跨平台 CI。未改后端／迁移／生成源码或真实 provider／模型／发送／部署，未重跑后端全套／Docker／手机。将同步本次 helper／CI／手册进 #25，仍需独立复审。
