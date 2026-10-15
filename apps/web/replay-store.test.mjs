@@ -19,6 +19,7 @@ const snapshot = (selected = SAMPLE_ORDER_ID) => ({
 });
 const proposal = (overrides = {}) => ({
   id: "change",
+  field: "schedule",
   work_order_id: SAMPLE_ORDER_ID,
   base_work_order_version: 3,
   context_version: 4,

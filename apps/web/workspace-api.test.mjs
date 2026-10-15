@@ -106,3 +106,13 @@ test("confirmation binds the loaded order and context versions without altering 
     /业务已切换/,
   );
 });
+
+test("login blocked by origin explains configuration rather than requesting another logout", async () => {
+  const api = workspaceApi("", async () =>
+    Response.json({ error: { code: "CSRF_REJECTED" } }, { status: 403 }),
+  );
+  await assert.rejects(
+    api("/auth/login", { username: "synthetic", password: "synthetic" }),
+    /网页地址登录，请联系/,
+  );
+});

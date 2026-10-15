@@ -1,5 +1,7 @@
 # WAHA implementation and team handoff
 
+Current sending branch (2026-10-10): [multi-type sending batch 1](role-a-waha-sending.md) adds separate merchant send consent, eleven payload kinds, immutable approval/outbox, exact fixed-content automatic policies, private upload/preview and explicit uncertainty recovery. It preserves media PR #21 independently. B real generation/autonomous triggers, physical phone and PostgreSQL/E acceptance are pending; sending is not enabled in the original installation. Earlier capability tables are dated history, superseded only for this authorized sending scope.
+
 2026-10-10 batch 2: frozen original-time/timezone input, clickable source segments and version/hash-bound read-only reviewed business evidence are implemented; C promotion and B real processors remain pending. See [media protocol](role-a-media-ingestion.md).
 
 2026-10-10 media extension: [A media ingestion](role-a-media-ingestion.md) adds explicit owned original-file download/preview, private storage, durable processing/reconciliation jobs and source review. B has not connected a real model; OCR/ASR/parsing/GenAI remain B's dependency, not shipped A functionality. No external sending or work-order authority added.

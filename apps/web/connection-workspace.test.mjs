@@ -15,6 +15,7 @@ const dom = new JSDOM("<main id='root'></main>", { url: "http://localhost/" });
 globalThis.window = dom.window;
 globalThis.document = dom.window.document;
 globalThis.sessionStorage = dom.window.sessionStorage;
+globalThis.localStorage = dom.window.localStorage;
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const { createRoot } = await import("react-dom/client");
 const originalFetch = globalThis.fetch;
@@ -24,11 +25,14 @@ const modules = [
   "ConnectionWorkspace",
   "ChatChoices",
   "WahaMessages",
+  "environment",
   "WahaMedia",
+  "WahaSend",
   "connection-api",
   "waha-live-api",
   "waha-sync-api",
   "waha-media-api",
+  "waha-send-api",
   "connection-state",
   "chat-choices",
 ];
@@ -38,6 +42,7 @@ for (const name of modules) {
     "ChatChoices",
     "WahaMessages",
     "WahaMedia",
+    "WahaSend",
   ].includes(name)
     ? "tsx"
     : "ts";
@@ -54,7 +59,7 @@ for (const name of modules) {
       },
     })
     .outputText.replace(/import "\.\/connection\.css";\s*/g, "")
-    .replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"')
+    .replace(/"\.\/([\w-]+)(?:\.ts)?"/g, '"./$1.mjs"')
     .replace(/"(react(?:\/jsx-runtime)?)"/g, (_, specifier) =>
       JSON.stringify(pathToFileURL(require.resolve(specifier)).href),
     );
@@ -66,13 +71,207 @@ const { ConnectionWorkspace } = await import(
 const { WahaMedia } = await import(
   pathToFileURL(join(directory, "WahaMedia.mjs"))
 );
+const { WahaSend } = await import(
+  pathToFileURL(join(directory, "WahaSend.mjs"))
+);
 let root;
 afterEach(async () => {
   if (root) await act(async () => root.unmount());
   root = null;
   document.getElementById("root").replaceChildren();
   sessionStorage.clear();
+  localStorage.clear();
   globalThis.fetch = originalFetch;
+});
+
+test("sending recovers a lost automatic request across remount with only opaque metadata and no second submit", async () => {
+  const connection = rows[0].id,
+    chat = rows[1].id,
+    actionId = rows[2].id,
+    policyId = rows[3].id;
+  const deadline = new Date(Date.now() + 86400000).toISOString();
+  let action = null,
+    writes = 0,
+    requestKey = null;
+  const payload = { kind: "text", text: "Synthetic fixed reply" };
+  const policy = {
+    id: policyId,
+    chat_id: chat,
+    version: 1,
+    enabled: true,
+    payload,
+    expires_at: deadline,
+    maximum_uses: 5,
+    uses: 0,
+  };
+  const props = {
+    connection,
+    csrf: "synthetic-csrf",
+    chat,
+    label: "Synthetic test chat",
+    enabled: true,
+    messages: [],
+  };
+  globalThis.fetch = async (url, init = {}) => {
+    const reply = (data) =>
+      new Response(JSON.stringify({ data }), { status: 200 });
+    if (url.endsWith("/capabilities"))
+      return reply({ enabled: true, real_agent_configured: false });
+    if (url.endsWith("/permission"))
+      return reply({
+        enabled: true,
+        version: 1,
+        chat_ids: [chat],
+        expires_at: deadline,
+      });
+    if (url.includes("/context/"))
+      return reply({ control_version: 7, context_version: 9 });
+    if (url.includes("/actions?"))
+      return new Response(
+        JSON.stringify({ items: action ? [action] : [], next_cursor: null }),
+      );
+    if (url.includes("/policies?"))
+      return new Response(
+        JSON.stringify({ items: [policy], next_cursor: null }),
+      );
+    if (url.endsWith("/drafts")) {
+      writes++;
+      requestKey = init.headers["Idempotency-Key"];
+      const input = JSON.parse(init.body);
+      assert.equal(input.mode, "agent_auto");
+      assert.deepEqual(input.payload, payload);
+      assert.equal(init.headers["X-CSRF-Token"], "synthetic-csrf");
+      action = {
+        id: actionId,
+        chat_id: chat,
+        mode: "agent_auto",
+        revision: 1,
+        state: "queued",
+        delivery_status: "not_submitted",
+        payload,
+        context_version: 9,
+        expires_at: deadline,
+        approved_at: new Date().toISOString(),
+        provider_message_id: null,
+        error_code: null,
+        created_at: new Date().toISOString(),
+        unknown_reviewed_at: null,
+        upload: null,
+      };
+      policy.uses = 1;
+      throw new Error("Synthetic lost response after commit");
+    }
+    if (url.includes("/requests/")) {
+      assert.ok(url.endsWith(requestKey));
+      assert.equal(init.method, "GET");
+      return reply({ request_key: requestKey, state: "recorded", action });
+    }
+    if (url.endsWith(`/actions/${actionId}`)) return reply(action);
+    throw new Error("Unexpected synthetic sending request");
+  };
+  root = createRoot(document.getElementById("root"));
+  await act(async () => root.render(createElement(WahaSend, props)));
+  await click("按已授权政策提交");
+  assert.equal(writes, 1);
+  assert.match(document.body.textContent, /SEND_REQUEST_UNKNOWN/);
+  const saved = Object.keys(localStorage);
+  assert.equal(saved.length, 1);
+  assert.ok(saved[0].endsWith(requestKey));
+  assert.equal(localStorage.getItem(saved[0]), "pending");
+  assert.ok(!JSON.stringify(localStorage).includes(payload.text));
+  await act(async () => root.unmount());
+  root = createRoot(document.getElementById("root"));
+  await act(async () => root.render(createElement(WahaSend, props)));
+  assert.equal(writes, 1, "remount must never resubmit automatically");
+  assert.equal(button("按已授权政策提交").disabled, true);
+  await click("核对原草稿请求");
+  assert.equal(writes, 1);
+  assert.equal(localStorage.length, 0);
+  assert.match(
+    document.querySelector(".send-review").textContent,
+    /Synthetic fixed reply/,
+  );
+  assert.equal(button("取消此任务").disabled, false);
+});
+
+test("sending requires an explicit final snapshot approval and pauses approval when reception is disabled", async () => {
+  const connection = rows[0].id,
+    chat = rows[1].id;
+  const deadline = new Date(Date.now() + 86400000).toISOString();
+  const action = {
+    id: rows[2].id,
+    chat_id: chat,
+    mode: "manual",
+    revision: 1,
+    state: "draft",
+    delivery_status: "not_submitted",
+    payload: { kind: "text", text: "Synthetic merchant-approved text" },
+    context_version: 9,
+    expires_at: deadline,
+    approved_at: null,
+    provider_message_id: null,
+    error_code: null,
+    created_at: new Date().toISOString(),
+    unknown_reviewed_at: null,
+    upload: null,
+  };
+  let approvals = 0;
+  globalThis.fetch = async (url, init = {}) => {
+    const reply = (data) =>
+      new Response(JSON.stringify({ data }), { status: 200 });
+    if (url.endsWith("/capabilities"))
+      return reply({ enabled: true, real_agent_configured: false });
+    if (url.endsWith("/permission"))
+      return reply({
+        enabled: true,
+        version: 1,
+        chat_ids: [chat],
+        expires_at: deadline,
+      });
+    if (url.includes("/actions?"))
+      return new Response(
+        JSON.stringify({ items: [action], next_cursor: null }),
+      );
+    if (url.includes("/policies?"))
+      return new Response(JSON.stringify({ items: [], next_cursor: null }));
+    if (url.endsWith(`/actions/${action.id}`)) return reply(action);
+    if (url.endsWith("/approve")) {
+      approvals++;
+      assert.deepEqual(JSON.parse(init.body), { expected_revision: 1 });
+      assert.equal(init.headers["X-CSRF-Token"], "synthetic-csrf");
+      action.state = "queued";
+      return reply(action);
+    }
+    throw new Error("Unexpected synthetic sending request");
+  };
+  const props = {
+    connection,
+    csrf: "synthetic-csrf",
+    chat,
+    label: "Synthetic test chat",
+    enabled: true,
+    messages: [],
+  };
+  root = createRoot(document.getElementById("root"));
+  await act(async () => root.render(createElement(WahaSend, props)));
+  await click("文字 / 链接 · 待核对草稿 · 尚未提交");
+  assert.equal(approvals, 0);
+  assert.match(
+    document.querySelector(".send-review").textContent,
+    /Synthetic merchant-approved text/,
+  );
+  await act(async () =>
+    root.render(createElement(WahaSend, { ...props, enabled: false })),
+  );
+  assert.equal(button("确认上述内容并发送").disabled, true);
+  await act(async () => root.render(createElement(WahaSend, props)));
+  await click("确认上述内容并发送");
+  assert.equal(approvals, 1);
+  assert.ok(
+    ![...document.querySelectorAll("button")].some(
+      (b) => b.textContent.trim() === "确认上述内容并发送",
+    ),
+  );
 });
 after(async () => {
   dom.window.close();

@@ -1,4 +1,9 @@
-import type { Change, ReplayApi, ReplaySnapshot } from "./workspace-api";
+import {
+  changeContext,
+  type Change,
+  type ReplayApi,
+  type ReplaySnapshot,
+} from "./workspace-api.ts";
 
 // The two implemented replay inputs are bound to this fictional fixture, not the selected row.
 export const SAMPLE_ORDER_ID = "00000000-0000-4000-8000-000000000003";
@@ -177,7 +182,7 @@ export class ReplayStore {
       data.selected !== this.state.selected ||
       !change ||
       !order ||
-      !canConfirm(change, order.version, data.contextVersion)
+      !canConfirm(change, order.version, changeContext(data, change) ?? -1)
     )
       return Promise.resolve();
     return this.mutate(async () => {
@@ -193,6 +198,7 @@ export function canConfirm(
   contextVersion: number,
 ) {
   return (
+    change.field === "schedule" &&
     change.status === "proposed" &&
     change.conflict_ids.length === 0 &&
     change.base_work_order_version === orderVersion &&

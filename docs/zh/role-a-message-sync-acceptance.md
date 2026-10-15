@@ -51,7 +51,19 @@
 
 保留私有配置、数据库和登录卷。团队安装执行 `python scripts/waha_team.py up` 后 doctor；旧安装沿用[此前验收文档](role-a-integration-acceptance.md)中的 DB/内部端口/私有 Compose 环境，先迁移 head/check，再重建 ingress/worker/monitor，最后打开新页面。不要为了升级额外 provision，避免覆盖页面授权。本操作者仍使用 DB 16433。旧终端已设置正确 DATABASE_URL 时，可明确运行 remember-database；忽略的 database.json 包含凭据，只保留本机，不复制给组员。它不会启动 DB 或自动认领其他工作区。
 
-打开真实工作台（通常 127.0.0.1:5173，GIGMATE_API_URL 指向 ingress18702），每位组员仍用自己的同意测试账号/聊天，一次完成：
+在 `apps/web` 选择实际接入地址和真实环境（本机不是 18702 时换成实际端口）：
+
+```bash
+GIGMATE_REAL_API_URL=http://127.0.0.1:18702 GIGMATE_DEFAULT_ENV=real npm run dev
+```
+
+```powershell
+$env:GIGMATE_REAL_API_URL = 'http://127.0.0.1:18702'
+$env:GIGMATE_DEFAULT_ENV = 'real'
+npm run dev
+```
+
+打开终端给出的前端地址（通常 127.0.0.1:5173），确认显示 **真实连接（本机开发）** 和配置的后端地址。隔离后端需要另行准备不同端口、不同数据库；切换地址不会替你创建后端。每位组员仍用自己的同意测试账号／聊天，一次完成：
 
 1. 聊天发现/加载更多、搜索/个人/群聊/已授权筛选；保存测试聊天，确认后续页不丢已选项。
 2. 在“消息时间线与同步”选择已授权聊天并载入，手机新发/编辑/撤回文字后重新载入，检查修订和撤回标记；原 checkpoint/verify 继续用于文字 1/2/3 序列。

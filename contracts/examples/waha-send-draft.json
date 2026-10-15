@@ -1,0 +1,8 @@
+{
+  "expected_control_version": 3,
+  "expected_permission_version": 1,
+  "chat_id": "00000000-0000-4000-8000-000000000072",
+  "expected_context_version": 9,
+  "mode": "manual",
+  "payload": {"kind": "text", "text": "Synthetic acknowledgement; no appointment confirmed"}
+}

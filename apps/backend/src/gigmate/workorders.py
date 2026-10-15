@@ -144,10 +144,14 @@ def confirm(db, account, work_order_id, change_id, command, key, request_id):
     # address — are confirmed by the merchant and by the customer.
     if was_pending and key_items_confirmed(value):
         value["status"] = "confirmed"
-    elif value["status"] == "confirmed" and not key_items_confirmed(value):
-        # A confirmed order whose key item is open again (awaiting the customer,
-        # or a date without a time) goes back to pending; its preparation task
-        # is withdrawn below and the calendar entry becomes tentative.
+    elif value["status"] == "confirmed" and (
+        not customer_confirmed or (field == "schedule" and not timed)
+    ):
+        # The change itself reopens a key item (awaiting the customer, or a date
+        # without a time): back to pending, preparation task withdrawn below and
+        # the calendar entry tentative. Judged on this change only, so orders
+        # confirmed before the key-items rule (seed data without address) are
+        # not demoted by an unrelated confirmation.
         value["status"] = "pending_confirmation"
         demoted = True
     value["pending_change_ids"] = [

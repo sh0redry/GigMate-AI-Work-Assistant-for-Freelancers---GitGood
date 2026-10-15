@@ -245,3 +245,158 @@ footer {
     gap: 4px;
   }
 }
+
+select {
+  font: inherit;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #b8c9bc;
+  border-radius: 7px;
+  background: white;
+  color: inherit;
+}
+select:focus-visible,
+a:focus-visible {
+  outline: 3px solid #c58a2f;
+  outline-offset: 3px;
+}
+.panel {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.business-field {
+  margin-top: 14px;
+}
+.source-reference {
+  display: inline-block;
+  margin-right: 8px;
+}
+.inline-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.inline-check input {
+  width: 18px;
+  flex: 0 0 18px;
+  margin-top: 5px;
+}
+.review-panel {
+  background: #f4faf5;
+  border: 2px solid #176a52;
+}
+.grid section > button {
+  margin: 6px 0;
+  width: 100%;
+}
+.workspace-navigation {
+  flex-wrap: wrap;
+}
+@media (max-width: 700px) {
+  header,
+  .toolbar {
+    flex-wrap: wrap;
+  }
+  .review-panel > button {
+    width: 100%;
+    margin: 6px 0;
+  }
+}
+
+.environment-panel {
+  border: 1px solid #b8c9bc;
+  border-radius: 12px;
+  padding: 18px 22px;
+  margin-top: 18px;
+  overflow-wrap: anywhere;
+}
+.environment-panel.isolated {
+  background: #fff5df;
+  border-color: #d8b878;
+}
+.environment-panel.real {
+  background: #edf5ef;
+}
+.environment-panel p {
+  margin: 10px 0;
+}
+.environment-switch {
+  display: inline-block;
+  padding: 8px 12px;
+  border: 1px solid #60736a;
+  border-radius: 7px;
+  color: #184735;
+  background: white;
+  text-decoration: none;
+}
+.environment-switch[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: wait;
+}
+.test-account {
+  padding: 14px;
+  background: #f4f6f2;
+  border-radius: 8px;
+}
+.test-account p {
+  margin: 8px 0;
+}
+
+.approval-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(0, 2fr);
+  gap: 20px;
+  align-items: start;
+}
+.approval-grid aside {
+  min-width: 0;
+}
+.approval-grid select,
+.approval-grid textarea {
+  width: 100%;
+  font: inherit;
+  padding: 8px;
+  border: 1px solid #b6c9bd;
+  border-radius: 6px;
+}
+.approval-grid textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+.approval-grid code {
+  overflow-wrap: anywhere;
+}
+.approval-facts dd {
+  margin: 0 0 16px;
+  overflow-wrap: anywhere;
+}
+.approval-facts dt {
+  font-weight: 600;
+  color: #476859;
+}
+.reply-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: #f1f5f1;
+  border-radius: 8px;
+  padding: 14px;
+  margin: 8px 0;
+}
+.approval-review {
+  margin-top: 16px;
+  border-top: 1px solid #cbd9cf;
+  padding-top: 16px;
+}
+.approval-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 14px 0;
+}
+@media (max-width: 760px) {
+  .approval-grid {
+    grid-template-columns: 1fr;
+  }
+}

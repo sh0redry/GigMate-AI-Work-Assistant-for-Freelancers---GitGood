@@ -1,3 +1,4 @@
+import { apiBase } from "./environment.ts";
 import { ConnectionError } from "./connection-api";
 import type { components } from "./generated/api";
 
@@ -8,7 +9,7 @@ export type SourceGap = components["schemas"]["WahaSourceGapView"];
 type Page<T> = { items: T[]; next_cursor: string | null };
 
 export function synchronizationApi(connection: string, csrf: string) {
-  const base = `/api/v1/connectors/${encodeURIComponent(connection)}`;
+  const base = `${apiBase()}/connectors/${encodeURIComponent(connection)}`;
   const attempts = new Map<string, SyncCommand>();
   async function request<T>(
     path: string,
