@@ -3,6 +3,24 @@
   "data_classification": "synthetic",
   "fixtures": [
     {
+      "file": "waha-send-draft.json",
+      "schema": "../domain/models.schema.json#/$defs/WahaSendDraftCommand",
+      "valid": true,
+      "reason": "Synthetic manual send draft shape; not approval or provider execution"
+    },
+    {
+      "file": "waha-send-policy.json",
+      "schema": "../domain/models.schema.json#/$defs/WahaSendPolicyCommand",
+      "valid": true,
+      "reason": "Synthetic exact-payload policy shape; runtime ownership and versions still required"
+    },
+    {
+      "file": "invalid-waha-send-url.json",
+      "schema": "../domain/models.schema.json#/$defs/WahaSendPayload",
+      "valid": false,
+      "reason": "Arbitrary URLs are not an allowed send payload field"
+    },
+    {
       "file": "message-reschedule.json",
       "schema": "../events/message-event.schema.json",
       "valid": true,

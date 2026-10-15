@@ -27,7 +27,7 @@ from gigmate.db import (
     WahaSyncJob,
 )
 from gigmate.errors import BusinessError
-from gigmate.waha_adapter import IDENTITY_NAMESPACE, AdapterError
+from gigmate.waha_adapter import IDENTITY_NAMESPACE, AdapterError, event_source
 from gigmate.waha_recovery import stamp
 
 
@@ -50,7 +50,7 @@ def identifier(value):
     return value
 
 
-def metadata(chat, item):
+def metadata(chat, item, *, nontext=False):
     """Allowlisted fields only: no URLs, embedded quoted bodies, _data or binary payloads."""
     reference = identifier(item.get("id"))
     outgoing = item.get("fromMe")
@@ -75,7 +75,7 @@ def metadata(chat, item):
         not isinstance(filename, str) or len(filename) > 256 or any(ord(x) < 32 for x in filename)
     ):
         raise AdapterError("INVALID_MEDIA_METADATA")
-    kind = "text"
+    kind = "other" if nontext else "text"
     if media:
         kind = next(
             (k for k in ("image", "audio", "video") if (mime or "").startswith(k + "/")),
@@ -104,8 +104,10 @@ def message_time(value):
     return datetime.fromtimestamp(value, UTC)
 
 
-def snapshot(db, chat, item, occurred, *, source, now, revoked=False, capture_sent_at=True):
-    reference, data = metadata(chat, item)
+def snapshot(
+    db, chat, item, occurred, *, source, now, revoked=False, capture_sent_at=True, nontext=False
+):
+    reference, data = metadata(chat, item, nontext=nontext)
     key = uid("snapshot", chat.id, reference)
     existing = db.get(WahaSnapshot, key)
     if existing:
@@ -151,11 +153,16 @@ def snapshot(db, chat, item, occurred, *, source, now, revoked=False, capture_se
 
 
 def receive_media(db, connection, chat, conversation, raw, *, now):
-    if "source" in raw and raw["source"] != "app":
-        fail("SOURCE_MAPPING_MISMATCH", 422)
     payload = raw["payload"]
     kind = raw["event"]
     details = payload.get("after", {}) if kind == "message.revoked" else payload
+    declared_source = event_source(raw, details)
+    if (
+        not isinstance(declared_source, str)
+        or declared_source not in {"app", "api"}
+        or (declared_source == "api" and details.get("fromMe") is not True)
+    ):
+        fail("SOURCE_MAPPING_MISMATCH", 422)
     target = payload.get("revokedMessageId" if kind == "message.revoked" else "editedMessageId")
     target = target or details.get("id")
     existing = db.scalar(
@@ -237,8 +244,15 @@ def receive_media(db, connection, chat, conversation, raw, *, now):
             durable_acceptance=True,
             acceptance_kind="observation",
         )
-    if details.get("hasMedia") is not True and not (
-        existing and existing.data.get("kind") != "text"
+    nontext = (
+        declared_source == "api"
+        and details.get("fromMe") is True
+        and details.get("body") in (None, "")
+    )
+    if (
+        details.get("hasMedia") is not True
+        and not nontext
+        and not (existing and existing.data.get("kind") != "text")
     ):
         return None
     if kind not in {"message", "message.any", "message.edited", "message.revoked"}:
@@ -268,7 +282,7 @@ def receive_media(db, connection, chat, conversation, raw, *, now):
             },
         )
         normalized["to" if normalized["fromMe"] else "from"] = chat.provider_chat_id
-    reference, data = metadata(chat, normalized)
+    reference, data = metadata(chat, normalized, nontext=nontext)
     event_id = uid(connection.instance_id, connection.account_id, connection.session_id, raw["id"])
     digest = hashlib.sha256(
         json.dumps(
@@ -304,6 +318,7 @@ def receive_media(db, connection, chat, conversation, raw, *, now):
         now=now,
         revoked=kind == "message.revoked",
         capture_sent_at=kind in {"message", "message.any"},
+        nontext=nontext,
     )
     db.add(
         WahaObservationReceipt(
@@ -318,6 +333,9 @@ def receive_media(db, connection, chat, conversation, raw, *, now):
         from gigmate.db import ChangeRow
 
         conversation.context_version += 1
+        from gigmate.waha_send import invalidate_context
+
+        invalidate_context(db, conversation)
         for change in db.scalars(
             select(ChangeRow).where(ChangeRow.conversation_id == conversation.id)
         ):

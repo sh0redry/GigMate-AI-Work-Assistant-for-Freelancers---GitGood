@@ -9,7 +9,6 @@ export function ChatChoices({
   busy,
   canDiscover,
   clock,
-  demo,
   onToggle,
 }: {
   choices: Choice[];
@@ -17,7 +16,6 @@ export function ChatChoices({
   busy: boolean;
   canDiscover: boolean;
   clock: number;
-  demo: boolean;
   onToggle: (id: string, checked: boolean) => void;
 }) {
   const [search, setSearch] = useState("");
@@ -95,12 +93,7 @@ export function ChatChoices({
                   <span className={`chat-kind chat-kind-${kind}`}>
                     {kindLabel}
                   </span>{" "}
-                  ·{" "}
-                  {c.selected
-                    ? demo
-                      ? "演示已授权"
-                      : "服务端已授权"
-                    : "尚未授权"}
+                  · {c.selected ? "已保存授权" : "尚未授权"}
                   {numberOnly ? " · 未提供昵称" : ""}
                   {!c.selected && choiceExpired(c, clock)
                     ? " · 选项已过期"

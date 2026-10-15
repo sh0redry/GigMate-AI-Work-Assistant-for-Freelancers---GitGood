@@ -12,6 +12,7 @@ from gigmate.db import (
     ChangeRow,
     ConversationOrder,
     ConversationRow,
+    MessageRow,
     TaskRow,
     WorkOrderRow,
 )
@@ -328,6 +329,74 @@ def test_each_value_must_point_at_the_message_that_said_it(signed_in):
     assert stale.json()["error"]["code"] == "APPROVAL_STALE"
     ok = create(client, headers, address="中环", address_sources=SAID)
     assert ok.json()["data"]["fields"]["address"]["sources"] == SAID
+
+
+def test_merchant_own_message_cannot_stand_in_for_the_customer(signed_in):
+    """#26 review: an outgoing message (merchant reply or API send echo) is not customer word."""
+    client, factory, _, headers = signed_in
+    with factory.begin() as db:
+        message = db.scalar(select(MessageRow).where(MessageRow.id == uid(5)))
+        message.data = {**message.data, "direction": "outgoing"}
+        before = db.scalar(select(func.count()).select_from(WorkOrderRow))
+    for fields in (
+        {"schedule": future(days=11)},
+        {"address": "中环"},
+    ):
+        response = create(client, headers, **fields)
+        assert response.status_code == 422, response.text
+        assert response.json()["error"]["code"] == "VALIDATION_FAILED"
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(WorkOrderRow)) == before
+
+
+def test_blank_address_is_refused_and_never_confirms(signed_in):
+    """#26 review: spaces or tabs only must not become a confirmed empty address."""
+    client, factory, _, headers = signed_in
+    with factory() as db:
+        before = db.scalar(select(func.count()).select_from(WorkOrderRow))
+        tasks = db.scalar(select(func.count()).select_from(TaskRow))
+    for blank in ("   ", "\t", " \t \n "):
+        response = create(client, headers, schedule=future(days=12), address=blank)
+        assert response.status_code == 422, response.text
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(WorkOrderRow)) == before
+        assert db.scalar(select(func.count()).select_from(TaskRow)) == tasks
+
+
+def test_confirmed_order_moved_to_date_only_reopens_without_error(signed_in):
+    """#26 review: confirmed order + customer-confirmed date-only change used to 500."""
+    client, factory, _, headers = signed_in
+    order = create(client, headers, schedule=future(days=10), address="中环").json()["data"]
+    assert order["status"] == "confirmed"
+    [old_task] = rows(factory, TaskRow, order["id"])
+    day = (datetime.now(UTC) + timedelta(days=13)).date()
+    value = {"kind": "date_only", "date": day.isoformat(), "timezone": "Asia/Hong_Kong"}
+    change_id, context, version = propose(factory, order["id"], "schedule", value)
+    response = confirm(client, headers, order["id"], change_id, version, context)
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["status"] == "pending_confirmation"
+    assert data["fields"]["schedule"]["value"]["kind"] == "date_only"
+    [calendar] = rows(factory, CalendarRow, order["id"])
+    assert calendar.data["tentative"] is True
+    # The old preparation task is withdrawn and no new one is made without a time.
+    [task] = rows(factory, TaskRow, order["id"])
+    assert task.id == old_task.id and task.data["state"] == "cancelled"
+    assert [d["open_items"] for d in drafts(client, order["id"])] == [["missing_time"]]
+
+
+def test_open_items_are_read_from_the_end_of_the_trigger():
+    from gigmate.approvals import open_items_from_trigger
+
+    assert open_items_from_trigger("open_items:o1:v3:missing_time+missing_address") == [
+        "missing_time",
+        "missing_address",
+    ]
+    assert open_items_from_trigger("open_items:o1:extra:segment:r2:verify_address") == [
+        "verify_address"
+    ]
+    assert open_items_from_trigger("schedule_conflict:c1@2") == []
+    assert open_items_from_trigger("open_items") == []
 
 
 # --- contracts/api-v1.md section 3: open items, customer confirmation, follow-up drafts

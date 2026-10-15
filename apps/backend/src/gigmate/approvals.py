@@ -231,6 +231,19 @@ def open_items_trigger(order, conversation, items, round_of=None):
     return f"open_items:{owner}:{tag}:{'+'.join(items)}"
 
 
+def open_items_from_trigger(trigger):
+    """Reason codes of an ``open_items:<owner>:<tag>:<codes>`` trigger.
+
+    Read from the right so a change to the owner/tag segments cannot shift
+    the codes; any other trigger kind (or a malformed one) has none.
+    """
+    kind, _, rest = trigger.partition(":")
+    if kind != "open_items" or ":" not in rest:
+        return []
+    codes = rest.rpartition(":")[2]
+    return [code for code in codes.split("+") if code]
+
+
 def ask_open_items(db, account_id, order, conversation, round_of=None):
     """Keep one clarification draft per pending order that asks only for open items.
 
@@ -320,11 +333,11 @@ def view(row, reissuable=False):
     if is_due(row):
         data = {**data, "state": "expired"}
         reason = "expired"
-    kind, *parts = row.trigger.split(":")
+    kind = row.trigger.partition(":")[0]
     return {
         **data,
         "trigger": kind,
-        "open_items": parts[2].split("+") if kind == "open_items" else [],
+        "open_items": open_items_from_trigger(row.trigger),
         "closed_reason": reason,
         "closed_note": row.note,
         "reissuable": reissuable and (data["state"], reason) in REISSUABLE,

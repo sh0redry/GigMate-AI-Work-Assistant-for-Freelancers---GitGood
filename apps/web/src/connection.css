@@ -311,26 +311,6 @@
   color: #687d72;
   margin-bottom: 0;
 }
-.demo-controls {
-  background: #fff0d8;
-  padding: 12px 16px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  border-radius: 8px;
-  font-size: 13px;
-}
-.demo-controls > div {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.demo-controls button {
-  font-size: 12px;
-  padding: 7px 10px;
-}
 .connection-empty {
   text-align: center;
 }
@@ -542,4 +522,28 @@
   border: 1px solid #dbe8e2;
   border-radius: 8px;
   margin: 12px 0;
+}
+
+.send-panel {
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid #dbe8e2;
+  border-radius: 8px;
+}
+.send-panel label {
+  display: block;
+  margin: 10px 0;
+}
+.send-panel pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.send-preview {
+  max-width: 100%;
+  max-height: 320px;
+}
+.send-review {
+  padding: 12px;
+  background: #f4f8f6;
+  border-radius: 8px;
 }

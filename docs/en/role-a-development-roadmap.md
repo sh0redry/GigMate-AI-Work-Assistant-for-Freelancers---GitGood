@@ -1,5 +1,7 @@
 # Role A technical evolution and unified acceptance
 
+2026-10-10 authorized next batch: [owned multi-type sending](role-a-waha-sending.md) implements separate send consent, private uploads, immutable manual/assisted approval, exact-payload automatic policies, durable outbox and uncertainty handling. B real drafting/triggers, live phone rendering and PostgreSQL/E acceptance remain pending. This supersedes earlier blanket sending deferrals only within ADR 0007's explicitly authorized scope; no Cloud API or generic business execution is added.
+
 2026-10-10 media batch 2: A now supplies frozen provider sending time/merchant-selected timezone and reviewed read-only evidence. B must implement real MediaProcessor.process/reconcile separately from text extraction; C must agree attachment provenance and revalidate before business promotion. Missing time stays unresolved, and this does not enable external sending. See [media protocol](role-a-media-ingestion.md).
 
 2026-10-10 authorized media batch: [A ingestion and B handoff](role-a-media-ingestion.md) implements explicit original-file reads/private preview, durable processing stages and source review. User confirmed B has no real adapter; B owns OCR/ASR/parsing/GenAI and business interpretation. This is A infrastructure delivery, not completion of real AI or approved sending. Own-account file-format acceptance and B integration remain the next unified gates.
