@@ -1,3 +1,4 @@
+import type { OrderCommands } from "./order-command-api";
 import { apiBase } from "./environment.ts";
 import type { components } from "./generated/api";
 
@@ -134,7 +135,7 @@ export async function allPages<T>(
   return items;
 }
 
-export type ReplaySnapshot = {
+export type BusinessSnapshot = {
   orders: Order[];
   tasks: Task[];
   calendar: Calendar[];
@@ -144,13 +145,15 @@ export type ReplaySnapshot = {
   contextVersion: number;
   contexts?: Record<string, number>;
 };
-export type ReplayApi = {
-  load(selected: string, signal: AbortSignal): Promise<ReplaySnapshot>;
-  replay(scenario: "reschedule" | "available"): Promise<boolean>;
-  confirm(snapshot: ReplaySnapshot, change: Change): Promise<void>;
+export type BusinessApi = {
+  load(selected: string, signal: AbortSignal): Promise<BusinessSnapshot>;
+  confirm(snapshot: BusinessSnapshot, change: Change): Promise<void>;
 };
 
-export function replayApi(request: RequestApi): ReplayApi {
+export function businessApi(
+  request: RequestApi,
+  commands?: OrderCommands,
+): BusinessApi {
   return {
     async load(selected, signal) {
       const [orders, tasks, calendar] = await Promise.all([
@@ -223,12 +226,6 @@ export function replayApi(request: RequestApi): ReplayApi {
         contexts: Object.fromEntries(timelines.map((t) => [t.id, t.version])),
       };
     },
-    async replay(scenario) {
-      const result = await request<
-        Detail<components["schemas"]["ReplayResult"]>
-      >("/replay", { scenario });
-      return result.data.duplicate;
-    },
     async confirm(snapshot, change) {
       const order = snapshot.orders.find((o) => o.id === snapshot.selected);
       if (!order || order.id !== change.work_order_id)
@@ -242,11 +239,29 @@ export function replayApi(request: RequestApi): ReplayApi {
           "APPROVAL_STALE",
           "来源对话或消息版本无法核对，请刷新并重新审核。",
         );
-      await request(`/work-orders/${order.id}/changes/${change.id}/confirm`, {
+      const body = {
         expected_version: order.version,
         expected_context_version: context,
-        apply_calendar_update: true,
-      });
+        apply_calendar_update: true as const,
+      };
+      if (commands)
+        await commands.submit({
+          kind: "confirm",
+          orderId: order.id,
+          changeId: change.id,
+          review: {
+            summary: order.summary,
+            oldValue: change.old_value,
+            newValue: change.new_value,
+            sources: change.sources,
+          },
+          body,
+        });
+      else
+        await request(
+          `/work-orders/${order.id}/changes/${change.id}/confirm`,
+          body,
+        );
     },
   };
 }
@@ -254,7 +269,7 @@ export function replayApi(request: RequestApi): ReplayApi {
 // ChangeView does not expose conversation_id. Resolve it only from exact canonical
 // source revisions; never guess the first linked conversation for a multi-chat order.
 export function changeContext(
-  snapshot: ReplaySnapshot,
+  snapshot: BusinessSnapshot,
   change: Change,
 ): number | null {
   if (!snapshot.contexts) return snapshot.contextVersion; // legacy single-chat snapshots

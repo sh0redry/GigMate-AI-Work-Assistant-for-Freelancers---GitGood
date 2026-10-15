@@ -1,126 +1,53 @@
 import { defineConfig, type ProxyOptions } from "vite";
-
-type Environment = "real" | "isolated";
-export function developmentEnvironments(
-  env: Record<string, string | undefined>,
-) {
-  const syntheticProvider = env.GIGMATE_SYNTHETIC_PROVIDER === "1";
-  if (![undefined, "0", "1"].includes(env.GIGMATE_SYNTHETIC_PROVIDER))
-    throw new Error("GIGMATE_SYNTHETIC_PROVIDER must be 0 or 1");
-  if (syntheticProvider && !env.GIGMATE_REAL_API_URL)
-    throw new Error("Synthetic provider requires an explicit local API target");
-  if (env.GIGMATE_API_URL && !env.GIGMATE_ISOLATED_API_URL)
-    console.warn(
-      "GIGMATE_API_URL is deprecated and selects the ISOLATED target only. " +
-        "Use GIGMATE_ISOLATED_API_URL for isolated testing, or GIGMATE_REAL_API_URL with GIGMATE_DEFAULT_ENV=real for your actual WAHA backend.",
-    );
-  const targets = {
-    real: env.GIGMATE_REAL_API_URL ?? "http://127.0.0.1:18702",
-    isolated:
-      env.GIGMATE_ISOLATED_API_URL ??
-      env.GIGMATE_API_URL ??
-      "http://127.0.0.1:18000",
-  };
-  for (const target of Object.values(targets)) {
-    if (!/^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(target))
-      throw new Error(
-        "GigMate development targets must be local HTTP backend URLs",
-      );
-    const port = Number(new URL(target).port);
-    if (port < 1 || port > 65535)
-      throw new Error("GigMate backend port must be between 1 and 65535");
-  }
-  if (new URL(targets.real).port === new URL(targets.isolated).port)
+export function developmentTarget(env: Record<string, string | undefined>) {
+  const target = env.GIGMATE_REAL_API_URL ?? "http://127.0.0.1:18702";
+  if (!/^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(target))
     throw new Error(
-      "Real and isolated environments must use separate backend ports and databases",
+      "GigMate development target must be a local HTTP backend URL",
     );
-  const defaultEnvironment = env.GIGMATE_DEFAULT_ENV ?? "isolated";
-  if (defaultEnvironment !== "real" && defaultEnvironment !== "isolated")
-    throw new Error("GIGMATE_DEFAULT_ENV must be real or isolated");
-  if (syntheticProvider && defaultEnvironment !== "real")
-    throw new Error("Synthetic provider requires GIGMATE_DEFAULT_ENV=real");
-  return {
-    targets,
-    defaultEnvironment,
-    syntheticProvider,
-    publicTestAccount: {
-      username: "merchant",
-      password: "demo-only-change-me",
-    },
-  };
+  const port = Number(new URL(target).port);
+  if (port < 1 || port > 65535)
+    throw new Error("GigMate backend port must be between 1 and 65535");
+  return target;
 }
-export function environmentProxy(
-  environment: Environment,
-  target: string,
-): ProxyOptions {
-  const prefix = `/environments/${environment}`;
-  const cookieName = `gigmate_session_${environment}`;
+export function applicationProxy(target: string): ProxyOptions {
   return {
     target,
-    rewrite: (path) => path.slice(prefix.length),
-    cookiePathRewrite: prefix + "/",
     configure(proxy) {
       proxy.on("proxyReq", (request, incoming) => {
-        // Forward only this environment's session, including when paths overlap.
         const cookie = incoming.headers.cookie
           ?.split(";")
-          .map((part) => part.trim())
-          .find((part) => part.startsWith(cookieName + "="));
-        if (cookie)
-          request.setHeader(
-            "cookie",
-            "gigmate_session=" + cookie.slice(cookieName.length + 1),
-          );
+          .map((v) => v.trim())
+          .find((v) => v.startsWith("gigmate_session="));
+        if (cookie) request.setHeader("cookie", cookie);
         else request.removeHeader("cookie");
       });
       proxy.on("proxyRes", (response) => {
-        const cookies = response.headers["set-cookie"];
-        if (cookies)
-          response.headers["set-cookie"] = cookies
-            .filter((cookie) => cookie.startsWith("gigmate_session="))
-            .map((cookie) =>
-              cookie.replace(/^gigmate_session=/, cookieName + "="),
-            );
+        if (response.headers["set-cookie"])
+          response.headers["set-cookie"] = response.headers[
+            "set-cookie"
+          ].filter((v) => v.startsWith("gigmate_session="));
       });
     },
   };
 }
-export function developmentProxies(
-  config: ReturnType<typeof developmentEnvironments>,
-) {
-  return {
-    "/environments/real/api": environmentProxy("real", config.targets.real),
-    ...(config.syntheticProvider
-      ? {}
-      : {
-          "/environments/isolated/api": environmentProxy(
-            "isolated",
-            config.targets.isolated,
-          ),
-        }),
-  };
-}
-export default defineConfig(({ command }) => {
-  const config =
-    command === "serve" ? developmentEnvironments(process.env) : null;
-  return {
-    // Only public loopback destinations, never provider keys/private setup.
-    // Published builds use /api and expose no development credential hints.
-    define: { __GIGMATE_ENVIRONMENTS__: JSON.stringify(config) },
-    server: {
-      host: "127.0.0.1",
-      proxy: config ? developmentProxies(config) : undefined,
-      fs: {
-        deny: [
-          ".env",
-          ".env.*",
-          "*.{crt,pem,key,p12,pfx,cer,der}",
-          ".npmrc",
-          ".yarnrc.yml",
-          "**/.git/**",
-          "**/local-data/**",
-        ],
-      },
+export default defineConfig(({ command }) => ({
+  server: {
+    host: "127.0.0.1",
+    proxy:
+      command === "serve"
+        ? { "/api": applicationProxy(developmentTarget(process.env)) }
+        : undefined,
+    fs: {
+      deny: [
+        ".env",
+        ".env.*",
+        "*.{crt,pem,key,p12,pfx,cer,der}",
+        ".npmrc",
+        ".yarnrc.yml",
+        "**/.git/**",
+        "**/local-data/**",
+      ],
     },
-  };
-});
+  },
+}));

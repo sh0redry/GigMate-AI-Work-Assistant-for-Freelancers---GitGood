@@ -1,5 +1,7 @@
 # Kyrie 的文件地图：先读哪几个，其他以后查
 
+当前交付文件（2026-10-16）：[OrderCreation](../../apps/web/src/OrderCreation.tsx) 画新建表单和客户原文选择；[OrderLifecycle](../../apps/web/src/OrderLifecycle.tsx) 说明状态操作影响；[CalendarWorkspace](../../apps/web/src/CalendarWorkspace.tsx) 画月历／待办和下载按钮；[ReviewWorkspace](../../apps/web/src/ReviewWorkspace.tsx) 摆出人工复核事项；[order-command-api](../../apps/web/src/order-command-api.ts) 保留原编号请求；[features](../../apps/web/src/features.ts) 解释未接通功能。[workspace_api.py](../../apps/backend/src/gigmate/workspace_api.py) 提供按账号读取的辅助接口；[calendar_export.py](../../apps/backend/src/gigmate/calendar_export.py) 写日历文件。main 已包含 #25，当前候选是 `codex/d-final-workspace`；下方完整表保留旧版路径／历史观察。
+
 D-03 新文件：[ApprovalsWorkspace.tsx](../../apps/web/src/ApprovalsWorkspace.tsx) 画核对与历史页面；[approvals-api.ts](../../apps/web/src/approvals-api.ts) 请求后端，并记住断网前那笔原请求；[approval-view.ts](../../apps/web/src/approval-view.ts) 解释状态和为什么不能批准。它们在待评审的 D-03 分支，不是 main 的文件。
 
 更新：2026-10-12。[English atlas](../en/kyrie-file-atlas.md) · [从零学习手册](kyrie-learning-guide.md)。
@@ -138,7 +140,7 @@ D-03 新文件：[ApprovalsWorkspace.tsx](../../apps/web/src/ApprovalsWorkspace.
 | [apps/web/local-pairing.test.mjs](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/blob/c702f0c/apps/web/local-pairing.test.mjs) | 旧开发桥路由/QR/异常回归；不证明手机配对 | D/E | 历史退役 |
 | [apps/web/package-lock.json](../../apps/web/package-lock.json) | 工具自动记录的精确安装版本，交给 npm 维护 | D | 两版 |
 | [apps/web/package.json](../../apps/web/package.json) | 前端要安装什么工具，以及 npm run 后可用的命令 | D | 两版 |
-| [apps/web/replay-store.test.mjs](../../apps/web/replay-store.test.mjs) | 回放订阅、异步竞态、登录/提议/确认状态回归 | D/E | 两版 |
+| [apps/web/business-store.test.mjs](../../apps/web/business-store.test.mjs) | 回放订阅、异步竞态、登录/提议/确认状态回归 | D/E | 两版 |
 | [apps/web/src/ChatChoices.tsx](../../apps/web/src/ChatChoices.tsx) | 把已载入聊天画成可勾选的行；翻页不丢勾选 | D | main 新增 |
 | [apps/web/src/ConnectionWorkspace.tsx](../../apps/web/src/ConnectionWorkspace.tsx) | 连接页：看状态、显示真实扫码图、保存或撤销聊天授权 | D | 两版 |
 | [apps/web/src/ReplayWorkspace.tsx](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/blob/bbb0074/apps/web/src/ReplayWorkspace.tsx) | 旧工单页面；D-02 用 WorkOrderWorkspace 替代，点这里查 main 历史 | D | main 历史 |
@@ -149,7 +151,7 @@ D-03 新文件：[ApprovalsWorkspace.tsx](../../apps/web/src/ApprovalsWorkspace.
 | [apps/web/src/connection.css](../../apps/web/src/connection.css) | 连接页和聊天列表的布局与外观；旧演示样式已移除 | D | 两版 |
 | [apps/web/src/generated/api.d.ts](../../apps/web/src/generated/api.d.ts) | 工具生成的数据说明；从后端说明生成，不手改 | A/B/C/D | 两版 |
 | [apps/web/src/main.tsx](../../apps/web/src/main.tsx) | 启动网页；新整理版把登录和切换页面交给 App.tsx | D | 两版 |
-| [apps/web/src/replay-store.ts](../../apps/web/src/replay-store.ts) | 记住工单页正在读／写什么；防止慢的旧答复覆盖新选择，历史名字仍叫 ReplayStore | D | 两版 |
+| [apps/web/src/business-store.ts](../../apps/web/src/business-store.ts) | 记住工单页正在读／写什么；防止慢的旧答复覆盖新选择，现名 BusinessStore，已移除虚构输入操作 | D | 两版 |
 | [apps/web/src/style.css](../../apps/web/src/style.css) | 网页整体的颜色、布局、文字换行和窄屏调整 | D | 两版 |
 | [apps/web/src/waha-live-api.ts](../../apps/web/src/waha-live-api.ts) | 把连接和授权请求送给后端；答复丢失时核对原请求 | D | main 新增 |
 | [apps/web/src/waha-sync-api.ts](../../apps/web/src/waha-sync-api.ts) | 向后端查询消息和有限历史导入的进度 | A/D | main 新增 |

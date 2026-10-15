@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { replayApi, changeContext } from "./src/workspace-api.ts";
-import { canConfirm } from "./src/replay-store.ts";
+import { businessApi, changeContext } from "./src/workspace-api.ts";
+import { canConfirm } from "./src/business-store.ts";
 import {
   conflictLabel,
   filterOrders,
@@ -28,7 +28,7 @@ const snapshot = () => ({
 });
 test("every linked conversation/page is loaded and confirmation uses the source conversation, not the first", async () => {
   const sent = [];
-  const api = replayApi(async (path, body) => {
+  const api = businessApi(async (path, body) => {
     sent.push({ path, body });
     if (body) return { data: {} };
     if (path.startsWith("/work-orders/order/changes"))
@@ -72,7 +72,7 @@ test("every linked conversation/page is loaded and confirmation uses the source 
 });
 test("missing, revoked or mixed-conversation sources fail closed before confirmation POST", async () => {
   let writes = 0;
-  const api = replayApi(async () => {
+  const api = businessApi(async () => {
     writes++;
     return { data: {} };
   });
@@ -107,7 +107,7 @@ test("missing, revoked or mixed-conversation sources fail closed before confirma
   assert.equal(writes, 0);
 });
 test("a denied later conversation never returns a partially writable snapshot", async () => {
-  const api = replayApi(async (path) => {
+  const api = businessApi(async (path) => {
     if (path.startsWith("/work-orders?"))
       return {
         items: [{ id: "order", conversation_ids: ["c1", "c2"] }],

@@ -27,6 +27,7 @@
 | [WhatsApp 连接与消息获取](whatsapp-connection-flow.md) | 用户扫码、会话白名单、实时事件和历史同步 |
 | [A 的技术开发演进](role-a-development-roadmap.md) | 完整批次开发、依赖、异常测试和统一验收 |
 | [A 的异常恢复验收](role-a-recovery-acceptance.md) | 分组件健康、故障恢复、遗漏人工核对与 E 可复现测试 |
+| [D 最终网页候选验收](role-d-final-acceptance.md) | 当前页面、日历导出、未接通依赖与实际证据 |
 | [D 前端模块计划](role-d-development-roadmap.md) | D-01 至 D-05、接口依赖与范围 |
 | [D-02 业务工作台验收](role-d-stage2-acceptance.md) | 当前功能、异常保护与实际证据 |
 | [前端使用说明](role-d-frontend-user-guide.md) | 连接、业务核对与回放操作 |

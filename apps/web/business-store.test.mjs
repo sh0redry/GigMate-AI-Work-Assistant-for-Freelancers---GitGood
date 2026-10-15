@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  ReplayStore,
-  SAMPLE_ORDER_ID,
+  BusinessStore,
   canConfirm,
   changePresentation,
-} from "./src/replay-store.ts";
+} from "./src/business-store.ts";
 
+const SAMPLE_ORDER_ID = "00000000-0000-4000-8000-000000000003";
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 const snapshot = (selected = SAMPLE_ORDER_ID) => ({
   orders: [{ id: selected, version: 3 }],
   selected,
-  changes: [],
+  changes: [proposal()],
   messages: [],
   tasks: [],
   calendar: [],
@@ -36,19 +36,15 @@ function deferred() {
   return { promise, resolve, reject };
 }
 function setup(overrides = {}, now) {
-  const calls = { replay: 0, confirm: 0, expired: 0 };
+  const calls = { confirm: 0, expired: 0 };
   const api = {
     load: async (selected) => snapshot(selected || SAMPLE_ORDER_ID),
-    replay: async () => {
-      calls.replay++;
-      return false;
-    },
     confirm: async () => {
       calls.confirm++;
     },
     ...overrides,
   };
-  const store = new ReplayStore(api, () => calls.expired++, now);
+  const store = new BusinessStore(api, () => calls.expired++, now);
   store.start();
   return { store, calls, api };
 }
@@ -100,8 +96,8 @@ test("offline reads retain a marked snapshot, block writes, and clear errors on 
   await store.refresh();
   assert.equal(store.getSnapshot().data.selected, SAMPLE_ORDER_ID);
   assert.equal(store.getSnapshot().stale, true);
-  await store.replay("available", "merchant");
-  assert.equal(calls.replay, 0);
+  await store.confirm("change");
+  assert.equal(calls.confirm, 0);
   await flush();
   api.load = async () => snapshot();
   await store.refresh();
@@ -109,38 +105,19 @@ test("offline reads retain a marked snapshot, block writes, and clear errors on 
   assert.equal(store.ready(), true);
   store.dispose();
 });
-test("fixed input is blocked on a different order/account and reports duplicate separately", async () => {
-  const { store, calls, api } = setup();
-  await flush();
-  store.select("other");
-  await flush();
-  await store.replay("available", "merchant");
-  store.select(SAMPLE_ORDER_ID);
-  await flush();
-  await store.replay("available", "other");
-  assert.equal(calls.replay, 0);
-  api.replay = async () => {
-    calls.replay++;
-    return true;
-  };
-  await store.replay("available", "merchant");
-  assert.match(store.getSnapshot().notice, /已经处理过/);
-  assert.equal(calls.replay, 1);
-  store.dispose();
-});
 test("double click and selection during an unresolved mutation never dispatch a second write", async () => {
   const write = deferred();
   const { store, calls } = setup({
-    replay: () => {
-      calls.replay++;
+    confirm: () => {
+      calls.confirm++;
       return write.promise;
     },
   });
   await flush();
-  const first = store.replay("available", "merchant");
-  await store.replay("available", "merchant");
+  const first = store.confirm("change");
+  await store.confirm("change");
   store.select("other");
-  assert.equal(calls.replay, 1);
+  assert.equal(calls.confirm, 1);
   assert.equal(store.getSnapshot().selected, SAMPLE_ORDER_ID);
   write.resolve(false);
   await first;
@@ -149,18 +126,18 @@ test("double click and selection during an unresolved mutation never dispatch a 
 });
 test("unknown write outcome is not retried by background refresh", async () => {
   const { store, calls } = setup({
-    replay: async () => {
-      calls.replay++;
+    confirm: async () => {
+      calls.confirm++;
       throw new Error("结果暂无法确认");
     },
   });
   await flush();
-  await store.replay("available", "merchant");
+  await store.confirm("change");
   assert.equal(store.getSnapshot().stale, true);
   await store.refresh();
   store.poll();
   await flush();
-  assert.equal(calls.replay, 1);
+  assert.equal(calls.confirm, 1);
   store.dispose();
 });
 test("a snapshot older than ten seconds requires a read before any write", async () => {
@@ -168,8 +145,8 @@ test("a snapshot older than ten seconds requires a read before any write", async
   const { store, calls } = setup({}, () => now);
   await flush();
   now += 11000;
-  await store.replay("available", "merchant");
-  assert.equal(calls.replay, 0);
+  await store.confirm("change");
+  assert.equal(calls.confirm, 0);
   await flush();
   store.dispose();
 });

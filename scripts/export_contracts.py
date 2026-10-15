@@ -16,6 +16,8 @@ from pydantic import TypeAdapter  # noqa: E402
 def domain_schema():
     definitions = {}
     models = [
+        c.WorkspaceCapabilities,
+        c.ReviewItem,
         c.SourceRef,
         c.ConnectorStatus,
         c.ConnectorReceipt,

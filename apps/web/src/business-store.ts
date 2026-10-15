@@ -1,14 +1,12 @@
 import {
   changeContext,
   type Change,
-  type ReplayApi,
-  type ReplaySnapshot,
+  type BusinessApi,
+  type BusinessSnapshot,
 } from "./workspace-api.ts";
 
-// The two implemented replay inputs are bound to this fictional fixture, not the selected row.
-export const SAMPLE_ORDER_ID = "00000000-0000-4000-8000-000000000003";
-export type ReplayState = {
-  data: ReplaySnapshot | null;
+export type BusinessState = {
+  data: BusinessSnapshot | null;
   selected: string;
   loading: boolean;
   mutating: boolean;
@@ -17,8 +15,8 @@ export type ReplayState = {
   notice: string;
   updatedAt: number;
 };
-export class ReplayStore {
-  private state: ReplayState = {
+export class BusinessStore {
+  private state: BusinessState = {
     data: null,
     selected: "",
     loading: false,
@@ -32,10 +30,10 @@ export class ReplayStore {
   private controller: AbortController | null = null;
   private generation = 0;
   private active = false;
-  private api: ReplayApi;
+  private api: BusinessApi;
   private expired: () => void;
   private now: () => number;
-  constructor(api: ReplayApi, expired: () => void, now = Date.now) {
+  constructor(api: BusinessApi, expired: () => void, now = Date.now) {
     this.api = api;
     this.expired = expired;
     this.now = now;
@@ -47,7 +45,7 @@ export class ReplayStore {
       this.listeners.delete(listener);
     };
   };
-  private patch(value: Partial<ReplayState>) {
+  private patch(value: Partial<BusinessState>) {
     this.state = { ...this.state, ...value };
     for (const listener of this.listeners) listener();
   }
@@ -163,15 +161,6 @@ export class ReplayStore {
         }
       }
     }
-  }
-  replay(scenario: "reschedule" | "available", username: string) {
-    if (username !== "merchant" || this.state.selected !== SAMPLE_ORDER_ID)
-      return Promise.resolve();
-    return this.mutate(async () =>
-      (await this.api.replay(scenario))
-        ? "这条样例已经处理过，没有重复创建消息、提议或待办。"
-        : "样例消息已进入队列。请等待提议出现，正式安排尚未改变。",
-    );
   }
   confirm(id: string) {
     const data = this.state.data;

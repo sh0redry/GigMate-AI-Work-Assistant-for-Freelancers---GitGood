@@ -48,7 +48,7 @@ const errors: Record<string, string> = {
   WAHA_OPERATION_FAILED: "操作未完成，请检查接入服务并核对状态。",
   WAHA_CONTROL_DISABLED: "接入后端未配置，请先准备本地接入服务。",
   WAHA_CONTROL_CONFIG_INVALID: "接入配置不匹配，请检查后端私有配置。",
-  CONNECTOR_DISABLED: "尚未配置扫码服务，请按联调文档初始化本机环境。",
+  CONNECTOR_DISABLED: "扫码服务尚未配置，请联系维护者。",
   CONNECTOR_CONFIG_INVALID: "连接配置与账号不匹配，请联系接入负责人检查。",
   WAHA_RESOURCE_NOT_FOUND: "WhatsApp 会话尚未创建，请先准备本机服务后刷新。",
   WAHA_UNAVAILABLE: "WhatsApp 服务暂不可用，请检查服务后刷新。",
@@ -63,8 +63,7 @@ const errors: Record<string, string> = {
     "无法读取本机扫码服务，请检查 Docker 和本地环境后刷新。",
   LOCAL_PAIRING_BUSY: "正在获取本机二维码，请稍后刷新。",
   LOCAL_BINDING_MISMATCH: "当前连接与本机配置不匹配，请联系接入负责人检查。",
-  LOCAL_CONFIG_INVALID_OR_MISSING:
-    "本机扫码环境尚未配置，请按联调文档准备后刷新。",
+  LOCAL_CONFIG_INVALID_OR_MISSING: "扫码服务尚未准备好，请联系维护者后刷新。",
   CONSENT_REVOKED: "连接授权已暂停，二维码已隐藏。",
   LOCAL_PYTHON_UNAVAILABLE:
     "未找到项目 Python 环境，请按本地启动指南准备 .venv。",

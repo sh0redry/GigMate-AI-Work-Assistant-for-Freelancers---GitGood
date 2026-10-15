@@ -17,8 +17,8 @@ const stages: Record<string, string> = {
   reconciling: "只读核对模型结果",
 };
 const errors: Record<string, string> = {
-  MEDIA_API_NOT_INSTALLED: "本机后端尚未升级媒体接口，请先按本批联调文档升级。",
-  MEDIA_STORAGE_NOT_CONFIGURED: "本机尚未启用附件存储，请按媒体联调文档配置。",
+  MEDIA_API_NOT_INSTALLED: "后台服务暂不支持附件操作，请联系维护者更新。",
+  MEDIA_STORAGE_NOT_CONFIGURED: "附件存储尚未启用，请联系维护者。",
   MEDIA_PROCESSOR_NOT_CONFIGURED:
     "B 的 OCR / 转写 / 解析 / GenAI 处理器尚未配置。原文件可先预览。",
   MEDIA_PROCESSOR_INVALID_RESULT:

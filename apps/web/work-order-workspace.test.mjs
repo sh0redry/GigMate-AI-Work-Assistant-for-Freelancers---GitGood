@@ -17,21 +17,28 @@ const directory = await mkdtemp(join(tmpdir(), "gigmate-d02-dom-"));
 const require = createRequire(import.meta.url);
 for (const name of [
   "WorkOrderWorkspace",
-  "replay-store",
+  "OrderLifecycle",
+  "order-command-api",
+  "features",
+  "business-store",
   "environment",
   "workspace-api",
   "work-order-view",
 ]) {
   const source = await readFile(
     new URL(
-      `./src/${name}.${name === "WorkOrderWorkspace" ? "tsx" : "ts"}`,
+      `./src/${name}.${["WorkOrderWorkspace", "OrderLifecycle"].includes(name) ? "tsx" : "ts"}`,
       import.meta.url,
     ),
     "utf8",
   );
   const code = ts
     .transpileModule(source, {
-      fileName: name + (name === "WorkOrderWorkspace" ? ".tsx" : ".ts"),
+      fileName:
+        name +
+        (["WorkOrderWorkspace", "OrderLifecycle"].includes(name)
+          ? ".tsx"
+          : ".ts"),
       compilerOptions: {
         target: ts.ScriptTarget.ES2022,
         module: ts.ModuleKind.ESNext,

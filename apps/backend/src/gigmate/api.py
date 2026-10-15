@@ -78,6 +78,7 @@ from gigmate.waha_probe import MAX_BODY, _non_json_constant, _pairs, verify_hmac
 from gigmate.waha_recovery import issue_view, record_rejection
 from gigmate.waha_send_api import install as install_sending
 from gigmate.workorders import command_cache, confirm, owned, save_result
+from gigmate.workspace_api import install as install_workspace
 
 app = FastAPI(title="GigMate replay skeleton", version="0.2.0")
 
@@ -1280,3 +1281,4 @@ def replay_custom(
 
 
 install_sending(app, database, setup_actor, detail, page, sending_io_actor)
+install_workspace(app, database, actor, detail, page, conversation_info)

@@ -1,211 +1,76 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { execFileSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-import { createServer as httpServer } from "node:http";
+import { createServer } from "node:http";
 import { createServer as viteServer } from "vite";
-import {
-  developmentEnvironments,
-  developmentProxies,
-  environmentProxy,
-} from "./vite.config.ts";
-import { currentEnvironment, apiBase } from "./src/environment.ts";
+import { execFileSync } from "node:child_process";
+import { developmentTarget, applicationProxy } from "./vite.config.ts";
+import { apiBase } from "./src/environment.ts";
 import { testPython } from "./test-python.mjs";
-
-test("legacy target selection warns about its isolated-only meaning without changing routing", (context) => {
-  const warning = context.mock.method(console, "warn", () => {});
-  const config = developmentEnvironments({
-    GIGMATE_API_URL: "http://127.0.0.1:18712",
-  });
-  assert.equal(config.defaultEnvironment, "isolated");
-  assert.equal(config.targets.isolated, "http://127.0.0.1:18712");
-  assert.match(warning.mock.calls[0].arguments[0], /ISOLATED target only/);
-  developmentEnvironments({
-    GIGMATE_API_URL: "http://127.0.0.1:18712",
-    GIGMATE_ISOLATED_API_URL: "http://127.0.0.1:18000",
-  });
-  assert.equal(warning.mock.callCount(), 1);
-});
-
-test("current A acceptance shell commands select their real ingress, including custom ports", async () => {
-  for (const language of ["en", "zh"]) {
-    for (const name of ["integration", "message-sync"]) {
-      const guide = await readFile(
-        new URL(
-          `../../docs/${language}/role-a-${name}-acceptance.md`,
-          import.meta.url,
-        ),
-        "utf8",
-      );
-      assert.doesNotMatch(guide, /GIGMATE_API_URL/);
-      assert.match(guide, /GIGMATE_DEFAULT_ENV[= ]/);
-      const commands = [
-        ...guide.matchAll(
-          /GIGMATE_REAL_API_URL\s*=\s*['"]?(http:\/\/127\.0\.0\.1:\d+)/g,
-        ),
-      ];
-      assert.ok(
-        commands.length > 0,
-        `${language}/${name} needs a copyable command`,
-      );
-      for (const command of commands) {
-        const ingress = command[1];
-        const startup = guide.slice(command.index).split("npm run dev")[0];
-        const selected = startup.match(
-          /GIGMATE_DEFAULT_ENV\s*=\s*['"]?(real|isolated)/,
-        );
-        assert.ok(
-          selected,
-          `${language}/${name} must select a startup environment`,
-        );
-        assert.equal(selected[1], "real");
-        const config = developmentEnvironments({
-          GIGMATE_REAL_API_URL: ingress,
-          GIGMATE_DEFAULT_ENV: selected[1],
-        });
-        assert.equal(config.targets[config.defaultEnvironment], ingress);
-        assert.notEqual(config.targets.real, config.targets.isolated);
-      }
-    }
-  }
-  const custom = developmentEnvironments({
-    GIGMATE_REAL_API_URL: "http://127.0.0.1:18712",
-    GIGMATE_DEFAULT_ENV: "real",
-  });
+test("development has exactly one explicit local business target", () => {
+  assert.equal(developmentTarget({}), "http://127.0.0.1:18702");
   assert.equal(
-    custom.targets[custom.defaultEnvironment],
-    "http://127.0.0.1:18712",
+    developmentTarget({ GIGMATE_REAL_API_URL: "http://localhost:18802" }),
+    "http://localhost:18802",
   );
 });
-
-test("setup runner's actual frontend configuration pins its synthetic ingress and ignores inherited destinations", () => {
-  const script = fileURLToPath(
-    new URL("../../scripts/check_waha_setup.py", import.meta.url),
-  );
-  const env = JSON.parse(
-    execFileSync(
-      testPython(),
-      [
-        "-c",
-        "import json, runpy, sys; module = runpy.run_path(sys.argv[1]); print(json.dumps(module['synthetic_frontend_environment'](json.loads(sys.argv[2]))))",
-        script,
-        JSON.stringify({
-          PATH: process.env.PATH,
-          GIGMATE_REAL_API_URL: "http://127.0.0.1:18702",
-          GIGMATE_ISOLATED_API_URL: "http://127.0.0.1:18000",
-          GIGMATE_API_URL: "http://127.0.0.1:18712",
-          GIGMATE_DEFAULT_ENV: "isolated",
-          WAHA_CONTROL_CONFIG: "synthetic-private-config",
-        }),
-      ],
-      { encoding: "utf8" },
-    ),
-  );
-  const config = developmentEnvironments(env);
-  assert.equal(config.syntheticProvider, true);
-  assert.equal(config.defaultEnvironment, "real");
-  assert.equal(config.targets.real, "http://127.0.0.1:18802");
-  const proxies = developmentProxies(config);
-  assert.deepEqual(Object.keys(proxies), ["/environments/real/api"]);
+test("unsafe destinations and ports fail clearly", () => {
+  for (const url of [
+    "https://example.com",
+    "http://127.0.0.1:0",
+    "http://127.0.0.1:65536",
+    "http://user:password@localhost:8000",
+    "http://localhost:8000/path",
+  ])
+    assert.throws(() => developmentTarget({ GIGMATE_REAL_API_URL: url }));
+});
+test("old isolated settings cannot select the delivery backend", () => {
   assert.equal(
-    proxies["/environments/real/api"].target,
-    "http://127.0.0.1:18802",
-  );
-  assert.equal(env.GIGMATE_API_URL, undefined);
-  assert.equal(env.WAHA_CONTROL_CONFIG, undefined);
-});
-
-test("synthetic provider mode fails without its explicit backend and real route selection", () => {
-  assert.throws(
-    () =>
-      developmentEnvironments({
-        GIGMATE_SYNTHETIC_PROVIDER: "1",
-        GIGMATE_DEFAULT_ENV: "real",
-      }),
-    /explicit local API/,
-  );
-  assert.throws(
-    () =>
-      developmentEnvironments({
-        GIGMATE_SYNTHETIC_PROVIDER: "1",
-        GIGMATE_REAL_API_URL: "http://127.0.0.1:18802",
-      }),
-    /DEFAULT_ENV=real/,
-  );
-  assert.throws(
-    () => developmentEnvironments({ GIGMATE_SYNTHETIC_PROVIDER: "true" }),
-    /must be 0 or 1/,
+    developmentTarget({
+      GIGMATE_API_URL: "http://localhost:18000",
+      GIGMATE_ISOLATED_API_URL: "http://localhost:18001",
+      GIGMATE_DEFAULT_ENV: "isolated",
+    }),
+    "http://127.0.0.1:18702",
   );
 });
-
-test("development destinations reject remote, same-port and invalid default configuration", () => {
-  assert.equal(developmentEnvironments({}).defaultEnvironment, "isolated");
-  assert.throws(
-    () =>
-      developmentEnvironments({ GIGMATE_REAL_API_URL: "https://example.com" }),
-    /local HTTP/,
-  );
-  assert.throws(
-    () =>
-      developmentEnvironments({
-        GIGMATE_REAL_API_URL: "http://localhost:18000",
-      }),
-    /separate backend/,
-  );
-  assert.throws(
-    () => developmentEnvironments({ GIGMATE_DEFAULT_ENV: "production" }),
-    /real or isolated/,
-  );
-  assert.throws(
-    () =>
-      developmentEnvironments({ GIGMATE_REAL_API_URL: "http://127.0.0.1:0" }),
-    /port/,
-  );
-  assert.equal(
-    developmentEnvironments({ GIGMATE_API_URL: "http://127.0.0.1:18012" })
-      .targets.isolated,
-    "http://127.0.0.1:18012",
-  );
-});
-test("published deployment uses its own API without a development environment", () => {
-  assert.equal(currentEnvironment(), null);
+test("browser path and injected legacy settings cannot redirect API requests", () => {
+  globalThis.window = { location: { pathname: "/environments/isolated/" } };
+  globalThis.__GIGMATE_ENVIRONMENTS__ = { defaultEnvironment: "isolated" };
   assert.equal(apiBase(), "/api/v1");
+  delete globalThis.window;
+  delete globalThis.__GIGMATE_ENVIRONMENTS__;
 });
-test("real HTTP proxies isolate same-named sessions, preserve CSRF/origin and rewrite logout cookies", async () => {
-  const servers = [];
-  let vite;
+test("synthetic tooling filters private configuration and passes only one loopback target", () => {
+  const value = execFileSync(
+    testPython(),
+    [
+      "-c",
+      'from scripts.check_waha_setup import synthetic_frontend_environment; import json; print(json.dumps(synthetic_frontend_environment({"DATABASE_URL":"secret","WAHA_CONTROL_CONFIG":"secret","OPENAI_API_KEY":"secret","GIGMATE_REAL_API_URL":"http://localhost:18702"})))',
+    ],
+    { cwd: new URL("../../", import.meta.url), encoding: "utf8" },
+  );
+  assert.deepEqual(JSON.parse(value), {
+    GIGMATE_REAL_API_URL: "http://127.0.0.1:18802",
+    CI: "1",
+  });
+});
+async function withProxy(run) {
+  let backend, vite;
+  const received = [];
   try {
-    const targets = {};
-    for (const environment of ["real", "isolated"]) {
-      const server = httpServer((request, response) => {
-        response.setHeader("content-type", "application/json");
-        if (request.url.endsWith("/login"))
-          response.setHeader(
-            "set-cookie",
-            "gigmate_session=synthetic-" +
-              environment +
-              "; Path=/; HttpOnly; SameSite=Strict",
-          );
-        if (request.url.endsWith("/logout"))
-          response.setHeader(
-            "set-cookie",
-            "gigmate_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict",
-          );
-        response.end(
-          JSON.stringify({
-            environment,
-            path: request.url,
-            cookie: request.headers.cookie ?? null,
-            csrf: request.headers["x-csrf-token"],
-            origin: request.headers.origin,
-          }),
-        );
-      });
-      servers.push(server);
-      await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-      targets[environment] = "http://127.0.0.1:" + server.address().port;
-    }
+    backend = createServer((req, res) => {
+      received.push(req.url);
+      if (req.url.endsWith("login"))
+        res.setHeader("set-cookie", [
+          "gigmate_session=synthetic; Path=/; HttpOnly; SameSite=Strict",
+          "unrelated=secret",
+        ]);
+      res.setHeader("content-type", "application/json");
+      res.end(
+        JSON.stringify({ path: req.url, cookie: req.headers.cookie ?? null }),
+      );
+    });
+    await new Promise((r) => backend.listen(0, "127.0.0.1", r));
     vite = await viteServer({
       configFile: false,
       logLevel: "silent",
@@ -213,58 +78,42 @@ test("real HTTP proxies isolate same-named sessions, preserve CSRF/origin and re
         host: "127.0.0.1",
         port: 0,
         proxy: {
-          "/environments/real/api": environmentProxy("real", targets.real),
-          "/environments/isolated/api": environmentProxy(
-            "isolated",
-            targets.isolated,
+          "/api": applicationProxy(
+            "http://127.0.0.1:" + backend.address().port,
           ),
         },
       },
     });
     await vite.listen();
-    const origin = "http://127.0.0.1:" + vite.httpServer.address().port;
-    for (const environment of ["real", "isolated"]) {
-      const base = origin + `/environments/${environment}/api/v1`;
-      const login = await fetch(base + "/auth/login", { method: "POST" });
-      const cookie = login.headers.get("set-cookie");
-      assert.match(
-        cookie,
-        new RegExp(`^gigmate_session_${environment}=synthetic-${environment};`),
-      );
-      assert.match(cookie, new RegExp(`Path=/environments/${environment}/`));
-      assert.match(cookie, /HttpOnly/);
-      assert.match(cookie, /SameSite=Strict/);
-      const result = await fetch(base + "/work-orders", {
-        headers: {
-          cookie:
-            "gigmate_session=legacy; gigmate_session_real=synthetic-real; gigmate_session_isolated=synthetic-isolated; provider-secret=do-not-forward",
-          "x-csrf-token": "synthetic-csrf",
-          origin,
-        },
-      });
-      assert.deepEqual(await result.json(), {
-        environment,
-        path: "/api/v1/work-orders",
-        cookie: "gigmate_session=synthetic-" + environment,
-        csrf: "synthetic-csrf",
-        origin,
-      });
-      const legacy = await fetch(base + "/work-orders", {
-        headers: { cookie: "gigmate_session=legacy" },
-      });
-      assert.equal((await legacy.json()).cookie, null);
-      const logout = await fetch(base + "/auth/logout", { method: "POST" });
-      assert.match(
-        logout.headers.get("set-cookie"),
-        new RegExp(
-          `^gigmate_session_${environment}=; Path=/environments/${environment}/; Max-Age=0`,
-        ),
-      );
-    }
+    await run("http://127.0.0.1:" + vite.httpServer.address().port, received);
   } finally {
-    if (vite) await vite.close();
-    await Promise.all(
-      servers.map((server) => new Promise((resolve) => server.close(resolve))),
-    );
+    await vite?.close();
+    if (backend) await new Promise((r) => backend.close(r));
   }
-});
+}
+test("single proxy preserves session attributes and forwards only the app session", async () =>
+  withProxy(async (origin) => {
+    const login = await fetch(origin + "/api/v1/auth/login");
+    assert.match(
+      login.headers.get("set-cookie"),
+      /gigmate_session=synthetic; Path=\/; HttpOnly; SameSite=Strict/,
+    );
+    assert.doesNotMatch(login.headers.get("set-cookie"), /unrelated/);
+    const response = await fetch(origin + "/api/v1/work-orders", {
+      headers: {
+        cookie:
+          "other=secret; gigmate_session=synthetic; gigmate_session_real=old",
+      },
+    });
+    assert.deepEqual(await response.json(), {
+      path: "/api/v1/work-orders",
+      cookie: "gigmate_session=synthetic",
+    });
+  }));
+test("legacy environment URLs never reach a second backend", async () =>
+  withProxy(async (origin, received) => {
+    await fetch(origin + "/environments/isolated/api/v1/work-orders");
+    assert.equal(received.length, 0);
+    await fetch(origin + "/api/v1/work-orders");
+    assert.deepEqual(received, ["/api/v1/work-orders"]);
+  }));

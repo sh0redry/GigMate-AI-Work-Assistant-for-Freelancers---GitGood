@@ -19,6 +19,9 @@ export const deliveryStates: Record<Action["delivery_status"], string> = {
   unknown: "送达结果未知",
 };
 export const closedReasons: Record<string, string> = {
+  resolved: "缺项已补齐，不再需要此问题",
+  order_completed: "工单已完成",
+  order_cancelled: "工单已取消",
   superseded: "新消息使旧草稿失效",
   source_changed: "原文已编辑或撤回",
   answered: "已有可用时间，不再需要此问题",
@@ -100,4 +103,32 @@ export function reissueProblem(data: ApprovalSnapshot) {
   )
     return "这一轮聊天已经重新提问过。等待新消息后再核对，避免重复请求。";
   return "";
+}
+
+export function triggerDescription(trigger: string) {
+  if (
+    trigger === "schedule_conflict" ||
+    trigger.startsWith("schedule_conflict:")
+  )
+    return "客户提出的时间与已有安排冲突";
+  if (trigger.startsWith("open_items:")) {
+    const labels: Record<string, string> = {
+      missing_schedule: "等待客户提供日期和时间",
+      verify_schedule: "等待客户核实日期和时间",
+      missing_time: "只有日期，等待客户说明几点",
+      missing_address: "等待客户提供地址",
+      verify_address: "等待客户核实地址",
+    };
+    const found =
+      trigger
+        .split(":")
+        .at(-1)
+        ?.split(",")
+        .map((code) => labels[code])
+        .filter(Boolean) ?? [];
+    return found.length
+      ? found.join("；")
+      : "工单还有未确认的信息，请核对完整正文和来源";
+  }
+  return "需要人工核对业务含义；请对照完整正文和来源";
 }

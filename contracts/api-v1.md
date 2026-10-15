@@ -44,7 +44,7 @@ Errors: `{"error": {"code": "VERSION_CONFLICT", "message": "Refresh and review t
 | 401 | UNAUTHENTICATED | No valid session |
 | 403 | FORBIDDEN, CONSENT_REVOKED, CSRF_REJECTED | Denied mutation; no permission bypass retry |
 | 404 | NOT_FOUND | Missing or another account's resource |
-| 409 | VERSION_CONFLICT, APPROVAL_STALE, IDEMPOTENCY_CONFLICT, SCHEDULE_CONFLICT, OPEN_ORDER_EXISTS (planned) | Refresh and review; never overwrite or accept overlap |
+| 409 | VERSION_CONFLICT, APPROVAL_STALE, IDEMPOTENCY_CONFLICT, SCHEDULE_CONFLICT, CALENDAR_NOT_EXPORTABLE, OPEN_ORDER_EXISTS (planned) | Refresh and review; never overwrite or accept overlap |
 | 422 | VALIDATION_FAILED | Invalid shape or domain input |
 | 429 | RATE_LIMITED | Respect retry instruction |
 | 503 | CONNECTOR_UNAVAILABLE | No claim of send success |
@@ -156,3 +156,12 @@ WAHA media interruption: cancelling a running model-processing or reconciliation
 Stopping content use persists independently of job stage, transient errors and refreshed control versions. After a stop, repeated unknown lookups retain the gate; a valid definite lookup ends as `cancelled`, releases the gate and discards the returned content without restoring review. Migration 0012 preserves visible stop evidence and conservatively suppresses pre-upgrade unknown/reconciling results with `MEDIA_LEGACY_REVIEW_REQUIRED`. A new explicit request after a known outcome is separate consent, not an automatic retry. See the bilingual media agreement linked above for deployment and legacy-data limits. The public job/result shapes are unchanged.
 
 Pydantic domain generation, implemented OpenAPI, frontend type generation, ownership/CSRF/version tests and drift checks are present. Extend the remaining inventory through source models/routes and regenerate contracts. This document records behavior and planned scope; OpenAPI reflects actual implementation.
+
+## D delivery read helpers (implemented, 2026-10-16)
+
+- `GET /workspace-capabilities`: session-authenticated availability flags, no provider configuration or credentials. Missing/invalid status disables dependent frontend commands. This release keeps create_order, order_status, address_confirmation, manual_assignment, business_sending and automatic_understanding false; calendar_export true. Availability is not authorization. Accepted implementations/contracts and C/D review are required before enabling pending commands; no probing absent routes or frontend local success.
+- `GET /conversations`: owned and allowlisted canonical conversations, existing Conversation shape, cursor/limit. It includes empty/new authorized conversations so source selection does not require an existing order. No arbitrary provider identifiers or connectors are accepted as browser authority.
+- `GET /review-items`: owned/allowlisted processing diagnostics, safe IDs/reason/state/context versions/timestamp only. No raw payload or message body. Current original text is separately authorized by the existing conversation-message route; older processing rounds remain labelled history. GET does not resolve or reprocess jobs. Database-side pagination/read scaling remains a separate follow-up.
+- `GET /calendar-events/{id}.ics`: owned, authenticated read-only file with text/calendar, private/no-store, fixed UUID-based filename. Only current formal timed appointments on active confirmed/in-progress/waiting orders export; stale order/schedule yields 409 VERSION_CONFLICT; tentative/date-only/closed/unconfirmed yields 409 CALENDAR_NOT_EXPORTABLE. Unknown/foreign IDs yield 404. Stable UID/sequence, escaped UTF-8-folded content, UTC instants and original timezone note; LOCATION only for confirmed address. Download/import is user-directed; no subscription, external writes or automatic synchronization.
+
+中文：本批实现登录后的能力状态、自己的已授权会话列表、安全复核元数据和单条正式预约日历下载，均不写业务数据。能力状态不等于授权；新建／状态／地址／归单／业务发送／真实理解在本版本保持关闭。日历下载重新验证归属和版本，不把暂定或已关闭记录导出；手机导入与改期更新由用户操作，无外部日历同步。正式建单／状态仍是未合入的目标接口，前端待接类型不表示后端已提供。

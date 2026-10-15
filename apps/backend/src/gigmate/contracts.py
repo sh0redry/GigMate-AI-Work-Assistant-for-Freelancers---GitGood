@@ -52,6 +52,29 @@ class Model(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
+class WorkspaceCapabilities(Model):
+    """Release gates, not connector permissions or claims of live acceptance."""
+
+    calendar_export: bool = True
+    create_order: bool = False
+    order_status: bool = False
+    address_confirmation: bool = False
+    manual_assignment: bool = False
+    business_sending: bool = False
+    automatic_understanding: bool = False
+
+
+class ReviewItem(Model):
+    id: Id
+    conversation_id: Id
+    message_id: Id | None
+    context_version: Positive
+    current_context_version: Positive
+    reason: str
+    state: str
+    observed_at: UtcTimestamp
+
+
 class ComponentHealth(Model):
     state: Literal["healthy", "unavailable", "stale", "unknown"]
     observed_at: UtcTimestamp | None

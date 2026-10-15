@@ -8,7 +8,6 @@ import { createRequire } from "node:module";
 import ts from "typescript";
 import { JSDOM } from "jsdom";
 import { act, createElement } from "react";
-import { developmentEnvironments } from "./vite.config.ts";
 const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost/" });
 globalThis.window = dom.window;
 globalThis.document = dom.window.document;
@@ -20,6 +19,11 @@ const directory = await mkdtemp(join(tmpdir(), "gigmate-app-dom-"));
 const require = createRequire(import.meta.url);
 const components = [
   "App",
+  "OrderLifecycle",
+  "OrderCreation",
+  "CalendarWorkspace",
+  "ReviewWorkspace",
+  "DeliveryGuide",
   "ApprovalsWorkspace",
   "WorkOrderWorkspace",
   "ConnectionWorkspace",
@@ -30,9 +34,14 @@ const components = [
 ];
 for (const name of [
   ...components,
+  "features",
+  "useWorkspaceData",
+  "order-command-api",
+  "calendar-view",
+  "calendar-api",
   "approvals-api",
   "approval-view",
-  "replay-store",
+  "business-store",
   "environment",
   "workspace-api",
   "work-order-view",
@@ -101,13 +110,30 @@ function fixture({ denied = false } = {}) {
               account_id: "synthetic-account",
             },
           });
+    if (url.endsWith("/workspace-capabilities"))
+      return Response.json({
+        data: {
+          calendar_export: true,
+          create_order: false,
+          order_status: false,
+          address_confirmation: false,
+          manual_assignment: false,
+          business_sending: false,
+          automatic_understanding: false,
+        },
+      });
     if (url.endsWith("/auth/logout"))
       return Response.json({ data: { ok: true } });
     if (
       options.method === "GET" &&
-      ["/work-orders?", "/tasks?", "/calendar-events?", "/connectors?"].some(
-        (path) => url.includes(path),
-      )
+      [
+        "/work-orders?",
+        "/tasks?",
+        "/calendar-events?",
+        "/connectors?",
+        "/review-items?",
+        "/conversations?",
+      ].some((path) => url.includes(path))
     )
       return Response.json({ items: [], next_cursor: null });
     throw new Error(`Unexpected request ${options.method} ${url}`);
@@ -205,146 +231,295 @@ test("authenticated product lands in honest empty business workspace, connects t
   assert.equal(logout.options.headers["X-CSRF-Token"], "synthetic-csrf");
 });
 
-function developmentConfig() {
+test("delivery login and navigation contain no test environment or public credentials", async () => {
+  const calls = fixture();
   globalThis.__GIGMATE_ENVIRONMENTS__ = {
     defaultEnvironment: "isolated",
     publicTestAccount: {
       username: "merchant",
       password: "demo-only-change-me",
     },
-    targets: {
-      real: "http://127.0.0.1:18702",
-      isolated: "http://127.0.0.1:18012",
+  };
+  await mount();
+  assert.doesNotMatch(
+    document.body.textContent,
+    /隔离测试|公开开发测试账号|demo-only-change-me|切换到/,
+  );
+  await login();
+  for (const page of ["日历与待办", "新建工单", "人工复核", "功能与使用说明"]) {
+    await act(async () => button(page).click());
+    assert.ok(document.querySelector('[aria-current="page"]'));
+  }
+  assert.match(document.body.textContent, /暂不可用/);
+  assert.match(document.body.textContent, /C 业务审批与 A/);
+  assert.ok(calls.every((c) => c.url.startsWith("/api/v1/")));
+  assert.equal(calls.filter((c) => c.options.method === "POST").length, 1);
+});
+test("old environment URLs fail closed without login or backend reads", async () => {
+  const calls = fixture();
+  dom.reconfigure({ url: "http://localhost/environments/isolated/" });
+  await mount();
+  assert.match(document.body.textContent, /旧入口已停用/);
+  assert.equal(calls.length, 0);
+  assert.equal(document.querySelector("form"), null);
+  assert.equal(
+    document.querySelector('a[href="/"]').textContent,
+    "打开当前工作台",
+  );
+});
+test("a rejected capability read leaves missing functions unavailable", async () => {
+  fixture();
+  const original = globalThis.fetch;
+  globalThis.fetch = (url, opts) =>
+    url.endsWith("/workspace-capabilities")
+      ? Promise.resolve(
+          Response.json({ error: { code: "UNAVAILABLE" } }, { status: 503 }),
+        )
+      : original(url, opts);
+  await mount();
+  await login();
+  await act(async () => button("功能与使用说明").click());
+  assert.match(document.body.textContent, /能力状态无法核对/);
+  assert.match(document.body.textContent, /暂不可用/);
+});
+
+function deliveryFixture() {
+  const calls = fixture(),
+    fallback = globalThis.fetch;
+  const orderId = "00000000-0000-4000-8000-000000000003",
+    conversationId = "00000000-0000-4000-8000-000000000002",
+    messageId = "00000000-0000-4000-8000-000000000005";
+  const source = { message_id: messageId, message_revision: 1 };
+  const schedule = {
+    kind: "timed",
+    start_at: "2026-11-01T02:00:00Z",
+    end_at: "2026-11-01T03:00:00Z",
+    timezone: "Asia/Hong_Kong",
+  };
+  const order = {
+    id: orderId,
+    account_id: "synthetic-account",
+    version: 3,
+    summary: "Synthetic delivery order",
+    status: "confirmed",
+    conversation_ids: [conversationId],
+    updated_at: "2026-10-14T00:00:00Z",
+    pending_change_ids: [],
+    fields: {
+      schedule: { status: "confirmed", value: schedule, sources: [source] },
+      address: { status: "missing", value: null, sources: [] },
     },
   };
+  const messages = [
+    {
+      id: messageId,
+      conversation_id: conversationId,
+      revision: 1,
+      occurred_at: "2026-10-14T00:00:00Z",
+      direction: "incoming",
+      source: "live",
+      text: "Synthetic customer source",
+      revoked: false,
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000006",
+      conversation_id: conversationId,
+      revision: 1,
+      occurred_at: "2026-10-14T00:00:00Z",
+      direction: "outgoing",
+      source: "api",
+      text: "Synthetic merchant echo",
+      revoked: false,
+    },
+  ];
+  globalThis.fetch = async (url, options) => {
+    const page = (items) => Response.json({ items, next_cursor: null });
+    if (options.method === "GET") {
+      if (url.includes("/work-orders?")) return page([order]);
+      if (url.includes("/calendar-events?"))
+        return page([
+          {
+            id: "formal",
+            work_order_id: orderId,
+            work_order_version: 3,
+            tentative: false,
+            schedule,
+            buffer_minutes: 0,
+          },
+          {
+            id: "tentative",
+            work_order_id: orderId,
+            work_order_version: 3,
+            tentative: true,
+            schedule,
+            buffer_minutes: 0,
+          },
+        ]);
+      if (url.includes("/conversations?"))
+        return page([
+          {
+            id: conversationId,
+            account_id: "synthetic-account",
+            context_version: 4,
+            work_order_ids: [orderId],
+          },
+        ]);
+      if (url.includes("/messages?")) return page(messages);
+      if (url.endsWith("/conversations/" + conversationId))
+        return Response.json({
+          data: {
+            id: conversationId,
+            account_id: "synthetic-account",
+            context_version: 4,
+            work_order_ids: [orderId],
+          },
+        });
+      if (url.includes("/changes?")) return page([]);
+      if (url.includes("/review-items?"))
+        return page([
+          {
+            id: "job",
+            conversation_id: conversationId,
+            message_id: messageId,
+            context_version: 3,
+            current_context_version: 4,
+            reason: "ASSIGNMENT_NEEDS_REVIEW",
+            state: "completed",
+            observed_at: "2026-10-14T00:00:00Z",
+          },
+        ]);
+    }
+    return fallback(url, options);
+  };
+  return { calls, order, messages };
 }
-test("current live startup configuration shows real labels, connector navigation and bound requests", async () => {
-  globalThis.__GIGMATE_ENVIRONMENTS__ = developmentEnvironments({
-    GIGMATE_REAL_API_URL: "http://127.0.0.1:18712",
-    GIGMATE_DEFAULT_ENV: "real",
+async function select(label, value) {
+  const input = [...document.querySelectorAll("label")]
+    .find((l) => l.textContent.startsWith(label))
+    ?.querySelector("select");
+  assert.ok(input);
+  await act(async () => {
+    input.value = value;
+    input.dispatchEvent(new window.Event("change", { bubbles: true }));
   });
-  const calls = fixture();
-  await mount();
-  assert.match(document.body.textContent, /真实连接（本机开发）/);
-  assert.match(document.body.textContent, /127.0.0.1:18712/);
-  await login();
-  await act(async () => button("WhatsApp 连接").click());
-  assert.ok(calls.some((call) => call.url.includes("/connectors")));
-  assert.ok(
-    calls.every((call) => call.url.startsWith("/environments/real/api/v1/")),
-  );
-});
-test("synthetic connector self-check keeps connector navigation but labels fictional data and offers no real-backend switch", async () => {
-  globalThis.__GIGMATE_ENVIRONMENTS__ = developmentEnvironments({
-    GIGMATE_REAL_API_URL: "http://127.0.0.1:18802",
-    GIGMATE_ISOLATED_API_URL: "http://127.0.0.1:18804",
-    GIGMATE_DEFAULT_ENV: "real",
-    GIGMATE_SYNTHETIC_PROVIDER: "1",
-  });
-  // Even a manually entered isolated URL cannot select a maintainer backend.
-  dom.reconfigure({ url: "http://localhost/environments/isolated/" });
-  const calls = fixture();
-  await mount();
-  assert.match(document.body.textContent, /合成连接自检（虚构数据）/);
-  assert.match(document.body.textContent, /不可扫码/);
-  assert.match(document.body.textContent, /127.0.0.1:18802/);
-  assert.doesNotMatch(document.body.textContent, /真实连接（本机开发）/);
-  assert.equal(document.querySelector(".environment-switch"), null);
-  await login();
-  await act(async () => button("WhatsApp 连接").click());
-  assert.ok(calls.some((call) => call.url.includes("/connectors")));
-  assert.ok(
-    calls.every((call) => call.url.startsWith("/environments/real/api/v1/")),
-  );
-});
-test("development login names the isolated environment, shows public test credentials and routes all business reads there", async () => {
-  developmentConfig();
-  const calls = fixture();
-  await mount();
-  assert.match(document.body.textContent, /隔离测试（虚构数据）/);
-  assert.match(document.body.textContent, /merchant/);
-  assert.match(document.body.textContent, /demo-only-change-me/);
-  assert.equal(
-    document.querySelector(".environment-switch").getAttribute("href"),
-    "/environments/real/",
-  );
-  await login();
-  assert.ok(
-    calls.every((c) => c.url.startsWith("/environments/isolated/api/v1/")),
-  );
-  assert.match(document.body.textContent, /隔离测试（虚构数据）/);
-  assert.equal(button("WhatsApp 连接"), undefined);
-  assert.deepEqual(
-    [...document.querySelector("nav").querySelectorAll("button")].map(
-      (b) => b.textContent,
-    ),
-    ["业务工作台", "回复审批"],
-  );
-  assert.equal(
-    calls.some((c) => c.url.includes("/connectors")),
-    false,
-  );
-});
-test("opening the other environment starts signed out with empty inputs and keeps request metadata separate", async () => {
-  developmentConfig();
-  const calls = fixture();
+}
+async function tick(text) {
+  const input = [...document.querySelectorAll("label")]
+    .find((l) => l.textContent.includes(text))
+    ?.querySelector("input[type=checkbox]");
+  assert.ok(input);
+  await act(async () => input.click());
+}
+
+test("new-order flow selects only customer sources, binds review and stays gated after consent", async () => {
+  const data = deliveryFixture();
   await mount();
   await login();
-  sessionStorage.setItem(
-    "gigmate-control-attempt:isolated:pending",
-    "synthetic-uncertain",
-  );
-  await act(async () => root.unmount());
-  dom.reconfigure({ url: "http://localhost/environments/real/" });
-  await mount();
-  assert.equal(document.querySelector("nav"), null);
-  assert.equal(document.querySelector('input[type="password"]').value, "");
-  assert.equal(
-    document.querySelector('input[autocomplete="username"]').value,
-    "",
-  );
-  assert.match(document.body.textContent, /真实连接（本机开发）/);
-  assert.match(document.body.textContent, /尚未正式上线/);
-  assert.equal(
-    document.querySelector(".environment-switch").getAttribute("href"),
-    "/environments/isolated/",
-  );
-  const before = calls.length;
-  await login();
-  assert.ok(
-    calls
-      .slice(before)
-      .every((c) => c.url.startsWith("/environments/real/api/v1/")),
-  );
-  await act(async () => button("WhatsApp 连接").click());
-  assert.ok(calls.at(-1).url.startsWith("/environments/real/api/v1/"));
-  await act(async () => button("退出").click());
-  assert.equal(
-    sessionStorage.getItem("gigmate-control-attempt:isolated:pending"),
-    "synthetic-uncertain",
-  );
-});
-test("environment navigation is blocked during an unresolved login", async () => {
-  developmentConfig();
-  let finish;
-  globalThis.fetch = () =>
-    new Promise((resolve) => {
-      finish = resolve;
-    });
-  await mount();
-  await login();
-  const link = document.querySelector(".environment-switch");
-  assert.equal(link.getAttribute("aria-disabled"), "true");
-  const click = new window.MouseEvent("click", {
-    bubbles: true,
-    cancelable: true,
-  });
-  await act(async () => link.dispatchEvent(click));
-  assert.equal(click.defaultPrevented, true);
   await act(async () =>
-    finish(
-      Response.json({ error: { code: "UNAUTHENTICATED" } }, { status: 401 }),
-    ),
+    document.querySelector("nav").querySelectorAll("button")[1].click(),
   );
-  assert.equal(link.getAttribute("aria-disabled"), "false");
+  await select("已授权会话", data.order.conversation_ids[0]);
+  await tick("这是另一项业务");
+  const summary = [...document.querySelectorAll("label")]
+    .find((l) => l.textContent === "业务摘要")
+    .querySelector("input");
+  await fill(summary, "Synthetic second order");
+  const address = [...document.querySelectorAll("label")]
+    .find((l) => l.textContent.startsWith("客户提供的地址"))
+    .querySelector("input");
+  await fill(address, "Synthetic customer address");
+  assert.equal(button("核对新工单").disabled, true);
+  assert.match(document.body.textContent, /必须选择客户说明地址的原文/);
+  assert.doesNotMatch(
+    document.querySelector("aside").textContent,
+    /Synthetic merchant echo/,
+  );
+  await tick("作为地址依据");
+  await act(async () => button("核对新工单").click());
+  await tick("我已核对摘要");
+  assert.equal(button("保存新工单").disabled, true);
+  assert.match(document.body.textContent, /接口 #26 还在修复/);
+  await fill(summary, "Changed after review");
+  assert.match(document.body.textContent, /内容或来源已变化/);
+  assert.equal(data.calls.filter((c) => c.options.method === "POST").length, 1);
+});
+test("calendar renders formal/tentative appointments, gates export and opens the exact order", async () => {
+  deliveryFixture();
+  await mount();
+  await login();
+  await act(async () => button("日历与待办").click());
+  await act(async () => button("全部安排").click());
+  const downloads = [...document.querySelectorAll("button")].filter(
+    (b) => b.textContent === "加入我的日历 (.ics)",
+  );
+  assert.equal(downloads.length, 2);
+  assert.equal(downloads[0].disabled, false);
+  assert.equal(downloads[1].disabled, true);
+  assert.match(document.body.textContent, /暂定或未确认预约不能导出/);
+  await act(async () =>
+    [...document.querySelectorAll("button")]
+      .find((b) => b.textContent === "查看工单")
+      .click(),
+  );
+  assert.match(document.body.textContent, /Synthetic delivery order/);
+  assert.equal(document.querySelectorAll("main").length, 1);
+  await act(async () => button("已取消").click());
+  await tick("我已核对目标状态");
+  assert.equal(button("保存工单状态").disabled, true);
+  assert.match(document.body.textContent, /已派发的 WhatsApp 请求不会因此撤回/);
+});
+test("review inbox distinguishes old rounds, shows source and leaves unavailable assignment disabled", async () => {
+  deliveryFixture();
+  await mount();
+  await login();
+  await act(async () => button("人工复核").click());
+  assert.match(document.body.textContent, /历史轮次/);
+  assert.match(document.body.textContent, /无法确定属于哪张工单/);
+  await act(async () => button("查看这条会话原文").click());
+  assert.match(document.body.textContent, /Synthetic customer source/);
+  assert.equal(button("保存人工归单／延期跟进").disabled, true);
+});
+
+test("leaving the calendar aborts a late private download before creating a saved file", async () => {
+  deliveryFixture();
+  const fallback = globalThis.fetch;
+  let finish,
+    signal,
+    saved = 0;
+  const original = URL.createObjectURL;
+  URL.createObjectURL = () => {
+    saved++;
+    return "blob:synthetic";
+  };
+  globalThis.fetch = (url, options) =>
+    url.endsWith("/formal.ics")
+      ? new Promise((resolve) => {
+          finish = resolve;
+          signal = options.signal;
+        })
+      : fallback(url, options);
+  try {
+    await mount();
+    await login();
+    await act(async () => button("日历与待办").click());
+    await act(async () => button("全部安排").click());
+    await act(async () =>
+      [...document.querySelectorAll("button")]
+        .find((b) => b.textContent === "加入我的日历 (.ics)")
+        .click(),
+    );
+    assert.ok(signal);
+    await act(async () => button("功能与使用说明").click());
+    assert.equal(signal.aborted, true);
+    await act(async () =>
+      finish(
+        new Response("BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n", {
+          headers: { "content-type": "text/calendar" },
+        }),
+      ),
+    );
+    assert.equal(saved, 0);
+  } finally {
+    URL.createObjectURL = original;
+  }
 });

@@ -1,34 +1,8 @@
-export type EnvironmentId = "real" | "isolated";
-export type EnvironmentConfig = {
-  syntheticProvider?: boolean;
-  defaultEnvironment: EnvironmentId;
-  publicTestAccount: { username: string; password: string };
-  targets: Record<EnvironmentId, string>;
-};
-declare const __GIGMATE_ENVIRONMENTS__: EnvironmentConfig | null;
-
-export function environmentConfig(): EnvironmentConfig | null {
-  return typeof __GIGMATE_ENVIRONMENTS__ === "undefined"
-    ? null
-    : __GIGMATE_ENVIRONMENTS__;
-}
-export function currentEnvironment(): EnvironmentId | null {
-  const config = environmentConfig();
-  if (!config) return null;
-  // The disposable connector check has one synthetic backend and no switch target.
-  if (config.syntheticProvider) return "real";
-  const path = typeof window === "undefined" ? "" : window.location.pathname;
-  if (path.startsWith("/environments/real/")) return "real";
-  if (path.startsWith("/environments/isolated/")) return "isolated";
-  return config.defaultEnvironment;
-}
+// The product has one same-origin API. Test fixtures and proxy targets live in
+// developer tools, never in browser routing, credentials or environment controls.
 export function apiBase(): string {
-  const environment = currentEnvironment();
-  return environment ? `/environments/${environment}/api/v1` : "/api/v1";
+  return "/api/v1";
 }
 export function attemptNamespace(): string {
-  const environment = currentEnvironment();
-  return environment
-    ? `gigmate-control-attempt:${environment}:`
-    : "gigmate-control-attempt:";
+  return "gigmate-control-attempt:";
 }

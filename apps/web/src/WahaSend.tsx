@@ -893,7 +893,10 @@ export function WahaSend({
         </article>
       )}
       <h4>已批准的自动政策</h4>
-      <p>自动触发尚未接入，目前可手动提交固定政策进行联调。</p>
+      <p>
+        自动触发尚未接入。目前只能由你明确触发已批准的固定内容；这不是 AI
+        自由生成的自动回复。
+      </p>
       {policies
         .filter((p) => p.chat_id === chat)
         .map((p) => (
