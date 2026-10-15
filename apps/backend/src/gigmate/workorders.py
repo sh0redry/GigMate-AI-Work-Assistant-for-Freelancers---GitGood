@@ -144,8 +144,10 @@ def confirm(db, account, work_order_id, change_id, command, key, request_id):
     # address — are confirmed by the merchant and by the customer.
     if was_pending and key_items_confirmed(value):
         value["status"] = "confirmed"
-    elif value["status"] == "confirmed" and not customer_confirmed:
-        # A confirmed order whose key item now awaits the customer is open again.
+    elif value["status"] == "confirmed" and not key_items_confirmed(value):
+        # A confirmed order whose key item is open again (awaiting the customer,
+        # or a date without a time) goes back to pending; its preparation task
+        # is withdrawn below and the calendar entry becomes tentative.
         value["status"] = "pending_confirmation"
         demoted = True
     value["pending_change_ids"] = [
@@ -198,7 +200,7 @@ def confirm(db, account, work_order_id, change_id, command, key, request_id):
         ):
             if task.generated and task.data["state"] in {"pending", "blocked"}:
                 task.data = {**task.data, "state": "cancelled"}
-    if confirmed_now:
+    if confirmed_now and is_timed(schedule["value"]):
         db.add(preparation_task(account.id, value, schedule["value"], schedule["sources"]))
     from gigmate.approvals import ask_open_items, cancel_pending
 
@@ -213,13 +215,18 @@ def confirm(db, account, work_order_id, change_id, command, key, request_id):
     return order.data
 
 
+def is_timed(schedule_value):
+    return isinstance(schedule_value, dict) and schedule_value.get("kind") == "timed"
+
+
 def key_items_confirmed(order_data):
     schedule, address = order_data["fields"]["schedule"], order_data["fields"]["address"]
     return (
         schedule["status"] == "confirmed"
-        and isinstance(schedule["value"], dict)
-        and schedule["value"].get("kind") == "timed"
+        and is_timed(schedule["value"])
         and address["status"] == "confirmed"
+        and isinstance(address["value"], str)
+        and bool(address["value"].strip())
     )
 
 
@@ -348,7 +355,19 @@ def create(db, account, command, key, request_id):
                 raise BusinessError(404, "NOT_FOUND", "Source message not found")
             if latest.revision != ref["message_revision"] or latest.data["revoked"]:
                 raise BusinessError(409, "APPROVAL_STALE", "Source message changed")
+            # Customer confirmation and merchant actions are separate facts: the
+            # merchant's own reply (or our API send echo) cannot stand in for
+            # what the customer said.
+            if latest.data.get("direction") != "incoming":
+                raise BusinessError(
+                    422,
+                    "VALIDATION_FAILED",
+                    f"The {label} must come from a message the customer sent",
+                )
         return refs
+
+    if command.address is not None and not command.address.strip():
+        raise BusinessError(422, "VALIDATION_FAILED", "The address is empty")
 
     schedule_sources = checked(command.schedule_sources, "time", command.schedule is not None)
     address_sources = checked(command.address_sources, "address", command.address is not None)
