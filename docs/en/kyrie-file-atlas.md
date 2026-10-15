@@ -1,5 +1,7 @@
 # Kyrie's file map: start small, look up the rest later
 
+D-03 files: [ApprovalsWorkspace.tsx](../../apps/web/src/ApprovalsWorkspace.tsx) draws review/history; [approvals-api.ts](../../apps/web/src/approvals-api.ts) reads canonical APIs and preserves the original uncertain request; [approval-view.ts](../../apps/web/src/approval-view.ts) explains states and approval blockers. These files are in the pending D-03 branch, not main.
+
 Updated 2026-10-12. [中文地图](../zh/kyrie-file-atlas.md) · [Beginner guide](kyrie-learning-guide.md).
 
 Start with App.tsx (login/navigation), chat-choices.ts (page calculation), ChatChoices.tsx (checkbox rows), WorkOrderWorkspace.tsx (business review), and workspace-api.ts (requests). Read the long connection screen/backend later.

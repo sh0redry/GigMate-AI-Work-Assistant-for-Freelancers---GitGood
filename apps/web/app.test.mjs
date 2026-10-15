@@ -20,6 +20,7 @@ const directory = await mkdtemp(join(tmpdir(), "gigmate-app-dom-"));
 const require = createRequire(import.meta.url);
 const components = [
   "App",
+  "ApprovalsWorkspace",
   "WorkOrderWorkspace",
   "ConnectionWorkspace",
   "ChatChoices",
@@ -29,6 +30,8 @@ const components = [
 ];
 for (const name of [
   ...components,
+  "approvals-api",
+  "approval-view",
   "replay-store",
   "environment",
   "workspace-api",
@@ -271,7 +274,12 @@ test("development login names the isolated environment, shows public test creden
   );
   assert.match(document.body.textContent, /隔离测试（虚构数据）/);
   assert.equal(button("WhatsApp 连接"), undefined);
-  assert.equal(document.querySelector("nav").textContent.trim(), "业务工作台");
+  assert.deepEqual(
+    [...document.querySelector("nav").querySelectorAll("button")].map(
+      (b) => b.textContent,
+    ),
+    ["业务工作台", "回复审批"],
+  );
   assert.equal(
     calls.some((c) => c.url.includes("/connectors")),
     false,

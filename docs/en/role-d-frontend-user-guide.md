@@ -1,18 +1,20 @@
 # GigMate frontend user guide
 
+**Current integration, 2026-10-14:** #22, D-02 #24 and A sending #23 have merged into main **4177d1a**. #25 is Ready for teammate review/merge; the approval candidate now includes that main and preserves both migration branches with additive **0016_d03_sending_heads**. Frontend: **122 passed**, including isolated navigation and environment-bound approval/send adapters. Approval is still saved as **已批准，尚未发送**: C business approvals do not automatically dispatch through A sending.
+
 **PR #24 compatibility update:** the D-02 branch now includes accepted main e066b0c (#21). Its private attachment adapter follows the selected environment for reads, previews, downloads and original-key requests; model activation remains disabled by default. Main still does not contain D-02 until #24 merges.
 
 Updated 2026-10-14, Hong Kong time. [中文版](../zh/role-d-frontend-user-guide.md). For code explanations, read [Kyrie's beginner guide](kyrie-learning-guide.md).
 
-This guide describes D-02 and the current cleanup on `codex/d02-workspace`, **not merged main**. The consolidated D-02 changes are now prepared for PR submission under Kyrie’s updated instruction. A PR asks teammates to review; it does not put the feature into main. The ordinary main checkout can still show old demo controls. Locate D with `git worktree list`; do not reset your WhatsApp session to fix a frontend version mismatch.
+This guide describes `codex/d03-approvals`, the unmerged #25 approval candidate on main **4177d1a**. Main already includes the D-02 environment switch and A’s separate manual sending page. Opening or updating #25 does not deploy the approval frontend. Locate the candidate with `git worktree list`; keep your existing WhatsApp session when changing the frontend checkout.
 
 ## 1 Current pages and capability
 
-Before login there is only the GigMate account form, with blank inputs and a public development hint (`merchant` / `demo-only-change-me`; changed passwords take precedence). GigMate sign-in is separate from phone WhatsApp login. After login, **业务工作台** is the default. The isolated environment has only **业务工作台**; **WhatsApp 连接** appears only in the actual connection environment (or the published deployment). Isolated use never mounts the connection page or issues its connector requests.
+Before login there is only the GigMate account form, with blank inputs and a public development hint (`merchant` / `demo-only-change-me`; changed passwords take precedence). GigMate sign-in is separate from phone WhatsApp login. After login, **业务工作台** is the default. The isolated environment has **业务工作台** and **回复审批**, with fictional data; **WhatsApp 连接** appears only in the actual connection environment (or the published deployment). Isolated use never mounts the connection page or issues its connector requests.
 
 D-01 preview, simulated pairing/disconnection and work-order replay controls have been removed from user UI, including their simulator implementation. Synthetic fixtures remain in developer tests without a user entry. Existing seeded records are not deleted by removing buttons.
 
-Kyrie reports team WAHA connections are working; this update did not retest all phones. Connection and consent do not establish extraction/automatic creation/sending. Order creation, lifecycle mutation, reply approval and sending remain unavailable on this branch.
+Kyrie reports team WAHA connections are working; this update did not retest all phones. Connection and consent do not establish extraction/automatic creation/sending. Order creation, lifecycle mutation and sending remain unavailable. Reply approval is available only with the matching C API and stores a local decision; it does not send WhatsApp messages.
 
 ## 2 Switch environments in one click
 
@@ -112,3 +114,13 @@ Narrow layouts may require vertical scrolling. Physical devices and native Windo
 ## 6 Developer checks
 
 In apps/web: `npm run check:api`, `npm run format:check`, `npm run build` (behavior tests, types and build). Fixed replay code and backend `/replay` remain for isolated developer verification, without user UI. No backend source/generated contract/migration changed. This preview adds its loopback frontend origin to the existing ingress API through an ignored Compose override. The API was restarted; the original worker-owned database target was restored after a temporary incorrect target, then health/login rechecked. Provider/consent configuration was preserved. Removing controls does not establish final product completion.
+
+## D-03: review a reply before approving it
+
+Open **回复审批**, choose a draft and check the entire body, recipient conversation, original message revision, expiry and order/chat versions. Click **核对这份草稿**, then tick the explicit review checkbox before approving. The current recipient is a canonical conversation ID; real WhatsApp mapping/send bridging remains pending. **已批准，尚未发送** means your decision is saved, not that the customer received a message.
+
+Reject/cancel requires a reason and exact reviewed snapshot. It is local, so unavailable conversation content blocks approval/reissue but does not prevent closing a draft. Changed data clears the review. Expired/stale/revoked/missing-source drafts cannot be approved. **全部历史** retains closed and approved drafts; filtering does not silently change the selection.
+
+Unknown results retain the original request key and command in tab session storage, separated by environment/account. Refresh only reads. After reviewing the original snapshot, **核对后重试原请求** repeats the same intent/key/versions explicitly; it can complete an initially unreceived request. Never submit a new approval as a substitute. Authentication/CSRF rejection of that lookup does not erase the preceding uncertainty. Logout/remount/environment switching clears visible data but preserves this journal for that account/environment. If storage is unavailable or malformed, new writes fail clearly before dispatch.
+
+**重新生成待审批问题** creates a fresh draft requiring fresh review. C’s repeated-expiry uniqueness defect is now fixed in merged #22. This frontend retains its conservative same-source/context repeat guard; changing that UI policy can be a later task. No automatic generation, message editing, real sending or send reconciliation endpoint is added here. See [D-03 acceptance](role-d-stage3-acceptance.md).
