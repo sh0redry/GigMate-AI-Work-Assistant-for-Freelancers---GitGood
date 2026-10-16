@@ -197,10 +197,6 @@ export function ReviewWorkspace({
                     {o.summary}
                   </button>
                 ))}
-              <button disabled>保存人工归单／延期跟进</button>
-              <p className="availability-note">
-                归单与延期保存接口尚未交付；查看原文和已有工单不会替你完成归属确认。
-              </p>
             </section>
           )}
         </div>

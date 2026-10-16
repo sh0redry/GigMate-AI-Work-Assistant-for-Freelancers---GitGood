@@ -19,6 +19,9 @@ const directory = await mkdtemp(join(tmpdir(), "gigmate-app-dom-"));
 const require = createRequire(import.meta.url);
 const components = [
   "App",
+  "BusinessLoopWorkspace",
+  "BusinessLoopReview",
+  "LoopCommand",
   "OrderLifecycle",
   "InspectOrderAttempt",
   "OrderCreation",
@@ -36,6 +39,7 @@ const components = [
 for (const name of [
   ...components,
   "features",
+  "business-loop-api",
   "useWorkspaceData",
   "order-command-api",
   "calendar-view",
@@ -247,11 +251,18 @@ test("delivery login and navigation contain no test environment or public creden
     /隔离测试|公开开发测试账号|demo-only-change-me|切换到/,
   );
   await login();
-  for (const page of ["日历与待办", "新建工单", "人工复核", "功能与使用说明"]) {
+  for (const page of ["日历与待办", "人工复核", "功能与使用说明"]) {
     await act(async () => button(page).click());
     assert.ok(document.querySelector('[aria-current="page"]'));
   }
   assert.match(document.body.textContent, /暂不可用/);
+  assert.equal(button("业务管理"), undefined);
+  assert.equal(button("新建工单"), undefined);
+  assert.ok(
+    calls.every(
+      (c) => !c.url.includes("/daily-summary") && !c.url.includes("/settings/"),
+    ),
+  );
   assert.match(document.body.textContent, /C 业务审批与 A/);
   assert.ok(calls.every((c) => c.url.startsWith("/api/v1/")));
   assert.equal(calls.filter((c) => c.options.method === "POST").length, 1);
@@ -416,6 +427,21 @@ async function tick(text) {
 
 test("new-order flow selects only customer sources, binds review and stays gated after consent", async () => {
   const data = deliveryFixture();
+  const fallback = globalThis.fetch;
+  globalThis.fetch = async (url, options) =>
+    url.endsWith("/workspace-capabilities")
+      ? Response.json({
+          data: {
+            calendar_export: true,
+            create_order: true,
+            order_status: true,
+            address_confirmation: true,
+            manual_assignment: false,
+            business_sending: false,
+            automatic_understanding: false,
+          },
+        })
+      : fallback(url, options);
   await mount();
   await login();
   await act(async () =>
@@ -440,8 +466,7 @@ test("new-order flow selects only customer sources, binds review and stays gated
   await tick("作为地址依据");
   await act(async () => button("核对新工单").click());
   await tick("我已核对摘要");
-  assert.equal(button("保存新工单").disabled, true);
-  assert.match(document.body.textContent, /当前连接的后端未开放建单功能/);
+  assert.equal(button("保存新工单").disabled, false);
   await fill(summary, "Changed after review");
   assert.match(document.body.textContent, /内容或来源已变化/);
   assert.equal(data.calls.filter((c) => c.options.method === "POST").length, 1);
@@ -466,10 +491,7 @@ test("calendar renders formal/tentative appointments, gates export and opens the
   );
   assert.match(document.body.textContent, /Synthetic delivery order/);
   assert.equal(document.querySelectorAll("main").length, 1);
-  await act(async () => button("已取消").click());
-  await tick("我已核对目标状态");
-  assert.equal(button("保存工单状态").disabled, true);
-  assert.match(document.body.textContent, /已派发的 WhatsApp 请求不会因此撤回/);
+  assert.equal(button("已取消"), undefined);
 });
 test("review inbox distinguishes old rounds, shows source and leaves unavailable assignment disabled", async () => {
   deliveryFixture();
@@ -480,7 +502,7 @@ test("review inbox distinguishes old rounds, shows source and leaves unavailable
   assert.match(document.body.textContent, /无法确定属于哪张工单/);
   await act(async () => button("查看这条会话原文").click());
   assert.match(document.body.textContent, /Synthetic customer source/);
-  assert.equal(button("保存人工归单／延期跟进").disabled, true);
+  assert.equal(button("保存人工归单／延期跟进"), undefined);
 });
 
 test("leaving the calendar aborts a late private download before creating a saved file", async () => {

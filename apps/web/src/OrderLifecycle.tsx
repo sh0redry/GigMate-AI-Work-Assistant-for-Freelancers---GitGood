@@ -63,6 +63,7 @@ export function OrderLifecycle({
       onBusyChange(false);
     }
   }
+  if (!enabled) return null;
   return (
     <section className="lifecycle" aria-label="工单进度操作">
       <h3>工单进度</h3>

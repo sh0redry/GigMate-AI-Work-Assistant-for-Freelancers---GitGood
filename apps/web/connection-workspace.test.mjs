@@ -490,6 +490,8 @@ test("media review exposes pinned read-only handoff, source links and unknown da
       return new Response(JSON.stringify({ items: [attachment] }), {
         status: 200,
       });
+    if (url.endsWith(`/media/attachments/${attachment.id}`))
+      return reply(attachment);
     if (url.endsWith("/review")) {
       const command = JSON.parse(init.body);
       assert.equal(command.expected_result_job_id, attachment.result_job_id);

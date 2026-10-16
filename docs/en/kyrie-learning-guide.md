@@ -1,5 +1,9 @@
 # Kyrie's GigMate learning guide: start from zero
 
+## Today: a menu is a promise
+
+An API is a service window: the frontend submits a form, the backend checks permission and saves it. A type describes the form; it does not prove that the window is open. A capability flag is a sign provided by the server. This version prepares the PR32 forms but waits for the server to say both “implemented” and “security accepted”. You cannot open that window from a browser switch. See the [actual route inventory](role-d-api-audit.md).
+
 ## What changed after C #26/#27 merged (2026-10-16)
 
 Think of a work order as a shared notebook: the customer says something, the program writes a suggestion, and you decide whether to accept it. Accepting an uncertain date saves your decision but still waits for the customer. A successful HTTP response therefore may contain a proposed field; it does not always mean confirmed.

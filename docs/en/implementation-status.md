@@ -738,3 +738,9 @@ Verification (repo `.venv`, SQLite — conditional compatibility, not locking pr
 - `python scripts/check_baseline.py`: PASS.
 - Frontend: `npm run check:api`, `format:check`, `build` all pass (dependencies installed with `npm ci` in this environment).
 - `run_evaluation.py` (disposable SQLite): deterministic 9/9 exit 0; `--provider llm` 7 pass, 2 expected fail (cases 1-2 need a real model).
+
+## D API integration preparation (2026-10-17)
+
+Main route audit and PR32 preparation: [inventory and activation requirements](role-d-api-audit.md). Added default-off reviewed capability, independently generated pinned pending types, reviewed business-management forms and account-scoped uncertain-request recovery. Main delivery remains usable without PR32. Backend workspace delivery tests: 12 passed locally; browser/unit and generation checks are recorded below after completion. No provider send or real-model acceptance claimed.
+
+API preparation validation: frontend **149/149 passed**, TypeScript/Vite build, both generated-type checks, Ruff/format for the two changed backend files, canonical export check and baseline (86 Markdown, 992 local links) passed. Backend workspace tests **12/12 passed**. Pending C32 mutations tested against pinned contract/client doubles only, not a running unsafe branch.

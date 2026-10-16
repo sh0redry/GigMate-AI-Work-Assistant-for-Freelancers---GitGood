@@ -338,6 +338,20 @@ export function WahaMessages({
             <li key={j.id}>
               {labels[j.state]} · 写入 {j.imported} · 已有 {j.duplicates} · 跳过{" "}
               {j.skipped} · {labels[j.coverage]}
+              <button
+                className="secondary"
+                disabled={busy}
+                onClick={() =>
+                  void action(async () => {
+                    const detail = await api.job(j.id);
+                    setJobs((old) =>
+                      old.map((v) => (v.id === j.id ? detail : v)),
+                    );
+                  })
+                }
+              >
+                读取此任务状态
+              </button>
               {j.error_code && ` · ${j.error_code}`}
               {j.state === "failed" &&
                 j.chat_ids.length === 1 &&

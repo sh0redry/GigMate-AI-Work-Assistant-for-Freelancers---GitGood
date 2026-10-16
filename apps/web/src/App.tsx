@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { BusinessLoopWorkspace } from "./BusinessLoopWorkspace";
 import { ConnectionWorkspace } from "./ConnectionWorkspace";
 import { ApprovalsWorkspace } from "./ApprovalsWorkspace";
 import { WorkOrderWorkspace } from "./WorkOrderWorkspace";
@@ -8,7 +9,7 @@ import { ReviewWorkspace } from "./ReviewWorkspace";
 import { DeliveryGuide } from "./DeliveryGuide";
 import { workspaceApi, type Detail, type Login } from "./workspace-api";
 import { clearConnectionAttempts } from "./connection-api";
-import { unavailableFeatures, type Features } from "./features";
+import { unavailableFeatures, loopReady, type Features } from "./features";
 const pages = {
   business: "业务工作台",
   create: "新建工单",
@@ -17,6 +18,7 @@ const pages = {
   review: "人工复核",
   connect: "WhatsApp 连接",
   guide: "功能与使用说明",
+  management: "业务管理",
 };
 type View = keyof typeof pages;
 export function App() {
@@ -58,12 +60,17 @@ export function App() {
         if (abort.signal.aborted) return;
         if (
           !result.data ||
-          Object.keys(unavailableFeatures).some(
-            (key) => typeof result.data[key as keyof Features] !== "boolean",
-          )
+          Object.keys(unavailableFeatures)
+            .filter((key) => key !== "business_loop_reviewed")
+            .some(
+              (key) => typeof result.data[key as keyof Features] !== "boolean",
+            )
         )
           throw new Error("后端能力状态不完整，请联系维护者更新服务。");
-        setFeatures(result.data);
+        setFeatures({
+          ...result.data,
+          business_loop_reviewed: result.data.business_loop_reviewed === true,
+        });
       })
       .catch((e) => {
         if (!abort.signal.aborted) {
@@ -214,18 +221,21 @@ export function App() {
       ) : (
         <div className="app-layout">
           <nav className="workspace-navigation" aria-label="工作台页面">
-            {Object.entries(pages).map(([id, label]) => (
-              <button
-                key={id}
-                className="secondary"
-                aria-current={view === id ? "page" : undefined}
-                aria-pressed={view === id}
-                disabled={busy}
-                onClick={() => navigate(id as View)}
-              >
-                {label}
-              </button>
-            ))}
+            {Object.entries(pages)
+              .filter(([id]) => id !== "management" || loopReady(features))
+              .filter(([id]) => id !== "create" || features.create_order)
+              .map(([id, label]) => (
+                <button
+                  key={id}
+                  className="secondary"
+                  aria-current={view === id ? "page" : undefined}
+                  aria-pressed={view === id}
+                  disabled={busy}
+                  onClick={() => navigate(id as View)}
+                >
+                  {label}
+                </button>
+              ))}
           </nav>
           <main
             id="workspace-content"
@@ -247,13 +257,15 @@ export function App() {
                       客户提出、客户确认和商户批准分别记录。正式更新需要你明确核对。
                     </p>
                   </div>
-                  <button
-                    className="secondary"
-                    disabled={busy}
-                    onClick={() => navigate("create")}
-                  >
-                    新建工单
-                  </button>
+                  {features.create_order && (
+                    <button
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() => navigate("create")}
+                    >
+                      新建工单
+                    </button>
+                  )}
                 </div>
                 <WorkOrderWorkspace
                   {...props}
@@ -311,6 +323,15 @@ export function App() {
                 </p>
                 <ConnectionWorkspace {...props} onBusyChange={setBusy} />
               </>
+            )}
+            {view === "management" && (
+              <BusinessLoopWorkspace
+                {...props}
+                accountId={login.account_id}
+                features={features}
+                onBusyChange={setBusy}
+                onOpenOrder={openOrder}
+              />
             )}
             {view === "guide" && (
               <DeliveryGuide features={features} error={featureError} />

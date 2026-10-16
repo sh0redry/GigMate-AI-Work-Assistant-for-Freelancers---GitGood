@@ -9,9 +9,10 @@ const web = join(root, "apps/web");
 const directory = mkdtempSync(join(web, ".contract-check-"));
 if (!directory.startsWith(web + "/") && !directory.startsWith(web + "\\")) throw new Error("Invalid temp path");
 try {
-  const output = join(directory, "api.d.ts");
+  for (const [input,name] of [["openapi.json","api.d.ts"],["business-loop-preview.openapi.json","business-loop.d.ts"]]) {
+  const output = join(directory, name);
   const commands = [
-    [join(web, "node_modules/openapi-typescript/bin/cli.js"), join(root, "contracts/openapi.json"), "-o", output],
+    [join(web, "node_modules/openapi-typescript/bin/cli.js"), join(root, "contracts",input), "-o", output],
     [join(web, "node_modules/prettier/bin/prettier.cjs"), "--write", output],
   ];
   for (const args of commands) {
@@ -19,8 +20,9 @@ try {
     if (result.status !== 0) process.exitCode = 1;
     if (result.status !== 0) throw new Error("Frontend contract generation failed");
   }
-  if (readFileSync(output, "utf8") !== readFileSync(join(web, "src/generated/api.d.ts"), "utf8")) {
+  if (readFileSync(output, "utf8") !== readFileSync(join(web, "src/generated",name), "utf8")) {
     throw new Error("Frontend contract drift: run npm run generate:api in apps/web");
+  }
   }
   console.log("Frontend generated types match implemented OpenAPI.");
 } finally {

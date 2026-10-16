@@ -62,6 +62,7 @@ class WorkspaceCapabilities(Model):
     manual_assignment: bool = False
     business_sending: bool = False
     automatic_understanding: bool = False
+    business_loop_reviewed: bool = False
 
 
 class ReviewItem(Model):

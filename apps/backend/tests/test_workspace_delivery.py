@@ -23,6 +23,7 @@ def test_capabilities_fail_closed_for_unimplemented_commands(environment, signed
         "manual_assignment": False,
         "business_sending": False,
         "automatic_understanding": False,
+        "business_loop_reviewed": False,
     }
     client.cookies.clear()
     assert client.get("/api/v1/workspace-capabilities").status_code == 401

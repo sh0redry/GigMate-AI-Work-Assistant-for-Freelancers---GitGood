@@ -74,7 +74,12 @@ export function mediaApi(connection: string, csrf: string) {
           `/media/attachments?snapshot_id=${encodeURIComponent(snapshot)}`,
         )
       ).json();
-      return page.items[0] ?? null;
+      const item = page.items[0];
+      return item
+        ? detail<Attachment>(
+            `/media/attachments/${encodeURIComponent(item.id)}`,
+          )
+        : null;
     },
     attachment: (id: string) =>
       detail<Attachment>(`/media/attachments/${encodeURIComponent(id)}`),

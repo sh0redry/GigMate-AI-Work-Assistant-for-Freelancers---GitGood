@@ -744,3 +744,9 @@ PR #18（`llm:live-gate-off` + malformed-prompt/证据修复）以 `cc2ac8e` 合
 - `python scripts/check_baseline.py`：PASS。
 - 前端：`npm run check:api`、`format:check`、`build` 全部通过（本环境用 `npm ci` 安装依赖）。
 - `run_evaluation.py`（一次性 SQLite）：deterministic 9/9 退出 0；`--provider llm` 7 通过、2 预期失败（用例 1-2 需真实模型）。
+
+## D 接口接入准备（2026-10-17）
+
+完成主线接口核对并准备 PR32 页面，详见[接口清单与开放条件](role-d-api-audit.md)。新增默认关闭的后端验收标记，候选合同独立生成类型；操作复核和结果未知保留原编号。没有 PR32 的主线可继续使用。后端交付测试本地 12 通过；前端和合同检查将在完成后补充实际结果。未宣称真实发送或模型验收。
+
+接口阶段实际验证：前端 **149/149 通过**、TypeScript/Vite 构建、两份类型检查、两份后端改动的 Ruff/格式、合同导出检查、baseline（86 Markdown、992 本地链接）通过。后端交付测试 **12/12 通过**。候选 PR32 仅用固定合同和测试替身验证，未运行未验收的业务发送。

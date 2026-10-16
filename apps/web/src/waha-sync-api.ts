@@ -63,6 +63,10 @@ export function synchronizationApi(connection: string, csrf: string) {
       ).data.filter((c) => c.selected);
     },
     jobs: () => request<Page<SyncJob>>("/sync-jobs?limit=100"),
+    job: (id: string) =>
+      request<{ data: SyncJob }>(`/sync-jobs/${encodeURIComponent(id)}`).then(
+        (v) => v.data,
+      ),
     gaps: () => request<Page<SourceGap>>("/source-gaps?limit=100"),
     timeline: (chat: string, cursor: string | null = null) =>
       request<Page<TimelineMessage>>(

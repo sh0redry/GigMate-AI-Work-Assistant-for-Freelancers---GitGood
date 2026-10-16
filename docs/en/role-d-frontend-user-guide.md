@@ -1,5 +1,9 @@
 # GigMate frontend user guide
 
+## API delivery update (2026-10-17)
+
+New-order and lifecycle operations now follow server capability flags; unsupported controls are hidden. The business-management extension is prepared for PR32 but stays absent until the server advertises completed security acceptance. See the [API inventory and release conditions](role-d-api-audit.md).
+
 Current delivery candidate · 2026-10-16. [中文手册](../zh/role-d-frontend-user-guide.md) · [Acceptance and limits](role-d-final-acceptance.md).
 
 ## 1 Current pages and capability

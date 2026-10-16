@@ -3301,6 +3301,11 @@ export interface components {
        */
       automatic_understanding: boolean;
       /**
+       * Business Loop Reviewed
+       * @default false
+       */
+      business_loop_reviewed: boolean;
+      /**
        * Business Sending
        * @default false
        */

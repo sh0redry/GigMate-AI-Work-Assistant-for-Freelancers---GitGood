@@ -5439,6 +5439,11 @@
             "title": "Automatic Understanding",
             "type": "boolean"
           },
+          "business_loop_reviewed": {
+            "default": false,
+            "title": "Business Loop Reviewed",
+            "type": "boolean"
+          },
           "business_sending": {
             "default": false,
             "title": "Business Sending",

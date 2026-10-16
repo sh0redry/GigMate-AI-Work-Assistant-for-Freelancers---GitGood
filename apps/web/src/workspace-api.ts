@@ -109,7 +109,7 @@ export async function allPages<T>(
   let cursor: string | null = null;
   do {
     const page: Page<T> = await api(
-      `${path}?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+      `${path}${path.includes("?") ? "&" : "?"}limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
       undefined,
       signal,
     );

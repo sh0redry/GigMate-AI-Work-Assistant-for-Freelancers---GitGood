@@ -10,11 +10,17 @@ export const unavailableFeatures: Features = {
   manual_assignment: false,
   business_sending: false,
   automatic_understanding: false,
+  business_loop_reviewed: false,
 };
 export const featureDescriptions: Record<
   keyof Features,
   { title: string; reason: string; issue: string }
 > = {
+  business_loop_reviewed: {
+    title: "业务扩展与安全验收",
+    reason: "PR32 页面已准备，后端交付并完成安全验收后才会出现操作入口。",
+    issue: "29",
+  },
   calendar_export: {
     title: "导出手机日历",
     reason: "需要本版后端提供只读日历下载接口。",
@@ -54,4 +60,8 @@ export const featureDescriptions: Record<
 export function featureLink(key: keyof Features) {
   const item = featureDescriptions[key];
   return `https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/${["26", "27"].includes(item.issue) ? "pull" : "issues"}/${item.issue}`;
+}
+
+export function loopReady(features: Features) {
+  return features.business_loop_reviewed === true;
 }
