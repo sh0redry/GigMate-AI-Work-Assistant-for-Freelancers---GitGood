@@ -1,5 +1,9 @@
 # Implementation status and validation
 
+## Delivery checklist, archiving and action paging (role C) — 2026-10-16
+
+方案 §4.6 (按已确认要求生成检查清单，提醒未完成事项，商户确认后关闭业务并归档) and Issue #28. `GET /work-orders/{id}/checklist` lists confirmed items to check and unfinished ones; completing with unfinished items returns 409 `CHECKLIST_OPEN` unless the merchant sets `acknowledge_open_items`. `POST /work-orders/{id}/archive` hides a closed order from the default list (`include_archived=true` shows it). `GET /actions` now reads keyset pages from the database in bounded batches instead of loading the whole history; filtering by computed state, `reissuable` and read-only expiry are unchanged. Evidence: `test_checklist.py` **3 passed**; new paging regression with 121 synthetic actions (no gaps or duplicates, expired shown without a write); approvals and sending suites 30 passed.
+
 ## Daily summary and rule-based suggestions (role C) — 2026-10-16
 
 方案 §4.6 每日摘要 and the deterministic part of 业务建议 (资料不齐、任务依赖、工作量可能超出时间安排; 建议依据必须可见). `GET /daily-summary` aggregates existing records into today / waiting for the customer / due soon / needs decision, plus suggestions; each entry carries the record IDs. It is read-only and pushes nothing; quiet hours and reminder frequency concern push/sending (role A) and are not part of this endpoint. Natural-language questions remain role B. Evidence: `test_daily_summary.py` **3 passed**.

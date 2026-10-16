@@ -514,6 +514,19 @@ def set_status(db, account, work_order_id, command, key, request_id):
     if order.data["version"] != command.expected_version:
         raise BusinessError(409, "VERSION_CONFLICT", "Refresh the work order first")
     current, target = order.data["status"], command.status
+    if target == "completed" and not command.acknowledge_open_items:
+        unfinished = [
+            item
+            for item in checklist(db, account.id, order)["items"]
+            if item["kind"] == "unfinished"
+        ]
+        if unfinished and target in TRANSITIONS[current]:
+            raise BusinessError(
+                409,
+                "CHECKLIST_OPEN",
+                "Some items are unfinished; check them or confirm completing anyway",
+                {"unfinished": [item["title"] for item in unfinished]},
+            )
     if target not in TRANSITIONS[current]:
         raise BusinessError(
             409,
@@ -1060,5 +1073,126 @@ def update_requirement(db, account, work_order_id, item_id, command, key, reques
     value["updated_at"] = now_text()
     order.data = validate(WorkOrder, value)
     db.add(audit_row(account.id, order.id, f"requirement_{command.status}", request_id))
+    save_result(db, account.id, scope, key, digest, order.data)
+    return order.data
+
+
+FIELD_LABEL = {
+    "schedule": "时间",
+    "address": "地址",
+    "specification": "服务内容",
+    "quantity": "数量",
+    "deadline": "交付期限",
+}
+
+
+def show(value):
+    if isinstance(value, dict):
+        if value.get("kind") == "timed":
+            start = datetime.fromisoformat(value["start_at"].replace("Z", "+00:00"))
+            return f"{start.astimezone(ZoneInfo(value['timezone'])):%m/%d %H:%M}"
+        if value.get("kind") == "date_only":
+            return value["date"]
+        if value.get("kind") == "instant":
+            moment = datetime.fromisoformat(value["at"].replace("Z", "+00:00"))
+            return f"{moment.astimezone(ZoneInfo(value['timezone'])):%m/%d %H:%M}"
+    return str(value)
+
+
+def checklist(db, account_id, order):
+    """Pre-delivery check (方案 §4.6): confirmed requirements, then what is unfinished."""
+    from gigmate.approvals import views
+
+    data = order.data
+    items = []
+    for name, label in FIELD_LABEL.items():
+        field = data["fields"].get(name) or {}
+        if field.get("status") == "confirmed":
+            items.append({"kind": "confirmed", "title": f"{label}：{show(field['value'])}"})
+    for entry in data.get("requirements") or []:
+        if entry["status"] == "done":
+            items.append(
+                {
+                    "kind": "confirmed",
+                    "title": f"已完成：{entry['text']}",
+                    "requirement_id": entry["id"],
+                }
+            )
+        elif entry["status"] == "open":
+            label = {"material": "资料未齐", "commitment": "承诺未完成", "question": "问题未决"}[
+                entry["kind"]
+            ]
+            items.append(
+                {
+                    "kind": "unfinished",
+                    "title": f"{label}：{entry['text']}",
+                    "requirement_id": entry["id"],
+                    "task_id": entry.get("task_id"),
+                }
+            )
+    for name in ("schedule", "address"):
+        field = data["fields"][name]
+        if field["status"] != "confirmed":
+            items.append({"kind": "unfinished", "title": f"{FIELD_LABEL[name]}未确认"})
+    for change in db.scalars(
+        select(ChangeRow).where(
+            ChangeRow.work_order_id == order.id, ChangeRow.account_id == account_id
+        )
+    ):
+        if change.data["status"] in {"proposed", "needs_review"}:
+            items.append(
+                {
+                    "kind": "unfinished",
+                    "title": f"客人提出的{FIELD_LABEL.get(change.data['field'], change.data['field'])}未处理",
+                    "change_id": change.id,
+                }
+            )
+    rows = list(
+        db.scalars(
+            select(ActionRow).where(
+                ActionRow.work_order_id == order.id, ActionRow.account_id == account_id
+            )
+        )
+    )
+    for view in views(db, rows) if rows else []:
+        if view["state"] in {"pending_approval", "approved", "executing", "result_unknown"}:
+            label = {
+                "pending_approval": "有回复未批准",
+                "approved": "有已批准但未发送的回复",
+                "executing": "有回复正在发送",
+                "result_unknown": "有回复发送结果未知",
+            }[view["state"]]
+            items.append({"kind": "unfinished", "title": label, "action_id": view["id"]})
+    return {
+        "work_order_id": order.id,
+        "ready": not any(item["kind"] == "unfinished" for item in items),
+        "items": items,
+    }
+
+
+def archive(db, account, work_order_id, command, key, request_id):
+    """Archive a completed or cancelled order: hidden from the default list, history kept."""
+    scope = f"archive:{work_order_id}"
+    digest, cached = command_cache(db, account.id, scope, key, command.model_dump())
+    if cached:
+        return cached.data
+    order = db.scalar(
+        select(WorkOrderRow)
+        .where(WorkOrderRow.id == work_order_id, WorkOrderRow.account_id == account.id)
+        .with_for_update()
+    )
+    if order is None:
+        raise BusinessError(404, "NOT_FOUND", "Work order not found")
+    if order.data["version"] != command.expected_version:
+        raise BusinessError(409, "VERSION_CONFLICT", "Refresh the work order first")
+    if order.data["status"] not in CLOSED or order.data.get("archived_at"):
+        raise BusinessError(
+            409, "INVALID_TRANSITION", "Only a closed, unarchived order can be archived"
+        )
+    value = json.loads(json.dumps(order.data))
+    value["version"] += 1
+    value["updated_at"] = value["archived_at"] = now_text()
+    order.data = validate(WorkOrder, value)
+    db.add(audit_row(account.id, order.id, "archive_work_order", request_id))
     save_result(db, account.id, scope, key, digest, order.data)
     return order.data

@@ -400,6 +400,21 @@
         "title": "ApproveActionCommand",
         "type": "object"
       },
+      "ArchiveCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "ArchiveCommand",
+        "type": "object"
+      },
       "AssignMessageCommand": {
         "additionalProperties": false,
         "description": "Merchant decides an unassigned message: which open order it belongs to, or none.",
@@ -716,6 +731,78 @@
           "conflict_ids"
         ],
         "title": "ChangeView",
+        "type": "object"
+      },
+      "ChecklistItem": {
+        "additionalProperties": false,
+        "properties": {
+          "action_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Id"
+          },
+          "change_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Id"
+          },
+          "kind": {
+            "enum": [
+              "confirmed",
+              "unfinished"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "requirement_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requirement Id"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "title"
+        ],
+        "title": "ChecklistItem",
         "type": "object"
       },
       "ComponentHealth": {
@@ -1484,6 +1571,35 @@
         "title": "DeferredItem",
         "type": "object"
       },
+      "DeliveryChecklist": {
+        "additionalProperties": false,
+        "description": "方案 §4.6 交付前检查: confirmed requirements to check and what is still unfinished.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ChecklistItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "work_order_id": {
+            "format": "uuid",
+            "title": "Work Order Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "work_order_id",
+          "ready",
+          "items"
+        ],
+        "title": "DeliveryChecklist",
+        "type": "object"
+      },
       "Detail_ActionView_": {
         "additionalProperties": false,
         "properties": {
@@ -1596,6 +1712,25 @@
           "request_id"
         ],
         "title": "Detail[DailySummary]",
+        "type": "object"
+      },
+      "Detail_DeliveryChecklist_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DeliveryChecklist"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[DeliveryChecklist]",
         "type": "object"
       },
       "Detail_LoginResult_": {
@@ -3216,6 +3351,11 @@
         "additionalProperties": false,
         "description": "Merchant moves an order along its life cycle (see TRANSITIONS in workorders).",
         "properties": {
+          "acknowledge_open_items": {
+            "default": false,
+            "title": "Acknowledge Open Items",
+            "type": "boolean"
+          },
           "expected_version": {
             "minimum": 1.0,
             "title": "Expected Version",
@@ -6136,6 +6276,19 @@
             "format": "uuid",
             "title": "Account Id",
             "type": "string"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "pattern": "Z$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
           },
           "attention": {
             "default": [],
@@ -10073,6 +10226,16 @@
               ],
               "title": "Status"
             }
+          },
+          {
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Archived",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -10185,6 +10348,65 @@
           }
         },
         "summary": "Order Detail"
+      }
+    },
+    "/api/v1/work-orders/{order_id}/archive": {
+      "post": {
+        "operationId": "archive_order_api_v1_work_orders__order_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WorkOrder_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Order"
       }
     },
     "/api/v1/work-orders/{order_id}/changes": {
@@ -10391,6 +10613,46 @@
           }
         },
         "summary": "Reject Order Change"
+      }
+    },
+    "/api/v1/work-orders/{order_id}/checklist": {
+      "get": {
+        "operationId": "order_checklist_api_v1_work_orders__order_id__checklist_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_DeliveryChecklist_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Order Checklist"
       }
     },
     "/api/v1/work-orders/{order_id}/defer": {

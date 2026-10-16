@@ -416,6 +416,7 @@ class WorkOrder(Model):
     requirements: list[RequirementItem] = []
     task_links: dict[str, Id] = {}
     attention: list[Literal["customer_not_replying"]] = []
+    archived_at: UtcTimestamp | None = None
 
 
 class AccountConsent(Model):
@@ -1074,11 +1075,34 @@ class DailySummary(Model):
     suggestions: list[Suggestion]
 
 
+class ChecklistItem(Model):
+    kind: Literal["confirmed", "unfinished"]
+    title: Text
+    task_id: Id | None = None
+    change_id: Id | None = None
+    action_id: Id | None = None
+    requirement_id: Id | None = None
+
+
+class DeliveryChecklist(Model):
+    """方案 §4.6 交付前检查: confirmed requirements to check and what is still unfinished."""
+
+    work_order_id: Id
+    ready: bool
+    items: list[ChecklistItem]
+
+
+class ArchiveCommand(Model):
+    expected_version: Positive
+
+
 class SetWorkOrderStatusCommand(Model):
     """Merchant moves an order along its life cycle (see TRANSITIONS in workorders)."""
 
     status: Literal["in_progress", "waiting_customer", "completed", "cancelled"]
     expected_version: Positive
+    # Completing with unfinished checklist items needs the merchant's explicit acknowledgement.
+    acknowledge_open_items: bool = False
 
 
 class RejectActionCommand(ApproveActionCommand):

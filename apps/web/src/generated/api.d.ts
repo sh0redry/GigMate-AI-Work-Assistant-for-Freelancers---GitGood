@@ -1121,6 +1121,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/work-orders/{order_id}/archive": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Archive Order */
+    post: operations["archive_order_api_v1_work_orders__order_id__archive_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/work-orders/{order_id}/changes": {
     parameters: {
       query?: never;
@@ -1166,6 +1183,23 @@ export interface paths {
     put?: never;
     /** Reject Order Change */
     post: operations["reject_order_change_api_v1_work_orders__order_id__changes__change_id__reject_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/work-orders/{order_id}/checklist": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Order Checklist */
+    get: operations["order_checklist_api_v1_work_orders__order_id__checklist_get"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -1422,6 +1456,11 @@ export interface components {
       /** Snapshot Hash */
       snapshot_hash: string;
     };
+    /** ArchiveCommand */
+    ArchiveCommand: {
+      /** Expected Version */
+      expected_version: number;
+    };
     /**
      * AssignMessageCommand
      * @description Merchant decides an unassigned message: which open order it belongs to, or none.
@@ -1563,6 +1602,24 @@ export interface components {
        * Format: uuid
        */
       work_order_id: string;
+    };
+    /** ChecklistItem */
+    ChecklistItem: {
+      /** Action Id */
+      action_id?: string | null;
+      /** Change Id */
+      change_id?: string | null;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "confirmed" | "unfinished";
+      /** Requirement Id */
+      requirement_id?: string | null;
+      /** Task Id */
+      task_id?: string | null;
+      /** Title */
+      title: string;
     };
     /** ComponentHealth */
     ComponentHealth: {
@@ -1871,6 +1928,21 @@ export interface components {
        */
       until: string;
     };
+    /**
+     * DeliveryChecklist
+     * @description 方案 §4.6 交付前检查: confirmed requirements to check and what is still unfinished.
+     */
+    DeliveryChecklist: {
+      /** Items */
+      items: components["schemas"]["ChecklistItem"][];
+      /** Ready */
+      ready: boolean;
+      /**
+       * Work Order Id
+       * Format: uuid
+       */
+      work_order_id: string;
+    };
     /** Detail[ActionView] */
     Detail_ActionView_: {
       data: components["schemas"]["ActionView"];
@@ -1919,6 +1991,15 @@ export interface components {
     /** Detail[DailySummary] */
     Detail_DailySummary_: {
       data: components["schemas"]["DailySummary"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[DeliveryChecklist] */
+    Detail_DeliveryChecklist_: {
+      data: components["schemas"]["DeliveryChecklist"];
       /**
        * Request Id
        * Format: uuid
@@ -2597,6 +2678,11 @@ export interface components {
      * @description Merchant moves an order along its life cycle (see TRANSITIONS in workorders).
      */
     SetWorkOrderStatusCommand: {
+      /**
+       * Acknowledge Open Items
+       * @default false
+       */
+      acknowledge_open_items: boolean;
       /** Expected Version */
       expected_version: number;
       /**
@@ -3689,6 +3775,8 @@ export interface components {
        * Format: uuid
        */
       account_id: string;
+      /** Archived At */
+      archived_at?: string | null;
       /**
        * Attention
        * @default []
@@ -6061,6 +6149,7 @@ export interface operations {
         cursor?: string | null;
         limit?: number;
         status?: components["schemas"]["WorkOrderStatus"] | null;
+        include_archived?: boolean;
       };
       header?: never;
       path?: never;
@@ -6133,6 +6222,43 @@ export interface operations {
       cookie?: never;
     };
     requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkOrder_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  archive_order_api_v1_work_orders__order_id__archive_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        order_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ArchiveCommand"];
+      };
+    };
     responses: {
       /** @description Successful Response */
       200: {
@@ -6251,6 +6377,37 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Detail_WorkOrder_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  order_checklist_api_v1_work_orders__order_id__checklist_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        order_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_DeliveryChecklist_"];
         };
       };
       /** @description Validation Error */

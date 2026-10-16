@@ -22,6 +22,7 @@ from gigmate.contracts import (
     AddRequirementCommand,
     ApprovalAction,
     ApproveActionCommand,
+    ArchiveCommand,
     AssignmentResult,
     AssignMessageCommand,
     CalendarEvent,
@@ -33,6 +34,7 @@ from gigmate.contracts import (
     CreateWorkOrderCommand,
     DailySummary,
     DeferItemCommand,
+    DeliveryChecklist,
     Detail,
     EditActionCommand,
     Model,
@@ -95,8 +97,10 @@ from gigmate.waha_recovery import issue_view, record_rejection
 from gigmate.waha_send_api import install as install_sending
 from gigmate.workorders import (
     add_requirement,
+    archive,
     assign_message,
     audit_row,
+    checklist,
     command_cache,
     confirm,
     create,
@@ -345,10 +349,12 @@ def orders(
     cursor: str | None = None,
     limit: int = Query(20, ge=1, le=100),
     status: WorkOrderStatus | None = None,
+    include_archived: bool = False,
     account=Depends(actor),
     db=Depends(database),
 ):
     rows = db.scalars(select(WorkOrderRow).where(WorkOrderRow.account_id == account.id))
+    rows = [row for row in rows if include_archived or not row.data.get("archived_at")]
     if status:
         rows = [row for row in rows if row.data["status"] == status]
     return page(request, rows, cursor, limit)
@@ -571,6 +577,27 @@ def update_order_requirement(
     )
 
 
+@app.get("/api/v1/work-orders/{order_id}/checklist", response_model=Detail[DeliveryChecklist])
+def order_checklist(order_id: UUID, request: Request, account=Depends(actor), db=Depends(database)):
+    order = owned(db, WorkOrderRow, str(order_id), account.id)
+    return detail(request, checklist(db, account.id, order))
+
+
+@app.post("/api/v1/work-orders/{order_id}/archive", response_model=Detail[WorkOrder])
+def archive_order(
+    order_id: UUID,
+    command: ArchiveCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    return detail(
+        request,
+        archive(db, account, str(order_id), command, idempotency_key, request.state.request_id),
+    )
+
+
 @app.post("/api/v1/work-orders/{order_id}/status", response_model=Detail[WorkOrder])
 def set_order_status(
     order_id: UUID,
@@ -596,14 +623,37 @@ def actions(
     account=Depends(actor),
     db=Depends(database),
 ):
-    query = select(ActionRow).where(ActionRow.account_id == account.id)
+    # Issue #28: keyset pages read from the database in id order and in bounded
+    # batches; expiry and send outcome stay computed on read (never written by GET).
+    try:
+        last_id = base64.urlsafe_b64decode(cursor.encode()).decode() if cursor else ""
+        if last_id:
+            UUID(last_id)
+    except (ValueError, UnicodeDecodeError):
+        raise BusinessError(422, "VALIDATION_FAILED", "Invalid cursor") from None
+    query = select(ActionRow).where(ActionRow.account_id == account.id, ActionRow.id > last_id)
     if work_order_id:
         query = query.where(ActionRow.work_order_id == str(work_order_id))
-    rows = list(db.scalars(query))
-    shown = {item["id"]: item for item in views(db, rows)}
-    if state:
-        rows = [row for row in rows if shown[row.id]["state"] == state]
-    return page(request, rows, cursor, limit, lambda row: shown[row.id])
+    query = query.order_by(ActionRow.id)
+    batch, offset, chosen = max(limit * 2, 50), 0, []
+    while len(chosen) <= limit:
+        rows = list(db.scalars(query.offset(offset).limit(batch)))
+        if not rows:
+            break
+        for row, item in zip(rows, views(db, rows), strict=True):
+            if not state or item["state"] == state:
+                chosen.append((row, item))
+        offset += batch
+    current = chosen[:limit]
+    return {
+        "items": [item for _, item in current],
+        "next_cursor": (
+            base64.urlsafe_b64encode(current[-1][0].id.encode()).decode()
+            if len(chosen) > limit
+            else None
+        ),
+        "request_id": request.state.request_id,
+    }
 
 
 @app.get("/api/v1/actions/{action_id}", response_model=Detail[ActionView])

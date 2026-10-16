@@ -2471,6 +2471,11 @@
       "additionalProperties": false,
       "description": "Merchant moves an order along its life cycle (see TRANSITIONS in workorders).",
       "properties": {
+        "acknowledge_open_items": {
+          "default": false,
+          "title": "Acknowledge Open Items",
+          "type": "boolean"
+        },
         "expected_version": {
           "minimum": 1,
           "title": "Expected Version",
@@ -5191,6 +5196,20 @@
           "format": "uuid",
           "title": "Account Id",
           "type": "string"
+        },
+        "archived_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Archived At"
         },
         "attention": {
           "default": [],
