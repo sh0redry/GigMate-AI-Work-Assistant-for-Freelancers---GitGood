@@ -36,6 +36,7 @@ from gigmate.waha_adapter import (
     AdapterError,
     NormalizationContext,
     ResolvedMessage,
+    event_source,
     normalize_event,
     semantic_digest,
 )
@@ -181,6 +182,9 @@ def receive(db, binding, raw, *, now=None):
         )
         if not conversation or not conversation.allowlisted:
             fail("CONVERSATION_NOT_ALLOWED", 403)
+        from gigmate.waha_send import observe_receipt
+
+        observe_receipt(db, connection, raw)
         from gigmate.waha_sync import receive_media
 
         try:
@@ -265,7 +269,7 @@ def receive(db, binding, raw, *, now=None):
                 message_id,
                 revision,
                 True,
-                "app",
+                event_source(raw, details),
             ),
         )
         if event_type in {"message.created", "message.edited"} and (

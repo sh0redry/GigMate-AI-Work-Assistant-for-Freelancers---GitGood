@@ -157,6 +157,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/calendar-events/{event_id}.ics": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Download Calendar */
+    get: operations["download_calendar_api_v1_calendar_events__event_id__ics_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/connection-status": {
     parameters: {
       query?: never;
@@ -549,6 +566,280 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/connectors/{connection_id}/sending/actions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Actions */
+    get: operations["actions_api_v1_connectors__connection_id__sending_actions_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/sending/actions/{action_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Action */
+    get: operations["action_api_v1_connectors__connection_id__sending_actions__action_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/sending/actions/{action_id}/approve": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Approve */
+    post: operations["approve_api_v1_connectors__connection_id__sending_actions__action_id__approve_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/sending/actions/{action_id}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Cancel */
+    post: operations["cancel_api_v1_connectors__connection_id__sending_actions__action_id__cancel_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/sending/actions/{action_id}/reconcile": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Reconcile */
+    post: operations["reconcile_api_v1_connectors__connection_id__sending_actions__action_id__reconcile_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/sending/actions/{action_id}/review-unknown": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Review Unknown */
+    post: operations["review_unknown_api_v1_connectors__connection_id__sending_actions__action_id__review_unknown_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/sending/capabilities": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Capabilities */
+    get: operations["capabilities_api_v1_connectors__connection_id__sending_capabilities_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/sending/context/{chat_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Context */
+    get: operations["context_api_v1_connectors__connection_id__sending_context__chat_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/sending/drafts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Draft */
+    post: operations["draft_api_v1_connectors__connection_id__sending_drafts_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/sending/permission": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Permission */
+    get: operations["permission_api_v1_connectors__connection_id__sending_permission_get"];
+    put?: never;
+    /** Set Permission */
+    post: operations["set_permission_api_v1_connectors__connection_id__sending_permission_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/sending/policies": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Policies */
+    get: operations["policies_api_v1_connectors__connection_id__sending_policies_get"];
+    put?: never;
+    /** Policy */
+    post: operations["policy_api_v1_connectors__connection_id__sending_policies_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/sending/policies/{policy_id}/revoke": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Revoke Policy */
+    post: operations["revoke_policy_api_v1_connectors__connection_id__sending_policies__policy_id__revoke_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/sending/requests/{request_key}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Request Lookup */
+    get: operations["request_lookup_api_v1_connectors__connection_id__sending_requests__request_key__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/sending/requests/{request_key}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Request Cancel */
+    post: operations["request_cancel_api_v1_connectors__connection_id__sending_requests__request_key__cancel_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/sending/uploads": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Upload */
+    post: operations["upload_api_v1_connectors__connection_id__sending_uploads_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connectors/{connection_id}/sending/uploads/{upload_id}/content": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Preview */
+    get: operations["preview_api_v1_connectors__connection_id__sending_uploads__upload_id__content_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/connectors/{connection_id}/setup": {
     parameters: {
       query?: never;
@@ -635,6 +926,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/conversations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Conversations */
+    get: operations["conversations_api_v1_conversations_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/conversations/{conversation_id}": {
     parameters: {
       query?: never;
@@ -703,6 +1011,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/review-items": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Review Items */
+    get: operations["review_items_api_v1_review_items_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/tasks": {
     parameters: {
       query?: never;
@@ -720,6 +1045,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/work-order-command-results/{key}/inspect": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Inspect Command */
+    post: operations["inspect_command_api_v1_work_order_command_results__key__inspect_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/work-orders": {
     parameters: {
       query?: never;
@@ -730,7 +1072,8 @@ export interface paths {
     /** Orders */
     get: operations["orders_api_v1_work_orders_get"];
     put?: never;
-    post?: never;
+    /** Create Order */
+    post: operations["create_order_api_v1_work_orders_post"];
     delete?: never;
     options?: never;
     head?: never;
@@ -782,6 +1125,40 @@ export interface paths {
     put?: never;
     /** Confirm Change */
     post: operations["confirm_change_api_v1_work_orders__order_id__changes__change_id__confirm_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/work-orders/{order_id}/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Set Order Status */
+    post: operations["set_order_status_api_v1_work_orders__order_id__status_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/workspace-capabilities": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Capabilities */
+    get: operations["capabilities_api_v1_workspace_capabilities_get"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -877,6 +1254,14 @@ export interface components {
        * @constant
        */
       kind: "send_text";
+      /** Open Items */
+      open_items: (
+        | "missing_schedule"
+        | "verify_schedule"
+        | "missing_time"
+        | "missing_address"
+        | "verify_address"
+      )[];
       /** Provider Message Id */
       provider_message_id: string | null;
       /** Recipient */
@@ -892,9 +1277,9 @@ export interface components {
       state: components["schemas"]["ActionState"];
       /**
        * Trigger
-       * @constant
+       * @enum {string}
        */
-      trigger: "schedule_conflict";
+      trigger: "schedule_conflict" | "open_items";
       /**
        * Work Order Id
        * Format: uuid
@@ -1200,6 +1585,38 @@ export interface components {
       /** Text */
       text: string | null;
     };
+    /** CreateWorkOrderCommand */
+    CreateWorkOrderCommand: {
+      /** Address */
+      address?: string | null;
+      /**
+       * Address Sources
+       * @default []
+       */
+      address_sources: components["schemas"]["SourceRef"][];
+      /**
+       * Confirm Additional Order
+       * @default false
+       */
+      confirm_additional_order: boolean;
+      /**
+       * Conversation Id
+       * Format: uuid
+       */
+      conversation_id: string;
+      /** Schedule */
+      schedule?:
+        | components["schemas"]["TimedSchedule"]
+        | components["schemas"]["DateOnly"]
+        | null;
+      /**
+       * Schedule Sources
+       * @default []
+       */
+      schedule_sources: components["schemas"]["SourceRef"][];
+      /** Summary */
+      summary: string;
+    };
     /**
      * CustomerConfirmation
      * @enum {string}
@@ -1332,6 +1749,60 @@ export interface components {
        */
       request_id: string;
     };
+    /** Detail[WahaSendActionView] */
+    Detail_WahaSendActionView_: {
+      data: components["schemas"]["WahaSendActionView"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[WahaSendCapabilities] */
+    Detail_WahaSendCapabilities_: {
+      data: components["schemas"]["WahaSendCapabilities"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[WahaSendPermissionView] */
+    Detail_WahaSendPermissionView_: {
+      data: components["schemas"]["WahaSendPermissionView"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[WahaSendPolicyView] */
+    Detail_WahaSendPolicyView_: {
+      data: components["schemas"]["WahaSendPolicyView"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[WahaSendRequestView] */
+    Detail_WahaSendRequestView_: {
+      data: components["schemas"]["WahaSendRequestView"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[WahaSendUploadView] */
+    Detail_WahaSendUploadView_: {
+      data: components["schemas"]["WahaSendUploadView"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
     /** Detail[WahaSetup] */
     Detail_WahaSetup_: {
       data: components["schemas"]["WahaSetup"];
@@ -1359,6 +1830,27 @@ export interface components {
        */
       request_id: string;
     };
+    /** Detail[WorkspaceCapabilities] */
+    Detail_WorkspaceCapabilities_: {
+      data: components["schemas"]["WorkspaceCapabilities"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[dict[str, int]] */
+    Detail_dict_str__int__: {
+      /** Data */
+      data: {
+        [key: string]: number;
+      };
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
     /** Detail[list[WahaChoice]] */
     Detail_list_WahaChoice__: {
       /** Data */
@@ -1378,6 +1870,26 @@ export interface components {
     HTTPValidationError: {
       /** Detail */
       detail?: components["schemas"]["ValidationError"][];
+    };
+    /**
+     * InspectWorkOrderCommand
+     * @description Look up an exact completed command; never execute or resubmit it.
+     */
+    InspectWorkOrderCommand: {
+      /** Change Id */
+      change_id?: string | null;
+      /** Command */
+      command:
+        | components["schemas"]["CreateWorkOrderCommand"]
+        | components["schemas"]["SetWorkOrderStatusCommand"]
+        | components["schemas"]["ConfirmChangeCommand"];
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "create" | "status" | "confirm";
+      /** Order Id */
+      order_id?: string | null;
     };
     /** InstantDeadline */
     InstantDeadline: {
@@ -1475,10 +1987,34 @@ export interface components {
        */
       request_id: string;
     };
+    /** Page[Conversation] */
+    Page_Conversation_: {
+      /** Items */
+      items: components["schemas"]["Conversation"][];
+      /** Next Cursor */
+      next_cursor: string | null;
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
     /** Page[RecoveryIssue] */
     Page_RecoveryIssue_: {
       /** Items */
       items: components["schemas"]["RecoveryIssue"][];
+      /** Next Cursor */
+      next_cursor: string | null;
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Page[ReviewItem] */
+    Page_ReviewItem_: {
+      /** Items */
+      items: components["schemas"]["ReviewItem"][];
       /** Next Cursor */
       next_cursor: string | null;
       /**
@@ -1503,6 +2039,30 @@ export interface components {
     Page_WahaAttachmentView_: {
       /** Items */
       items: components["schemas"]["WahaAttachmentView"][];
+      /** Next Cursor */
+      next_cursor: string | null;
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Page[WahaSendActionView] */
+    Page_WahaSendActionView_: {
+      /** Items */
+      items: components["schemas"]["WahaSendActionView"][];
+      /** Next Cursor */
+      next_cursor: string | null;
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Page[WahaSendPolicyView] */
+    Page_WahaSendPolicyView_: {
+      /** Items */
+      items: components["schemas"]["WahaSendPolicyView"][];
       /** Next Cursor */
       next_cursor: string | null;
       /**
@@ -1643,6 +2203,47 @@ export interface components {
       duplicate: boolean;
       /** Event Id */
       event_id: string;
+    };
+    /** ReviewItem */
+    ReviewItem: {
+      /** Context Version */
+      context_version: number;
+      /**
+       * Conversation Id
+       * Format: uuid
+       */
+      conversation_id: string;
+      /** Current Context Version */
+      current_context_version: number;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Message Id */
+      message_id: string | null;
+      /**
+       * Observed At
+       * Format: date-time
+       */
+      observed_at: string;
+      /** Reason */
+      reason: string;
+      /** State */
+      state: string;
+    };
+    /**
+     * SetWorkOrderStatusCommand
+     * @description Merchant moves an order along its life cycle (see TRANSITIONS in workorders).
+     */
+    SetWorkOrderStatusCommand: {
+      /** Expected Version */
+      expected_version: number;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "in_progress" | "waiting_customer" | "completed" | "cancelled";
     };
     /** SourceRef */
     SourceRef: {
@@ -2109,6 +2710,310 @@ export interface components {
       /** Selected Ids */
       selected_ids: string[];
     };
+    /** WahaSendActionView */
+    WahaSendActionView: {
+      /** Approved At */
+      approved_at: string | null;
+      /**
+       * Chat Id
+       * Format: uuid
+       */
+      chat_id: string;
+      /** Context Version */
+      context_version: number;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /**
+       * Delivery Status
+       * @enum {string}
+       */
+      delivery_status:
+        | "not_submitted"
+        | "accepted"
+        | "sent"
+        | "delivered"
+        | "read"
+        | "unknown";
+      /** Error Code */
+      error_code: string | null;
+      /**
+       * Expires At
+       * Format: date-time
+       */
+      expires_at: string;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Mode
+       * @enum {string}
+       */
+      mode: "manual" | "agent_assisted" | "agent_auto";
+      payload: components["schemas"]["WahaSendPayload"];
+      /** Provider Message Id */
+      provider_message_id: string | null;
+      /** Revision */
+      revision: number;
+      /**
+       * State
+       * @enum {string}
+       */
+      state:
+        | "draft"
+        | "queued"
+        | "preparing"
+        | "dispatching"
+        | "accepted"
+        | "failed"
+        | "cancelled"
+        | "result_unknown";
+      /** Unknown Reviewed At */
+      unknown_reviewed_at: string | null;
+      upload: components["schemas"]["WahaSendUploadView"] | null;
+      /** Work Order Id */
+      work_order_id: string | null;
+      /** Work Order Version */
+      work_order_version: number | null;
+      /** Work Order Versions */
+      work_order_versions: {
+        [key: string]: number;
+      };
+    };
+    /** WahaSendCapabilities */
+    WahaSendCapabilities: {
+      /**
+       * Automatic Mode
+       * @constant
+       */
+      automatic_mode: "exact_preapproved_payload";
+      /** Enabled */
+      enabled: boolean;
+      /** Kinds */
+      kinds: (
+        | "text"
+        | "image"
+        | "file"
+        | "audio"
+        | "voice"
+        | "video"
+        | "sticker"
+        | "location"
+        | "contact"
+        | "poll"
+        | "reaction"
+      )[];
+      /** Max Upload Bytes */
+      max_upload_bytes: number;
+      /** Real Agent Configured */
+      real_agent_configured: boolean;
+    };
+    /** WahaSendContact */
+    WahaSendContact: {
+      /** Name */
+      name: string;
+      /** Phone */
+      phone: string;
+    };
+    /** WahaSendDraftCommand */
+    WahaSendDraftCommand: {
+      /**
+       * Chat Id
+       * Format: uuid
+       */
+      chat_id: string;
+      /** Expected Context Version */
+      expected_context_version: number;
+      /** Expected Control Version */
+      expected_control_version: number;
+      /** Expected Permission Version */
+      expected_permission_version: number;
+      /** Expected Work Order Version */
+      expected_work_order_version?: number | null;
+      /**
+       * Mode
+       * @enum {string}
+       */
+      mode: "manual" | "agent_assisted" | "agent_auto";
+      payload: components["schemas"]["WahaSendPayload"];
+      /** Policy Id */
+      policy_id?: string | null;
+      /** Work Order Id */
+      work_order_id?: string | null;
+    };
+    /** WahaSendPayload */
+    WahaSendPayload: {
+      /** Caption */
+      caption?: string | null;
+      /** Contacts */
+      contacts?: components["schemas"]["WahaSendContact"][] | null;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind:
+        | "text"
+        | "image"
+        | "file"
+        | "audio"
+        | "voice"
+        | "video"
+        | "sticker"
+        | "location"
+        | "contact"
+        | "poll"
+        | "reaction";
+      /** Latitude */
+      latitude?: number | null;
+      /** Longitude */
+      longitude?: number | null;
+      /** Multiple Answers */
+      multiple_answers?: boolean | null;
+      /** Options */
+      options?: string[] | null;
+      /** Reaction */
+      reaction?: string | null;
+      /** Reply Snapshot Id */
+      reply_snapshot_id?: string | null;
+      /** Target Snapshot Id */
+      target_snapshot_id?: string | null;
+      /** Text */
+      text?: string | null;
+      /** Title */
+      title?: string | null;
+      /** Upload Id */
+      upload_id?: string | null;
+    };
+    /** WahaSendPermissionCommand */
+    WahaSendPermissionCommand: {
+      /** Chat Ids */
+      chat_ids: string[];
+      /** Enabled */
+      enabled: boolean;
+      /** Expected Version */
+      expected_version: number;
+      /** Expires At */
+      expires_at?: string | null;
+    };
+    /** WahaSendPermissionView */
+    WahaSendPermissionView: {
+      /** Chat Ids */
+      chat_ids: string[];
+      /** Enabled */
+      enabled: boolean;
+      /** Expires At */
+      expires_at: string | null;
+      /** Version */
+      version: number;
+    };
+    /** WahaSendPolicyCommand */
+    WahaSendPolicyCommand: {
+      /**
+       * Chat Id
+       * Format: uuid
+       */
+      chat_id: string;
+      /** Expected Control Version */
+      expected_control_version: number;
+      /** Expected Permission Version */
+      expected_permission_version: number;
+      /** Expected Work Order Version */
+      expected_work_order_version?: number | null;
+      /**
+       * Expires At
+       * Format: date-time
+       */
+      expires_at: string;
+      /** Maximum Uses */
+      maximum_uses: number;
+      payload: components["schemas"]["WahaSendPayload"];
+      /** Work Order Id */
+      work_order_id?: string | null;
+    };
+    /** WahaSendPolicyView */
+    WahaSendPolicyView: {
+      /**
+       * Chat Id
+       * Format: uuid
+       */
+      chat_id: string;
+      /** Enabled */
+      enabled: boolean;
+      /**
+       * Expires At
+       * Format: date-time
+       */
+      expires_at: string;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Maximum Uses */
+      maximum_uses: number;
+      payload: components["schemas"]["WahaSendPayload"];
+      /** Uses */
+      uses: number;
+      /** Version */
+      version: number;
+      /** Work Order Id */
+      work_order_id: string | null;
+      /** Work Order Version */
+      work_order_version: number | null;
+    };
+    /** WahaSendRequestView */
+    WahaSendRequestView: {
+      action: components["schemas"]["WahaSendActionView"] | null;
+      /** Request Key */
+      request_key: string;
+      /**
+       * State
+       * @enum {string}
+       */
+      state: "cancelled" | "recorded";
+    };
+    /** WahaSendRevisionCommand */
+    WahaSendRevisionCommand: {
+      /** Expected Revision */
+      expected_revision: number;
+    };
+    /** WahaSendUnknownReviewCommand */
+    WahaSendUnknownReviewCommand: {
+      /**
+       * Acknowledge Possible Delivery
+       * @constant
+       */
+      acknowledge_possible_delivery: true;
+      /** Expected Revision */
+      expected_revision: number;
+      /** Note */
+      note: string;
+    };
+    /** WahaSendUploadView */
+    WahaSendUploadView: {
+      /**
+       * Expires At
+       * Format: date-time
+       */
+      expires_at: string;
+      /** Filename */
+      filename: string;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Mimetype */
+      mimetype: string;
+      /** Sha256 */
+      sha256: string;
+      /** Size Bytes */
+      size_bytes: number;
+    };
     /** WahaSetup */
     WahaSetup: {
       /** Active Operation Id */
@@ -2380,6 +3285,47 @@ export interface components {
       | "waiting_customer"
       | "completed"
       | "cancelled";
+    /**
+     * WorkspaceCapabilities
+     * @description Release gates, not connector permissions or claims of live acceptance.
+     */
+    WorkspaceCapabilities: {
+      /**
+       * Address Confirmation
+       * @default true
+       */
+      address_confirmation: boolean;
+      /**
+       * Automatic Understanding
+       * @default false
+       */
+      automatic_understanding: boolean;
+      /**
+       * Business Sending
+       * @default false
+       */
+      business_sending: boolean;
+      /**
+       * Calendar Export
+       * @default true
+       */
+      calendar_export: boolean;
+      /**
+       * Create Order
+       * @default true
+       */
+      create_order: boolean;
+      /**
+       * Manual Assignment
+       * @default false
+       */
+      manual_assignment: boolean;
+      /**
+       * Order Status
+       * @default true
+       */
+      order_status: boolean;
+    };
   };
   responses: never;
   parameters: never;
@@ -2674,6 +3620,37 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Page_CalendarEvent_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  download_calendar_api_v1_calendar_events__event_id__ics_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        event_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/calendar": string;
         };
       };
       /** @description Validation Error */
@@ -3492,6 +4469,621 @@ export interface operations {
       };
     };
   };
+  actions_api_v1_connectors__connection_id__sending_actions_get: {
+    parameters: {
+      query?: {
+        cursor?: string | null;
+        chat_id?: string | null;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Page_WahaSendActionView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  action_api_v1_connectors__connection_id__sending_actions__action_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+        action_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaSendActionView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  approve_api_v1_connectors__connection_id__sending_actions__action_id__approve_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+        action_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WahaSendRevisionCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaSendActionView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  cancel_api_v1_connectors__connection_id__sending_actions__action_id__cancel_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+        action_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WahaSendRevisionCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaSendActionView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  reconcile_api_v1_connectors__connection_id__sending_actions__action_id__reconcile_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+        action_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WahaSendRevisionCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaSendActionView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  review_unknown_api_v1_connectors__connection_id__sending_actions__action_id__review_unknown_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+        action_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WahaSendUnknownReviewCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaSendActionView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  capabilities_api_v1_connectors__connection_id__sending_capabilities_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaSendCapabilities_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  context_api_v1_connectors__connection_id__sending_context__chat_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+        chat_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_dict_str__int__"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  draft_api_v1_connectors__connection_id__sending_drafts_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WahaSendDraftCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaSendActionView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  permission_api_v1_connectors__connection_id__sending_permission_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaSendPermissionView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  set_permission_api_v1_connectors__connection_id__sending_permission_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WahaSendPermissionCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaSendPermissionView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  policies_api_v1_connectors__connection_id__sending_policies_get: {
+    parameters: {
+      query?: {
+        cursor?: string | null;
+        chat_id?: string | null;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Page_WahaSendPolicyView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  policy_api_v1_connectors__connection_id__sending_policies_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WahaSendPolicyCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaSendPolicyView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  revoke_policy_api_v1_connectors__connection_id__sending_policies__policy_id__revoke_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+        policy_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WahaSendRevisionCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaSendPolicyView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  request_lookup_api_v1_connectors__connection_id__sending_requests__request_key__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+        request_key: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaSendRequestView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  request_cancel_api_v1_connectors__connection_id__sending_requests__request_key__cancel_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+        request_key: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaSendRequestView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  upload_api_v1_connectors__connection_id__sending_uploads_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "X-File-Name": string;
+        "X-File-Mimetype": string;
+      };
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/octet-stream": string;
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WahaSendUploadView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  preview_api_v1_connectors__connection_id__sending_uploads__upload_id__content_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+        upload_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   connector_setup_api_v1_connectors__connection_id__setup_get: {
     parameters: {
       query?: never;
@@ -3696,6 +5288,38 @@ export interface operations {
       };
     };
   };
+  conversations_api_v1_conversations_get: {
+    parameters: {
+      query?: {
+        cursor?: string | null;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Page_Conversation_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   conversation_info_api_v1_conversations__conversation_id__get: {
     parameters: {
       query?: never;
@@ -3833,6 +5457,38 @@ export interface operations {
       };
     };
   };
+  review_items_api_v1_review_items_get: {
+    parameters: {
+      query?: {
+        cursor?: string | null;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Page_ReviewItem_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   tasks_api_v1_tasks_get: {
     parameters: {
       query?: {
@@ -3865,6 +5521,41 @@ export interface operations {
       };
     };
   };
+  inspect_command_api_v1_work_order_command_results__key__inspect_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        key: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["InspectWorkOrderCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkOrder_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   orders_api_v1_work_orders_get: {
     parameters: {
       query?: {
@@ -3884,6 +5575,41 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Page_WorkOrder_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  create_order_api_v1_work_orders_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateWorkOrderCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkOrder_"];
         };
       };
       /** @description Validation Error */
@@ -3996,6 +5722,63 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  set_order_status_api_v1_work_orders__order_id__status_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        order_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetWorkOrderStatusCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkOrder_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  capabilities_api_v1_workspace_capabilities_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkspaceCapabilities_"];
         };
       };
     };

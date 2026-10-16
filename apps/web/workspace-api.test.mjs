@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { workspaceApi, allPages, replayApi } from "./src/workspace-api.ts";
+import { workspaceApi, allPages, businessApi } from "./src/workspace-api.ts";
 
 test("HTML proxy failures become a readable error without exposing HTML or parser details", async () => {
   const request = workspaceApi(
@@ -70,7 +70,7 @@ test("all list pages are read and cyclic or malformed pagination fails clearly",
 });
 test("an unseeded environment never requests a conversation named undefined", async () => {
   const paths = [];
-  const api = replayApi(async (path) => {
+  const api = businessApi(async (path) => {
     paths.push(path);
     return { items: [], next_cursor: null };
   });
@@ -80,7 +80,7 @@ test("an unseeded environment never requests a conversation named undefined", as
 });
 test("confirmation binds the loaded order and context versions without altering its payload", async () => {
   let sent;
-  const api = replayApi(async (path, body) => {
+  const api = businessApi(async (path, body) => {
     sent = { path, body };
     return { data: {} };
   });
@@ -90,7 +90,7 @@ test("confirmation binds the loaded order and context versions without altering 
       orders: [{ id: "order", version: 7 }],
       contextVersion: 9,
     },
-    { id: "change", work_order_id: "order" },
+    { id: "change", work_order_id: "order", field: "schedule" },
   );
   assert.equal(sent.path, "/work-orders/order/changes/change/confirm");
   assert.deepEqual(sent.body, {
@@ -104,5 +104,15 @@ test("confirmation binds the loaded order and context versions without altering 
       { id: "change", work_order_id: "different" },
     ),
     /业务已切换/,
+  );
+});
+
+test("login blocked by origin explains configuration rather than requesting another logout", async () => {
+  const api = workspaceApi("", async () =>
+    Response.json({ error: { code: "CSRF_REJECTED" } }, { status: 403 }),
+  );
+  await assert.rejects(
+    api("/auth/login", { username: "synthetic", password: "synthetic" }),
+    /网页地址登录，请联系/,
   );
 });

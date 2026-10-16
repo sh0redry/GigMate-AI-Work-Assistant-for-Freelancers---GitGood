@@ -66,6 +66,10 @@ def compose(*args):
         command.extend(["-f", str(ROOT / "infra/waha-arm64.compose.yaml")])
     if os.environ.get("WAHA_MEDIA_ENABLED") == "true":
         command.extend(["-f", str(ROOT / "infra/waha-media.compose.yaml")])
+    if os.environ.get("WAHA_SEND_ENABLED") == "true":
+        command.extend(["-f", str(ROOT / "infra/waha-send.compose.yaml")])
+        if os.environ.get("WAHA_SEND_CHROME") == "true":
+            command.extend(["-f", str(ROOT / "infra/waha-send-chrome.compose.yaml")])
     return [*command, *args]
 
 
@@ -282,7 +286,9 @@ def startup(env):
     return {
         "services_started": True,
         "scan_or_status_next": True,
-        "sending_enabled": False,
+        "sending_interface_enabled": os.environ.get("WAHA_SEND_ENABLED") == "true",
+        "sending_authorized_automatically": False,
+        "sending_enabled": os.environ.get("WAHA_SEND_ENABLED") == "true",
     }
 
 

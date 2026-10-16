@@ -1,4 +1,4 @@
-"""Server-side local WAHA capability client. No sending or automatic retries."""
+"""Server-side pinned WAHA client. Sends require the separate approved outbox."""
 
 import json
 from dataclasses import dataclass, field
@@ -86,7 +86,65 @@ class LocalWahaClient:
     def close(self):
         self._client.close()
 
-    def _request(self, method, path, *, body=None, params=None, png=False):
+    def send_message(self, path, body):
+        # This low-level seam is server-only. Ownership/approval/bytes are resolved
+        # by waha_send, never by an arbitrary user-supplied connector request.
+        allowed = {
+            "/api/" + name
+            for name in (
+                "sendText",
+                "sendImage",
+                "sendFile",
+                "sendVoice",
+                "sendVideo",
+                "sendSticker",
+                "sendLocation",
+                "sendContactVcard",
+                "sendPoll",
+                "reaction",
+            )
+        }
+        if path not in allowed or body.get("session") != self.config.session:
+            raise AdapterError("WAHA_SEND_REQUEST_INVALID")
+        file = body.get("file")
+        if file and (
+            not isinstance(file, dict) or "url" in file or not isinstance(file.get("data"), str)
+        ):
+            raise AdapterError("WAHA_SEND_REQUEST_INVALID")
+        if path == "/api/reaction":
+            body = {k: v for k, v in body.items() if k != "chatId"}
+        return self._request(
+            "PUT" if path == "/api/reaction" else "POST",
+            path,
+            body=body,
+            empty_success=path == "/api/reaction",
+        )
+
+    def send_status(self, connection_id, *, video=False):
+        version = self._request("GET", "/api/server/version")
+        if (
+            not isinstance(version, dict)
+            or version.get("engine") != ENGINE
+            or version.get("version") != VERSION
+        ):
+            raise AdapterError("WAHA_SEND_VERSION_MISMATCH")
+        # Match the pinned engine's IsChrome condition, before the dispatch fence.
+        if video and (
+            not isinstance(version.get("browser"), str)
+            or "google" not in version["browser"].lower()
+        ):
+            raise AdapterError("WAHA_SEND_VIDEO_REQUIRES_CHROME")
+        status = self.inspect_business_session(connection_id)
+        if not status["business_webhook_matches"]:
+            raise AdapterError("WAHA_SEND_WEBHOOK_MISMATCH")
+        session = self._request("GET", "/api/sessions/default")
+        config = session.get("config", {}) if isinstance(session, dict) else {}
+        webjs = config.get("webjs") if isinstance(config, dict) else None
+        if not isinstance(webjs, dict) or webjs.get("tagsEventsOn") is not True:
+            raise AdapterError("WAHA_SEND_ECHO_TAGS_REQUIRED")
+        return status
+
+    def _request(self, method, path, *, body=None, params=None, png=False, empty_success=False):
         if self.config.consent_active is not True:
             raise AdapterError("CONSENT_REVOKED")
         try:
@@ -110,6 +168,10 @@ class LocalWahaClient:
                     if len(data) + len(chunk) > MAX_RESPONSE:
                         raise AdapterError("WAHA_RESPONSE_TOO_LARGE")
                     data.extend(chunk)
+                if not data and empty_success:
+                    # Pinned WEBJS Message.react returns void. HTTP success means
+                    # API acceptance only; it is not proof the reaction was applied.
+                    return True
                 if png:
                     if response.headers.get("content-type", "").split(";")[0] != "image/png":
                         raise AdapterError("WAHA_INVALID_QR")

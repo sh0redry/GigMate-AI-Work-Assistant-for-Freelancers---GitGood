@@ -212,6 +212,31 @@ def checkpoint(name):
     print(json.dumps({"checkpoint": name, "passed": True}), flush=True)
 
 
+def synthetic_frontend_environment(environment):
+    """Pass only runtime paths and public synthetic routing, never backend secrets."""
+    runtime_names = (
+        "PATH",
+        "SystemRoot",
+        "SYSTEMROOT",
+        "WINDIR",
+        "COMSPEC",
+        "PATHEXT",
+        "TEMP",
+        "TMP",
+        "TMPDIR",
+        "HOME",
+        "USERPROFILE",
+        "LOCALAPPDATA",
+        "LANG",
+        "LC_ALL",
+    )
+    return {
+        **{name: environment[name] for name in runtime_names if name in environment},
+        "GIGMATE_REAL_API_URL": "http://127.0.0.1:18802",
+        "CI": "1",
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", action="store_true", required=True)
@@ -764,12 +789,17 @@ def main():
                         "--strictPort",
                     ],
                     cwd=ROOT / "apps/web",
-                    env={**env, "GIGMATE_API_URL": "http://127.0.0.1:18802", "CI": "1"},
+                    env=synthetic_frontend_environment(env),
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
             )
             checkpoint("synthetic_frontend_serving_18803")
+            print(
+                "http://127.0.0.1:18803/ — synthetic provider and "
+                "disposable data only; the fixture QR cannot pair WhatsApp",
+                flush=True,
+            )
             until = time.monotonic() + 1800
             while time.monotonic() < until and not stop_requested.is_set():
                 time.sleep(1)

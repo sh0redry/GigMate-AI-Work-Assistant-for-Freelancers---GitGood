@@ -1,112 +1,96 @@
 # GigMate frontend user guide
 
-## Review and main integration update — 2026-10-10
+Current delivery candidate · 2026-10-16. [中文手册](../zh/role-d-frontend-user-guide.md) · [Acceptance and limits](role-d-final-acceptance.md).
 
-Andy PR #14 is merged into main (`ab52d3e`). PR #16 now targets main and preserves the chat-type/pagination behavior described below; earlier references to its dependency branch describe the initial publication. Shared status and D acceptance documents are synchronized. The new three-case DOM/API-fixture regression runs with `npm test` / `npm run build`, giving **53 frontend tests**; use `npm ci` for the updated development lock, including test-only `jsdom`. This does not change production dependencies or startup commands. Automated reread/remount uses synthetic API memory and is not proof of real backend disk persistence. Real nicknames and native Windows acceptance remain pending; PR #16 requires independent approval before merge.
+## 1 Current pages and capability
 
-## Chat types, names and pages — 2026-10-10
+The candidate follows merged #26/#27/main `71de8d9`. There is one business service, blank login fields and no public password, sample-input button or environment switch. Old `/environments/...` bookmarks stop at an explicit retired-entry page; open `/` only after checking the configured service. Existing records and WhatsApp sessions are not deleted or converted.
 
-The chat-list follow-up is based on Andy's [PR #14](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/pull/14), on `codex/d01-chat-list`, with `Andy_WAHA_message_sync` as the PR base. It depends on that branch's canonical chat-kind metadata. PR #15's October 9 delivery below has already merged into main; the original `Kyrie_Frontend` / `c702f0c` remains separate.
+| Page | What you can do |
+| --- | --- |
+| Business | Search existing orders, read linked source revisions, accept supported time/date-only/address proposals and use reviewed status commands |
+| New order | Select an authorized conversation, fill missing/known details, choose customer evidence, review and save through the merged C contract |
+| Reply approvals | Review exact recipient/body/source/expiry/versions; approve, reject/cancel, reissue and inspect history |
+| Calendar and tasks | Month view, all-appointment list, date keyboard navigation, full-account tasks, owned confirmed appointment `.ics` downloads |
+| Manual review | Read processing diagnostics, distinguish historical rounds, inspect original conversation and open linked orders |
+| WhatsApp | Connect/authorize conversations, read messages and attachments, use the separate explicitly authorized sending gateway |
+| Features and help | See what is available and why a particular function remains disabled |
 
-Rows show **个人聊天** (direct), **群聊** (group) or **类型未提供** (missing type). Search applies to loaded names/numbers. **会话类型 → 已授权** filters saved server authorization; pending checkbox changes are counted separately. Page controls offer 8/16/24 rows with previous/next and result counts. Filtering, paging or changing the page size retains all pending selections, including hidden ones. **保存会话授权** saves the full pending selection; **撤销全部授权** includes all pages. **放弃更改** reloads saved authorization. Search is local to the loaded catalog. If more server choices are available, explicitly use **载入更多会话（每批最多 100 个）**, then browse the expanded catalog with the page controls.
+A blank list is not an error and not proof that AI understood everything. Production onboarding, real model activation and the complete business send loop remain team dependencies.
 
-Names come from the integration service. A phone-only direct label shows **未提供昵称**; the frontend does not manufacture a nickname. **发现最近会话** refreshes labels provided by the server and may be unavailable while disconnected/paused. In the current upstream adapter, only provider `name` is used, so an available nickname elsewhere is not necessarily returned. The integration owner must fix that server mapping; rediscovery alone is not guaranteed to restore nicknames. Saved authorization may show an explicit unnamed/authorized fallback after candidate metadata expires. Neither paging nor discovering grants processing permission until you save.
+## 2 Open the workspace
 
-For a safe preview, choose **D-01 演示预览 → 模拟扫码成功 → 发现最近会话**: 24 fictional choices cover three default pages. It does not connect a real account; leaving/reloading clears demo state. Native Windows and real nickname acceptance remain unverified in this batch.
+Use the GigMate account provided by the maintainer. It is separate from your WhatsApp account. Do not enter your phone password here. The delivery page never displays development credentials.
 
-Role D, 2026-10-09. [中文版](../zh/role-d-frontend-user-guide.md). D-01 uses main `5f9df37` / Andy's PR #11. Work in the attached `d01-pr11` worktree; the original `Kyrie_Frontend` / `c702f0c` checkout has not been merged. Replay still needs independent review; do not merge this batch yet.
-
-## Environments and startup
-
-| View | Purpose | Persistence |
-| --- | --- | --- |
-| D-01 演示预览 | Simulated scan, selection, pause/resume and revocation without login | Browser memory; leaving/reloading resets it |
-| 工单回放 | Fictional messages, conflicts, merchant confirmation, internal calendar/tasks | Replay database; reload/logout do not reset it |
-| WhatsApp 连接 | Your preprovisioned local connection; authenticated setup, QR, consent and issue review | Backend database and durable worker; consent survives reload |
-
-One frontend process selects one backend. WAHA team setup creates a development login but no fictional orders. Check the environment rather than seeding fictional data into the WAHA database. Use the latest-main worktree for this frontend; an older backend without PR #11's routes must be upgraded by its maintainer before connection testing.
-
-For replay, use the existing repository-root setup:
-
-```text
-docker compose --env-file .env.example -f infra/compose.yaml up --build -d --wait
-```
-
-Workspace: http://127.0.0.1:18080/ . Replay API: 18000; PostgreSQL host port: 54329. Existing data persists. Backend preparation is in [onboarding](getting-started.md). Do not reset another installation's database or volumes for these frontend tests.
-
-For frontend development use Node 24.15.x/npm 11.12.x. Run `npm ci`, `npm run dev` from this worktree's `apps/web`, then open http://127.0.0.1:5173/ . The default proxy targets replay API 18000. Preview needs no Docker/API; login/replay require them.
-
-For your already upgraded and running Andy team setup, use only the backend URL:
-
-macOS/Linux:
+For local development, start your already-configured backend without resetting its database or session. In `apps/web`, macOS/Linux:
 
 ```bash
-GIGMATE_API_URL=http://127.0.0.1:18702 npm run dev
+GIGMATE_REAL_API_URL=http://127.0.0.1:18702 npm run dev
 ```
 
-Windows PowerShell:
+PowerShell:
 
 ```powershell
-$env:GIGMATE_API_URL = "http://127.0.0.1:18702"
+$env:GIGMATE_REAL_API_URL = 'http://127.0.0.1:18702'
 npm run dev
 ```
 
-Follow [Andy's local setup](role-a-team-local-development.md), using your own private configuration/session. `GIGMATE_LOCAL_PAIRING` and the Vite/Python bridge are retired. Development and deployed frontends use the same authenticated `/api/v1` routes. Provider credentials, session names and raw provider chat IDs stay server-side. Native Windows frontend runtime acceptance is still pending.
+Use your actual backend port and the printed frontend URL. The backend must allow that frontend origin. The old default-environment/isolated/alias variables no longer select a service. Delivery assets always request same-origin `/api/v1`; the development proxy forwards only the GigMate session cookie. Private provider configuration is never placed in the page. Test resources are prepared externally by developers, never selected in the product.
 
-## Login/logout
+### Frontend tests and building
 
-Development login: `merchant` / `demo-only-change-me`, or the password selected at initial seed. This is separate from WhatsApp on your phone. After login choose connection or replay. Logout/expiry remove account data and transient QR; successful logout also clears saved request-attempt metadata. Reload requires signing in again, but saved authorization/business state remains in the backend. An unresolved request stores only opaque app IDs and its action/version/key in this tab's session storage where available, never credentials or pairing material.
+Use pinned Node 24.15.0/npm 11.12.1 and the project Python 3.12.10 environment. Each checkout needs `.venv/bin/python` (POSIX) or `.venv/Scripts/python.exe` (Windows); an explicit `GIGMATE_TEST_PYTHON` is also supported. Missing Python fails clearly instead of skipping tests.
 
-## WhatsApp connection and authorization
+```bash
+npm ci
+npm run check:api
+npm run format:check
+npm run build
+```
 
-1. Sign in and select **WhatsApp 连接**. No connection record means the integration owner must provision your installation; use **刷新连接** afterwards. The browser does not create arbitrary accounts/sessions or request provider credentials.
-2. Use **开始连接** for an available initial setup, or **重新连接并获取二维码** for an eligible FAILED/STOPPED session. Wait for the operation result. A completed operation does not prove phone linking; only a fresh WORKING sample shows **WhatsApp 已连接**. Pending operations block another provider action.
-3. When waiting for scan, QR loads automatically in memory. Scan it on the phone's linked-devices screen. **刷新二维码** replaces it; an image hides 30 seconds after retrieval and refreshes every 20 seconds while visible. Provider rotation may invalidate it sooner. Failed/stale reads, pause, logout and leaving the workspace clear it. Preview is not scannable.
-4. For a lost response use **使用原请求核对**: it keeps the same body/version/key and backend idempotency. For `result_unknown`, use **核对未知操作（不重发）**, which queues read-only verification. Refresh to inspect pending/terminal results; never start a different restart merely because an old response was lost. Backend rejection, lease expiry and reconciliation remain authoritative.
-5. **载入会话与授权** reads saved authorization and existing valid options, including when disconnected or paused. **发现最近会话** explicitly discovers up to 100 recent chats while connected. It may omit other/older chats; this is not history import. New choices expire after ten minutes. Labels are plain text and app UUIDs remain opaque.
-6. Check the intended conversations, then **保存会话授权**. The summary shows unsaved vs server-synchronized choices and the saved count. Save obtains persistent selected IDs from the backend. Read consent does not enable automatic replies, send messages or confirm work orders. **放弃更改** restores the loaded choices.
-7. Uncheck an existing chat and save to reduce consent, or use **撤销全部授权**. These actions work while disconnected, paused or provider configuration is unavailable, using the last successfully read authority version. A version change/read failure/lost save response disables another save until **重新载入会话**; with dirty choices the button says **放弃勾选并重新载入**. After expired choices, reload and rediscover before granting. Writes are never automatically repeated.
-8. **暂停消息接收** denies reception without deleting the session/choices; **恢复消息接收** explicitly restores existing authorization. It does not promise to import missed messages. Reload authorization after its version changes. Keep browser and CLI authorization changes coordinated: CLI provision can intentionally replace the browser-saved allowlist.
-9. Check provider connectivity, freshness, receiving permission and processing readiness separately. Review recovered outage intervals only after checking that no history import is needed, then check the confirmation and use **清除已恢复故障（count）**. This retains audit history and imports/deletes no messages. Active faults cannot be cleared.
+`build` runs tests and compiles. `bundle` only typechecks/compiles; the web container uses it after format checking, while CI performs the full pinned-Python tests before release. No test runtime is required in the served web container. A build is not a deployment.
 
-Real phone linking, independent teammate review and native Windows runtime acceptance remain pending. See [D evidence](role-d-stage1-acceptance.md) and [Andy's implemented setup API](role-a-setup-api-acceptance.md).
+## 3 Connection and chat consent
 
-## D-01 preview
+Open WhatsApp, follow connection status and select the chats you authorize. Reception and sending are separate permissions. The separate manual sender requires exact chat/content review; provider acceptance is not delivery/read proof. Unknown results preserve the original identity and require reconciliation, never a fresh resend. Attachment download/source review exists, but real model understanding and scanned-PDF OCR are not enabled by this frontend.
 
-Select **D-01 演示预览** → **模拟扫码成功** → **载入会话与授权** (or **发现最近会话**). Select fictional chats, save and check the count; edit/discard choices, pause/resume, simulate disconnection and revoke existing consent. A pause/version change requires rereading choices, as in live mode. Leaving/re-entering resets the preview. These operations create no real authorization and issue no business API requests.
+## 4 Business workspace
 
-## Replay acceptance
+Check summary, status, time/address and exact source revision. A conversation can contain multiple orders. Missing values stay missing. A customer proposing a change, explicitly confirming it, and the merchant approving it are different facts.
 
-Assumes initial order v3. Dates are fixed 2026 examples in Hong Kong time. An existing database may already be v4; repeat/reload never resets it. Wait for each proposal before the next input; rapid different inputs can supersede earlier work before extraction.
+For a time or address proposal, compare the value and exact original message, then explicitly accept it. A date without a time remains tentative. If the customer has not confirmed a resolved value, accepting it saves the value as proposed: it is still waiting for the customer, rather than becoming a formal appointment. Unsupported fields, stale versions, changed sources and conflicts remain blocked.
 
-| Step | Action | Expected display |
-| --- | --- | --- |
-| 1 | Login → 工单回放 → 虚构业务预约 | Order v3/context v4; formal 10/07 15:00–16:00, missing address; no proposal, original source and preparation task |
-| 2 | Select 另一项已确认预约, return | Formal/source/current-vs-other labels follow selection; other booking 10/08 15:00–16:00 with no task; replay disabled with target guidance |
-| 3 | 回放：15:00 冲突改期 | 10/08 15:00–16:00 proposal, conflict/disabled confirmation; formal/calendar/tasks unchanged; context v5, two messages |
-| 4 | Repeat input | Already-processed notice; still one card/two messages/order v3 |
-| 5 | 回放：16:30 可用时段 | New 10/08 16:30–17:30 proposal awaiting approval; old proposal invalidated/disabled; formal/order v3 unchanged; context v6, three messages |
-| 6 | Click source reference | Scrolls to source with suffix, revision and timestamp |
-| 7 | Confirm 16:30 card | Order v4; formal/calendar updated; card confirmed/disabled; old task cancelled/new pending; address remains missing |
-| 8 | Inspect new task | Current main title like 10/08 15:30 准备 16:30 的虚构业务预约; due 10/08 15:30. Legacy rows may keep old titles; frontend does not rewrite them |
-| 9 | Repeat 16:30, navigate, reload/sign in | Already processed; v4/two cards/three messages/two tasks persist; notices do not carry into other views |
-| 10 | Logout, wrong password, correct password | Login form without false authentication error; Chinese wrong-password feedback blocks access; correct login succeeds |
-| 11 | Optional: other / same development password | Only its own v3 order; no merchant-v4 data/other booking; replay disabled |
+Start, wait for customer, complete and cancel now use C's merged commands. Review the effect and version before saving. Completed/cancelled orders are final; closing deals with generated tasks and unsent business drafts, retains history and does not recall an already dispatched WhatsApp request.
 
-Calendar lists all account events and marks the selected order; tasks are filtered to it. Cancelled tasks remain history. Narrow windows may stack calendar/tasks below other panels; scroll to inspect them.
+A lost response preserves the original numbered command before any POST. Refresh and sign-in do not resend it. There are two explicit options: review and retry the exact original key/body/version, or use “只读核对已保存结果” to look up its immutable server receipt without executing anything. Only a matching completed receipt unlocks “结束已核对的原记录”, after a separate checkbox. Missing/unknown results retain the original record; never infer that a missing receipt means the request was not executed. Storage denial/cleanup failure blocks new writes until recovered. No password is journaled; temporary original content stays in tab session storage until verified completion.
 
-Use 刷新回放数据 to reread. Failed reads mark cached data stale and disable writes; successful recovery clears the error/stale marker. Changed sources/versions require review, never automatic confirmation retry. Restore service and refresh to reconcile uncertain write outcomes.
 
-## Troubleshooting and remaining limits
+Calendar download also checks the actual latest customer messages behind the time and any confirmed location. If a message is edited, withdrawn, missing or no longer authorized, download stops and asks you to review the source. Your stored appointment/history remains; the program does not silently cancel it.
 
-- Empty list: check for WAHA 18702; use seeded replay.
-- No proposal: check API/worker; duplicate fixtures create no fresh proposal. Persistent queued work needs backend-owner investigation.
-- WAHA_ENGINE_MISMATCH: the backend could not verify the pinned server/engine. Ask the integration owner to check configuration; do not bypass validation. PR #11 handles its verified STOPPED case.
-- Apple Silicon: PR #11 includes Andy's image/platform selection. This frontend batch does not verify actual phone pairing or upgrade the existing private installation.
-- Phone rejects linking: retain its actual result for integration-owner review; QR display does not prove linking.
+## D-03: review a reply before approving it
 
-Replay needs further debugging/independent review: multi-conversation orders show only the first conversation; multiple API reads are not an atomic database snapshot; no complete worker-failure/long-queue UI, fixture reset, message-edit/revoke controls or general AI input. Backend remains authoritative for versions, sources, consent/ownership and conflicts. D-01 product consent is now implemented and tested synthetically; real WhatsApp delivery/pairing and automatic replies/sending are not established by this batch. Native Windows acceptance remains pending.
+Review the complete body, recipient conversation, source revisions, expiry and bound/current work-order and conversation versions. Tick explicit consent after review. **已批准，尚未发送** means only that your decision was saved. This business approval is not automatically linked to a WhatsApp send. Do not paste an old approval into a sender and assume its versions remain valid.
 
-## Developer checks
+Reject/cancel requires a reason. Reissue creates a new pending draft, not a message. Missing-time/address and verification questions are described alongside conflict questions, including safely handled unfamiliar trigger formats. Full history retains closed records. Original-key approval recovery remains account-scoped; an unresolved legacy-entry record blocks new approvals instead of silently migrating it to a different service.
 
-From `apps/web` run `npm test`, `npm run check:api`, `npm run format:check`, `npm run build`. Also run `npx prettier --check *test.mjs` for test-file formatting. Build runs regressions first. Keep edits in D frontend/companion docs; do not patch Andy/B/C or shared contracts to repair demonstration setup. Actual evidence: [D acceptance log](role-d-stage1-acceptance.md).
+## 5 New orders and manual review
+
+Choose an authorized conversation, enter a short summary, leave unknown time/address blank and choose the customer's latest unretracted original messages for any supplied values. Outgoing merchant messages are excluded as customer-confirmation evidence. Specific times use Hong Kong time; date-only values remain tentative. Another open order requires an explicit additional-order checkbox. Changing form/source data invalidates its review.
+
+Saving now uses the canonical generated CreateWorkOrderCommand from merged #26. The server capability enables manual creation, order status and address confirmation in this version; a missing/failed capability response still disables dependent operations. AI creation, assignment/deferred follow-up and C-to-A sending remain unavailable.
+
+Manual review shows safe owned/allowlisted job metadata and current original messages, not raw provider payloads. Historical rounds are labelled. Missing fields say whether customer input, clarification or merchant review is needed. Assignment/deferred-follow-up saving remains unavailable without B/C contracts. For media/partial results, use the WhatsApp attachment panel and its source review; this does not turn model output into a confirmed order.
+
+## 6 Internal calendar and phone export
+
+Month view starts on Monday. Choose a date; arrows move one day/week and Home/End move to the current week's ends. Today and previous/next month controls are available. All-appointments view and optional closed-order history help inspect other dates. Time is displayed in Hong Kong time; date-only entries keep their original date/timezone. Tasks are read-only because no manual completion/edit API exists.
+
+**加入我的日历 (.ics)** downloads one current formal timed appointment after a fresh server ownership/time/source check (later address/status-only versions remain valid). Tentative, stale, unavailable and closed-order records cannot export. The file contains the business title, UTC instants, original-timezone note and a confirmed address when present. Your calendar displays the same instants in its configured timezone. Keep the downloaded business file private.
+
+Open/import the file in your own calendar. Rescheduling does not automatically update phone/Google/Outlook calendars; reimport/update manually and check for duplicates. No Google login, subscription or two-way synchronization is implemented. Actual iPhone/Google/Outlook imports remain independent device acceptance.
+
+## 7 Installation, logout and troubleshooting
+
+A manifest and icon support installation/home-screen launch in compatible browsers over HTTPS or loopback. No service worker, offline business cache or background mutation is installed. Native exe/macOS bundles, signing, updates and fresh-device installation remain unimplemented. The API, worker, PostgreSQL and WAHA still need to run.
+
+Logout clears visible account data and credentials; unresolved original journals are retained by account for recovery. If login expires, log in again. For a failed capability read, dependent actions stay disabled. For conflicts/versions, refresh and re-review. For unknown writes, reconcile the saved original operation. Never reset a business database/session to repair a frontend problem.

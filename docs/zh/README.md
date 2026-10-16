@@ -1,5 +1,7 @@
 # 工程基线与团队内部检查入口
 
+发送开发分支新增[WAHA 多类型发送第一批](role-a-waha-sending.md)：单独发送授权、最终快照审批、持久队列、固定内容自动政策及异常恢复。真实账号、B 模型、PostgreSQL 并发和独立验收尚待完成；下文旧阶段“未实现外发”的描述保留历史范围。
+
 版本：v0.2 回放骨架。更新日期：2026年10月1日。当前只有一位成员；后续成员采用相同权限目标与同伴评审，模块联系人负责协调并可轮换。
 
 工程标准、可运行回放骨架及可选本地 WAHA 持久接入/监控已经实现并测试；生产接入流程、真实通用 AI 与对外执行尚未完成。先读下方 WAHA 交接总览，旧阶段记录保留开发历史。本入口供团队内部检查使用，根 README 不引用这里；公开仓库里的文件仍可访问。
@@ -25,6 +27,13 @@
 | [WhatsApp 连接与消息获取](whatsapp-connection-flow.md) | 用户扫码、会话白名单、实时事件和历史同步 |
 | [A 的技术开发演进](role-a-development-roadmap.md) | 完整批次开发、依赖、异常测试和统一验收 |
 | [A 的异常恢复验收](role-a-recovery-acceptance.md) | 分组件健康、故障恢复、遗漏人工核对与 E 可复现测试 |
+| [D 最终网页候选验收](role-d-final-acceptance.md) | 当前页面、日历导出、未接通依赖与实际证据 |
+| [D 前端模块计划](role-d-development-roadmap.md) | D-01 至 D-05、接口依赖与范围 |
+| [D-02 业务工作台验收](role-d-stage2-acceptance.md) | 当前功能、异常保护与实际证据 |
+| [前端使用说明](role-d-frontend-user-guide.md) | 连接、业务核对与回放操作 |
+| [桌面应用可行性](role-d-desktop-feasibility.md) | PWA／Tauri／Electron 与后端部署边界 |
+| [Kyrie 从零学习手册](kyrie-learning-guide.md) | 生活例子、代码小课、练习与版本说明 |
+| [Kyrie 文件地图](kyrie-file-atlas.md) | 先读几个文件，再查完整参考 |
 | [已完成工作](progress.md) | 实际实现、验证结果与未完成范围 |
 | [英文架构决策](../en/adr/README.md) | 选型与决策依据 |
 | [契约](../../contracts/README.md) | 字段、枚举、样例与接口约定 |
@@ -44,3 +53,5 @@ python scripts/check_baseline.py
 ```
 
 该命令只校验文档与样例；应用启动、迁移、Ruff、类型与业务测试的真实命令已写入开发入口，实际结果见已完成工作记录。
+
+- [D-03 回复审批验收](role-d-stage3-acceptance.md)

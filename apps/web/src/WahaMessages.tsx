@@ -7,6 +7,7 @@ import {
 } from "./waha-sync-api";
 import type { Choice, Issue } from "./connection-api";
 import { WahaMedia } from "./WahaMedia";
+import { WahaSend } from "./WahaSend";
 
 const labels: Record<string, string> = {
   completed: "已处理",
@@ -166,7 +167,7 @@ export function WahaMessages({
     >
       <h2>消息时间线与同步</h2>
       <p>
-        查看已授权聊天的消息，或明确导入近期可获取记录。图片、语音、文件仅记录类型与说明文字，原文件读取后续商议。
+        查看已授权聊天的消息，或明确导入近期可获取记录。附件可在单独授权后读取；真实文字理解、语音识别和图片识别尚未启用，部分结果需要人工核对。
       </p>
       {notice && <p role="status">{notice}</p>}
       <label>
@@ -264,6 +265,18 @@ export function WahaMessages({
         <button disabled={busy} onClick={() => void action(() => load(true))}>
           加载更早消息
         </button>
+      )}
+      {chat && (
+        <WahaSend
+          key={chat}
+          connection={connection}
+          csrf={csrf}
+          chat={chat}
+          label={chats.find((c) => c.id === chat)?.label ?? "当前会话"}
+          enabled={enabled}
+          messages={messages}
+          onSessionExpired={onSessionExpired}
+        />
       )}
       <fieldset disabled={busy || !enabled || !chat || waiting}>
         <legend>近期历史导入</legend>

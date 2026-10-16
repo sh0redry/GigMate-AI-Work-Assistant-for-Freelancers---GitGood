@@ -1113,6 +1113,78 @@
       "title": "ConversationMessage",
       "type": "object"
     },
+    "CreateWorkOrderCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "anyOf": [
+            {
+              "maxLength": 300,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Address"
+        },
+        "address_sources": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Address Sources",
+          "type": "array"
+        },
+        "confirm_additional_order": {
+          "default": false,
+          "title": "Confirm Additional Order",
+          "type": "boolean"
+        },
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "schedule": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimedSchedule"
+            },
+            {
+              "$ref": "#/$defs/DateOnly"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Schedule"
+        },
+        "schedule_sources": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Schedule Sources",
+          "type": "array"
+        },
+        "summary": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "conversation_id",
+        "summary"
+      ],
+      "title": "CreateWorkOrderCommand",
+      "type": "object"
+    },
     "CustomerConfirmation": {
       "enum": [
         "not_requested",
@@ -1367,6 +1439,67 @@
     "Id": {
       "format": "uuid",
       "type": "string"
+    },
+    "InspectWorkOrderCommand": {
+      "additionalProperties": false,
+      "description": "Look up an exact completed command; never execute or resubmit it.",
+      "properties": {
+        "change_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Change Id"
+        },
+        "command": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CreateWorkOrderCommand"
+            },
+            {
+              "$ref": "#/$defs/SetWorkOrderStatusCommand"
+            },
+            {
+              "$ref": "#/$defs/ConfirmChangeCommand"
+            }
+          ],
+          "title": "Command"
+        },
+        "kind": {
+          "enum": [
+            "create",
+            "status",
+            "confirm"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "order_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Order Id"
+        }
+      },
+      "required": [
+        "kind",
+        "command"
+      ],
+      "title": "InspectWorkOrderCommand",
+      "type": "object"
     },
     "InstantDeadline": {
       "additionalProperties": false,
@@ -1941,6 +2074,69 @@
       "title": "RequirementChange",
       "type": "object"
     },
+    "ReviewItem": {
+      "additionalProperties": false,
+      "properties": {
+        "context_version": {
+          "minimum": 1,
+          "title": "Context Version",
+          "type": "integer"
+        },
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "current_context_version": {
+          "minimum": 1,
+          "title": "Current Context Version",
+          "type": "integer"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "message_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Message Id"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "state": {
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "conversation_id",
+        "message_id",
+        "context_version",
+        "current_context_version",
+        "reason",
+        "state",
+        "observed_at"
+      ],
+      "title": "ReviewItem",
+      "type": "object"
+    },
     "ScheduleValue": {
       "anyOf": [
         {
@@ -1950,6 +2146,33 @@
           "$ref": "#/$defs/DateOnly"
         }
       ]
+    },
+    "SetWorkOrderStatusCommand": {
+      "additionalProperties": false,
+      "description": "Merchant moves an order along its life cycle (see TRANSITIONS in workorders).",
+      "properties": {
+        "expected_version": {
+          "minimum": 1,
+          "title": "Expected Version",
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "in_progress",
+            "waiting_customer",
+            "completed",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "expected_version"
+      ],
+      "title": "SetWorkOrderStatusCommand",
+      "type": "object"
     },
     "SourceRef": {
       "additionalProperties": false,
@@ -3073,6 +3296,916 @@
       "title": "WahaSelectionCommand",
       "type": "object"
     },
+    "WahaSendActionView": {
+      "additionalProperties": false,
+      "properties": {
+        "approved_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Approved At"
+        },
+        "chat_id": {
+          "format": "uuid",
+          "title": "Chat Id",
+          "type": "string"
+        },
+        "context_version": {
+          "minimum": 0,
+          "title": "Context Version",
+          "type": "integer"
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Created At",
+          "type": "string"
+        },
+        "delivery_status": {
+          "enum": [
+            "not_submitted",
+            "accepted",
+            "sent",
+            "delivered",
+            "read",
+            "unknown"
+          ],
+          "title": "Delivery Status",
+          "type": "string"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Code"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "manual",
+            "agent_assisted",
+            "agent_auto"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/WahaSendPayload"
+        },
+        "provider_message_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Provider Message Id"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "state": {
+          "enum": [
+            "draft",
+            "queued",
+            "preparing",
+            "dispatching",
+            "accepted",
+            "failed",
+            "cancelled",
+            "result_unknown"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "unknown_reviewed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Unknown Reviewed At"
+        },
+        "upload": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WahaSendUploadView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "work_order_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Work Order Id"
+        },
+        "work_order_version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Work Order Version"
+        },
+        "work_order_versions": {
+          "additionalProperties": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "propertyNames": {
+            "format": "uuid"
+          },
+          "title": "Work Order Versions",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "chat_id",
+        "mode",
+        "revision",
+        "state",
+        "delivery_status",
+        "payload",
+        "context_version",
+        "expires_at",
+        "approved_at",
+        "provider_message_id",
+        "error_code",
+        "created_at",
+        "unknown_reviewed_at",
+        "upload",
+        "work_order_id",
+        "work_order_version",
+        "work_order_versions"
+      ],
+      "title": "WahaSendActionView",
+      "type": "object"
+    },
+    "WahaSendCapabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "automatic_mode": {
+          "const": "exact_preapproved_payload",
+          "title": "Automatic Mode",
+          "type": "string"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "kinds": {
+          "items": {
+            "enum": [
+              "text",
+              "image",
+              "file",
+              "audio",
+              "voice",
+              "video",
+              "sticker",
+              "location",
+              "contact",
+              "poll",
+              "reaction"
+            ],
+            "type": "string"
+          },
+          "title": "Kinds",
+          "type": "array"
+        },
+        "max_upload_bytes": {
+          "minimum": 1,
+          "title": "Max Upload Bytes",
+          "type": "integer"
+        },
+        "real_agent_configured": {
+          "title": "Real Agent Configured",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "enabled",
+        "kinds",
+        "max_upload_bytes",
+        "automatic_mode",
+        "real_agent_configured"
+      ],
+      "title": "WahaSendCapabilities",
+      "type": "object"
+    },
+    "WahaSendContact": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "phone": {
+          "pattern": "^\\+[1-9][0-9]{6,14}$",
+          "title": "Phone",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "phone"
+      ],
+      "title": "WahaSendContact",
+      "type": "object"
+    },
+    "WahaSendDraftCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "chat_id": {
+          "format": "uuid",
+          "title": "Chat Id",
+          "type": "string"
+        },
+        "expected_context_version": {
+          "minimum": 0,
+          "title": "Expected Context Version",
+          "type": "integer"
+        },
+        "expected_control_version": {
+          "minimum": 0,
+          "title": "Expected Control Version",
+          "type": "integer"
+        },
+        "expected_permission_version": {
+          "minimum": 1,
+          "title": "Expected Permission Version",
+          "type": "integer"
+        },
+        "expected_work_order_version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Work Order Version"
+        },
+        "mode": {
+          "enum": [
+            "manual",
+            "agent_assisted",
+            "agent_auto"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/WahaSendPayload"
+        },
+        "policy_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Policy Id"
+        },
+        "work_order_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Work Order Id"
+        }
+      },
+      "required": [
+        "expected_control_version",
+        "expected_permission_version",
+        "chat_id",
+        "expected_context_version",
+        "mode",
+        "payload"
+      ],
+      "title": "WahaSendDraftCommand",
+      "type": "object"
+    },
+    "WahaSendPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "caption": {
+          "anyOf": [
+            {
+              "maxLength": 1024,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Caption"
+        },
+        "contacts": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/WahaSendContact"
+              },
+              "maxItems": 10,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Contacts"
+        },
+        "kind": {
+          "enum": [
+            "text",
+            "image",
+            "file",
+            "audio",
+            "voice",
+            "video",
+            "sticker",
+            "location",
+            "contact",
+            "poll",
+            "reaction"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "latitude": {
+          "anyOf": [
+            {
+              "maximum": 90,
+              "minimum": -90,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latitude"
+        },
+        "longitude": {
+          "anyOf": [
+            {
+              "maximum": 180,
+              "minimum": -180,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Longitude"
+        },
+        "multiple_answers": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Multiple Answers"
+        },
+        "options": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 12,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Options"
+        },
+        "reaction": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reaction"
+        },
+        "reply_snapshot_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reply Snapshot Id"
+        },
+        "target_snapshot_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Snapshot Id"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "upload_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Upload Id"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "WahaSendPayload",
+      "type": "object"
+    },
+    "WahaSendPermissionCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "chat_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Chat Ids",
+          "type": "array"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "expected_version": {
+          "minimum": 0,
+          "title": "Expected Version",
+          "type": "integer"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        }
+      },
+      "required": [
+        "expected_version",
+        "enabled",
+        "chat_ids"
+      ],
+      "title": "WahaSendPermissionCommand",
+      "type": "object"
+    },
+    "WahaSendPermissionView": {
+      "additionalProperties": false,
+      "properties": {
+        "chat_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Chat Ids",
+          "type": "array"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expires At"
+        },
+        "version": {
+          "minimum": 0,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version",
+        "enabled",
+        "chat_ids",
+        "expires_at"
+      ],
+      "title": "WahaSendPermissionView",
+      "type": "object"
+    },
+    "WahaSendPolicyCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "chat_id": {
+          "format": "uuid",
+          "title": "Chat Id",
+          "type": "string"
+        },
+        "expected_control_version": {
+          "minimum": 0,
+          "title": "Expected Control Version",
+          "type": "integer"
+        },
+        "expected_permission_version": {
+          "minimum": 1,
+          "title": "Expected Permission Version",
+          "type": "integer"
+        },
+        "expected_work_order_version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Work Order Version"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "maximum_uses": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Maximum Uses",
+          "type": "integer"
+        },
+        "payload": {
+          "$ref": "#/$defs/WahaSendPayload"
+        },
+        "work_order_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Work Order Id"
+        }
+      },
+      "required": [
+        "expected_control_version",
+        "expected_permission_version",
+        "chat_id",
+        "payload",
+        "expires_at",
+        "maximum_uses"
+      ],
+      "title": "WahaSendPolicyCommand",
+      "type": "object"
+    },
+    "WahaSendPolicyView": {
+      "additionalProperties": false,
+      "properties": {
+        "chat_id": {
+          "format": "uuid",
+          "title": "Chat Id",
+          "type": "string"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "maximum_uses": {
+          "minimum": 1,
+          "title": "Maximum Uses",
+          "type": "integer"
+        },
+        "payload": {
+          "$ref": "#/$defs/WahaSendPayload"
+        },
+        "uses": {
+          "minimum": 0,
+          "title": "Uses",
+          "type": "integer"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "work_order_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Work Order Id"
+        },
+        "work_order_version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Work Order Version"
+        }
+      },
+      "required": [
+        "id",
+        "chat_id",
+        "version",
+        "enabled",
+        "payload",
+        "expires_at",
+        "maximum_uses",
+        "uses",
+        "work_order_id",
+        "work_order_version"
+      ],
+      "title": "WahaSendPolicyView",
+      "type": "object"
+    },
+    "WahaSendRequestView": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WahaSendActionView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request_key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Request Key",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "cancelled",
+            "recorded"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_key",
+        "state",
+        "action"
+      ],
+      "title": "WahaSendRequestView",
+      "type": "object"
+    },
+    "WahaSendRevisionCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "minimum": 1,
+          "title": "Expected Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "expected_revision"
+      ],
+      "title": "WahaSendRevisionCommand",
+      "type": "object"
+    },
+    "WahaSendUnknownReviewCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "acknowledge_possible_delivery": {
+          "const": true,
+          "title": "Acknowledge Possible Delivery",
+          "type": "boolean"
+        },
+        "expected_revision": {
+          "minimum": 1,
+          "title": "Expected Revision",
+          "type": "integer"
+        },
+        "note": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "acknowledge_possible_delivery",
+        "note"
+      ],
+      "title": "WahaSendUnknownReviewCommand",
+      "type": "object"
+    },
+    "WahaSendUploadView": {
+      "additionalProperties": false,
+      "properties": {
+        "expires_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "filename": {
+          "minLength": 1,
+          "title": "Filename",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "mimetype": {
+          "minLength": 1,
+          "title": "Mimetype",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 1,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "filename",
+        "mimetype",
+        "size_bytes",
+        "sha256",
+        "expires_at"
+      ],
+      "title": "WahaSendUploadView",
+      "type": "object"
+    },
     "WahaSetup": {
       "additionalProperties": false,
       "properties": {
@@ -3763,6 +4896,49 @@
       ],
       "title": "WorkOrderStatus",
       "type": "string"
+    },
+    "WorkspaceCapabilities": {
+      "additionalProperties": false,
+      "description": "Release gates, not connector permissions or claims of live acceptance.",
+      "properties": {
+        "address_confirmation": {
+          "default": true,
+          "title": "Address Confirmation",
+          "type": "boolean"
+        },
+        "automatic_understanding": {
+          "default": false,
+          "title": "Automatic Understanding",
+          "type": "boolean"
+        },
+        "business_sending": {
+          "default": false,
+          "title": "Business Sending",
+          "type": "boolean"
+        },
+        "calendar_export": {
+          "default": true,
+          "title": "Calendar Export",
+          "type": "boolean"
+        },
+        "create_order": {
+          "default": true,
+          "title": "Create Order",
+          "type": "boolean"
+        },
+        "manual_assignment": {
+          "default": false,
+          "title": "Manual Assignment",
+          "type": "boolean"
+        },
+        "order_status": {
+          "default": true,
+          "title": "Order Status",
+          "type": "boolean"
+        }
+      },
+      "title": "WorkspaceCapabilities",
+      "type": "object"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
