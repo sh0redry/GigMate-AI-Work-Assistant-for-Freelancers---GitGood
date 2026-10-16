@@ -1,5 +1,9 @@
 # 已完成工作与验证记录
 
+## 契约接口清单里的列表过滤（C）— 2026-10-16
+
+`GET /work-orders?status=`、`GET /tasks?work_order_id=`、`GET /calendar-events?start=&end=`（带时区的 ISO 时间；返回与时间窗重叠的事件，只有日期的条目覆盖当地整天；格式错误或起止颠倒返回 422）。证据：`test_list_filters.py` **3 项通过**。`.ics` 下载由 D 的 #30 交付，这里不重复。
+
 ## 客户延期与跟进待办（C）— 2026-10-16
 
 契约 §3 "Customer defers"。B 目前还识别不了"还未确定，之后再确认"，所以先由商户记录：`POST /work-orders/{id}/defer`（`DeferItemCommand`：`field`、可选 `until`、客户消息 `sources`、`expected_version`）。工单保持 `pending_confirmation`；`WorkOrder.deferred[field]` 记录日期、来源和跟进待办；这一项不再被追问（若没有其他未完成项，待批准的问题以 `deferred` 原因撤回）；自动生成待办 `MM/DD HH:MM 跟进 {summary}：确认地址`，到期时间取客户给的日期，否则为 3 天后香港时间 10:00。只接受待确认工单里未完成的项、未来的日期和当前的客户来信。之后该项经客户确认，延期解除、待办标为完成。证据：`test_deferral.py` **3 项通过**，新建工单测试 30 项通过。

@@ -1,5 +1,9 @@
 # Implementation status and validation
 
+## List filters from the contract inventory (role C) — 2026-10-16
+
+`GET /work-orders?status=`, `GET /tasks?work_order_id=`, `GET /calendar-events?start=&end=` (ISO times with zone; events overlapping the window, date-only entries cover their whole local day; 422 for invalid or reversed windows). Evidence: `test_list_filters.py` **3 passed**. The `.ics` download is delivered by D's #30 and not duplicated here.
+
 ## Customer deferral and follow-up task (role C) — 2026-10-16
 
 契约 §3 "Customer defers". Role B does not yet recognize 还未确定，之后再确认, so the merchant records it: `POST /work-orders/{id}/defer` (`DeferItemCommand`: `field`, optional `until`, customer `sources`, `expected_version`). The order stays `pending_confirmation`; `WorkOrder.deferred[field]` keeps the date, sources and follow-up task; the item is not asked again (if nothing else is open, the pending question is withdrawn with reason `deferred`); a generated task `MM/DD HH:MM 跟进 {summary}：确认地址` is due at the customer's date or 3 days later at 10:00 Hong Kong time. Only an open item of a pending order, a future date and current incoming customer messages are accepted. Confirming that item with customer confirmation clears the deferral and completes the task. Evidence: `test_deferral.py` **3 passed**, creation suite 30 passed.

@@ -6021,6 +6021,7 @@
     },
     "/api/v1/calendar-events": {
       "get": {
+        "description": "Events overlapping [start, end) when given; tentative entries included and marked.",
         "operationId": "calendar_api_v1_calendar_events_get",
         "parameters": [
           {
@@ -6049,6 +6050,38 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
             }
           }
         ],
@@ -9043,6 +9076,23 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "work_order_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Order Id"
+            }
           }
         ],
         "responses": {
@@ -9100,6 +9150,22 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkOrderStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
             }
           }
         ],

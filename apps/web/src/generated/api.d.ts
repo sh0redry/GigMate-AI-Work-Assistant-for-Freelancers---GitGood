@@ -164,7 +164,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Calendar */
+    /**
+     * Calendar
+     * @description Events overlapping [start, end) when given; tentative entries included and marked.
+     */
     get: operations["calendar_api_v1_calendar_events_get"];
     put?: never;
     post?: never;
@@ -3641,6 +3644,8 @@ export interface operations {
       query?: {
         cursor?: string | null;
         limit?: number;
+        start?: string | null;
+        end?: string | null;
       };
       header?: never;
       path?: never;
@@ -5471,6 +5476,7 @@ export interface operations {
       query?: {
         cursor?: string | null;
         limit?: number;
+        work_order_id?: string | null;
       };
       header?: never;
       path?: never;
@@ -5503,6 +5509,7 @@ export interface operations {
       query?: {
         cursor?: string | null;
         limit?: number;
+        status?: components["schemas"]["WorkOrderStatus"] | null;
       };
       header?: never;
       path?: never;

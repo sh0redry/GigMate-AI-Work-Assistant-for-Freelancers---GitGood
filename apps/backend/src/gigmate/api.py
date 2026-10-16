@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+from datetime import datetime, timedelta
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
@@ -61,6 +62,7 @@ from gigmate.contracts import (
     WahaTimelineMessage,
     WahaVersionCommand,
     WorkOrder,
+    WorkOrderStatus,
 )
 from gigmate.db import (
     ActionRow,
@@ -332,15 +334,14 @@ def orders(
     request: Request,
     cursor: str | None = None,
     limit: int = Query(20, ge=1, le=100),
+    status: WorkOrderStatus | None = None,
     account=Depends(actor),
     db=Depends(database),
 ):
-    return page(
-        request,
-        db.scalars(select(WorkOrderRow).where(WorkOrderRow.account_id == account.id)),
-        cursor,
-        limit,
-    )
+    rows = db.scalars(select(WorkOrderRow).where(WorkOrderRow.account_id == account.id))
+    if status:
+        rows = [row for row in rows if row.data["status"] == status]
+    return page(request, rows, cursor, limit)
 
 
 @app.post("/api/v1/work-orders", status_code=201, response_model=Detail[WorkOrder])
@@ -664,12 +665,37 @@ def tasks(
     request: Request,
     cursor: str | None = None,
     limit: int = Query(20, ge=1, le=100),
+    work_order_id: UUID | None = None,
     account=Depends(actor),
     db=Depends(database),
 ):
-    return page(
-        request, db.scalars(select(TaskRow).where(TaskRow.account_id == account.id)), cursor, limit
-    )
+    query = select(TaskRow).where(TaskRow.account_id == account.id)
+    if work_order_id:
+        query = query.where(TaskRow.work_order_id == str(work_order_id))
+    return page(request, db.scalars(query), cursor, limit)
+
+
+def event_window(schedule):
+    """The absolute interval an event occupies; a date-only entry is its whole local day."""
+    from zoneinfo import ZoneInfo
+
+    if schedule["kind"] == "timed":
+        return (
+            datetime.fromisoformat(schedule["start_at"].replace("Z", "+00:00")),
+            datetime.fromisoformat(schedule["end_at"].replace("Z", "+00:00")),
+        )
+    day = datetime.fromisoformat(schedule["date"]).replace(tzinfo=ZoneInfo(schedule["timezone"]))
+    return day, day + timedelta(days=1)
+
+
+def utc_query(value, name):
+    try:
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise BusinessError(422, "VALIDATION_FAILED", f"{name} must be an ISO time") from error
+    if moment.tzinfo is None:
+        raise BusinessError(422, "VALIDATION_FAILED", f"{name} needs a time zone")
+    return moment
 
 
 @app.get("/api/v1/calendar-events", response_model=Page[CalendarEvent])
@@ -677,17 +703,27 @@ def calendar(
     request: Request,
     cursor: str | None = None,
     limit: int = Query(20, ge=1, le=100),
+    start: str | None = None,
+    end: str | None = None,
     account=Depends(actor),
     db=Depends(database),
 ):
+    """Events overlapping [start, end) when given; tentative entries included and marked."""
     from gigmate.db import CalendarRow
 
-    return page(
-        request,
-        db.scalars(select(CalendarRow).where(CalendarRow.account_id == account.id)),
-        cursor,
-        limit,
-    )
+    rows = db.scalars(select(CalendarRow).where(CalendarRow.account_id == account.id))
+    if start or end:
+        lower = utc_query(start, "start") if start else None
+        upper = utc_query(end, "end") if end else None
+        if lower and upper and lower >= upper:
+            raise BusinessError(422, "VALIDATION_FAILED", "start must be before end")
+        chosen = []
+        for row in rows:
+            begins, finishes = event_window(row.data["schedule"])
+            if (upper is None or begins < upper) and (lower is None or lower < finishes):
+                chosen.append(row)
+        rows = chosen
+    return page(request, rows, cursor, limit)
 
 
 @app.get("/api/v1/connection-status", response_model=Detail[ConnectionInfo])
