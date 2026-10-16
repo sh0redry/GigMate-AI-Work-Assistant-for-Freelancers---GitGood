@@ -35,6 +35,7 @@ from gigmate.contracts import (
     RejectActionCommand,
     RejectCommand,
     RequirementChange,
+    SendApprovedActionCommand,
     SetWorkOrderStatusCommand,
     Task,
     Text,
@@ -134,6 +135,9 @@ class ActionView(ApprovalAction):
     closed_reason: str | None
     closed_note: str | None
     reissuable: bool
+    send_action_id: str | None
+    send_state: str | None
+    send_error: str | None
 
 
 class ConnectionInfo(Model):
@@ -497,6 +501,23 @@ def reissue_action(
     return detail(
         request,
         reissue(db, account, str(action_id), command, idempotency_key, request.state.request_id),
+    )
+
+
+@app.post("/api/v1/actions/{action_id}/send", status_code=202, response_model=Detail[ActionView])
+def send_action(
+    action_id: UUID,
+    command: SendApprovedActionCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    from gigmate.approvals import send
+
+    return detail(
+        request,
+        send(db, account, str(action_id), command, idempotency_key, request.state.request_id),
     )
 
 

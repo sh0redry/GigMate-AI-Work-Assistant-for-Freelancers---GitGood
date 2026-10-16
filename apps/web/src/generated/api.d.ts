@@ -106,6 +106,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/actions/{action_id}/send": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Send Action */
+    post: operations["send_action_api_v1_actions__action_id__send_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/auth/login": {
     parameters: {
       query?: never;
@@ -1202,6 +1219,12 @@ export interface components {
       reissuable: boolean;
       /** Revision */
       revision: number;
+      /** Send Action Id */
+      send_action_id: string | null;
+      /** Send Error */
+      send_error: string | null;
+      /** Send State */
+      send_state: string | null;
       /** Snapshot Hash */
       snapshot_hash: string;
       /** Sources */
@@ -2102,6 +2125,29 @@ export interface components {
       duplicate: boolean;
       /** Event Id */
       event_id: string;
+    };
+    /**
+     * SendApprovedActionCommand
+     * @description Merchant hands an approved business reply to the WhatsApp sending gateway.
+     *
+     *     The connection, control and send-permission versions are the ones the
+     *     merchant sees on the sending page; the action revision and snapshot hash
+     *     are the exact approved reply.
+     */
+    SendApprovedActionCommand: {
+      /**
+       * Connection Id
+       * Format: uuid
+       */
+      connection_id: string;
+      /** Expected Action Revision */
+      expected_action_revision: number;
+      /** Expected Control Version */
+      expected_control_version: number;
+      /** Expected Permission Version */
+      expected_permission_version: number;
+      /** Snapshot Hash */
+      snapshot_hash: string;
     };
     /**
      * SetWorkOrderStatusCommand
@@ -3360,6 +3406,43 @@ export interface operations {
     responses: {
       /** @description Successful Response */
       200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_ActionView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  send_action_api_v1_actions__action_id__send_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        action_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SendApprovedActionCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
         headers: {
           [name: string]: unknown;
         };

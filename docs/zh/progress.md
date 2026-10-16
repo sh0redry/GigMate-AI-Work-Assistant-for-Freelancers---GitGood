@@ -1,5 +1,17 @@
 # 已完成工作与验证记录
 
+## 业务审批接通发送网关，以及拒绝提议（C）— 2026-10-16
+
+叠在状态命令 PR 之上。设计依据：方案 §4.5（批准后发送、取消计划、查看结果）、§6.2（服务端审批校验后 `sendText`、幂等记录、未知状态先核对）、§7（批准绑定具体内容和版本，旧批准失效）；Issue #29 第 1 节。
+
+- **`POST /actions/{id}/send`**（`SendApprovedActionCommand`：`connection_id`、`expected_control_version`、`expected_permission_version`、`expected_action_revision`、`snapshot_hash`）。只接受已批准的业务回复，并重新核对批准时绑定的一切；在服务端按该连接解析会话对应的 WhatsApp 聊天（没有则 404 `SEND_CHAT_NOT_LINKED`）。用批准的原文创建并排队唯一一个手动发送任务，绑定批准时的工单和上下文版本，沿用 A 的发送授权、控制版本和有效期检查（未授权 403 `SEND_NOT_AUTHORIZED`）。请求键 `c-action:<id>` 保证一一对应：重复调用返回同一发送任务，不会发两次。
+- **结果回写到业务行动：** 排队/派发中为 `executing`，之后为 `succeeded`（附 `delivery_status`）、`failed`、`cancelled` 或 `result_unknown`（送达状态 `unknown`，绝不重发）。`send_action_id`、`send_state`、`send_error` 关联发送记录。读取不写库。
+- **撤回：** 对 `executing` 的行动调用 `POST /actions/{id}/cancel`，发送任务还在草稿/排队/准备时可撤回；一旦开始派发返回 409 `SEND_ALREADY_DISPATCHED`。
+- **失效：** 新消息（上下文变化）、工单任何改动（确认、拒绝、状态，版本加一）或撤销发送授权，都会在 A 的派发前复核中拦下未派发的任务。
+- **`POST /work-orders/{id}/changes/{change_id}/reject`**（`RejectCommand`）：提议变为 `rejected` 并记录 `rejection_reason`；工单值不变、版本加一；撤回为它生成的撞期问题（`proposal_rejected`）；刷新待确认项问题。`RequirementChange.status` 改用 `ChangeStatus`（字段状态加 `rejected`）。
+
+证据：`test_business_send.py` **7 项通过**（合成聊天与发送方），`test_change_reject.py` **3 项通过**；审批与发送测试 82 通过、3 跳过；前端 119 通过，另有 3 项与改动前相同的环境相关失败；契约导出和基线通过。未进行任何真实 WhatsApp 发送。
+
 ## 工单状态命令（C）— 2026-10-14
 
 叠在新建工单 PR 之上。新增 `POST /work-orders/{id}/status`（`SetWorkOrderStatusCommand`：`status`、`expected_version`；必须带 `Idempotency-Key`）。

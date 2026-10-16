@@ -208,6 +208,39 @@
             "title": "Revision",
             "type": "integer"
           },
+          "send_action_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send Action Id"
+          },
+          "send_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send Error"
+          },
+          "send_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send State"
+          },
           "snapshot_hash": {
             "pattern": "^sha256:[a-f0-9]{64}$",
             "title": "Snapshot Hash",
@@ -262,7 +295,10 @@
           "open_items",
           "closed_reason",
           "closed_note",
-          "reissuable"
+          "reissuable",
+          "send_action_id",
+          "send_state",
+          "send_error"
         ],
         "title": "ActionView",
         "type": "object"
@@ -2504,6 +2540,46 @@
           "context_version"
         ],
         "title": "ReplayResult",
+        "type": "object"
+      },
+      "SendApprovedActionCommand": {
+        "additionalProperties": false,
+        "description": "Merchant hands an approved business reply to the WhatsApp sending gateway.\n\nThe connection, control and send-permission versions are the ones the\nmerchant sees on the sending page; the action revision and snapshot hash\nare the exact approved reply.",
+        "properties": {
+          "connection_id": {
+            "format": "uuid",
+            "title": "Connection Id",
+            "type": "string"
+          },
+          "expected_action_revision": {
+            "minimum": 1.0,
+            "title": "Expected Action Revision",
+            "type": "integer"
+          },
+          "expected_control_version": {
+            "minimum": 0.0,
+            "title": "Expected Control Version",
+            "type": "integer"
+          },
+          "expected_permission_version": {
+            "minimum": 1.0,
+            "title": "Expected Permission Version",
+            "type": "integer"
+          },
+          "snapshot_hash": {
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "title": "Snapshot Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "connection_id",
+          "expected_control_version",
+          "expected_permission_version",
+          "expected_action_revision",
+          "snapshot_hash"
+        ],
+        "title": "SendApprovedActionCommand",
         "type": "object"
       },
       "SetWorkOrderStatusCommand": {
@@ -5631,6 +5707,65 @@
           }
         },
         "summary": "Reject Action"
+      }
+    },
+    "/api/v1/actions/{action_id}/send": {
+      "post": {
+        "operationId": "send_action_api_v1_actions__action_id__send_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Action Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendApprovedActionCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_ActionView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Send Action"
       }
     },
     "/api/v1/auth/login": {

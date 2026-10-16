@@ -874,6 +874,21 @@ class ReissueActionCommand(Model):
     expected_context_version: Positive
 
 
+class SendApprovedActionCommand(Model):
+    """Merchant hands an approved business reply to the WhatsApp sending gateway.
+
+    The connection, control and send-permission versions are the ones the
+    merchant sees on the sending page; the action revision and snapshot hash
+    are the exact approved reply.
+    """
+
+    connection_id: Id
+    expected_control_version: NonNegative
+    expected_permission_version: Positive
+    expected_action_revision: Positive
+    snapshot_hash: Annotated[str, Field(pattern=r"^sha256:[a-f0-9]{64}$")]
+
+
 class SetWorkOrderStatusCommand(Model):
     """Merchant moves an order along its life cycle (see TRANSITIONS in workorders)."""
 

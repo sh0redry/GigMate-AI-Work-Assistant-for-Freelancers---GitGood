@@ -353,7 +353,7 @@ def views(db, rows):
         .order_by(ActionRow.created_at, ActionRow.id)
     ):
         newest[row.work_order_id] = row.id
-    return [view(row, newest.get(row.work_order_id) == row.id) for row in rows]
+    return [send_view(db, row, view(row, newest.get(row.work_order_id) == row.id)) for row in rows]
 
 
 def locked(db, account_id, action_id):
@@ -447,7 +447,7 @@ def approve(db, account, action_id, command, key, request_id):
         },
     )
     audit(db, account.id, row, "approve_action", request_id)
-    result = view(row)
+    result = send_view(db, row, view(row))
     save_result(db, account.id, scope, key, digest, result)
     return result
 
@@ -459,6 +459,8 @@ def reject(db, account, action_id, command, key, request_id, *, operation):
     if cached:
         return cached.data
     row = expire_if_due(locked(db, account.id, action_id))
+    if operation == "cancel" and row.data["state"] == "executing":
+        return cancel_handed_off(db, account, row, command, scope, key, digest, request_id)
     allowed = {"pending_approval"} if operation == "reject" else {"pending_approval", "approved"}
     if row.data["state"] not in allowed:
         raise BusinessError(409, "APPROVAL_STALE", "This action can no longer be changed")
@@ -466,7 +468,7 @@ def reject(db, account, action_id, command, key, request_id, *, operation):
     close(row, "cancelled", "rejected" if operation == "reject" else "cancelled")
     row.note = command.reason[:500]
     audit(db, account.id, row, f"{operation}_action", request_id)
-    result = view(row)
+    result = send_view(db, row, view(row))
     save_result(db, account.id, scope, key, digest, result)
     return result
 
@@ -515,6 +517,161 @@ def reissue(db, account, action_id, command, key, request_id):
         )
     fresh = db.get(ActionRow, data["id"])
     audit(db, account.id, fresh, "reissue_action", request_id)
-    result = view(fresh, True)
+    result = send_view(db, fresh, view(fresh, True))
+    save_result(db, account.id, scope, key, digest, result)
+    return result
+
+
+# --- Business approval → WhatsApp sending gateway (方案 §4.5、§6.2、§7; Issue #29 §1)
+#
+# C's approval only records the merchant's decision on the exact reply. Sending
+# is a second, explicit merchant command that hands that exact text to A's
+# gateway under A's own send permission. One business action maps to at most
+# one gateway action through a deterministic request key, so a retried or
+# repeated command can never create a second send.
+
+SEND_KEY = "c-action:{}"
+# Gateway state → business action state.
+SEND_STATES = {
+    "draft": "executing",
+    "queued": "executing",
+    "preparing": "executing",
+    "dispatching": "executing",
+    "accepted": "succeeded",
+    "result_unknown": "result_unknown",
+    "failed": "failed",
+    "cancelled": "cancelled",
+}
+
+
+def linked_send(db, row):
+    from gigmate.db import WahaSendAction
+
+    return db.scalar(
+        select(WahaSendAction).where(WahaSendAction.request_key == SEND_KEY.format(row.id))
+    )
+
+
+def send_view(db, row, data):
+    """Add the linked gateway outcome to a business action view (read-only)."""
+    send = linked_send(db, row) if row.data["state"] == "executing" else None
+    if send is None:
+        return {**data, "send_action_id": None, "send_state": None, "send_error": None}
+    from gigmate import waha_send as sends
+
+    gateway = sends.action_view(send)
+    state = SEND_STATES.get(send.state, "executing")
+    return {
+        **data,
+        "state": state,
+        "delivery_status": "unknown" if state == "result_unknown" else gateway["delivery_status"],
+        "provider_message_id": send.provider_message_id,
+        "send_action_id": send.id,
+        "send_state": send.state,
+        "send_error": send.error_code,
+    }
+
+
+def send(db, account, action_id, command, key, request_id):
+    """Hand an approved business reply to the sending gateway and queue it.
+
+    Re-checks everything the approval was bound to (order and context
+    versions, sources, the conflict basis, chat consent, an open order), then
+    resolves the conversation's WhatsApp chat on the chosen connection on the
+    server and creates the gateway action with the exact approved text, bound
+    to the same work-order and context versions. A's own checks (send
+    permission, control version, expiry, context) run before queuing and
+    again before dispatch. Nothing is sent by this call itself: the gateway
+    worker dispatches once; an unknown outcome is never retried.
+    """
+    from gigmate import waha_controls as controls
+    from gigmate import waha_send as sends
+    from gigmate.contracts import WahaSendDraftCommand
+    from gigmate.db import WahaChat
+
+    scope = f"send:{action_id}"
+    digest, cached = command_cache(db, account.id, scope, key, command.model_dump())
+    if cached:
+        return cached.data
+    row = expire_if_due(locked(db, account.id, action_id))
+    existing = linked_send(db, row)
+    if row.data["state"] == "executing" and existing is not None:
+        result = send_view(db, row, view(row))
+        save_result(db, account.id, scope, key, digest, result)
+        return result
+    if row.data["state"] != "approved":
+        raise BusinessError(409, "APPROVAL_STALE", "Only an approved reply can be sent")
+    if (
+        command.expected_action_revision != row.data["revision"]
+        or command.snapshot_hash != row.data["snapshot_hash"]
+        or snapshot_hash(row.data) != row.data["snapshot_hash"]
+    ):
+        raise BusinessError(409, "APPROVAL_STALE", "The reply changed; review it again")
+    order = owned(db, WorkOrderRow, row.work_order_id, account.id)
+    conversation = owned(db, ConversationRow, row.conversation_id, account.id)
+    if not conversation.allowlisted:
+        raise BusinessError(403, "CONSENT_REVOKED", "Conversation processing is paused")
+    if order.data["status"] in {"cancelled", "completed"}:
+        raise BusinessError(409, "VERSION_CONFLICT", "Work order is closed")
+    if (
+        order.data["version"] != row.data["bound_work_order_version"]
+        or conversation.context_version != row.data["bound_context_version"]
+    ):
+        raise BusinessError(409, "VERSION_CONFLICT", "The order or chat changed after approval")
+    require_current_sources(db, account.id, conversation.id, row.data["sources"])
+    if not conflict_basis(db, account.id, row):
+        raise BusinessError(
+            409, "APPROVAL_STALE", "The time no longer conflicts; this question is outdated"
+        )
+    connection = controls.owned(db, account, command.connection_id)
+    connection = sends.locks(db, connection.id)
+    chat = db.scalar(
+        select(WahaChat).where(
+            WahaChat.connection_id == connection.id,
+            WahaChat.conversation_id == conversation.id,
+        )
+    )
+    if chat is None:
+        raise BusinessError(
+            404, "SEND_CHAT_NOT_LINKED", "This conversation has no WhatsApp chat on that connection"
+        )
+    draft = WahaSendDraftCommand(
+        expected_control_version=command.expected_control_version,
+        expected_permission_version=command.expected_permission_version,
+        chat_id=chat.id,
+        expected_context_version=row.data["bound_context_version"],
+        work_order_id=order.id,
+        expected_work_order_version=row.data["bound_work_order_version"],
+        mode="manual",
+        payload={"kind": "text", "text": row.data["body"]},
+    )
+    gateway = sends.create_draft(db, connection, account, draft, SEND_KEY.format(row.id))
+    sends.approve(db, connection, account, gateway["id"], gateway["revision"])
+    row.data = validate(ApprovalAction, {**row.data, "state": "executing"})
+    row.active_key = None
+    db.flush()
+    audit(db, account.id, row, "send_action", request_id)
+    result = send_view(db, row, view(row))
+    save_result(db, account.id, scope, key, digest, result)
+    return result
+
+
+def cancel_handed_off(db, account, row, command, scope, key, digest, request_id):
+    """Withdraw a reply already handed to the gateway, only while it is unsent.
+
+    Once the gateway has started dispatching, the request cannot be pulled
+    back: that is reported, never pretended away (方案 §7).
+    """
+    from gigmate import waha_send as sends
+
+    check_snapshot(row, command)
+    gateway = linked_send(db, row)
+    if gateway is None or gateway.state not in {"draft", "queued", "preparing"}:
+        raise BusinessError(409, "SEND_ALREADY_DISPATCHED", "This reply may already be sent")
+    connection = sends.locks(db, gateway.connection_id)
+    sends.cancel(db, connection, gateway.id, gateway.revision)
+    row.note = command.reason[:500]
+    audit(db, account.id, row, "cancel_action", request_id)
+    result = send_view(db, row, view(row))
     save_result(db, account.id, scope, key, digest, result)
     return result

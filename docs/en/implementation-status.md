@@ -1,5 +1,17 @@
 # Implementation status and validation
 
+## Business approval → sending gateway, and proposal rejection (role C) — 2026-10-16
+
+Stacked on the status-command PR. Design: 方案 §4.5 (send after approval, cancel plans, view results), §6.2 (`sendText` after server-side approval check, idempotent record, unknown outcomes checked), §7 (approval binds exact content and versions; outdated approvals cancelled); Issue #29 §1.
+
+- **`POST /actions/{id}/send`** (`SendApprovedActionCommand`: `connection_id`, `expected_control_version`, `expected_permission_version`, `expected_action_revision`, `snapshot_hash`). Only an `approved` business reply; every approval binding is re-checked; the conversation's WhatsApp chat is resolved server-side on that connection (404 `SEND_CHAT_NOT_LINKED` otherwise). Creates and queues exactly one manual gateway action with the approved text, bound to the approval's work-order and context versions, using A's existing permission/control/expiry checks (403 `SEND_NOT_AUTHORIZED` when sending is not authorized). Request key `c-action:<id>` makes the mapping one-to-one: a repeat returns the same gateway action and never sends twice.
+- **Outcome on the business action:** state `executing` while queued/dispatching, then `succeeded` (with `delivery_status`), `failed`, `cancelled` or `result_unknown` (delivery `unknown`, never resent). `send_action_id`, `send_state`, `send_error` link to the gateway record. Reading never writes.
+- **Withdraw:** `POST /actions/{id}/cancel` on an `executing` action cancels the gateway action while it is still draft/queued/preparing; after dispatch starts it returns 409 `SEND_ALREADY_DISPATCHED`.
+- **Invalidation:** a new message (context change), any order change (version bump: confirm, reject, status) or permission revocation stops an undispatched gateway action through A's dispatch revalidation.
+- **`POST /work-orders/{id}/changes/{change_id}/reject`** (`RejectCommand`): the proposal becomes `rejected` with `rejection_reason`; order values kept, version bumped; its conflict question withdrawn (`proposal_rejected`); open-item question refreshed. `RequirementChange.status` now uses `ChangeStatus` (field statuses plus `rejected`).
+
+Evidence: `test_business_send.py` **7 passed** (synthetic chat and provider), `test_change_reject.py` **3 passed**; approvals + sending suites 82 passed, 3 skipped; frontend 119 passed with the same 3 environment-dependent failures as before the change; contract export and baseline passed. No real WhatsApp send was performed.
+
 ## Work-order status command (role C) — 2026-10-14
 
 Stacked on the work-order creation PR. Adds `POST /work-orders/{id}/status` (`SetWorkOrderStatusCommand`: `status`, `expected_version`; `Idempotency-Key` required).
