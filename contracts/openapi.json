@@ -303,6 +303,70 @@
         "title": "ActionView",
         "type": "object"
       },
+      "AddRequirementCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "due": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InstantDeadline"
+              },
+              {
+                "$ref": "#/components/schemas/DateOnly"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "material",
+              "commitment",
+              "question"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "owner": {
+            "enum": [
+              "merchant",
+              "customer"
+            ],
+            "title": "Owner",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            },
+            "minItems": 1,
+            "title": "Sources",
+            "type": "array"
+          },
+          "text": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "text",
+          "owner",
+          "sources",
+          "expected_version"
+        ],
+        "title": "AddRequirementCommand",
+        "type": "object"
+      },
       "ApproveActionCommand": {
         "additionalProperties": false,
         "properties": {
@@ -2763,6 +2827,93 @@
         "title": "ReplayResult",
         "type": "object"
       },
+      "RequirementItem": {
+        "additionalProperties": false,
+        "description": "Required material, a promise either side made, or an open question (方案 §4.3).",
+        "properties": {
+          "due": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InstantDeadline"
+              },
+              {
+                "$ref": "#/components/schemas/DateOnly"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "material",
+              "commitment",
+              "question"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "owner": {
+            "enum": [
+              "merchant",
+              "customer"
+            ],
+            "title": "Owner",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            },
+            "minItems": 1,
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "done",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "text": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "text",
+          "owner",
+          "status",
+          "sources"
+        ],
+        "title": "RequirementItem",
+        "type": "object"
+      },
       "ScheduleCheck": {
         "additionalProperties": false,
         "description": "Deterministic checks for one order's time, plus free slots the merchant may offer.",
@@ -3171,6 +3322,30 @@
           "timezone"
         ],
         "title": "TimedSchedule",
+        "type": "object"
+      },
+      "UpdateRequirementCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "done",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "expected_version"
+        ],
+        "title": "UpdateRequirementCommand",
         "type": "object"
       },
       "UpdateScheduleSettingsCommand": {
@@ -5722,6 +5897,14 @@
             "title": "Pending Change Ids",
             "type": "array"
           },
+          "requirements": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RequirementItem"
+            },
+            "title": "Requirements",
+            "type": "array"
+          },
           "status": {
             "$ref": "#/components/schemas/WorkOrderStatus"
           },
@@ -5729,6 +5912,15 @@
             "minLength": 1,
             "title": "Summary",
             "type": "string"
+          },
+          "task_links": {
+            "additionalProperties": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "default": {},
+            "title": "Task Links",
+            "type": "object"
           },
           "updated_at": {
             "format": "date-time",
@@ -5758,11 +5950,21 @@
       },
       "WorkOrderFields": {
         "additionalProperties": false,
+        "description": "Key items (schedule, address) decide confirmation; the others are business detail.",
         "properties": {
           "address": {
             "$ref": "#/components/schemas/ProvenancedField"
           },
+          "deadline": {
+            "$ref": "#/components/schemas/ProvenancedField"
+          },
+          "quantity": {
+            "$ref": "#/components/schemas/ProvenancedField"
+          },
           "schedule": {
+            "$ref": "#/components/schemas/ProvenancedField"
+          },
+          "specification": {
             "$ref": "#/components/schemas/ProvenancedField"
           }
         },
@@ -9853,6 +10055,134 @@
           }
         },
         "summary": "Defer Order Item"
+      }
+    },
+    "/api/v1/work-orders/{order_id}/requirements": {
+      "post": {
+        "operationId": "add_order_requirement_api_v1_work_orders__order_id__requirements_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddRequirementCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WorkOrder_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Order Requirement"
+      }
+    },
+    "/api/v1/work-orders/{order_id}/requirements/{item_id}": {
+      "post": {
+        "operationId": "update_order_requirement_api_v1_work_orders__order_id__requirements__item_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRequirementCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WorkOrder_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Order Requirement"
       }
     },
     "/api/v1/work-orders/{order_id}/schedule-check": {

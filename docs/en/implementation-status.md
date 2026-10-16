@@ -1,5 +1,9 @@
 # Implementation status and validation
 
+## Business detail fields, requirements and commitment tasks (role C) — 2026-10-16
+
+方案 §4.3 (服务内容、数量与规格、约定日期、所需资料、双方承诺、未决问题) and §4.4 (从承诺生成待办，具有负责人、到期时间和原文依据). `WorkOrderFields` gains `specification`, `quantity`, `deadline` (default missing); confirm handles them and `summary` without touching the key-item rule; a confirmed deadline creates one delivery task (`WorkOrder.task_links.delivery`), replaced on change. `WorkOrder.requirements` with add/close commands; materials and promises create memo tasks. Re-confirming a key item now only cancels the time-bound preparation task, never delivery, requirement or follow-up tasks. Evidence: `test_requirements.py` **4 passed**; role C suites 109 passed.
+
 ## Working-time settings, free slots and schedule risks (role C) — 2026-10-16
 
 方案 §4.4 (工作时间、休息时间、任务时长和缓冲; 检查时间重叠、缺少准备时间; 提出可用时间), §5.1 and 附录 A (候选时间必须来自已核对的可用时间). New `scheduling.py`, table `schedule_settings` (migration **0018_schedule_settings**). `GET/PUT /settings/schedule` (defaults: Mon–Sat 09:00–19:00, break 12:30–13:30, 60-minute duration, 30-minute buffer, 60-minute preparation); `GET /work-orders/{id}/schedule-check` returns risks and deterministic free slots; conflict drafts offer the first free slot of the same length; the preparation task uses the merchant's lead time. Evidence: `test_scheduling.py` **5 passed**; role C suites 93 passed.

@@ -367,9 +367,31 @@ class ProvenancedField(Model):
         return self
 
 
+def missing_field():
+    return ProvenancedField(value=None, status="missing", sources=[], interpretation=None)
+
+
 class WorkOrderFields(Model):
+    """Key items (schedule, address) decide confirmation; the others are business detail."""
+
     schedule: ProvenancedField
     address: ProvenancedField
+    specification: ProvenancedField = Field(default_factory=missing_field)
+    quantity: ProvenancedField = Field(default_factory=missing_field)
+    deadline: ProvenancedField = Field(default_factory=missing_field)
+
+
+class RequirementItem(Model):
+    """Required material, a promise either side made, or an open question (方案 §4.3)."""
+
+    id: Id
+    kind: Literal["material", "commitment", "question"]
+    text: Annotated[str, Field(min_length=1, max_length=300)]
+    owner: Literal["merchant", "customer"]
+    status: Literal["open", "done", "cancelled"]
+    due: DeadlineValue | None = None
+    task_id: Id | None = None
+    sources: Annotated[list[SourceRef], Field(min_length=1)]
 
 
 class DeferredItem(Model):
@@ -391,6 +413,8 @@ class WorkOrder(Model):
     pending_change_ids: list[Id]
     updated_at: UtcTimestamp
     deferred: dict[Literal["schedule", "address"], DeferredItem] = {}
+    requirements: list[RequirementItem] = []
+    task_links: dict[str, Id] = {}
 
 
 class AccountConsent(Model):
@@ -993,6 +1017,20 @@ class ScheduleCheck(Model):
     work_order_id: Id
     risks: list[ScheduleRisk]
     suggestions: list[Slot]
+
+
+class AddRequirementCommand(Model):
+    kind: Literal["material", "commitment", "question"]
+    text: Annotated[str, Field(min_length=1, max_length=300)]
+    owner: Literal["merchant", "customer"]
+    due: DeadlineValue | None = None
+    sources: Annotated[list[SourceRef], Field(min_length=1)]
+    expected_version: Positive
+
+
+class UpdateRequirementCommand(Model):
+    status: Literal["done", "cancelled"]
+    expected_version: Positive
 
 
 class SetWorkOrderStatusCommand(Model):

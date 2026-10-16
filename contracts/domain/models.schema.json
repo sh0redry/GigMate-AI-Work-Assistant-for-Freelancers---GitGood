@@ -82,6 +82,71 @@
       "title": "ActionState",
       "type": "string"
     },
+    "AddRequirementCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "due": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InstantDeadline"
+            },
+            {
+              "$ref": "#/$defs/DateOnly"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Due"
+        },
+        "expected_version": {
+          "minimum": 1,
+          "title": "Expected Version",
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "material",
+            "commitment",
+            "question"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "owner": {
+          "enum": [
+            "merchant",
+            "customer"
+          ],
+          "title": "Owner",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
+        },
+        "text": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "text",
+        "owner",
+        "sources",
+        "expected_version"
+      ],
+      "title": "AddRequirementCommand",
+      "type": "object"
+    },
     "ApprovalAction": {
       "additionalProperties": false,
       "allOf": [
@@ -2155,6 +2220,95 @@
       "title": "RequirementChange",
       "type": "object"
     },
+    "RequirementItem": {
+      "additionalProperties": false,
+      "description": "Required material, a promise either side made, or an open question (方案 §4.3).",
+      "properties": {
+        "due": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InstantDeadline"
+            },
+            {
+              "$ref": "#/$defs/DateOnly"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Due"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "material",
+            "commitment",
+            "question"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "owner": {
+          "enum": [
+            "merchant",
+            "customer"
+          ],
+          "title": "Owner",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "open",
+            "done",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Task Id"
+        },
+        "text": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "text",
+        "owner",
+        "status",
+        "sources"
+      ],
+      "title": "RequirementItem",
+      "type": "object"
+    },
     "ScheduleSettings": {
       "additionalProperties": false,
       "description": "User-set working time (方案 §4.4). Buffers are the user's own numbers, not travel time.",
@@ -2480,6 +2634,30 @@
     "Timezone": {
       "minLength": 1,
       "type": "string"
+    },
+    "UpdateRequirementCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_version": {
+          "minimum": 1,
+          "title": "Expected Version",
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "done",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "expected_version"
+      ],
+      "title": "UpdateRequirementCommand",
+      "type": "object"
     },
     "UpdateScheduleSettingsCommand": {
       "additionalProperties": false,
@@ -5024,6 +5202,14 @@
           "title": "Pending Change Ids",
           "type": "array"
         },
+        "requirements": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RequirementItem"
+          },
+          "title": "Requirements",
+          "type": "array"
+        },
         "status": {
           "$ref": "#/$defs/WorkOrderStatus"
         },
@@ -5031,6 +5217,15 @@
           "minLength": 1,
           "title": "Summary",
           "type": "string"
+        },
+        "task_links": {
+          "additionalProperties": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "default": {},
+          "title": "Task Links",
+          "type": "object"
         },
         "updated_at": {
           "format": "date-time",
@@ -5060,11 +5255,21 @@
     },
     "WorkOrderFields": {
       "additionalProperties": false,
+      "description": "Key items (schedule, address) decide confirmation; the others are business detail.",
       "properties": {
         "address": {
           "$ref": "#/$defs/ProvenancedField"
         },
+        "deadline": {
+          "$ref": "#/$defs/ProvenancedField"
+        },
+        "quantity": {
+          "$ref": "#/$defs/ProvenancedField"
+        },
         "schedule": {
+          "$ref": "#/$defs/ProvenancedField"
+        },
+        "specification": {
           "$ref": "#/$defs/ProvenancedField"
         }
       },

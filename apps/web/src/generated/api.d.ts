@@ -1152,6 +1152,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/work-orders/{order_id}/requirements": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Add Order Requirement */
+    post: operations["add_order_requirement_api_v1_work_orders__order_id__requirements_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/work-orders/{order_id}/requirements/{item_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Update Order Requirement */
+    post: operations["update_order_requirement_api_v1_work_orders__order_id__requirements__item_id__post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/work-orders/{order_id}/schedule-check": {
     parameters: {
       query?: never;
@@ -1316,6 +1350,30 @@ export interface components {
        */
       work_order_id: string;
     } & (unknown & unknown);
+    /** AddRequirementCommand */
+    AddRequirementCommand: {
+      /** Due */
+      due?:
+        | components["schemas"]["InstantDeadline"]
+        | components["schemas"]["DateOnly"]
+        | null;
+      /** Expected Version */
+      expected_version: number;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "material" | "commitment" | "question";
+      /**
+       * Owner
+       * @enum {string}
+       */
+      owner: "merchant" | "customer";
+      /** Sources */
+      sources: components["schemas"]["SourceRef"][];
+      /** Text */
+      text: string;
+    };
     /** ApproveActionCommand */
     ApproveActionCommand: {
       /** Expected Action Revision */
@@ -2301,6 +2359,43 @@ export interface components {
       event_id: string;
     };
     /**
+     * RequirementItem
+     * @description Required material, a promise either side made, or an open question (方案 §4.3).
+     */
+    RequirementItem: {
+      /** Due */
+      due?:
+        | components["schemas"]["InstantDeadline"]
+        | components["schemas"]["DateOnly"]
+        | null;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "material" | "commitment" | "question";
+      /**
+       * Owner
+       * @enum {string}
+       */
+      owner: "merchant" | "customer";
+      /** Sources */
+      sources: components["schemas"]["SourceRef"][];
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "open" | "done" | "cancelled";
+      /** Task Id */
+      task_id?: string | null;
+      /** Text */
+      text: string;
+    };
+    /**
      * ScheduleCheck
      * @description Deterministic checks for one order's time, plus free slots the merchant may offer.
      */
@@ -2524,6 +2619,16 @@ export interface components {
       start_at: string;
       /** Timezone */
       timezone: string;
+    };
+    /** UpdateRequirementCommand */
+    UpdateRequirementCommand: {
+      /** Expected Version */
+      expected_version: number;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "done" | "cancelled";
     };
     /** UpdateScheduleSettingsCommand */
     UpdateScheduleSettingsCommand: {
@@ -3479,9 +3584,21 @@ export interface components {
       id: string;
       /** Pending Change Ids */
       pending_change_ids: string[];
+      /**
+       * Requirements
+       * @default []
+       */
+      requirements: components["schemas"]["RequirementItem"][];
       status: components["schemas"]["WorkOrderStatus"];
       /** Summary */
       summary: string;
+      /**
+       * Task Links
+       * @default {}
+       */
+      task_links: {
+        [key: string]: string;
+      };
       /**
        * Updated At
        * Format: date-time
@@ -3490,10 +3607,16 @@ export interface components {
       /** Version */
       version: number;
     };
-    /** WorkOrderFields */
+    /**
+     * WorkOrderFields
+     * @description Key items (schedule, address) decide confirmation; the others are business detail.
+     */
     WorkOrderFields: {
       address: components["schemas"]["ProvenancedField"];
+      deadline?: components["schemas"]["ProvenancedField"];
+      quantity?: components["schemas"]["ProvenancedField"];
       schedule: components["schemas"]["ProvenancedField"];
+      specification?: components["schemas"]["ProvenancedField"];
     };
     /**
      * WorkOrderStatus
@@ -5960,6 +6083,81 @@ export interface operations {
     requestBody: {
       content: {
         "application/json": components["schemas"]["DeferItemCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkOrder_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  add_order_requirement_api_v1_work_orders__order_id__requirements_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        order_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AddRequirementCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkOrder_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  update_order_requirement_api_v1_work_orders__order_id__requirements__item_id__post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        order_id: string;
+        item_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateRequirementCommand"];
       };
     };
     responses: {

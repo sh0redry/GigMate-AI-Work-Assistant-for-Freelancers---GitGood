@@ -1,6 +1,7 @@
 import hashlib
 import json
 from datetime import UTC, datetime, timedelta
+from datetime import date as date_cls
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -103,8 +104,12 @@ def confirm(db, account, work_order_id, change_id, command, key, request_id):
         if not latest or latest.revision != source["message_revision"] or latest.data["revoked"]:
             raise BusinessError(409, "APPROVAL_STALE", "Source message changed")
     field = change.data["field"]
+    if field in DETAIL_FIELDS:
+        return confirm_detail(
+            db, account, order, change, conversation, request_id, scope, key, digest
+        )
     if field not in {"schedule", "address"}:
-        raise BusinessError(422, "VALIDATION_FAILED", "Only time and address can be confirmed")
+        raise BusinessError(422, "VALIDATION_FAILED", "This field cannot be confirmed")
     if field == "schedule" and not command.apply_calendar_update:
         raise BusinessError(
             422,
@@ -204,12 +209,17 @@ def confirm(db, account, work_order_id, change_id, command, key, request_id):
     # order itself is confirmed.
     confirmed_now = value["status"] == "confirmed" and (field == "schedule" or was_pending)
     if confirmed_now or demoted:
+        keep = protected_tasks(value)
         for task in db.scalars(
             select(TaskRow).where(
                 TaskRow.work_order_id == order.id, TaskRow.account_id == account.id
             )
         ):
-            if task.generated and task.data["state"] in {"pending", "blocked"}:
+            if (
+                task.generated
+                and task.id not in keep
+                and task.data["state"] in {"pending", "blocked"}
+            ):
                 task.data = {**task.data, "state": "cancelled"}
     if confirmed_now and is_timed(schedule["value"]):
         db.add(
@@ -801,3 +811,254 @@ def settle_deferral(db, value, field):
     if task and task.data["state"] in {"pending", "blocked"}:
         task.data = {**task.data, "state": "completed"}
     return {**value, "deferred": deferred}
+
+
+# --- Business detail beyond the key items (方案 §4.3、§4.4、附录 A)
+
+DETAIL_FIELDS = {"summary", "specification", "quantity", "deadline"}
+
+
+def protected_tasks(value):
+    """Generated tasks that belong to commitments, deliveries or follow-ups, not to the time."""
+    keep = {task for name, task in (value.get("task_links") or {}).items() if name != "preparation"}
+    keep |= {item["task_id"] for item in value.get("requirements") or [] if item.get("task_id")}
+    keep |= {item["follow_up_task_id"] for item in (value.get("deferred") or {}).values()}
+    return keep
+
+
+def memo_task(account_id, order_data, title, due, sources):
+    task_id = str(uuid4())
+    task = validate(
+        Task,
+        {
+            "id": task_id,
+            "account_id": account_id,
+            "work_order_id": order_data["id"],
+            "work_order_version": order_data["version"],
+            "title": title[:300],
+            "owner_id": account_id,
+            "due": due,
+            "depends_on": [],
+            "state": "pending",
+            "sources": sources,
+        },
+    )
+    return TaskRow(
+        id=task_id, account_id=account_id, work_order_id=order_data["id"], generated=True, data=task
+    )
+
+
+def due_label(due):
+    if not due:
+        return ""
+    if due["kind"] == "date_only":
+        return f"{date_cls.fromisoformat(due['date']):%m/%d} "
+    moment = datetime.fromisoformat(due["at"].replace("Z", "+00:00"))
+    return f"{moment.astimezone(ZoneInfo(due['timezone'])):%m/%d %H:%M} "
+
+
+def detail_value(field, value):
+    from pydantic import TypeAdapter, ValidationError
+
+    from gigmate.contracts import DeadlineValue
+
+    if field in {"summary", "specification"}:
+        if not isinstance(value, str) or not value.strip():
+            raise BusinessError(422, "VALIDATION_FAILED", f"The {field} is empty")
+        text = value.strip()
+        if field == "summary" and len(text) > 120:
+            raise BusinessError(422, "VALIDATION_FAILED", "The summary is too long")
+        return text
+    if field == "quantity":
+        if isinstance(value, bool) or not (
+            (isinstance(value, int | float) and value > 0)
+            or (isinstance(value, str) and value.strip())
+        ):
+            raise BusinessError(422, "VALIDATION_FAILED", "The quantity is not valid")
+        return value.strip() if isinstance(value, str) else value
+    try:
+        return TypeAdapter(DeadlineValue).validate_python(value).model_dump(mode="json")
+    except ValidationError as error:
+        raise BusinessError(422, "VALIDATION_FAILED", "The deadline is not valid") from error
+
+
+def confirm_detail(db, account, order, change, conversation, request_id, scope, key, digest):
+    """Confirm a non-key requirement. It never decides order confirmation by itself.
+
+    A confirmed deadline becomes the delivery task (全天交付期限 stays a date,
+    not a one-hour meeting); a newer deadline replaces the old task.
+    """
+    from gigmate.approvals import ask_open_items
+
+    field = change.data["field"]
+    new_value = detail_value(field, change.data["new_value"])
+    customer_confirmed = change.data["customer_confirmation"] == "confirmed"
+    value = json.loads(json.dumps(order.data))
+    value["version"] += 1
+    value["updated_at"] = now_text()
+    if field == "summary":
+        value["summary"] = new_value
+    else:
+        value["fields"][field] = {
+            "value": new_value,
+            "status": "confirmed" if customer_confirmed else "proposed",
+            "sources": change.data["sources"],
+            "interpretation": (
+                f"Merchant explicitly approved this {field}"
+                if customer_confirmed
+                else f"Merchant accepted this {field}; waiting for the customer to confirm it"
+            ),
+        }
+    value["pending_change_ids"] = [i for i in value["pending_change_ids"] if i != change.id]
+    links = dict(value.get("task_links") or {})
+    if field == "deadline":
+        previous = db.get(TaskRow, links.get("delivery")) if links.get("delivery") else None
+        if previous and previous.data["state"] in {"pending", "blocked"}:
+            previous.data = {**previous.data, "state": "cancelled"}
+        links.pop("delivery", None)
+        if customer_confirmed:
+            task = memo_task(
+                account.id,
+                value,
+                f"{due_label(new_value)}交付 {value['summary']}",
+                new_value,
+                change.data["sources"],
+            )
+            db.add(task)
+            links["delivery"] = task.id
+    value["task_links"] = links
+    order.data = validate(WorkOrder, value)
+    change.data = {**change.data, "status": "confirmed"}
+    for other in db.scalars(
+        select(ChangeRow).where(
+            ChangeRow.work_order_id == order.id,
+            ChangeRow.account_id == account.id,
+            ChangeRow.id != change.id,
+        )
+    ):
+        if other.data["status"] == "proposed":
+            other.data = {**other.data, "status": "needs_review"}
+    db.flush()
+    ask_open_items(db, account.id, order, conversation)
+    db.add(audit_row(account.id, order.id, f"confirm_{field}_change", request_id))
+    save_result(db, account.id, scope, key, digest, order.data)
+    return order.data
+
+
+REQUIREMENT_TASKS = {
+    # (kind, owner) → memo title; questions are tracked on the order, not as tasks.
+    ("material", "customer"): "跟进 {summary}：索取{text}",
+    ("material", "merchant"): "准备 {summary}：{text}",
+    ("commitment", "merchant"): "{summary}：{text}",
+    ("commitment", "customer"): "跟进 {summary}：客人答应{text}",
+}
+
+
+def locked_order(db, account, work_order_id, expected_version):
+    order = db.scalar(
+        select(WorkOrderRow)
+        .where(WorkOrderRow.id == work_order_id, WorkOrderRow.account_id == account.id)
+        .with_for_update()
+    )
+    if order is None:
+        raise BusinessError(404, "NOT_FOUND", "Work order not found")
+    if order.data["version"] != expected_version:
+        raise BusinessError(409, "VERSION_CONFLICT", "Refresh the work order first")
+    if order.data["status"] in CLOSED:
+        raise BusinessError(409, "VERSION_CONFLICT", "Work order is closed")
+    return order
+
+
+def current_sources(db, account, conversation_id, sources):
+    for ref in sources:
+        latest = db.scalar(
+            select(MessageRow)
+            .where(
+                MessageRow.id == ref["message_id"],
+                MessageRow.account_id == account.id,
+                MessageRow.conversation_id == conversation_id,
+            )
+            .order_by(MessageRow.revision.desc())
+        )
+        if latest is None:
+            raise BusinessError(404, "NOT_FOUND", "Source message not found")
+        if latest.revision != ref["message_revision"] or latest.data["revoked"]:
+            raise BusinessError(409, "APPROVAL_STALE", "Source message changed")
+
+
+def add_requirement(db, account, work_order_id, command, key, request_id):
+    """Record a required material, a promise or an open question with its source message.
+
+    Materials and promises become memo tasks with an owner, due time and
+    source (方案 §4.4: 发初稿、索取尺寸、准备材料…); questions stay on the order.
+    """
+    scope = f"requirement:{work_order_id}"
+    digest, cached = command_cache(db, account.id, scope, key, command.model_dump(mode="json"))
+    if cached:
+        return cached.data
+    order = locked_order(db, account, work_order_id, command.expected_version)
+    sources = [ref.model_dump() for ref in command.sources]
+    current_sources(db, account, order.data["conversation_ids"][0], sources)
+    text = command.text.strip()
+    if not text:
+        raise BusinessError(422, "VALIDATION_FAILED", "Describe the item")
+    value = json.loads(json.dumps(order.data))
+    value["version"] += 1
+    value["updated_at"] = now_text()
+    due = command.due.model_dump(mode="json") if command.due else None
+    item = {
+        "id": str(uuid4()),
+        "kind": command.kind,
+        "text": text,
+        "owner": command.owner,
+        "status": "open",
+        "due": due,
+        "task_id": None,
+        "sources": sources,
+    }
+    template = REQUIREMENT_TASKS.get((command.kind, command.owner))
+    if template:
+        task = memo_task(
+            account.id,
+            value,
+            due_label(due) + template.format(summary=value["summary"], text=text),
+            due,
+            sources,
+        )
+        db.add(task)
+        item["task_id"] = task.id
+    value["requirements"] = [*(value.get("requirements") or []), item]
+    order.data = validate(WorkOrder, value)
+    db.add(audit_row(account.id, order.id, f"add_{command.kind}", request_id))
+    save_result(db, account.id, scope, key, digest, order.data)
+    return order.data
+
+
+def update_requirement(db, account, work_order_id, item_id, command, key, request_id):
+    """Mark a requirement done or no longer needed; its task follows."""
+    scope = f"requirement:{work_order_id}:{item_id}"
+    digest, cached = command_cache(db, account.id, scope, key, command.model_dump())
+    if cached:
+        return cached.data
+    order = locked_order(db, account, work_order_id, command.expected_version)
+    value = json.loads(json.dumps(order.data))
+    items = value.get("requirements") or []
+    item = next((entry for entry in items if entry["id"] == item_id), None)
+    if item is None:
+        raise BusinessError(404, "NOT_FOUND", "Requirement not found")
+    if item["status"] != "open":
+        raise BusinessError(409, "VERSION_CONFLICT", "This item is already closed")
+    item["status"] = command.status
+    if item.get("task_id"):
+        task = db.get(TaskRow, item["task_id"])
+        if task and task.data["state"] in {"pending", "blocked"}:
+            task.data = {
+                **task.data,
+                "state": "completed" if command.status == "done" else "cancelled",
+            }
+    value["version"] += 1
+    value["updated_at"] = now_text()
+    order.data = validate(WorkOrder, value)
+    db.add(audit_row(account.id, order.id, f"requirement_{command.status}", request_id))
+    save_result(db, account.id, scope, key, digest, order.data)
+    return order.data

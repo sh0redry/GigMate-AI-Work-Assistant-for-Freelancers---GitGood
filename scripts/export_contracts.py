@@ -77,6 +77,8 @@ def domain_schema():
         c.SendApprovedActionCommand,
         c.AssignMessageCommand,
         c.DeferItemCommand,
+        c.AddRequirementCommand,
+        c.UpdateRequirementCommand,
         c.ScheduleSettings,
         c.UpdateScheduleSettingsCommand,
     ]

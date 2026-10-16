@@ -19,6 +19,7 @@ from gigmate.approvals import approve, reissue, reject, views
 from gigmate.config import COOKIE_SECURE, TRUSTED_ORIGINS
 from gigmate.contracts import (
     ActionState,
+    AddRequirementCommand,
     ApprovalAction,
     ApproveActionCommand,
     AssignmentResult,
@@ -45,6 +46,7 @@ from gigmate.contracts import (
     SetWorkOrderStatusCommand,
     Task,
     Text,
+    UpdateRequirementCommand,
     UpdateScheduleSettingsCommand,
     WahaAttachmentView,
     WahaChoice,
@@ -90,6 +92,7 @@ from gigmate.waha_probe import MAX_BODY, _non_json_constant, _pairs, verify_hmac
 from gigmate.waha_recovery import issue_view, record_rejection
 from gigmate.waha_send_api import install as install_sending
 from gigmate.workorders import (
+    add_requirement,
     assign_message,
     audit_row,
     command_cache,
@@ -100,6 +103,7 @@ from gigmate.workorders import (
     reject_change,
     save_result,
     set_status,
+    update_requirement,
 )
 
 app = FastAPI(title="GigMate replay skeleton", version="0.2.0")
@@ -506,6 +510,47 @@ def schedule_check(order_id: UUID, request: Request, account=Depends(actor), db=
 
     order = owned(db, WorkOrderRow, str(order_id), account.id)
     return detail(request, scheduling.check(db, account.id, order))
+
+
+@app.post("/api/v1/work-orders/{order_id}/requirements", response_model=Detail[WorkOrder])
+def add_order_requirement(
+    order_id: UUID,
+    command: AddRequirementCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    return detail(
+        request,
+        add_requirement(
+            db, account, str(order_id), command, idempotency_key, request.state.request_id
+        ),
+    )
+
+
+@app.post("/api/v1/work-orders/{order_id}/requirements/{item_id}", response_model=Detail[WorkOrder])
+def update_order_requirement(
+    order_id: UUID,
+    item_id: UUID,
+    command: UpdateRequirementCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    return detail(
+        request,
+        update_requirement(
+            db,
+            account,
+            str(order_id),
+            str(item_id),
+            command,
+            idempotency_key,
+            request.state.request_id,
+        ),
+    )
 
 
 @app.post("/api/v1/work-orders/{order_id}/status", response_model=Detail[WorkOrder])
