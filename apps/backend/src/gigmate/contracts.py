@@ -52,6 +52,29 @@ class Model(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
+class WorkspaceCapabilities(Model):
+    """Release gates, not connector permissions or claims of live acceptance."""
+
+    calendar_export: bool = True
+    create_order: bool = True
+    order_status: bool = True
+    address_confirmation: bool = True
+    manual_assignment: bool = False
+    business_sending: bool = False
+    automatic_understanding: bool = False
+
+
+class ReviewItem(Model):
+    id: Id
+    conversation_id: Id
+    message_id: Id | None
+    context_version: Positive
+    current_context_version: Positive
+    reason: str
+    state: str
+    observed_at: UtcTimestamp
+
+
 class ComponentHealth(Model):
     state: Literal["healthy", "unavailable", "stale", "unknown"]
     observed_at: UtcTimestamp | None
@@ -868,6 +891,30 @@ class SetWorkOrderStatusCommand(Model):
 
     status: Literal["in_progress", "waiting_customer", "completed", "cancelled"]
     expected_version: Positive
+
+
+class InspectWorkOrderCommand(Model):
+    """Look up an exact completed command; never execute or resubmit it."""
+
+    kind: Literal["create", "status", "confirm"]
+    order_id: Id | None = None
+    change_id: Id | None = None
+    command: CreateWorkOrderCommand | SetWorkOrderStatusCommand | ConfirmChangeCommand
+
+    @model_validator(mode="after")
+    def bind_scope(self):
+        expected = {
+            "create": CreateWorkOrderCommand,
+            "status": SetWorkOrderStatusCommand,
+            "confirm": ConfirmChangeCommand,
+        }[self.kind]
+        if not isinstance(self.command, expected):
+            raise ValueError("Command kind does not match its body")
+        if (self.order_id is not None) != (self.kind != "create"):
+            raise ValueError("An order is required only for status/confirmation")
+        if (self.change_id is not None) != (self.kind == "confirm"):
+            raise ValueError("A change is required only for confirmation")
+        return self
 
 
 class RejectActionCommand(ApproveActionCommand):

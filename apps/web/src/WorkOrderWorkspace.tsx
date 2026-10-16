@@ -1,11 +1,19 @@
+import { orderCommands } from "./order-command-api";
+import { OrderLifecycle } from "./OrderLifecycle";
+import { InspectOrderAttempt } from "./InspectOrderAttempt";
+import { unavailableFeatures, type Features } from "./features";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { canConfirm, changePresentation, ReplayStore } from "./replay-store";
+import {
+  canConfirm,
+  changePresentation,
+  BusinessStore,
+} from "./business-store";
 import {
   changeContext,
-  replayApi,
+  businessApi,
   workspaceApi,
   type Change,
-  type ReplaySnapshot,
+  type BusinessSnapshot,
   type RequestApi,
 } from "./workspace-api";
 import {
@@ -25,6 +33,9 @@ import {
 
 type Props = {
   csrf: string;
+  accountId?: string;
+  features?: Features;
+  initialSelected?: string;
   onSessionExpired: () => void;
   onBusyChange: (busy: boolean) => void;
   request?: RequestApi;
@@ -34,7 +45,7 @@ function Sources({
   data,
 }: {
   sources: Change["sources"];
-  data: ReplaySnapshot;
+  data: BusinessSnapshot;
 }) {
   return (
     <small>
@@ -68,17 +79,27 @@ function Sources({
 }
 export function WorkOrderWorkspace({
   csrf,
+  accountId,
+  features = unavailableFeatures,
+  initialSelected = "",
   onSessionExpired,
   onBusyChange,
   request,
 }: Props) {
+  const commands = useMemo(
+    () => (accountId ? orderCommands(csrf, accountId) : undefined),
+    [csrf, accountId],
+  );
+  const [recoverConsent, setRecoverConsent] = useState(false);
+  const [commandError, setCommandError] = useState("");
+  const [commandBusy, setCommandBusy] = useState(false);
   const store = useMemo(
     () =>
-      new ReplayStore(
-        replayApi(request ?? workspaceApi(csrf)),
+      new BusinessStore(
+        businessApi(request ?? workspaceApi(csrf), commands),
         onSessionExpired,
       ),
-    [csrf, onSessionExpired, request],
+    [csrf, onSessionExpired, request, commands],
   );
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const [search, setSearch] = useState("");
@@ -92,16 +113,17 @@ export function WorkOrderWorkspace({
   const [consent, setConsent] = useState(false);
   useEffect(() => {
     store.start();
+    if (initialSelected) store.select(initialSelected);
     const timer = setInterval(() => store.poll(), 1500);
     return () => {
       clearInterval(timer);
       store.dispose();
     };
-  }, [store]);
+  }, [store, initialSelected]);
   useEffect(() => {
-    onBusyChange(state.mutating);
+    onBusyChange(state.mutating || commandBusy);
     return () => onBusyChange(false);
-  }, [state.mutating, onBusyChange]);
+  }, [state.mutating, commandBusy, onBusyChange]);
   useEffect(() => {
     setConversation("all");
     setReview(null);
@@ -113,6 +135,12 @@ export function WorkOrderWorkspace({
   const ready = store.ready();
   const openOrder =
     !!order && !["cancelled", "completed"].includes(order.status);
+  const recoveryBinding = JSON.stringify({
+    attempt: commands?.attempt,
+    data: state.data,
+    stale: state.stale,
+  });
+  useEffect(() => setRecoverConsent(false), [recoveryBinding]);
   const orders = filterOrders(data?.orders ?? [], search, status);
   const changes = detailReady ? (data?.changes ?? []) : [];
   const pending = changes.filter((c) => c.status === "proposed");
@@ -125,7 +153,11 @@ export function WorkOrderWorkspace({
     !!data &&
     !!order &&
     ready &&
+    !commandBusy &&
+    !commands?.attempt &&
+    !commands?.error &&
     openOrder &&
+    (change.field !== "address" || features.address_confirmation) &&
     canConfirm(change, order.version, changeContext(data, change) ?? -1);
   const tasks = detailReady
     ? (data?.tasks ?? []).filter(
@@ -147,6 +179,114 @@ export function WorkOrderWorkspace({
     });
   return (
     <>
+      {(commands?.error || commandError) && (
+        <p role="alert" className="notice stale">
+          {commands?.error || commandError}
+        </p>
+      )}
+      {commands?.attempt && (
+        <section className="panel review-panel" aria-label="核对原操作">
+          <h2>有一项原操作尚待核对</h2>
+          <p>
+            {commands.attempt.intent.kind === "create"
+              ? "新建工单"
+              : commands.attempt.intent.kind === "status"
+                ? "修改工单状态"
+                : `确认${commands.attempt.intent.review.field === "address" ? "地址" : "时间安排"}`}{" "}
+            · 请求编号 {commands.attempt.key}
+          </p>
+          {commands.attempt.intent.kind === "create" ? (
+            <>
+              <p>业务：{commands.attempt.intent.body.summary}</p>
+              <p>时间：{fieldValue(commands.attempt.intent.body.schedule)}</p>
+              <p>地址：{commands.attempt.intent.body.address ?? "未提供"}</p>
+              <small>
+                会话 {commands.attempt.intent.body.conversation_id}；时间原文{" "}
+                {commands.attempt.intent.body.schedule_sources.length}{" "}
+                条；地址原文{" "}
+                {commands.attempt.intent.body.address_sources.length} 条
+              </small>
+            </>
+          ) : commands.attempt.intent.kind === "status" ? (
+            <p>
+              原工单版本 v{commands.attempt.intent.body.expected_version} →{" "}
+              {orderStates[commands.attempt.intent.body.status]}
+            </p>
+          ) : (
+            <>
+              <p>业务：{commands.attempt.intent.review.summary}</p>
+              <p>
+                {fieldValue(commands.attempt.intent.review.oldValue)} →{" "}
+                {fieldValue(commands.attempt.intent.review.newValue)}
+              </p>
+              <small>
+                原工单 v{commands.attempt.intent.body.expected_version}；原会话
+                v{commands.attempt.intent.body.expected_context_version}
+              </small>
+              {commands.attempt.intent.review.sources.map((source) => (
+                <small key={source.message_id}>
+                  原文编号 {source.message_id} · r{source.message_revision}
+                </small>
+              ))}
+            </>
+          )}
+          <p>
+            读取、刷新和重新登录不会重发。只有明确核对后，才使用相同编号、原内容与原版本核对操作；服务端仍会拒绝旧来源或版本。
+          </p>
+          <label className="inline-check">
+            <input
+              type="checkbox"
+              checked={recoverConsent}
+              onChange={(e) => setRecoverConsent(e.target.checked)}
+            />
+            我已核对原内容和当前状态，继续核对原编号操作
+          </label>
+          <button
+            disabled={
+              !ready ||
+              !recoverConsent ||
+              commandBusy ||
+              !!commands.error ||
+              (commands.attempt.intent.kind === "create" &&
+                !features.create_order) ||
+              (commands.attempt.intent.kind === "status" &&
+                !features.order_status)
+            }
+            onClick={() => {
+              setCommandBusy(true);
+              setCommandError("");
+              void commands
+                .retry()
+                .then(() => store.refresh())
+                .catch((e) => {
+                  setCommandError(e instanceof Error ? e.message : "核对失败");
+                  if (e?.code === "UNAUTHENTICATED") onSessionExpired();
+                })
+                .finally(() => {
+                  setCommandBusy(false);
+                  setRecoverConsent(false);
+                });
+            }}
+          >
+            核对原编号操作
+          </button>
+          <InspectOrderAttempt
+            commands={commands}
+            ready={ready}
+            busy={commandBusy || state.mutating}
+            onBusy={setCommandBusy}
+            onDone={() => {
+              setCommandError("");
+              void store.refresh();
+            }}
+            onError={(e) => {
+              setCommandError(e instanceof Error ? e.message : "核对失败");
+              if ((e as { code?: string })?.code === "UNAUTHENTICATED")
+                onSessionExpired();
+            }}
+          />
+        </section>
+      )}
       <div
         className={`notice ${state.stale && data ? "stale" : ""}`}
         role="status"
@@ -206,7 +346,7 @@ export function WorkOrderWorkspace({
               key={item.id}
               className={`order ${item.id === state.selected ? "active" : ""}`}
               aria-pressed={item.id === state.selected}
-              disabled={state.mutating}
+              disabled={state.mutating || commandBusy}
               onClick={() => store.select(item.id)}
             >
               <strong>{item.summary}</strong>
@@ -220,7 +360,7 @@ export function WorkOrderWorkspace({
             <p>
               {data.orders.length
                 ? "没有匹配的工单，调整搜索或状态筛选。"
-                : "当前还没有工单。你可以先在「WhatsApp 连接」中管理会话授权；自动建单和手动新建功能尚未开放。"}
+                : "当前还没有工单。先在「WhatsApp 连接」中授权会话，再到「新建工单」引用客户原文建单；自动建单尚未开放。"}
             </p>
           )}
           {!data && (
@@ -229,7 +369,7 @@ export function WorkOrderWorkspace({
             </p>
           )}
         </aside>
-        <main className="panel">
+        <section className="panel" aria-label="工单详情">
           <h2>工单详情</h2>
           {detailReady && !order && <p>有工单后，可在此查看详情与来源消息。</p>}
           {!detailReady && <p>正在核对选中工单，完成前不能确认。</p>}
@@ -258,6 +398,36 @@ export function WorkOrderWorkspace({
                   </div>
                 ))}
               </div>
+              {commands && (
+                <OrderLifecycle
+                  order={order}
+                  enabled={features.order_status}
+                  ready={ready && !state.mutating}
+                  commands={commands}
+                  onBusyChange={setCommandBusy}
+                  onDone={() => void store.refresh()}
+                  onError={(e) => {
+                    setCommandError(
+                      e instanceof Error ? e.message : "操作失败",
+                    );
+                    if ((e as { code?: string })?.code === "UNAUTHENTICATED")
+                      onSessionExpired();
+                  }}
+                />
+              )}
+              <p className="availability-note">
+                {Object.entries(order.fields)
+                  .filter(([, field]) => field.status !== "confirmed")
+                  .map(
+                    ([name, field]) =>
+                      `${name === "schedule" ? "时间" : "地址"}：${field.status === "missing" ? "等待客户提供" : field.status === "needs_review" ? "来源或含义需复核" : "等待客户核实与商户确认"}`,
+                  )
+                  .join("；") ||
+                  "当前已记录时间和地址的确认；请继续核对变更来源。"}{" "}
+                {!features.address_confirmation &&
+                  "当前后端未开放地址提议确认。"}
+                人工归单与延期保存仍未开放。
+              </p>
               <h2>
                 待核对变更 <span className="tag">{pending.length} 项提议</span>
               </h2>
@@ -305,11 +475,11 @@ export function WorkOrderWorkspace({
                     <p>
                       {context === null
                         ? "来源版本或归属无法完整核对，保持待复核。"
-                        : change.field !== "schedule"
-                          ? "当前接口仅支持时间安排确认，此字段保持待核对。"
+                        : !["schedule", "address"].includes(change.field)
+                          ? "当前接口仅支持时间和地址确认，此字段保持待核对。"
                           : display.text}
                     </p>
-                    {change.field === "schedule" && (
+                    {["schedule", "address"].includes(change.field) && (
                       <button
                         disabled={!confirmable(change)}
                         onClick={() => {
@@ -320,7 +490,9 @@ export function WorkOrderWorkspace({
                           setConsent(false);
                         }}
                       >
-                        核对并确认安排
+                        {change.field === "address"
+                          ? "核对并确认地址"
+                          : "核对并确认安排"}
                       </button>
                     )}
                   </article>
@@ -332,7 +504,7 @@ export function WorkOrderWorkspace({
                   role="region"
                   aria-label="确认安排复核"
                 >
-                  <h3>复核本次正式更新</h3>
+                  <h3>复核本次业务更新</h3>
                   {reviewCurrent && reviewed ? (
                     <>
                       <p>
@@ -358,7 +530,7 @@ export function WorkOrderWorkspace({
                       }
                       onChange={(e) => setConsent(e.target.checked)}
                     />
-                    我已核对，确认更新工单、同步正式日历、取消旧自动待办并生成新的准备事项。
+                    我已核对原文，接受本次提议。仍未获客户确认的信息保持待确认；日历与准备待办按确认状态处理。
                   </label>
                   <button
                     disabled={
@@ -379,7 +551,7 @@ export function WorkOrderWorkspace({
                   </button>{" "}
                   <button
                     className="secondary"
-                    disabled={state.mutating}
+                    disabled={state.mutating || commandBusy}
                     onClick={() => {
                       setReview(null);
                       setConsent(false);
@@ -442,7 +614,7 @@ export function WorkOrderWorkspace({
               )}
             </>
           )}
-        </main>
+        </section>
         <aside className="panel">
           <h2>个人日历</h2>
           <small>账号全部安排；时刻按香港时区显示，全天日期保留原时区。</small>
@@ -514,7 +686,8 @@ export function WorkOrderWorkspace({
           ))}
           {detailReady && !tasks.length && <p>当前工单在该范围暂无待办。</p>}
           <small>
-            新建工单与工单状态修改尚未开放。回复草稿请到“回复审批”核对；此页面不会发送消息。
+            新建工单请到“新建工单”；支持的状态操作在工单详情核对。回复草稿请到“回复审批”，业务审批尚未接通
+            WhatsApp 发送。
           </small>
         </aside>
       </div>

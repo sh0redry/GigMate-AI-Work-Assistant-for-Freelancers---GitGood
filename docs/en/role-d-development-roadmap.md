@@ -1,5 +1,20 @@
 # Role D frontend development roadmap
 
+## Current delivery plan — 2026-10-16
+
+The current candidate follows merged #26/#27/main **71de8d9** and implements the remaining web delivery as one batch. [Final acceptance and handoff](role-d-final-acceptance.md) is the current state; the dated notes below are historical.
+
+| Module | Candidate status |
+| --- | --- |
+| D-01 | Existing connection/consent and independent manual sending retained with accurate permission/capability wording |
+| D-02 | Existing order/source/concrete-time confirmation retained; fictional input path removed from runtime |
+| D-03 | #25 merged; local approval remains separate from external send; missing-item reasons and legacy unknown-operation safeguards added |
+| D-04 | Manual creation, status commands and time/address acceptance integrated with merged #26/#27; canonical types, partial-confirmation handling and receipt-based original-command recovery. Assignment/defer remains unavailable |
+| D-05 | Mobile/keyboard layout, honest availability/help, internal month/agenda/tasks, owned `.ics`, manifest/icon and container compilation prepared; physical/native install/accessibility and complete live acceptance remain E/team gates |
+| Final | One business frontend with no test picker/public credential/demo input. Local disposable testing precedes PR; C/B/A pending functions are explicitly disabled, not claimed complete |
+
+C/D source-generated contracts have been compared with merged main; canonical creation/status commands are now enabled. A/C must implement durable business-to-send association before the UI can execute or display linked send receipts; B/C must define assignment/defer/real-proposal commands. This does not authorize the frontend to implement those business rules itself. Native exe/macOS packaging and external calendar sync remain separate work.
+
 2026-10-12 · Owner: Kyrie. The user asked to formalize the previously unrecorded D modules; these labels are now the working plan, not a claim of a historical agreed task list. [Chinese counterpart](../zh/role-d-development-roadmap.md).
 
 | Module | Scope | Dependency / state |

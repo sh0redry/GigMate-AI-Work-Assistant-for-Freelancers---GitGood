@@ -2,7 +2,7 @@ import type {
   Calendar,
   Change,
   Order,
-  ReplaySnapshot,
+  BusinessSnapshot,
 } from "./workspace-api.ts";
 import { changeContext } from "./workspace-api.ts";
 export const orderStates: Record<Order["status"], string> = {
@@ -85,7 +85,7 @@ export function onDay(event: Calendar, day: string) {
     Date.parse(event.schedule.end_at) > start
   );
 }
-export function reviewBinding(data: ReplaySnapshot, change: Change) {
+export function reviewBinding(data: BusinessSnapshot, change: Change) {
   const order = data.orders.find((order) => order.id === data.selected);
   return JSON.stringify({
     selected: data.selected,
@@ -98,7 +98,7 @@ export function messageAnchor(id: string, revision: number) {
   return `message-${id}-r${revision}`;
 }
 
-export function conflictLabel(data: ReplaySnapshot, calendarId: string) {
+export function conflictLabel(data: BusinessSnapshot, calendarId: string) {
   const event = data.calendar.find((event) => event.id === calendarId);
   const order = data.orders.find((order) => order.id === event?.work_order_id);
   return order ? order.summary : `未提供标题（日历 ${calendarId.slice(-6)}）`;

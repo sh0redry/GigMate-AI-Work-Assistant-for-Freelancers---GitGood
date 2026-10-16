@@ -80,6 +80,7 @@ from gigmate.waha_probe import MAX_BODY, _non_json_constant, _pairs, verify_hmac
 from gigmate.waha_recovery import issue_view, record_rejection
 from gigmate.waha_send_api import install as install_sending
 from gigmate.workorders import command_cache, confirm, create, owned, save_result, set_status
+from gigmate.workspace_api import install as install_workspace
 
 app = FastAPI(title="GigMate replay skeleton", version="0.2.0")
 
@@ -364,7 +365,13 @@ def changes(
         lambda row: {
             **row.data,
             "context_version": row.context_version,
-            "conflict_ids": conflicts(db, account.id, str(order_id), row.data["new_value"]),
+            "conflict_ids": (
+                conflicts(db, account.id, str(order_id), row.data["new_value"])
+                if row.data["field"] == "schedule"
+                and isinstance(row.data["new_value"], dict)
+                and row.data["new_value"].get("kind") == "timed"
+                else []
+            ),
         },
     )
 
@@ -1317,3 +1324,4 @@ def replay_custom(
 
 
 install_sending(app, database, setup_actor, detail, page, sending_io_actor)
+install_workspace(app, database, actor, detail, page, conversation_info)

@@ -1,5 +1,7 @@
 # GigMate desktop and installable-app feasibility
 
+Current 2026-10-16 candidate: a web manifest/icon and standalone start metadata are implemented, with no service worker/offline business cache. Browser installation is subject to [MDN requirements](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable); native install/device acceptance is pending. No exe/macOS installer/signing is delivered. See [current acceptance](role-d-final-acceptance.md). The assessment below is dated history.
+
 2026-10-12 · Assessment only; no exe, macOS app, installer, distribution signing or deployment was built. [Chinese counterpart](../zh/role-d-desktop-feasibility.md).
 
 The React/TypeScript/Vite UI can be reused for Windows and macOS. Packaging the UI alone does not package FastAPI, its separate worker, PostgreSQL or WAHA, nor solve production authentication, persistent jobs, approval revalidation or unknown-outcome reconciliation. The current browser uses same-origin session cookies, CSRF and `/api/v1` relative paths; a shell must preserve a trusted application origin/backend proxy, not disable those checks or put connector secrets in JavaScript.
