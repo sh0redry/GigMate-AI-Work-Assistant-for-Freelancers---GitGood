@@ -120,6 +120,104 @@ def _address_payload() -> dict:
     )
 
 
+def _instant_payload(**overrides) -> dict:
+    """A ``deadline`` change carrying the ``InstantDeadline`` (kind=instant) shape."""
+    payload = _schedule_payload()
+    payload["changes"] = [
+        {
+            "field": "deadline",
+            "old_value": None,
+            "new_value": {
+                "kind": "instant",
+                "at": "2026-10-18T07:00:00Z",
+                "timezone": TIMEZONE,
+            },
+            "field_status": "proposed",
+            "customer_confirmation": "pending",
+            "sources": [{"message_id": MESSAGE_ID, "message_revision": 1}],
+            "reason": "Customer promised to deliver tomorrow.",
+        }
+    ]
+    payload.update(overrides)
+    return payload
+
+
+class _FakeClock:
+    """Monotonic test clock. The fake clients advance it as they "spend" time."""
+
+    def __init__(self, start: float = 1000.0) -> None:
+        self.value = start
+
+    def __call__(self) -> float:
+        return self.value
+
+    def advance(self, seconds: float) -> None:
+        self.value += seconds
+
+
+def _timeout_client(clock: _FakeClock):
+    """A client that always times out, spending exactly the timeout it was given."""
+
+    class _Client:
+        requests: list[dict] = []
+
+        def __init__(self, **kwargs):
+            self.timeout = kwargs.get("timeout")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def post(self, url, json=None, headers=None):
+            type(self).requests.append({"timeout": self.timeout})
+            clock.advance(self.timeout or 0.0)
+            raise httpx.ReadTimeout("timed out")
+
+    return _Client
+
+
+def _slow_success_client(clock: _FakeClock, payload: dict, *, seconds: float):
+    """A client that answers, but only after ``seconds`` of wall clock."""
+
+    class _Response:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"choices": [{"message": {"content": json.dumps(payload)}}]}
+
+    class _Client:
+        requests: list[dict] = []
+
+        def __init__(self, **kwargs):
+            self.timeout = kwargs.get("timeout")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def post(self, url, json=None, headers=None):
+            type(self).requests.append({"timeout": self.timeout})
+            clock.advance(seconds)
+            return _Response()
+
+    return _Client
+
+
+def _run_with_clock(monkeypatch, clock, client, request=None, **env):
+    """Drive the provider with the fake clock installed as the deadline basis."""
+    _configure(monkeypatch, **env)
+    monkeypatch.setattr(llm_module, "_now", clock)
+    provider = _gate_open_provider(client)
+    return provider.propose(request or _grounded_request())
+
+
 def _scripted_client(payload, *, status_code=200):
     """Fake ``httpx`` client replaying ``payload``, or failing with ``status_code``."""
 
@@ -249,6 +347,46 @@ def test_gate1_correctly_bound_response_still_matches(monkeypatch):
     assert outcome.proposal.assignment.value == "matched"
     assert outcome.proposal.work_order_id == CANDIDATE
     assert outcome.refused_reason is None
+
+
+def test_gate1_foreign_base_context_version_is_refused(monkeypatch):
+    """The model must not be able to move a proposal onto another context version."""
+    outcome, _ = _run(
+        monkeypatch,
+        _schedule_payload(base_context_version=999),
+        _grounded_request(context_version=7),
+    )
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert outcome.notes == ("llm:response-provenance-failed",)
+    assert outcome.refused_reason == "llm:response-provenance-failed:base_context_version"
+
+
+def test_gate1_server_context_version_is_always_bound(monkeypatch):
+    """The context version of the emitted proposal is the request's, never the model's."""
+    outcome, _ = _run(
+        monkeypatch,
+        _schedule_payload(base_context_version=7),
+        _grounded_request(context_version=7),
+    )
+    assert outcome.notes == ("llm:matched",)
+    assert outcome.proposal.base_context_version == 7
+
+
+@pytest.mark.parametrize("changes", [17, True, "not-a-list"])
+def test_gate1_non_list_changes_are_refused(monkeypatch, changes):
+    """Legal JSON that is not a list must not raise out of ``propose``."""
+    outcome, _ = _run(monkeypatch, _schedule_payload(changes=changes), _grounded_request())
+    assert outcome.notes == ("llm:response-provenance-failed",)
+    assert outcome.refused_reason == "llm:response-provenance-failed:changes-shape"
+
+
+@pytest.mark.parametrize("sources", [7, True])
+def test_gate1_non_list_sources_are_refused(monkeypatch, sources):
+    payload = _schedule_payload()
+    payload["changes"][0]["sources"] = sources
+    outcome, _ = _run(monkeypatch, payload, _grounded_request())
+    assert outcome.notes == ("llm:response-provenance-failed",)
+    assert outcome.refused_reason == "llm:response-provenance-failed:source-shape"
 
 
 # ---------------------------------------------------------------------------
@@ -385,10 +523,50 @@ def test_gate3_client_error_is_not_retried_within_budget(monkeypatch):
     assert outcome.refused_reason == "llm:http-failed:status-4xx"
 
 
-def test_gate3_exhausted_time_budget_stops_retrying(monkeypatch):
+def test_gate3_each_attempt_inherits_the_remaining_deadline(monkeypatch):
+    """The retry must ask for the remaining budget, not the full per-attempt timeout.
+
+    Counter-case from review: a 30 s timeout that consumed the first 30 s used
+    to be followed by another 30 s request, so one extraction ran 60 s against
+    a declared 45 s deadline.
+    """
+    clock = _FakeClock()
+    client = _timeout_client(clock)
+    outcome = _run_with_clock(monkeypatch, clock, client)
+    assert len(client.requests) == 2
+    assert client.requests[0]["timeout"] == pytest.approx(30.0)
+    assert client.requests[1]["timeout"] == pytest.approx(15.0)
+    assert clock.value - 1000.0 == pytest.approx(45.0)
+    assert outcome.refused_reason == "llm:http-failed:timeout"
+
+
+def test_gate3_no_request_is_issued_when_the_budget_is_already_gone(monkeypatch):
     monkeypatch.setattr(llm_module, "_TOTAL_DEADLINE_S", 0.0)
-    _, client = _run_with_status(monkeypatch, 500)
-    assert len(client.requests) == 1
+    clock = _FakeClock()
+    client = _timeout_client(clock)
+    outcome = _run_with_clock(monkeypatch, clock, client)
+    assert client.requests == []
+    assert outcome.notes == ("llm:deadline-exceeded",)
+    assert outcome.refused_reason == "llm:deadline-exceeded"
+
+
+def test_gate3_a_response_arriving_after_the_deadline_is_refused(monkeypatch):
+    """A late success is as unusable as a timeout: the worker's lease is gone."""
+    clock = _FakeClock()
+    client = _slow_success_client(clock, _schedule_payload(), seconds=50.0)
+    outcome = _run_with_clock(monkeypatch, clock, client)
+    assert len(client.requests) == 1  # the deadline is never retried
+    assert outcome.notes == ("llm:deadline-exceeded",)
+    assert outcome.refused_reason == "llm:deadline-exceeded"
+    assert outcome.proposal.assignment.value == "needs_review"
+
+
+def test_gate3_a_response_inside_the_deadline_is_still_accepted(monkeypatch):
+    clock = _FakeClock()
+    client = _slow_success_client(clock, _schedule_payload(), seconds=1.0)
+    outcome = _run_with_clock(monkeypatch, clock, client)
+    assert outcome.notes == ("llm:matched",)
+    assert outcome.refused_reason is None
 
 
 # ---------------------------------------------------------------------------
@@ -401,6 +579,20 @@ def test_gate4_schedule_without_a_time_basis_is_refused(monkeypatch):
     assert outcome.notes == ("llm:time-basis-missing",)
     assert outcome.refused_reason == "llm:time-basis-missing:schedule"
     assert outcome.proposal.assignment.value == "needs_review"
+
+
+def test_gate4_instant_deadline_without_a_time_basis_is_refused(monkeypatch):
+    """``kind: instant`` ("明天交稿") is a date too, so it needs the same basis."""
+    outcome, _ = _run(monkeypatch, _instant_payload(), _request())
+    assert outcome.notes == ("llm:time-basis-missing",)
+    assert outcome.refused_reason == "llm:time-basis-missing:schedule"
+    assert outcome.proposal.assignment.value == "needs_review"
+
+
+def test_gate4_instant_deadline_with_a_time_basis_is_accepted(monkeypatch):
+    outcome, _ = _run(monkeypatch, _instant_payload(), _grounded_request())
+    assert outcome.notes == ("llm:matched",)
+    assert outcome.refused_reason is None
 
 
 def test_gate4_invalid_timezone_is_refused(monkeypatch):

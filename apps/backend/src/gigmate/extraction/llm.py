@@ -105,10 +105,17 @@ _DEEPSEEK_DEFAULT_ENDPOINT = _VENDOR_DEFAULT_ENDPOINTS["deepseek"]
 # Network hygiene: bound the *per-attempt* request time and the *total* wall
 # time a single extraction may spend in the vendor call (pre-activation gate
 # 3). The total budget is what protects the worker's row lock and lease: a
-# retry is only issued when the remaining budget still allows it.
+# retry is only issued when the remaining budget still allows it, and every
+# attempt inherits the *remaining* budget as its own timeout (see
+# ``_call_chat_completion``) instead of unconditionally asking for the full
+# per-attempt timeout again.
 _REQUEST_TIMEOUT_S = 30.0
 _TOTAL_DEADLINE_S = 45.0
 _MAX_RETRIES = 1
+# An attempt that cannot be granted at least this much of the remaining total
+# budget is not issued at all: a request into a guaranteed timeout only holds
+# the worker's lock and burns the deadline for no possible result.
+_MIN_REQUEST_TIMEOUT_S = 1.0
 
 # Header carrying the persistent correlation id (gate 3). The same value is
 # persisted on the ``model_call_traces`` row so an operator can match a trace
@@ -126,6 +133,25 @@ _COST_INPUT_ENV = "GIGMATE_LLM_COST_INPUT_USD_PER_1K"
 _COST_OUTPUT_ENV = "GIGMATE_LLM_COST_OUTPUT_USD_PER_1K"
 _COST_BUDGET_ENV = "GIGMATE_LLM_COST_BUDGET_USD"
 _DEFAULT_COST_BUDGET_USD = "0.10"
+# Token ceilings used to bound the worst case of a call *before* it is paid
+# for (review fix P2-2). Without them the budget could only ever be checked
+# after the vendor had already spent it.
+_COST_MAX_INPUT_TOKENS_ENV = "GIGMATE_LLM_MAX_INPUT_TOKENS"
+_COST_MAX_OUTPUT_TOKENS_ENV = "GIGMATE_LLM_MAX_OUTPUT_TOKENS"
+_DEFAULT_MAX_INPUT_TOKENS = 4000
+_DEFAULT_MAX_OUTPUT_TOKENS = 1000
+# Conservative characters-per-token approximation for the mixed CJK/English
+# prompts this project sends. It deliberately over-estimates (a CJK character
+# can be a token on its own), because an over-estimate can only refuse a call,
+# never under-count its cost.
+_CHARS_PER_TOKEN = 3
+
+# Pre-activation gate 4 / review fix P2-5: the fields and the value kinds that
+# carry a date, and therefore may only be produced against a real time basis.
+# ``instant`` is the ``InstantDeadline`` shape ("明天交稿") and was the hole
+# in the original guard.
+_DATE_BEARING_FIELDS = frozenset({"schedule", "deadline"})
+_DATE_BEARING_KINDS = frozenset({"timed", "date_only", "instant"})
 
 # Best-effort default price list in USD per 1K tokens, keyed by
 # (vendor, model). The values approximate the public price lists as of
@@ -141,6 +167,25 @@ _PRICING_PER_1K: dict[tuple[str, str], tuple[Decimal, Decimal]] = {
 }
 
 _log = logging.getLogger(__name__)
+
+
+def _now() -> float:
+    """Monotonic wall clock used for every deadline and latency budget.
+
+    Indirection exists so a test can inject a fake clock and prove the total
+    deadline is really enforced (see the gate-3 deadline tests).
+    """
+    return time.monotonic()
+
+
+class _TotalDeadlineExceeded(RuntimeError):
+    """Raised when the total wall-clock budget of one extraction is gone.
+
+    Gate 3 (review fix P2-1): the deadline is enforced before every attempt
+    *and* against a response that only arrived after it. This is deliberately
+    not an :class:`httpx.HTTPError`, so :func:`_is_transient` never retries
+    it — retrying after the deadline can only hold the worker's lock longer.
+    """
 
 
 def _is_transient(exc: BaseException) -> bool:
@@ -241,6 +286,54 @@ def _cost_budget_problem(cost: Decimal) -> str | None:
     return "llm:cost-budget-exceeded" if cost > _cost_budget() else None
 
 
+def _positive_int_env(name: str, default: int) -> int:
+    """Read a positive-integer ceiling, falling back to ``default``."""
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+def _tokens_configuration_problem(env: Mapping[str, str] | None = None) -> str | None:
+    """Return ``llm:cost-tokens-invalid`` for a non-positive token ceiling.
+
+    Review fix P2-2: the pre-call ceiling is derived from these values, so a
+    garbage or negative ceiling must be reported at startup instead of being
+    silently replaced by the default.
+    """
+    get = (env or os.environ).get
+    for name in (_COST_MAX_INPUT_TOKENS_ENV, _COST_MAX_OUTPUT_TOKENS_ENV):
+        raw = get(name)
+        if raw is None or not raw.strip():
+            continue
+        try:
+            if int(raw) <= 0:
+                return "llm:cost-tokens-invalid"
+        except ValueError:
+            return "llm:cost-tokens-invalid"
+    return None
+
+
+def _estimate_tokens(text: str | None) -> int:
+    """Conservative token estimate used to bound a call before it is paid for."""
+    if not text:
+        return 0
+    return max(1, -(-len(text) // _CHARS_PER_TOKEN))
+
+
+def _value_kind(value: object) -> str | None:
+    """Return the contract ``kind`` of a field value, or ``None``."""
+    if isinstance(value, dict):
+        kind = value.get("kind")
+        return kind if isinstance(kind, str) else None
+    kind = getattr(value, "kind", None)
+    return kind if isinstance(kind, str) else None
+
+
 def _cost_configuration_problem(
     vendor: str, model: str, env: Mapping[str, str] | None = None
 ) -> str | None:
@@ -248,10 +341,15 @@ def _cost_configuration_problem(
 
     Pre-activation batch 2. The check is callable at startup (with an
     explicit ``env`` mapping for testability) and at call time (with
-    ``os.environ``). A non-``None`` return refuses the call rather than
-    silently issuing an unpriceable request.
+    ``os.environ``).     A non-``None`` return refuses the call rather than
+    silently issuing an unpriceable request. The token ceilings that bound a
+    call before it is paid for are validated here too, so a garbage ceiling
+    is reported at startup instead of silently falling back to the default.
     """
     get = (env or os.environ).get
+    tokens_problem = _tokens_configuration_problem(env=env)
+    if tokens_problem is not None:
+        return tokens_problem
     budget_raw = get(_COST_BUDGET_ENV, _DEFAULT_COST_BUDGET_USD)
     try:
         Decimal(budget_raw)
@@ -300,6 +398,8 @@ def validate_provider_config(
     * malformed / missing cost budget or pricing configuration
       (``llm:cost-budget-invalid`` / ``llm:cost-pricing-invalid`` /
       ``llm:cost-pricing-partial`` / ``llm:cost-pricing-missing``)
+    * a non-positive input/output token ceiling
+      (``llm:cost-tokens-invalid``)
     * a missing or empty API key when ``GIGMATE_LLM_LIVE=1``
       (``llm:api-key-missing``)
 
@@ -420,7 +520,9 @@ class LLMProvider:
     # ------------------------------------------------------------------ public
 
     def propose(self, request: ExtractionRequest) -> ExtractionOutcome:
-        began = time.monotonic()
+        # ``_now`` (not ``time.monotonic`` directly) so the deadline basis used
+        # to measure this call is the same clock the budget is checked against.
+        began = _now()
         prompt_version = self._read_prompt_version()
         model_version = self._model_version()
 
@@ -744,7 +846,54 @@ class LLMProvider:
 
     @staticmethod
     def _elapsed(began: float) -> int:
-        return max(0, int((time.monotonic() - began) * 1000))
+        return max(0, int((_now() - began) * 1000))
+
+    def _token_ceiling(self) -> tuple[int, int]:
+        """Return ``(max_input_tokens, max_output_tokens)`` for one attempt."""
+        return (
+            _positive_int_env(_COST_MAX_INPUT_TOKENS_ENV, _DEFAULT_MAX_INPUT_TOKENS),
+            _positive_int_env(_COST_MAX_OUTPUT_TOKENS_ENV, _DEFAULT_MAX_OUTPUT_TOKENS),
+        )
+
+    def _cost_plan(self, prompt_body: str, request: ExtractionRequest) -> tuple[str | None, int]:
+        """Return ``(refusal_note, max_tokens)`` for one paid attempt.
+
+        Review fix P2-2. The post-call check can only refuse a proposal whose
+        money has already been spent, so the ceiling has to be enforced while
+        the request is still ours to shape:
+
+        * the budget covers *every* attempt of one extraction, so a single
+          attempt may only spend its share of it;
+        * the worst case is the estimated input plus the configured output
+          ceiling — a call whose worst case does not fit its share is never
+          issued (``llm:cost-budget-exceeded``), and a prompt that is itself
+          larger than the input ceiling is refused with
+          ``llm:cost-input-too-large`` instead of being truncated;
+        * the request carries that same output ceiling as ``max_tokens``, so
+          the vendor is told the bound the budget was computed from and the
+          post-call check can hold it to it.
+
+        A ``None`` note means the call may be issued with the returned
+        ``max_tokens``.
+        """
+        pricing = _resolve_pricing(self._configured_provider or "", self._configured_model or "")
+        if pricing is None:
+            return "llm:cost-pricing-missing", 0
+        in_price, out_price = pricing
+        max_input, max_output = self._token_ceiling()
+        per_attempt = _cost_budget() / Decimal(_MAX_RETRIES + 1)
+        estimated_input = _estimate_tokens(prompt_body) + _estimate_tokens(
+            self._render_user_message(request)
+        )
+        if estimated_input > max_input:
+            return "llm:cost-input-too-large", 0
+        input_cost = (Decimal(estimated_input) / Decimal(1000)) * in_price
+        worst_case = input_cost + (Decimal(max_output) / Decimal(1000)) * out_price
+        # The whole point of the check: if the bounded worst case of one
+        # attempt does not fit its share of the budget, no money is spent.
+        if worst_case > per_attempt:
+            return "llm:cost-budget-exceeded", 0
+        return None, max_output
 
     def _evaluate_cost(
         self, usage: dict | None
@@ -792,13 +941,17 @@ class LLMProvider:
         invalid JSON, schema mismatch) is returned as a ``needs_review``
         outcome with a typed note so the worker still records evidence.
 
-        Pre-activation batch 2: after the vendor call returns successfully
-        the call is *also* checked against the per-call cost budget
-        (``GIGMATE_LLM_COST_BUDGET_USD``). A response that exceeds the
-        budget surfaces as ``llm:cost-budget-exceeded`` so a runaway
-        billing event can never silently promote a proposal; a response
-        that omits ``usage`` is recorded with the stable note
-        ``llm:cost-usage-missing`` rather than pretending a cost of zero.
+        Pre-activation batch 2 / review fix P2-2: the per-call budget
+        (``GIGMATE_LLM_COST_BUDGET_USD``) is enforced **before** the paid
+        request is issued as well as after it. ``_cost_plan`` prices the
+        bounded worst case of one attempt and returns the ``max_tokens`` the
+        vendor is told to respect; a call whose worst case does not fit its
+        share of the budget is refused without spending anything. The
+        post-call check remains as the second line of defence: a vendor that
+        returns more tokens than it was allowed to produce is still refused
+        with ``llm:cost-budget-exceeded``, and a response that omits
+        ``usage`` is recorded with ``llm:cost-usage-missing`` rather than
+        pretending a cost of zero.
         """
         api_key = os.environ.get(_API_KEY_ENV)
         try:
@@ -815,6 +968,20 @@ class LLMProvider:
                 model_version=model_version,
                 notes=("llm:prompt-load-failed",),
             )
+        # Review fix P2-2: bound the worst case before anything is paid for.
+        refusal, max_tokens = self._cost_plan(prompt_body, request)
+        if refusal is not None:
+            return self._needs_review(
+                request,
+                reason=f"LLM provider refuses the call before it is issued "
+                f"({refusal}); the bounded worst case does not fit the "
+                "per-attempt share of GIGMATE_LLM_COST_BUDGET_USD, or the "
+                "prompt exceeds GIGMATE_LLM_MAX_INPUT_TOKENS.",
+                latency_ms=self._elapsed(began),
+                prompt_version=prompt_version,
+                model_version=model_version,
+                notes=(refusal,),
+            )
         # Gate 3: one stable id per call, sent to the vendor and persisted so
         # the trace can be correlated with the vendor's own request log.
         request_id = uuid4().hex
@@ -827,6 +994,19 @@ class LLMProvider:
                 request=request,
                 request_id=request_id,
                 began=began,
+                max_tokens=max_tokens,
+            )
+        except _TotalDeadlineExceeded:
+            # Review fix P2-1: the total wall-clock deadline is a hard
+            # boundary, so a late success is refused exactly like a timeout.
+            return self._needs_review(
+                request,
+                reason="llm:deadline-exceeded",
+                latency_ms=self._elapsed(began),
+                prompt_version=prompt_version,
+                model_version=model_version,
+                notes=("llm:deadline-exceeded",),
+                request_id=request_id,
             )
         except httpx.HTTPError as exc:
             return self._needs_review(
@@ -850,10 +1030,12 @@ class LLMProvider:
                 notes=("llm:response-malformed",),
                 request_id=request_id,
             )
-        # Batch 2: cost accounting runs after the HTTP/parse gates because a
+        # Batch 2 / review fix P2-2: the post-call check is the *second*
+        # line of defence. It still runs after the HTTP/parse gates because a
         # 4xx response never produces usage data and a parse failure cannot
-        # be charged to a budget. The cost check therefore sees only calls
-        # that the gate layer has already accepted as legitimate.
+        # be charged to a budget, but a call that reaches it has already been
+        # bounded by ``_cost_plan`` before it was paid for, so what is left to
+        # catch is a vendor that ignored the ``max_tokens`` it was given.
         cost, cost_note, input_tokens, output_tokens = self._evaluate_cost(usage)
         if cost is not None and _cost_budget_problem(cost) is not None:
             return self._needs_review(
@@ -896,19 +1078,32 @@ class LLMProvider:
         request: ExtractionRequest,
         request_id: str,
         began: float,
+        max_tokens: int,
     ) -> tuple[str, dict | None]:
         """POST to ``{endpoint}/v1/chat/completions`` and return ``(raw, usage)``.
 
-        Pre-activation gate 3 shapes the retry policy:
+        Pre-activation gate 3 shapes the retry policy, and the P2-1 review fix
+        makes the total deadline an actual per-request budget:
 
         * the **total** wall time is bounded by :data:`_TOTAL_DEADLINE_S`, so a
           slow vendor cannot hold the worker's lock for the full per-attempt
-          timeout plus an unbounded backoff;
+          timeout plus an unbounded backoff. Each attempt is granted only the
+          *remaining* budget as its own timeout
+          (``min(_REQUEST_TIMEOUT_S, remaining)``) instead of asking for the
+          full per-attempt timeout again;
+        * an attempt that would have less than
+          :data:`_MIN_REQUEST_TIMEOUT_S` left is not issued, and a response
+          that only arrives after the deadline is refused with
+          :class:`_TotalDeadlineExceeded` — a late success is worthless once
+          the worker's lease has run out;
         * only clearly transient failures are retried (see
           :func:`_is_transient`) — ``4xx``, parse and shape failures are
           deterministic and are raised immediately;
         * every attempt carries the same persistent ``request_id`` header so
-          the trace row and the vendor's log can be correlated.
+          the trace row and the vendor's log can be correlated;
+        * the request carries the budget-derived ``max_tokens`` (see
+          :meth:`_cost_plan`) so the vendor is told the same bound the
+          pre-call ceiling was computed from.
 
         The returned ``usage`` dict is the OpenAI-compatible
         ``{"prompt_tokens": int, "completion_tokens": int, "total_tokens": int}``
@@ -929,6 +1124,9 @@ class LLMProvider:
             # makes ``_parse_response`` reliable.
             "response_format": {"type": "json_object"},
             "temperature": 0,
+            # Review fix P2-2: the vendor is told the same output bound the
+            # pre-call ceiling was computed from.
+            "max_tokens": max_tokens,
         }
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -937,8 +1135,15 @@ class LLMProvider:
         }
         last_exc: Exception | None = None
         for attempt in range(_MAX_RETRIES + 1):
+            # Review fix P2-1: the *remaining* total budget bounds this
+            # attempt. Without this the retry would ask for the full 30 s
+            # again and the extraction could overrun the declared deadline.
+            remaining = _TOTAL_DEADLINE_S - (_now() - began)
+            if remaining <= _MIN_REQUEST_TIMEOUT_S:
+                raise _TotalDeadlineExceeded()
+            timeout = min(_REQUEST_TIMEOUT_S, remaining)
             try:
-                with self._client_factory(timeout=_REQUEST_TIMEOUT_S) as client:
+                with self._client_factory(timeout=timeout) as client:
                     response = client.post(url, json=body, headers=headers)
                 response.raise_for_status()
                 data = response.json()
@@ -946,12 +1151,19 @@ class LLMProvider:
                 usage = data.get("usage") if isinstance(data, dict) else None
                 if not isinstance(usage, dict):
                     usage = None
+                # A response that only arrived after the deadline is refused:
+                # the worker's lease is gone, so promoting it would be the
+                # same staleness bug the deadline exists to prevent.
+                if _now() - began > _TOTAL_DEADLINE_S:
+                    raise _TotalDeadlineExceeded()
                 return raw, usage
+            except _TotalDeadlineExceeded:
+                raise
             except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
                 last_exc = exc
                 retryable = _is_transient(exc)
-                remaining = _TOTAL_DEADLINE_S - (time.monotonic() - began)
-                if attempt == _MAX_RETRIES or not retryable or remaining <= 0:
+                remaining = _TOTAL_DEADLINE_S - (_now() - began)
+                if attempt == _MAX_RETRIES or not retryable or remaining <= _MIN_REQUEST_TIMEOUT_S:
                     raise
                 _log.warning(
                     "LLM call attempt %d/%d failed (%s); retrying within the "
@@ -1030,6 +1242,20 @@ class LLMProvider:
         version or another conversation's message. Every mismatch now
         surfaces as a stable ``llm:response-provenance-failed:<field>`` code
         and never as ``matched``.
+
+        Review fix P2-3 also binds ``base_context_version``. The worker
+        compares the database context version with ``request.context_version``
+        but persistence then uses ``proposal.base_context_version``, so a
+        model-supplied value survived the post-call check and reached the
+        proposal; a later confirmation would then be refused for a context
+        mismatch.
+
+        Review fix P2-4: this runs *before* Pydantic, so every collection is
+        type-checked before it is iterated. Legal JSON such as
+        ``"changes": 17`` or ``"changes": true`` used to raise an uncaught
+        ``TypeError`` out of ``propose``, which the worker would have turned
+        into a job failure retry (paying for the same call twice) instead of
+        the stable ``needs_review`` this module promises.
         """
         if data.get("conversation_id") != request.conversation_id:
             return "llm:response-provenance-failed:conversation_id"
@@ -1039,16 +1265,51 @@ class LLMProvider:
                 return "llm:response-provenance-failed:work_order_id"
             if data.get("base_work_order_version") != request.base_work_order_version:
                 return "llm:response-provenance-failed:base_work_order_version"
-        for change in data.get("changes") or []:
+        # P2-3: the context version is server-owned; a different value is a
+        # mismatch, not something to overwrite silently.
+        declared_context = data.get("base_context_version")
+        if declared_context is not None and declared_context != request.context_version:
+            return "llm:response-provenance-failed:base_context_version"
+        changes = data.get("changes")
+        if changes is not None and not isinstance(changes, list):
+            return "llm:response-provenance-failed:changes-shape"
+        for change in changes or []:
             if not isinstance(change, dict):
                 return "llm:response-provenance-failed:change-shape"
-            for source in change.get("sources") or []:
+            sources = change.get("sources")
+            if sources is not None and not isinstance(sources, list):
+                return "llm:response-provenance-failed:source-shape"
+            for source in sources or []:
                 if not isinstance(source, dict):
                     return "llm:response-provenance-failed:source-shape"
                 if source.get("message_id") != request.message_id:
                     return "llm:response-provenance-failed:source-message-id"
                 if source.get("message_revision") != request.message_revision:
                     return "llm:response-provenance-failed:source-message-revision"
+        # Batch 3: a new-work-order suggestion carries critical fields too, so
+        # every suggested value is bound to the same source message that was
+        # issued with this request. Without this check a compromised model could
+        # quote a field from a message the merchant never saw.
+        suggestion = data.get("new_work_order")
+        if suggestion is not None:
+            if not isinstance(suggestion, dict):
+                return "llm:response-provenance-failed:new-work-order-shape"
+            fields = suggestion.get("fields")
+            if fields is not None and not isinstance(fields, list):
+                return "llm:response-provenance-failed:suggested-fields-shape"
+            for suggested in fields or []:
+                if not isinstance(suggested, dict):
+                    return "llm:response-provenance-failed:suggested-field-shape"
+                sources = suggested.get("sources")
+                if sources is not None and not isinstance(sources, list):
+                    return "llm:response-provenance-failed:suggested-source-shape"
+                for source in sources or []:
+                    if not isinstance(source, dict):
+                        return "llm:response-provenance-failed:suggested-source-shape"
+                    if source.get("message_id") != request.message_id:
+                        return "llm:response-provenance-failed:suggested-source-message-id"
+                    if source.get("message_revision") != request.message_revision:
+                        return "llm:response-provenance-failed:suggested-source-message-revision"
         return None
 
     def _time_basis_problem(self, proposal, request: ExtractionRequest) -> str | None:
@@ -1060,18 +1321,32 @@ class LLMProvider:
         customer-confirmed one downstream. When the basis is missing (or
         fails validation) any date-bearing change is refused for review
         instead of being promoted.
+
+        Review fix P2-5: every date-bearing contract kind is covered. The
+        check used to accept only ``timed`` / ``date_only`` and let
+        ``InstantDeadline`` (``kind: instant``, the "明天交稿" shape) through
+        untouched, so the most common relative date a customer types was the
+        one the guard missed. Both the old and the new value are checked.
         """
         basis, invalid = self._time_basis(request)
         if basis is not None:
             return None
         for change in proposal.changes:
-            if change.field not in {"schedule", "deadline"}:
+            if change.field not in _DATE_BEARING_FIELDS:
                 continue
             for value in (change.old_value, change.new_value):
-                kind = getattr(value, "kind", None)
-                if kind is None and isinstance(value, dict):
-                    kind = value.get("kind")
-                if kind in {"timed", "date_only"}:
+                if _value_kind(value) in _DATE_BEARING_KINDS:
+                    return invalid or "llm:time-basis-missing:schedule"
+        # Batch 3: the same rule guards a new-work-order suggestion. A relative
+        # date inside a suggestion ("下星期三") is exactly as unfounded as one
+        # inside a change when the basis is missing, and a guessed opening date
+        # would be indistinguishable from a customer-stated one downstream.
+        suggestion = proposal.new_work_order
+        if suggestion is not None:
+            for suggested in suggestion.fields:
+                if suggested.field not in _DATE_BEARING_FIELDS:
+                    continue
+                if _value_kind(suggested.value) in _DATE_BEARING_KINDS:
                     return invalid or "llm:time-basis-missing:schedule"
         return None
 
@@ -1141,12 +1416,14 @@ class LLMProvider:
         data.setdefault("schema_version", "0.1.0")
         data.setdefault("proposal_id", str(uuid4()))
         data.setdefault("conversation_id", request.conversation_id)
-        data.setdefault("base_context_version", request.context_version)
         data.setdefault("draft_text", None)
         if data.get("assignment") == "needs_review":
             data.setdefault("changes", [])
             data.setdefault("candidates", [])
-            if not data.get("unresolved_questions"):
+            # Batch 3: a new-work-order suggestion carries its own
+            # ``unresolved_questions``; do not pad the proposal-level list with
+            # a filler sentence when the questions live inside the suggestion.
+            if not data.get("unresolved_questions") and not data.get("new_work_order"):
                 reason_text = data.get("reason")
                 data["unresolved_questions"] = [
                     str(reason_text) if reason_text else "LLM requested review"
@@ -1179,6 +1456,10 @@ class LLMProvider:
                 cost_usd=cost_usd,
                 cost_note=cost_note,
             )
+        # P2-3: the context version is server-owned, so it is assigned after
+        # the provenance guard (which has already refused a mismatching value)
+        # and never left to whatever the model echoed back.
+        data["base_context_version"] = request.context_version
         try:
             proposal = ChangeProposal.model_validate(data)
         except ValidationError as exc:

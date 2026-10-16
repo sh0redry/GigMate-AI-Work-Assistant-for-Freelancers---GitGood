@@ -1,15 +1,27 @@
 # Role B extraction subsystem
 
+## Pre-activation review fixes (PR #31) — 2026-10-16
+
+Independent review of [PR #31](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/pull/31) at `a4e6b8a` raised five P2 findings, each reproduced by the reviewer against synthetic data with a fake transport and a fake clock — not from static reading. All five are fixed here, still **without** flipping the seam: `LLMProvider._SKELETON_SEAM` stays `True`, `gigmate.media.processor._ENABLED` stays `False`, and no real vendor request, credential, network call or customer message is involved. This is a correctness batch, not an activation.
+
+- **P2-1 — the total deadline now applies to every request.** `_call_chat_completion` used to hand every attempt the fixed 30 s per-attempt timeout and only check the total budget after a failure, so a 30 s timeout followed by a retry ran 60 s against the declared 45 s deadline. Each attempt now inherits the *remaining* total budget as its own timeout (`min(_REQUEST_TIMEOUT_S, remaining)`); an attempt that would get less than `_MIN_REQUEST_TIMEOUT_S = 1s` is not issued at all; and a response that only arrives after `_TOTAL_DEADLINE_S` is refused with the stable code `llm:deadline-exceeded` — a late success is worthless once the worker's lease has run out, and it is never retried.
+- **P2-2 — the cost ceiling is enforced before the call is paid for.** The old cost check ran after the vendor had already spent the money, so it could only refuse a proposal, never a payment; with the budget set to 0 the call was still issued. `_cost_plan` now runs first: the budget is divided across the `_MAX_RETRIES + 1` attempts and the bounded worst case of one attempt (estimated prompt tokens + the configured output ceiling) must fit its share, otherwise the request is never issued (`llm:cost-budget-exceeded`, or `llm:cost-input-too-large` when the prompt itself exceeds `GIGMATE_LLM_MAX_INPUT_TOKENS`). The request carries that output ceiling as `max_tokens`, so the vendor is told the bound the budget was computed from, and non-positive ceilings are reported at startup as `llm:cost-tokens-invalid`. The post-call check is kept as the second line of defence: a vendor that bills more than the budget allows still cannot promote a proposal.
+- **P2-3 — the model's context version is bound too.** The provenance guard validated `base_work_order_version` but not `base_context_version`, and the later `setdefault` could not overwrite a model-supplied value, so a response carrying `base_context_version=999` against a `context_version=7` request still reached a `matched` proposal whose version then flowed into `Proposal` / `RequirementChange`. A differing value is now refused with `llm:response-provenance-failed:base_context_version`, and the server's own value is assigned afterwards.
+- **P2-4 — collections are type-checked before they are iterated.** The provenance guard runs before Pydantic and iterated unvalidated `changes` / `sources`, so legal JSON such as `"changes": 17` or `"changes": true` raised an uncaught `TypeError` out of `propose` — the worker would have retried the whole job and paid for the same call twice instead of recording a stable `needs_review`. Those shapes now return `llm:response-provenance-failed:changes-shape` / `:source-shape` (and the suggestion equivalents).
+- **P2-5 — the time-basis guard covers `instant`.** The check only accepted `timed` / `date_only`, so `InstantDeadline` (`kind: instant`, the "明天交稿" shape) — the most common relative date a customer types — walked straight through gate 4 with a model-invented timestamp. All date-bearing kinds are now guarded, on both the old and the new value.
+
+Evidence, all synthetic: the five findings' counter-cases are now regression tests. `apps/backend/tests/test_extraction_gates.py` **39 passed** (27 at `a4e6b8a`) and `test_extraction_batch2.py` **50 passed** (40 at `a4e6b8a`); the pre-activation suite measured in this working tree, which also carries the in-progress batch-3 files, is **106 passed**. Full backend suite **745 passed / 25 skipped / 12 failed**, the 12 being the pre-existing native-macOS PDF refusals (`MEDIA_PDF_LIMIT_UNAVAILABLE`) that fail identically on unmodified main. Ruff check/format **100 files**, `scripts/export_contracts.py --check` synchronized, `check_baseline.py` **82 Markdown / 967 local links**, Alembic single head `0018_model_call_cost` with a SQLite upgrade→downgrade→upgrade round trip and no drift (`alembic check` clean), offline evaluation harness **7 passed / 0 failed** at prompt 1.2.0. No new migration, contract or API surface: the changes are internal to `gigmate.extraction.llm` plus the two new `GIGMATE_LLM_MAX_*_TOKENS` operator settings. Not verified: PostgreSQL concurrency/locking (no `TEST_DATABASE_URL` configured), the Linux-container PDF re-run, and any real vendor behaviour.
+
 ## Pre-activation gates implemented — 2026-10-16
 
 All five ["Pre-activation acceptance gates"](#pre-activation-acceptance-gates) below now have implementation and regression coverage in `apps/backend/tests/test_extraction_gates.py`. The seam is still closed: `LLMProvider._SKELETON_SEAM` remains `True` and `gigmate.media.processor._ENABLED` remains `False`, so no real vendor request, real credential or live customer message is involved. This batch does **not** authorize activation.
 
 What changed:
 
-- **Gate 1 — provenance re-binding.** `_parse_response` re-binds `conversation_id`, `work_order_id` (must be a member of `candidate_work_order_ids`), `base_work_order_version` (must equal the version the worker resolved) and every `sources[].message_id` / `message_revision` to the request actually issued. A mismatch returns `needs_review` with the stable note `llm:response-provenance-failed` and a `llm:response-provenance-failed:<field>` reason; it can never become `matched`.
+- **Gate 1 — provenance re-binding.** `_parse_response` re-binds `conversation_id`, `work_order_id` (must be a member of `candidate_work_order_ids`), `base_work_order_version` (must equal the version the worker resolved), `base_context_version` (added by the P2-3 review fix) and every `sources[].message_id` / `message_revision` to the request actually issued. A mismatch returns `needs_review` with the stable note `llm:response-provenance-failed` and a `llm:response-provenance-failed:<field>` reason; it can never become `matched`. Collections are type-checked before they are iterated (P2-4), so a non-list `changes` / `sources` is a stable refusal rather than an uncaught `TypeError`.
 - **Gate 2 — vendor/endpoint semantics.** Each known vendor ships its own documented default endpoint (`deepseek` → `https://api.deepseek.com`, `openai` → `https://api.openai.com`); `custom` has none and requires `GIGMATE_LLM_ENDPOINT`. Unknown vendors are refused with `llm:vendor-unknown`, a non-URL override with `llm:endpoint-invalid`, and an override that equals another vendor's documented default with `llm:vendor-endpoint-mismatch`.
-- **Gate 3 — retry, budget and correlation.** Total wall time per extraction is bounded (`_TOTAL_DEADLINE_S = 45s`) and a retry is only issued while budget remains; only transient classes are retried (`httpx` timeouts/connect errors/resets and HTTP `5xx`) — `4xx`, parse and shape failures are never retried. Every attempt carries one persistent `X-Gigmate-Request-Id` header, and that id is persisted on `model_call_traces.request_id` (migration `0017_model_call_request_id`) so a trace can be correlated with the vendor's log.
-- **Gate 4 — real time basis.** `ExtractionRequest` carries server-attached `message_received_at` (the connector's sending time, UTC `Z`) and `workspace_timezone` (operator IANA setting, `GIGMATE_WORKSPACE_TIMEZONE`). The prompt (`role_b_extraction_v1.txt`, bumped to **1.1.0**) now tells the model to resolve relative dates only against `time_basis`, and to emit UTC `Z`. When the basis is missing or invalid the provider refuses any date-bearing change with `llm:time-basis-missing` instead of guessing; non-date fields (address/summary) are unaffected. The worker also re-reads the conversation context and work-order version after the call and discards a result computed against a stale snapshot, as well as any result produced after its own lease expired.
+- **Gate 3 — retry, budget and correlation.** Total wall time per extraction is bounded (`_TOTAL_DEADLINE_S = 45s`) and a retry is only issued while budget remains; only transient classes are retried (`httpx` timeouts/connect errors/resets and HTTP `5xx`) — `4xx`, parse and shape failures are never retried. Every attempt carries one persistent `X-Gigmate-Request-Id` header, and that id is persisted on `model_call_traces.request_id` (migration `0017_model_call_request_id`) so a trace can be correlated with the vendor's log. The P2-1 review fix makes the deadline a per-request budget as well: every attempt is granted only the *remaining* time, an attempt that cannot get at least `_MIN_REQUEST_TIMEOUT_S = 1s` is not issued, and a response arriving after the deadline is refused with `llm:deadline-exceeded` instead of being promoted.
+- **Gate 4 — real time basis.** `ExtractionRequest` carries server-attached `message_received_at` (the connector's sending time, UTC `Z`) and `workspace_timezone` (operator IANA setting, `GIGMATE_WORKSPACE_TIMEZONE`). The prompt (`role_b_extraction_v1.txt`, bumped to **1.1.0**) now tells the model to resolve relative dates only against `time_basis`, and to emit UTC `Z`. When the basis is missing or invalid the provider refuses any date-bearing change with `llm:time-basis-missing` instead of guessing; non-date fields (address/summary) are unaffected. The P2-5 review fix extends "date-bearing" to every contract kind — `timed`, `date_only` **and** `instant` (`InstantDeadline`, the "明天交稿" shape) — on both the old and the new value. The worker also re-reads the conversation context and work-order version after the call and discards a result computed against a stale snapshot, as well as any result produced after its own lease expired.
 - **Gate 5 — sanitised diagnostics.** Failure reasons are stable codes (`llm:http-failed:timeout`, `llm:http-failed:status-5xx`, `llm:response-malformed:json`, `llm:response-schema-failed:<field path>`, `llm:prompt-load-failed:…`). No exception class name, exception message, endpoint host, vendor name or key fragment is echoed into `refused_reason`.
 
 Still open before activation (not blocked by code): the separately authorized real-credential/live-origin flow, a latency budget measured under real load, and moving vendor I/O fully outside the worker's row lock — the last one is a structural worker change that must be agreed with A/C. `docs/en/implementation-status.md` records the verification evidence for this batch.
@@ -25,10 +37,20 @@ in `apps/backend/tests/test_extraction_batch2.py`.
 
 - **Cost boundary.** Every call is priced against a built-in per-1K table keyed
   by `(vendor, model)`, overridable with `GIGMATE_LLM_COST_INPUT_USD_PER_1K` /
-  `GIGMATE_LLM_COST_OUTPUT_USD_PER_1K`. The budget lives in
-  `GIGMATE_LLM_COST_BUDGET_USD` (default `0.10` USD per call). A response whose
-  computed cost exceeds the budget is refused *after* the vendor call with the
-  stable note `llm:cost-budget-exceeded`; a call that cannot be priced at all is
+  `GIGMATE_LLM_COST_OUTPUT_USD_PER_1K`.   The budget lives in
+  `GIGMATE_LLM_COST_BUDGET_USD` (default `0.10` USD per call). The P2-2 review
+  fix makes this a ceiling that holds *before* money is spent: `_cost_plan`
+  divides the budget across the `_MAX_RETRIES + 1` attempts and prices the
+  bounded worst case of one attempt (estimated prompt tokens + the configured
+  output ceiling) — a call whose worst case does not fit its share is refused
+  with `llm:cost-budget-exceeded` without being issued, and a prompt larger
+  than `GIGMATE_LLM_MAX_INPUT_TOKENS` is refused with `llm:cost-input-too-large`
+  rather than truncated. The request carries the output ceiling as
+  `max_tokens` (`GIGMATE_LLM_MAX_OUTPUT_TOKENS`), and non-positive ceilings are
+  reported at startup as `llm:cost-tokens-invalid`. The post-call check is kept
+  as the second line of defence: a response whose computed cost exceeds the
+  budget is still refused with `llm:cost-budget-exceeded`. A call that cannot be
+  priced at all is
   refused *before* it is issued with `llm:cost-pricing-missing` (unknown model and
   no override), `llm:cost-pricing-partial` (only one of the two overrides set) or
   `llm:cost-pricing-invalid`. A vendor that omits its `usage` block is not
@@ -36,9 +58,10 @@ in `apps/backend/tests/test_extraction_batch2.py`.
   `llm:cost-usage-invalid` for a malformed block) and leaves `cost_usd` null.
   `model_call_traces` gained `input_tokens`, `output_tokens` and `cost_usd`
   (migration `0018_model_call_cost`), so an operator can reconstruct spend
-  without re-deriving it. The check runs after the HTTP and parse gates because a
-  `4xx` response produces no usage data and a parse failure cannot be charged to
-  a budget.
+  without re-deriving it. The post-call check still runs after the HTTP and
+  parse gates because a `4xx` response produces no usage data and a parse
+  failure cannot be charged to a budget; what it is left to catch is a vendor
+  that ignored the `max_tokens` it was given.
 - **Provider configuration startup validation.**
   `gigmate.extraction.llm.validate_provider_config()` is a pure audit that takes
   no session and opens no socket, so the worker can call it at boot via
@@ -69,6 +92,104 @@ in `apps/backend/tests/test_extraction_batch2.py`.
 Still pending for activation: the real-credential / live-origin flow with its own
 review, the latency budget under real load, the media-attachment injection suite,
 and moving vendor I/O outside the worker lock.
+
+## Pre-activation batch 4 — media-attachment injection regression — 2026-10-16
+
+Attachment content is attacker-controlled, so the media seam gets the same
+treatment the text seam already has. A new pure classifier
+`gigmate.media.injection` scans every untrusted surface of one media result —
+the merchant/attacker caption, the OCR text or locally parsed page text, the
+ASR transcript, and the vendor's own `summary` / `suggestions` /
+`unresolved_questions` — against a narrow bilingual pattern set
+(ignore-previous-instructions, role override, authority claim, review bypass,
+prompt exfiltration, instruction verbs). Matches are recorded as stable
+`media:instruction-text-detected:<field>` markers on a new optional
+`WahaMediaResult.injection_markers` field (default empty; the result rides an
+existing JSON column, so no migration) and logged as `MEDIA_INJECTION_DETECTED`
+with pattern ids and field names only, never the payload.
+
+Detection is a flag, not a verdict. It never blocks, rewrites or trusts
+content, and never grants or removes authority:
+`WahaMediaEvidence.business_confirmation_required` stays `Literal[True]`, and
+the test asserts that flipping it to `False` is rejected even for a flagged
+result. The trade-off is stated deliberately: a marker costs a human a second
+look, a missed instruction costs a wrong work order, so the bias is to flag —
+and because that bias can annoy, `contracts/evaluation/media_injection.json`
+pairs every attack with clean control cases that fail the suite if ordinary
+merchant content is flagged. Nine synthetic cases cover an image caption and
+its OCR text, a spoken instruction in an ASR transcript, a PDF hidden text
+layer, a PDF model that both tries to retype page text and smuggles an
+instruction into the business layer, and an instruction hidden in
+`unresolved_questions`. The PDF path re-pins that page text stays local.
+
+Still pending for activation: real media content. Nothing here has seen a real
+image, audio clip, PDF or vendor response — the bytes are synthetic
+placeholders and the payloads are scripted — so the false-positive rate of the
+pattern set against real merchant content is unknown and operators should read
+the markers before acting. The PDF end-to-end variant skips rather than passes
+on native macOS, where the local parser refuses with
+`MEDIA_PDF_LIMIT_UNAVAILABLE`; the suite therefore drives the PDF business layer
+through `coerce_pdf_extraction` with the parser's output shape.
+
+## Pre-activation batch 3 — new-work-order recognition, unknown outcomes, evaluation classification — 2026-10-16
+
+Three more B-side follow-ups from issue #29, again **without** flipping the seam
+(`_SKELETON_SEAM = True`, media `_ENABLED = False`). Coverage lives in
+`apps/backend/tests/test_extraction_batch3.py`.
+
+- **`new_work_order` recognition contract.** `ChangeProposal` gained an optional
+  `new_work_order` block (`NewWorkOrderSuggestion`): a *summary*, recognised
+  critical `fields` (each with its value, `sources` bound to the message
+  revision the server actually issued and a `reason`), `missing_fields`,
+  `unresolved_questions` and `confidence`. It is recognition output only — it
+  never creates a work order, never marks anything confirmed and grants no
+  execution authority; the merchant still creates the order manually, and
+  customer proposal, customer confirmation and merchant approval stay separate
+  facts. The contract forbids the block next to a `matched` assignment or a
+  non-null `work_order_id`, so a model cannot smuggle a second job alongside a
+  reschedule. Unknown values stay missing: a field the customer never supplied
+  is omitted from `fields` (or kept null) and listed in `missing_fields`.
+  The suggestion rides the existing proposal JSON, so no migration was needed
+  and no `RequirementChange` row is ever produced for it.
+  **Pending `llm.py`:** extending provenance re-binding (gate 1) to suggested
+  fields — a suggestion citing a message the merchant never saw is refused with
+  `llm:response-provenance-failed:suggested-source-message-id` — and extending
+  the time-basis gate (gate 4) so a relative-date suggestion is refused the
+  same way a relative-date change is. Both guards are written and pass locally,
+  and are pinned by `test_extraction_batch3_provider.py` plus the `inj-010`
+  injection fixture, but `llm.py` is being edited concurrently (review fix
+  P2-1), so this commit ships the contract, prompt, evaluation and docs only;
+  the provider-side half lands with `llm.py` in the next commit.
+  This is the contract C's #26 manual-creation flow can consume; `case-001` and
+  `case-004` now pin that the current deterministic provider emits **no**
+  spurious suggestion.
+- **Unknown vendor outcome for text extraction.** A timed-out or otherwise
+  unanswered call is unknown, not silently failed. The policy is now written
+  down and pinned by tests: one bounded retry (`_MAX_RETRIES = 1`, inside the
+  `_TOTAL_DEADLINE_S` budget), both attempts carrying the *same* persistent
+  request id, then a `needs_review` proposal with the stable refusal
+  `llm:http-failed:timeout` and the request id persisted on the trace row for
+  vendor-log reconciliation. There is no further resubmission, and because
+  extraction never writes customer-visible state a duplicate vendor-side
+  completion cannot create a business fact; the job stays for explicit review.
+  The media path keeps its own documented stance (`reconcile()` returns `None`),
+  so nothing is ever resolved by blind resend.
+- **Evaluation classification surface.** `EvaluationCase` gained
+  `expected_new_work_order`, `evaluate_case` reports `actual_new_work_order`,
+  `refused_reason` and `notes` per case, and `scripts/run_evaluation.py` now
+  emits a `classification` block: pass/fail per expected assignment, how many
+  cases suggested a new order, the refusal codes seen and the failing case ids.
+  This is the structure E can fill with real-target data later; the runs today
+  remain synthetic and claim no production accuracy.
+
+The prompt (`role_b_extraction_v1.txt`) is now **1.2.0**: it documents the
+`new_work_order` output block, its "no candidates only" rule, its source
+binding and the "unknown stays missing" rule.
+
+Still pending for activation: the real-credential / live-origin flow with its own
+review, the latency budget under real load, the joint revision/version
+verification with C, the media-attachment injection suite, and moving vendor I/O
+outside the worker lock.
 
 ## PDF resource isolation
 
@@ -663,8 +784,10 @@ piece of work with its own batch and review.
 ## Open follow-ups
 
 - Real-model provider activation: the gates above are implemented as of
-  2026-10-16 and the cost boundary, startup validation and text injection
-  regression suite landed in pre-activation batch 2 on the same day, so the next
+  2026-10-16; the cost boundary, startup validation and text injection
+  regression suite landed in pre-activation batch 2 on the same day and the
+  `new_work_order` recognition contract, the unknown-outcome policy and the
+  evaluation classification block landed in batch 3, so the next
   authorized batch must
   (a) supply real authorization + live-origin flow with their own dedicated
   review and measure the latency budget under real load, and (b) flip
@@ -676,19 +799,31 @@ piece of work with its own batch and review.
   `llm:prompt-malformed` and `llm:seam-pending` trace notes, the
   `case-008-llm-skeleton-needs-review` evaluation case and the
   `_prompt_load_error` audit attribute are all in place.
+- C-side manual creation (C #26) can now consume the `new_work_order`
+  suggestion contract delivered in batch 3: the block is persisted with the
+  proposal JSON, is refused next to a `matched` assignment, and never creates a
+  work order by itself. B's part is done; wiring it into the merchant's
+  "create from conversation" flow, and the joint verification of the
+  model-returned revision/version re-binding, still need C.
 - D frontend review surface for `pending_change_ids` produced by real
   providers; current Replay cards already accept them but a real provider
-  round-trip is required before frontend changes ship.
+  round-trip is required before frontend changes ship. A `new_work_order`
+  suggestion needs its own card (" recognised new job, still missing X ") for
+  the same reason.
 - Tighten `unresolved_questions` rendering for merchant review once a real
   provider exists.
 - Vendor-side `reconcile()` for media: chat-completions vendors do not expose
   a stable request-id lookup, so the current implementation returns `None`
   and the worker must retain the unknown result for explicit review; it must not blindly resubmit. A future batch can add a
   vendor-specific lookup once the seam flag is open and operators need it.
-- B-side prompt-injection regression suite for media attachments (image OCR
-  + audio ASR + PDF parsing). The processor trusts the bundled prompt today
-  and refuses the call only on malformed input; a separately authorized batch
-  should add fixtures for adversarial inputs. The text-only suite shipped in
-  pre-activation batch 2 (`contracts/evaluation/injection.json`) is the pattern
-  to reuse, but the media attack surface (adversarial text in an image, audio
-  prompt playback, PDF metadata) is different and needs its own fixtures.
+- ~~B-side prompt-injection regression suite for media attachments (image OCR
+  + audio ASR + PDF parsing)~~ **landed in pre-activation batch 4**
+  (`contracts/evaluation/media_injection.json`, nine cases with control cases,
+  driven by `gigmate.media.injection` and
+  `apps/backend/tests/test_media_injection.py`). Still open on this surface:
+  real media content. No case has yet seen a real image, audio clip, PDF or
+  vendor response, so the false-positive rate of the pattern set against real
+  merchant content is unknown, and the PDF end-to-end variant skips on native
+  macOS where the local parser refuses with `MEDIA_PDF_LIMIT_UNAVAILABLE`.
+  A follow-up batch should re-run it against real attachments once the media
+  seam is authorized, and tune the patterns with that evidence.

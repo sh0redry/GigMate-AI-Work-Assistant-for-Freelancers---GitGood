@@ -33,7 +33,10 @@ from gigmate.db import Base, ModelCallTrace
 from gigmate.extraction.llm import (
     _COST_BUDGET_ENV,
     _COST_INPUT_ENV,
+    _COST_MAX_INPUT_TOKENS_ENV,
+    _COST_MAX_OUTPUT_TOKENS_ENV,
     _COST_OUTPUT_ENV,
+    _DEFAULT_MAX_OUTPUT_TOKENS,
     LLMProvider,
     _compute_cost,
     _cost_budget_problem,
@@ -80,6 +83,8 @@ def _env(monkeypatch) -> None:
         _COST_BUDGET_ENV,
         _COST_INPUT_ENV,
         _COST_OUTPUT_ENV,
+        _COST_MAX_INPUT_TOKENS_ENV,
+        _COST_MAX_OUTPUT_TOKENS_ENV,
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -337,11 +342,18 @@ def test_matched_response_under_budget_records_cost(monkeypatch):
 
 
 def test_matched_response_over_budget_refuses_with_stable_code(monkeypatch):
+    """Post-call accounting: the vendor billed more than the budget allows.
+
+    The pre-call ceiling lets this call through because its *bounded* worst
+    case fits the budget, so this exercises the second line of defence: a
+    vendor that ignores ``max_tokens`` still cannot promote a proposal.
+    """
     _configure(monkeypatch, vendor="deepseek", model="deepseek-chat")
-    monkeypatch.setenv(_COST_BUDGET_ENV, "0.0001")  # ridiculously small
+    monkeypatch.setenv(_COST_BUDGET_ENV, "0.10")
     payload = _matched_schedule_payload()
     client = _scripted_client(
-        payload, usage={"prompt_tokens": 1000, "completion_tokens": 500, "total_tokens": 1500}
+        payload,
+        usage={"prompt_tokens": 1_000_000, "completion_tokens": 500_000, "total_tokens": 1_500_000},
     )
     provider = _gate_open_provider(client)
     outcome = provider.propose(_grounded_request())
@@ -349,8 +361,70 @@ def test_matched_response_over_budget_refuses_with_stable_code(monkeypatch):
     assert outcome.notes == ("llm:cost-budget-exceeded",)
     assert outcome.refused_reason == "llm:cost-budget-exceeded"
     assert outcome.cost_note == "llm:cost-budget-exceeded"
-    assert outcome.input_tokens == 1000
-    assert outcome.output_tokens == 500
+    assert outcome.input_tokens == 1_000_000
+    assert outcome.output_tokens == 500_000
+
+
+@pytest.mark.parametrize("budget", ["0", "0.0001"])
+def test_pre_call_ceiling_refuses_without_issuing_a_call(monkeypatch, budget):
+    """A budget that cannot cover the bounded worst case must spend nothing.
+
+    The counter-case from review: with the budget set to 0 the old code still
+    issued the call and only refused afterwards, once the money was gone.
+    ``_boom_client`` turns any attempted call into a test failure.
+    """
+    _configure(monkeypatch, vendor="deepseek", model="deepseek-chat")
+    monkeypatch.setenv(_COST_BUDGET_ENV, budget)
+    provider = _gate_open_provider(_boom_client())
+    outcome = provider.propose(_grounded_request())
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert outcome.notes == ("llm:cost-budget-exceeded",)
+    assert "llm:cost-budget-exceeded" in (outcome.refused_reason or "")
+
+
+def test_pre_call_ceiling_sends_the_output_ceiling_as_max_tokens(monkeypatch):
+    _configure(monkeypatch, vendor="deepseek", model="deepseek-chat")
+    client = _scripted_client(
+        _matched_schedule_payload(),
+        usage={"prompt_tokens": 1000, "completion_tokens": 500, "total_tokens": 1500},
+    )
+    provider = _gate_open_provider(client)
+    provider.propose(_grounded_request())
+    assert client.requests[0]["json"]["max_tokens"] == _DEFAULT_MAX_OUTPUT_TOKENS
+
+
+def test_pre_call_ceiling_honours_a_configured_output_ceiling(monkeypatch):
+    _configure(
+        monkeypatch,
+        vendor="deepseek",
+        model="deepseek-chat",
+        GIGMATE_LLM_MAX_OUTPUT_TOKENS="250",
+    )
+    client = _scripted_client(
+        _matched_schedule_payload(),
+        usage={"prompt_tokens": 1000, "completion_tokens": 100, "total_tokens": 1100},
+    )
+    provider = _gate_open_provider(client)
+    provider.propose(_grounded_request())
+    assert client.requests[0]["json"]["max_tokens"] == 250
+
+
+def test_oversized_prompt_is_refused_before_the_call(monkeypatch):
+    """A prompt bigger than the input ceiling is refused, never truncated."""
+    _configure(monkeypatch, vendor="deepseek", model="deepseek-chat")
+    monkeypatch.setenv(_COST_MAX_INPUT_TOKENS_ENV, "1")
+    provider = _gate_open_provider(_boom_client())
+    outcome = provider.propose(_grounded_request())
+    assert outcome.notes == ("llm:cost-input-too-large",)
+    assert outcome.proposal.assignment.value == "needs_review"
+
+
+def test_cost_plan_reports_an_unpriceable_model(monkeypatch):
+    _configure(monkeypatch, vendor="openai", model="gpt-9000-not-in-table")
+    provider = _gate_open_provider(_boom_client())
+    note, max_tokens = provider._cost_plan("system prompt", _grounded_request())
+    assert note == "llm:cost-pricing-missing"
+    assert max_tokens == 0
 
 
 def test_matched_response_missing_usage_records_audit_note(monkeypatch):
@@ -468,6 +542,25 @@ def test_validate_provider_config_invalid_prompt_path(monkeypatch):
     _env(monkeypatch)
     monkeypatch.setenv("GIGMATE_LLM_PROMPT_PATH", "/nonexistent/role-b-prompt.md")
     assert "llm:prompt-path-invalid" in validate_provider_config()
+
+
+def test_validate_provider_config_non_numeric_token_ceiling(monkeypatch):
+    _env(monkeypatch)
+    monkeypatch.setenv(_COST_MAX_INPUT_TOKENS_ENV, "lots")
+    assert validate_provider_config() == ["llm:cost-tokens-invalid"]
+
+
+def test_validate_provider_config_non_positive_token_ceiling(monkeypatch):
+    _env(monkeypatch)
+    monkeypatch.setenv(_COST_MAX_OUTPUT_TOKENS_ENV, "-5")
+    assert validate_provider_config() == ["llm:cost-tokens-invalid"]
+
+
+def test_validate_provider_config_accepts_explicit_token_ceilings(monkeypatch):
+    _env(monkeypatch)
+    monkeypatch.setenv(_COST_MAX_INPUT_TOKENS_ENV, "8000")
+    monkeypatch.setenv(_COST_MAX_OUTPUT_TOKENS_ENV, "500")
+    assert validate_provider_config() == []
 
 
 def test_validate_provider_config_live_without_key(monkeypatch):
