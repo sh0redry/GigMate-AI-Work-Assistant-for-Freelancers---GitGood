@@ -254,7 +254,7 @@ export function ApprovalsWorkspace({
       <div className="replay-tools">
         <small>
           {updatedAt
-            ? `最近读取：${instant(new Date(updatedAt).toISOString())}`
+            ? `内容更新于：${instant(new Date(updatedAt).toISOString())}`
             : "尚未读取"}
         </small>
         <button

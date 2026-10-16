@@ -1,5 +1,9 @@
 # GigMate frontend user guide
 
+## Pearl and mist-blue appearance
+
+The new interface uses a pearl-white/grey/blue palette, with translucent navigation and a solid reading surface. On phones, the bottom bar opens four main pages; “More” contains creation, review and help. Escape closes the extra menu. The current page and statuses have text as well as colour. Reduced-transparency/high-contrast preferences and browsers without backdrop blur use solid surfaces; reduced motion disables transitions. This is a web interpretation of glass materials, not native iOS optical rendering.
+
 ## Refresh without losing your place
 
 The business workspace revalidates every five seconds while visible. Equal JSON snapshots keep their references, content, focus and review checkbox. Initial loading is separate from background refresh. Temporary network errors retain a clearly marked old view; writes stay blocked where current verification is needed. Expired sessions or revoked access clear private content. Server version checks still decide every mutation. QR and file downloads are excluded from cached reads. No chats are saved for offline use.

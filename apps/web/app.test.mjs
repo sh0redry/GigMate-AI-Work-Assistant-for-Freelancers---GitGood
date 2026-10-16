@@ -19,6 +19,7 @@ const directory = await mkdtemp(join(tmpdir(), "gigmate-app-dom-"));
 const require = createRequire(import.meta.url);
 const components = [
   "App",
+  "NavIcon",
   "BusinessLoopWorkspace",
   "BusinessLoopReview",
   "LoopCommand",
@@ -446,9 +447,7 @@ test("new-order flow selects only customer sources, binds review and stays gated
       : fallback(url, options);
   await mount();
   await login();
-  await act(async () =>
-    document.querySelector("nav").querySelectorAll("button")[1].click(),
-  );
+  await act(async () => button("新建工单").click());
   await select("已授权会话", data.order.conversation_ids[0]);
   await tick("这是另一项业务");
   const summary = [...document.querySelectorAll("label")]

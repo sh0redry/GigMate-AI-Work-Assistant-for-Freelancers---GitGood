@@ -1,6 +1,7 @@
 import { useStableState as useState } from "./useStableState";
 import { useCallback, useEffect } from "react";
 import { clearReadCache, setReadScope } from "./read-cache";
+import { NavIcon } from "./NavIcon";
 import { BusinessLoopWorkspace } from "./BusinessLoopWorkspace";
 import { ConnectionWorkspace } from "./ConnectionWorkspace";
 import { ApprovalsWorkspace } from "./ApprovalsWorkspace";
@@ -24,6 +25,7 @@ const pages = {
 };
 type View = keyof typeof pages;
 export function App() {
+  const [moreOpen, setMoreOpen] = useState(false);
   const [view, setView] = useState<View>("business"),
     [selectedOrder, setSelectedOrder] = useState(""),
     [login, setLogin] = useState<Login | null>(null),
@@ -41,6 +43,7 @@ export function App() {
     setPassword("");
     setUsername("");
     setView("business");
+    setMoreOpen(false);
     setSelectedOrder("");
     setBusy(false);
     setFeatures(unavailableFeatures);
@@ -89,12 +92,23 @@ export function App() {
     if (busy) return;
     setNotice("");
     setView(next);
-    queueMicrotask(() => document.getElementById("workspace-content")?.focus());
+    setMoreOpen(false);
+    queueMicrotask(() => {
+      document
+        .getElementById("workspace-content")
+        ?.focus({ preventScroll: true });
+      document.scrollingElement?.scrollTo({ top: 0 });
+    });
   }
   const openOrder = useCallback((id: string) => {
     setSelectedOrder(id);
     setView("business");
-    queueMicrotask(() => document.getElementById("workspace-content")?.focus());
+    queueMicrotask(() => {
+      document
+        .getElementById("workspace-content")
+        ?.focus({ preventScroll: true });
+      document.scrollingElement?.scrollTo({ top: 0 });
+    });
   }, []);
   async function signIn() {
     if (busy) return;
@@ -109,7 +123,7 @@ export function App() {
       setLogin(result.data);
       setPassword("");
       setView("business");
-      setNotice("已登录工作台");
+      setNotice("");
     } catch (e) {
       setNotice(e instanceof Error ? e.message : "登录失败，请重试。");
     } finally {
@@ -225,22 +239,61 @@ export function App() {
         </main>
       ) : (
         <div className="app-layout">
-          <nav className="workspace-navigation" aria-label="工作台页面">
-            {Object.entries(pages)
-              .filter(([id]) => id !== "management" || loopReady(features))
-              .filter(([id]) => id !== "create" || features.create_order)
-              .map(([id, label]) => (
-                <button
-                  key={id}
-                  className="secondary"
-                  aria-current={view === id ? "page" : undefined}
-                  aria-pressed={view === id}
-                  disabled={busy}
-                  onClick={() => navigate(id as View)}
-                >
-                  {label}
-                </button>
-              ))}
+          <nav
+            className="workspace-navigation"
+            aria-label="工作台页面"
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setMoreOpen(false);
+            }}
+            data-expanded={moreOpen}
+          >
+            <p className="nav-caption">我的工作空间</p>
+            <div className="nav-primary">
+              {(["business", "approvals", "planning", "connect"] as View[]).map(
+                (id) => (
+                  <button
+                    key={id}
+                    className="secondary"
+                    aria-current={view === id ? "page" : undefined}
+                    aria-pressed={view === id}
+                    disabled={busy}
+                    onClick={() => navigate(id)}
+                  >
+                    <NavIcon name={id} />
+                    <span>{pages[id]}</span>
+                  </button>
+                ),
+              )}
+            </div>
+            <div className="nav-secondary" id="additional-pages">
+              {(["create", "review", "management", "guide"] as View[])
+                .filter((id) => id !== "management" || loopReady(features))
+                .filter((id) => id !== "create" || features.create_order)
+                .map((id) => (
+                  <button
+                    key={id}
+                    className="secondary"
+                    aria-current={view === id ? "page" : undefined}
+                    aria-pressed={view === id}
+                    disabled={busy}
+                    onClick={() => navigate(id)}
+                  >
+                    <NavIcon name={id} />
+                    <span>{pages[id]}</span>
+                  </button>
+                ))}
+            </div>
+            <button
+              className="secondary mobile-more"
+              aria-expanded={moreOpen}
+              aria-controls="additional-pages"
+              disabled={busy}
+              onClick={() => setMoreOpen((v) => !v)}
+            >
+              <NavIcon name="more" />
+              <span>{moreOpen ? "收起" : "更多"}</span>
+            </button>
+            <small className="nav-footnote">每一份约定，清楚有序。</small>
           </nav>
           <main
             id="workspace-content"
@@ -257,17 +310,11 @@ export function App() {
                 <div className="page-heading">
                   <div>
                     <p className="eyebrow">业务工作台</p>
-                    <h1>把变更核对清楚，再落实安排。</h1>
-                    <p>
-                      客户提出、客户确认和商户批准分别记录。正式更新需要你明确核对。
-                    </p>
+                    <h1>安排好，下一步。</h1>
+                    <p>从客户原文到正式安排，每一步都由你确认。</p>
                   </div>
                   {features.create_order && (
-                    <button
-                      className="secondary"
-                      disabled={busy}
-                      onClick={() => navigate("create")}
-                    >
+                    <button disabled={busy} onClick={() => navigate("create")}>
                       新建工单
                     </button>
                   )}
@@ -321,7 +368,6 @@ export function App() {
             )}
             {view === "connect" && (
               <>
-                <h1>WhatsApp 连接与消息</h1>
                 <p className="availability-note">
                   手动发送网关已提供，需要单独发送授权。AI
                   润色、业务审批直发与自由生成自动回复尚未接通。

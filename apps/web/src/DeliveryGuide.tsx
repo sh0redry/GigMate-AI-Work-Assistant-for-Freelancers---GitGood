@@ -1,4 +1,9 @@
-import { featureDescriptions, featureLink, type Features } from "./features";
+import {
+  featureDescriptions,
+  featureLink,
+  loopReady,
+  type Features,
+} from "./features";
 export function DeliveryGuide({
   features,
   error,
@@ -31,7 +36,10 @@ export function DeliveryGuide({
       <h2>仍在等待接通的功能</h2>
       <div className="feature-list">
         {Object.entries(featureDescriptions).map(([key, item]) => {
-          const enabled = features[key as keyof Features];
+          const enabled =
+            features[key as keyof Features] &&
+            (!["manual_assignment", "business_sending"].includes(key) ||
+              loopReady(features));
           return (
             <article key={key}>
               <span className={`tag ${enabled ? "" : "warning"}`}>

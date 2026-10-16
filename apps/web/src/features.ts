@@ -43,12 +43,13 @@ export const featureDescriptions: Record<
   },
   manual_assignment: {
     title: "人工归单与延期跟进",
-    reason: "可查看原文和已有工单；归单、延期与跟进保存接口尚未交付。",
+    reason: "归单、延期与跟进需要业务扩展后端交付，并通过安全验收。",
     issue: "29",
   },
   business_sending: {
     title: "业务审批后发送及关联回执",
-    reason: "审批记录已可保存；C 业务审批与 A 的 WhatsApp 发送尚未接通。",
+    reason:
+      "审批记录已可保存；C 业务审批与 A 的发送桥接需完成交付、安全验收和独立发送授权。",
     issue: "29",
   },
   automatic_understanding: {

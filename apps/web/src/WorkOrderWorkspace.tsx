@@ -2,7 +2,7 @@ import { useStableState as useState } from "./useStableState";
 import { orderCommands } from "./order-command-api";
 import { OrderLifecycle } from "./OrderLifecycle";
 import { InspectOrderAttempt } from "./InspectOrderAttempt";
-import { unavailableFeatures, type Features } from "./features";
+import { unavailableFeatures, loopReady, type Features } from "./features";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import {
   canConfirm,
@@ -291,7 +291,11 @@ export function WorkOrderWorkspace({
         </section>
       )}
       <div
-        className={`notice ${state.stale && data ? "stale" : ""}`}
+        className={
+          state.error || state.notice || (state.stale && data)
+            ? `notice ${state.stale && data ? "stale" : ""}`
+            : "workspace-hint"
+        }
         role="status"
         aria-live="polite"
       >
@@ -305,7 +309,7 @@ export function WorkOrderWorkspace({
           {state.loading
             ? "正在读取最新数据…"
             : state.updatedAt
-              ? `最近读取：${instant(new Date(state.updatedAt).toISOString())}`
+              ? `内容更新于：${instant(new Date(state.updatedAt).toISOString())}`
               : "尚未读取数据"}
         </small>
         <button
@@ -429,7 +433,9 @@ export function WorkOrderWorkspace({
                   "当前已记录时间和地址的确认；请继续核对变更来源。"}{" "}
                 {!features.address_confirmation &&
                   "当前后端未开放地址提议确认。"}
-                人工归单与延期保存仍未开放。
+                {loopReady(features)
+                  ? "需求、延期和交付检查请到业务管理。"
+                  : "人工归单与延期保存仍未开放。"}
               </p>
               <h2>
                 待核对变更 <span className="tag">{pending.length} 项提议</span>
@@ -689,8 +695,10 @@ export function WorkOrderWorkspace({
           ))}
           {detailReady && !tasks.length && <p>当前工单在该范围暂无待办。</p>}
           <small>
-            新建工单请到“新建工单”；支持的状态操作在工单详情核对。回复草稿请到“回复审批”，业务审批尚未接通
-            WhatsApp 发送。
+            新建工单请到“新建工单”；支持的状态操作在工单详情核对。回复草稿请到“回复审批”，
+            {loopReady(features) && features.business_sending
+              ? "已批准草稿可在业务管理核对后提交发送。"
+              : "业务审批尚未接通 WhatsApp 发送。"}
           </small>
         </aside>
       </div>
