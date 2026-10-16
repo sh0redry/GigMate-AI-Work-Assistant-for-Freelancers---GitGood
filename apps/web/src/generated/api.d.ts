@@ -994,6 +994,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/review-items/{job_id}/assign": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Assign Review Item */
+    post: operations["assign_review_item_api_v1_review_items__job_id__assign_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/tasks": {
     parameters: {
       query?: never;
@@ -1251,6 +1268,43 @@ export interface components {
       expected_version: number;
       /** Snapshot Hash */
       snapshot_hash: string;
+    };
+    /**
+     * AssignMessageCommand
+     * @description Merchant decides an unassigned message: which open order it belongs to, or none.
+     */
+    AssignMessageCommand: {
+      /**
+       * Action
+       * @enum {string}
+       */
+      action: "assign" | "dismiss";
+      /** Expected Context Version */
+      expected_context_version: number;
+      /** Work Order Id */
+      work_order_id?: string | null;
+    };
+    /** AssignmentResult */
+    AssignmentResult: {
+      /**
+       * Action
+       * @enum {string}
+       */
+      action: "assign" | "dismiss";
+      /**
+       * Conversation Id
+       * Format: uuid
+       */
+      conversation_id: string;
+      /**
+       * Job Id
+       * Format: uuid
+       */
+      job_id: string;
+      /** State */
+      state: string;
+      /** Work Order Id */
+      work_order_id: string | null;
     };
     /** CalendarEvent */
     CalendarEvent: {
@@ -1612,6 +1666,15 @@ export interface components {
     /** Detail[ActionView] */
     Detail_ActionView_: {
       data: components["schemas"]["ActionView"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[AssignmentResult] */
+    Detail_AssignmentResult_: {
+      data: components["schemas"]["AssignmentResult"];
       /**
        * Request Id
        * Format: uuid
@@ -5294,6 +5357,43 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Detail_ReplayResult_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  assign_review_item_api_v1_review_items__job_id__assign_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        job_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AssignMessageCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_AssignmentResult_"];
         };
       };
       /** @description Validation Error */

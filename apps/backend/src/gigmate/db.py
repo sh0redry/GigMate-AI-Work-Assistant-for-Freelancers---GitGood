@@ -404,6 +404,16 @@ class Job(Base):
     lease_recoveries: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
+class JobAssignment(Base):
+    """The merchant's decision of which work order an unassigned message belongs to."""
+
+    __tablename__ = "job_assignments"
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), primary_key=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"))
+    work_order_id: Mapped[str] = mapped_column(ForeignKey("work_orders.id"))
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class ChangeRow(Base):
     __tablename__ = "requirement_changes"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)

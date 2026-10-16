@@ -1,5 +1,9 @@
 # 已完成工作与验证记录
 
+## 人工归单（C）— 2026-10-16
+
+方案 §4.2（"无法确定时放入待归类队列，由商户选择或拆分"）和契约 §1。D 的待复核列表（#30）负责读取队列；这里补上商户的决定：`POST /review-items/{job_id}/assign`（`AssignMessageCommand`：`action` 为 assign/dismiss、`work_order_id`、`expected_context_version`）。归单会把选择存进新表 `job_assignments`（新增迁移 **0017_job_assignments**，接在 0016 之后；如果 #31 的 0017 先合并，需要补一个合并迁移），并把消息重新排队；worker 只把这张单交给提取，结果是普通的提议。忽略则把该项标为 `DISMISSED_BY_MERCHANT`。只接受会话中最新的一条消息、同一会话里未关闭的工单，以及已授权的会话。证据：`test_message_assignment.py` **3 项通过**；迁移测试 18 项通过。
+
 ## 业务审批接通发送网关，以及拒绝提议（C）— 2026-10-16
 
 叠在状态命令 PR 之上。设计依据：方案 §4.5（批准后发送、取消计划、查看结果）、§6.2（服务端审批校验后 `sendText`、幂等记录、未知状态先核对）、§7（批准绑定具体内容和版本，旧批准失效）；Issue #29 第 1 节。

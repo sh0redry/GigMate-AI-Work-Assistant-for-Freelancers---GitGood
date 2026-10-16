@@ -313,6 +313,44 @@
       "title": "ApproveActionCommand",
       "type": "object"
     },
+    "AssignMessageCommand": {
+      "additionalProperties": false,
+      "description": "Merchant decides an unassigned message: which open order it belongs to, or none.",
+      "properties": {
+        "action": {
+          "enum": [
+            "assign",
+            "dismiss"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "expected_context_version": {
+          "minimum": 1,
+          "title": "Expected Context Version",
+          "type": "integer"
+        },
+        "work_order_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Work Order Id"
+        }
+      },
+      "required": [
+        "action",
+        "expected_context_version"
+      ],
+      "title": "AssignMessageCommand",
+      "type": "object"
+    },
     "AssignmentResult": {
       "enum": [
         "matched",
@@ -2046,6 +2084,46 @@
           "$ref": "#/$defs/DateOnly"
         }
       ]
+    },
+    "SendApprovedActionCommand": {
+      "additionalProperties": false,
+      "description": "Merchant hands an approved business reply to the WhatsApp sending gateway.\n\nThe connection, control and send-permission versions are the ones the\nmerchant sees on the sending page; the action revision and snapshot hash\nare the exact approved reply.",
+      "properties": {
+        "connection_id": {
+          "format": "uuid",
+          "title": "Connection Id",
+          "type": "string"
+        },
+        "expected_action_revision": {
+          "minimum": 1,
+          "title": "Expected Action Revision",
+          "type": "integer"
+        },
+        "expected_control_version": {
+          "minimum": 0,
+          "title": "Expected Control Version",
+          "type": "integer"
+        },
+        "expected_permission_version": {
+          "minimum": 1,
+          "title": "Expected Permission Version",
+          "type": "integer"
+        },
+        "snapshot_hash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Snapshot Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "connection_id",
+        "expected_control_version",
+        "expected_permission_version",
+        "expected_action_revision",
+        "snapshot_hash"
+      ],
+      "title": "SendApprovedActionCommand",
+      "type": "object"
     },
     "SetWorkOrderStatusCommand": {
       "additionalProperties": false,

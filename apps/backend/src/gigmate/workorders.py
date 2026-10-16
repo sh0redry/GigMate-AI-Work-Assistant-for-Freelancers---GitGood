@@ -582,3 +582,77 @@ def reject_change(db, account, work_order_id, change_id, command, key, request_i
     db.add(audit_row(account.id, order.id, "reject_change", request_id))
     save_result(db, account.id, scope, key, digest, order.data)
     return order.data
+
+
+REVIEWABLE = {"ASSIGNMENT_NEEDS_REVIEW", "EXTRACTION_NEEDS_REVIEW"}
+
+
+def assign_message(db, account, job_id, command, key, request_id):
+    """Merchant files an unassigned message (方案 §4.2: 由商户选择或拆分).
+
+    ``assign`` records the chosen open order and queues the message again so
+    it is understood against that one order only; the result is an ordinary
+    proposal for the merchant to confirm, never a direct change. To split a
+    new job off, the merchant first creates the order (POST /work-orders) and
+    then assigns the message to it. ``dismiss`` marks it as not business.
+    Only the conversation's newest message can be filed, because proposals
+    are always bound to the current context.
+    """
+    from gigmate.db import Inbox, Job, JobAssignment
+
+    scope = f"assign:{job_id}"
+    digest, cached = command_cache(db, account.id, scope, key, command.model_dump())
+    if cached:
+        return cached.data
+    job = db.scalar(
+        select(Job).where(Job.id == job_id, Job.account_id == account.id).with_for_update()
+    )
+    if job is None:
+        raise BusinessError(404, "NOT_FOUND", "Review item not found")
+    if job.state != "completed" or job.error_code not in REVIEWABLE:
+        raise BusinessError(409, "VERSION_CONFLICT", "This message no longer needs a decision")
+    inbox = db.get(Inbox, job.event_id)
+    conversation = owned(db, ConversationRow, inbox.payload.get("conversation_id"), account.id)
+    if not conversation.allowlisted:
+        raise BusinessError(403, "CONSENT_REVOKED", "Conversation processing is paused")
+    if (
+        command.expected_context_version != conversation.context_version
+        or inbox.context_version != conversation.context_version
+    ):
+        raise BusinessError(
+            409, "VERSION_CONFLICT", "Newer messages arrived; decide on the newest one"
+        )
+    if command.action == "dismiss":
+        job.error_code = "DISMISSED_BY_MERCHANT"
+    else:
+        order = owned(db, WorkOrderRow, command.work_order_id, account.id)
+        if not db.get(ConversationOrder, (conversation.id, order.id)):
+            raise BusinessError(404, "NOT_FOUND", "That order is not part of this conversation")
+        if order.data["status"] in CLOSED:
+            raise BusinessError(409, "VERSION_CONFLICT", "Work order is closed")
+        existing = db.get(JobAssignment, job.id)
+        if existing:
+            existing.work_order_id, existing.decided_at = order.id, datetime.now(UTC)
+        else:
+            db.add(
+                JobAssignment(
+                    job_id=job.id,
+                    account_id=account.id,
+                    work_order_id=order.id,
+                    decided_at=datetime.now(UTC),
+                )
+            )
+        job.state, job.error_code, job.attempts = "pending", None, 0
+        job.available_at, job.completed_at = datetime.now(UTC), None
+    audit = audit_row(account.id, job.id, f"{command.action}_message", request_id)
+    audit.data = {**audit.data, "entity_type": "message_job"}
+    db.add(audit)
+    result = {
+        "job_id": job.id,
+        "conversation_id": conversation.id,
+        "action": command.action,
+        "work_order_id": command.work_order_id,
+        "state": job.state,
+    }
+    save_result(db, account.id, scope, key, digest, result)
+    return result

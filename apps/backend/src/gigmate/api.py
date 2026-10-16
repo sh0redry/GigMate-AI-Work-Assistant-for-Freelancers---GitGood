@@ -20,6 +20,8 @@ from gigmate.contracts import (
     ActionState,
     ApprovalAction,
     ApproveActionCommand,
+    AssignmentResult,
+    AssignMessageCommand,
     CalendarEvent,
     ConfirmChangeCommand,
     ConnectorReceipt,
@@ -82,6 +84,7 @@ from gigmate.waha_probe import MAX_BODY, _non_json_constant, _pairs, verify_hmac
 from gigmate.waha_recovery import issue_view, record_rejection
 from gigmate.waha_send_api import install as install_sending
 from gigmate.workorders import (
+    assign_message,
     command_cache,
     confirm,
     create,
@@ -430,6 +433,23 @@ def reject_order_change(
             command,
             idempotency_key,
             request.state.request_id,
+        ),
+    )
+
+
+@app.post("/api/v1/review-items/{job_id}/assign", response_model=Detail[AssignmentResult])
+def assign_review_item(
+    job_id: UUID,
+    command: AssignMessageCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    return detail(
+        request,
+        assign_message(
+            db, account, str(job_id), command, idempotency_key, request.state.request_id
         ),
     )
 

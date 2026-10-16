@@ -336,6 +336,91 @@
         "title": "ApproveActionCommand",
         "type": "object"
       },
+      "AssignMessageCommand": {
+        "additionalProperties": false,
+        "description": "Merchant decides an unassigned message: which open order it belongs to, or none.",
+        "properties": {
+          "action": {
+            "enum": [
+              "assign",
+              "dismiss"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "expected_context_version": {
+            "minimum": 1.0,
+            "title": "Expected Context Version",
+            "type": "integer"
+          },
+          "work_order_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Order Id"
+          }
+        },
+        "required": [
+          "action",
+          "expected_context_version"
+        ],
+        "title": "AssignMessageCommand",
+        "type": "object"
+      },
+      "AssignmentResult": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "assign",
+              "dismiss"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "work_order_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Order Id"
+          }
+        },
+        "required": [
+          "job_id",
+          "conversation_id",
+          "action",
+          "work_order_id",
+          "state"
+        ],
+        "title": "AssignmentResult",
+        "type": "object"
+      },
       "CalendarEvent": {
         "additionalProperties": false,
         "properties": {
@@ -1211,6 +1296,25 @@
           "request_id"
         ],
         "title": "Detail[ActionView]",
+        "type": "object"
+      },
+      "Detail_AssignmentResult_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AssignmentResult"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[AssignmentResult]",
         "type": "object"
       },
       "Detail_ConnectionInfo_": {
@@ -8754,6 +8858,65 @@
           }
         },
         "summary": "Replay Custom"
+      }
+    },
+    "/api/v1/review-items/{job_id}/assign": {
+      "post": {
+        "operationId": "assign_review_item_api_v1_review_items__job_id__assign_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignMessageCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_AssignmentResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Assign Review Item"
       }
     },
     "/api/v1/tasks": {

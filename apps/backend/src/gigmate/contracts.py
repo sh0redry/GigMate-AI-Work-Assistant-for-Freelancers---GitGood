@@ -889,6 +889,28 @@ class SendApprovedActionCommand(Model):
     snapshot_hash: Annotated[str, Field(pattern=r"^sha256:[a-f0-9]{64}$")]
 
 
+class AssignMessageCommand(Model):
+    """Merchant decides an unassigned message: which open order it belongs to, or none."""
+
+    action: Literal["assign", "dismiss"]
+    work_order_id: Id | None = None
+    expected_context_version: Positive
+
+    @model_validator(mode="after")
+    def target_matches_action(self):
+        if (self.action == "assign") != (self.work_order_id is not None):
+            raise ValueError("Assign needs a work order; dismiss takes none")
+        return self
+
+
+class AssignmentResult(Model):
+    job_id: Id
+    conversation_id: Id
+    action: Literal["assign", "dismiss"]
+    work_order_id: Id | None
+    state: str
+
+
 class SetWorkOrderStatusCommand(Model):
     """Merchant moves an order along its life cycle (see TRANSITIONS in workorders)."""
 
