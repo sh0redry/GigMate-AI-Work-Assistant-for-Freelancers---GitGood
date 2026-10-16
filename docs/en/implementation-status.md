@@ -8,7 +8,7 @@ Stacked on the work-order creation PR. Adds `POST /work-orders/{id}/status` (`Se
 - **Closing (completed or cancelled):** the calendar slot no longer blocks; unsent drafts are cancelled (`order_completed` / `order_cancelled`, contract section 4); open generated tasks become completed or cancelled; pending proposals return to `needs_review`. Nothing is deleted or sent.
 - **New messages:** the worker now offers only open orders of a conversation to extraction, so a cancelled order no longer takes changes and the conversation's remaining open order receives them.
 
-Evidence: `test_order_status.py` **5 passed**; role C tests (status, creation, approvals, workflow) 69 passed on local PostgreSQL 16; full SQLite suite 598 passed, 9 skipped; Ruff/format, contract export, frontend API check and typecheck passed. No real WhatsApp, send, model or deployment.
+Evidence: `test_order_status.py` **5 passed**; role C tests (status, creation, approvals, workflow) 75 passed on local PostgreSQL 16 after syncing the #26 calendar fix; full SQLite suite 678 passed, 12 skipped; Ruff/format, contract export, frontend API check and typecheck passed. No real WhatsApp, send, model or deployment.
 
 Review follow-up (2026-10-16): merged the fixed creation branch (outgoing-source, date-only and blank-address fixes) and main `53991dc`; `INVALID_TRANSITION` added to the 409 row of the error-code table. Fresh SQLite full suite **676 passed, 12 skipped**; single Alembic head `0016_d03_sending_heads`; Ruff/format, contract export, baseline, frontend API check and typecheck passed. PostgreSQL not rerun for this head.
 

@@ -8,7 +8,7 @@
 - **关闭（已完成或已取消）：** 日历时段不再占用；未发送的草稿取消（`order_completed` / `order_cancelled`，契约第 4 节）；自动生成的未完成待办标为完成或取消；待确认的提议退回 `needs_review`。不删除任何数据，也不发送任何消息。
 - **新消息：** worker 只把会话中未关闭的工单交给提取，已取消的工单不再接收改动，改动会落到会话中仍在进行的工单。
 
-证据：`test_order_status.py` **5 项通过**；C 的测试（状态、新建、审批、工作流）在本地 PostgreSQL 16 上 69 项通过；SQLite 全套 598 通过、9 跳过；Ruff/格式、契约导出、前端接口检查和类型检查通过。未触碰真实 WhatsApp、发送、模型或部署。
+证据：`test_order_status.py` **5 项通过**；C 的测试（状态、新建、审批、工作流）同步 #26 日历修正后在本地 PostgreSQL 16 上 75 项通过；SQLite 全套 678 通过、12 跳过；Ruff/格式、契约导出、前端接口检查和类型检查通过。未触碰真实 WhatsApp、发送、模型或部署。
 
 评审跟进（2026-10-16）：合并已修正的新建工单分支（来源方向、只有日期、空白地址）和 main `53991dc`；错误码表 409 行补上 `INVALID_TRANSITION`。本轮 SQLite 全套 **676 通过、12 跳过**；Alembic 只有一个 head `0016_d03_sending_heads`；Ruff/格式、契约导出、baseline、前端接口检查和类型检查通过。本 head 未重跑 PostgreSQL。
 
