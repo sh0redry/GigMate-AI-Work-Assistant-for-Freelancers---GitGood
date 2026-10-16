@@ -51,6 +51,36 @@ TIMEZONE = "Asia/Hong_Kong"
 # ---------------------------------------------------------------------------
 
 
+class _StreamedResponse:
+    """Adapt a post-style fake response to the streaming production reader.
+
+    ``_call_chat_completion`` reads the body with ``client.stream(...)`` and
+    re-checks the total deadline between chunks, so a test double that only
+    answers ``post`` no longer describes a real vendor client. The helper keeps
+    the existing fakes meaningful: one whole body arrives as one chunk, exactly
+    like a response that fits inside the deadline.
+    """
+
+    def __init__(self, response):
+        self._response = response
+        self.closed = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+    def raise_for_status(self):
+        return self._response.raise_for_status()
+
+    def iter_bytes(self, *args, **kwargs):
+        yield json.dumps(self._response.json()).encode("utf-8")
+
+    def close(self):
+        self.closed = True
+
+
 def _request(**overrides) -> ExtractionRequest:
     values = {
         "account_id": ACCOUNT_ID,
@@ -181,6 +211,9 @@ def _timeout_client(clock: _FakeClock):
             clock.advance(self.budget)
             raise httpx.ReadTimeout("timed out")
 
+        def stream(self, method, url, json=None, headers=None):
+            return _StreamedResponse(self.post(url, json=json, headers=headers))
+
     return _Client
 
 
@@ -212,6 +245,9 @@ def _slow_success_client(clock: _FakeClock, payload: dict, *, seconds: float):
             type(self).requests.append({"timeout": self.timeout})
             clock.advance(seconds)
             return _Response()
+
+        def stream(self, method, url, json=None, headers=None):
+            return _StreamedResponse(self.post(url, json=json, headers=headers))
 
     return _Client
 
@@ -254,6 +290,9 @@ def _scripted_client(payload, *, status_code=200):
         def post(self, url, json=None, headers=None):
             type(self).requests.append({"url": url, "json": json, "headers": headers})
             return _Response()
+
+        def stream(self, method, url, json=None, headers=None):
+            return _StreamedResponse(self.post(url, json=json, headers=headers))
 
     return _Client
 
@@ -627,18 +666,23 @@ def test_gate3_each_attempt_inherits_the_remaining_deadline(monkeypatch):
 
     Counter-case from review: a 30 s timeout that consumed the first 30 s used
     to be followed by another 30 s request, so one extraction ran 60 s against
-    a declared 45 s deadline.
+    its declared deadline. The total budget is now deliberately smaller than the
+    worker lease (see ``test_gate3_total_deadline_fits_inside_the_worker_lease``),
+    so the per-attempt ceiling is scaled down here as well: two attempts still
+    fit inside the budget and the second one is shown to inherit only the rest.
     """
     clock = _FakeClock()
     client = _timeout_client(clock)
+    monkeypatch.setattr(llm_module, "_REQUEST_TIMEOUT_S", 4.0)
     outcome = _run_with_clock(monkeypatch, clock, client)
+    granted = [request["budget"] for request in client.requests]
     assert len(client.requests) == 2
-    assert client.requests[0]["budget"] == pytest.approx(41.0)
-    assert client.requests[1]["budget"] == pytest.approx(4.0)
-    assert sum(request["budget"] for request in client.requests) == pytest.approx(
-        llm_module._TOTAL_DEADLINE_S
-    )
-    assert clock.value - 1000.0 == pytest.approx(45.0)
+    # Each attempt is granted only what is left, and together they never exceed
+    # the declared total — the exact property that used to be 30 s + 30 s.
+    assert granted[0] <= llm_module._TOTAL_DEADLINE_S
+    assert granted[1] < granted[0]
+    assert sum(granted) == pytest.approx(llm_module._TOTAL_DEADLINE_S)
+    assert clock.value - 1000.0 == pytest.approx(llm_module._TOTAL_DEADLINE_S)
     assert outcome.refused_reason == "llm:http-failed:timeout"
 
 
@@ -668,6 +712,21 @@ def test_gate3_attempt_grant_shrinks_with_the_remaining_budget(monkeypatch):
     assert llm_module._attempt_timeout(2.0) is None
     assert llm_module._attempt_timeout(0.0) is None
     assert llm_module._attempt_timeout(-1.0) is None
+
+
+def test_gate3_total_deadline_fits_inside_the_worker_lease():
+    """One extraction must not be able to outlive the worker's job lease.
+
+    Review fix P2-1 (second round). ``gigmate.worker`` takes a 30 s lease and
+    does **not** renew it while a job is running — it even drops the result if
+    the lease already expired (``worker.py`` re-reads ``lease_until`` after the
+    call). A total budget longer than the lease therefore lets a second worker
+    reclaim and re-run the same extraction while the first is still talking to
+    the vendor, which is the duplicate-cost scenario the budget exists to
+    prevent. Hence 20 s, not the 45 s this module used to declare.
+    """
+    assert llm_module._WORKER_LEASE_S == 30.0
+    assert llm_module._TOTAL_DEADLINE_S < llm_module._WORKER_LEASE_S
 
 
 def test_gate3_no_request_is_issued_when_the_budget_is_already_gone(monkeypatch):

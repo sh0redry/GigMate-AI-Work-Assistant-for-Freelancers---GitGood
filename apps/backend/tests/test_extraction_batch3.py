@@ -60,6 +60,36 @@ _BASE_PROPOSAL = {
 }
 
 
+class _StreamedResponse:
+    """Adapt a post-style fake response to the streaming production reader.
+
+    ``_call_chat_completion`` reads the body with ``client.stream(...)`` and
+    re-checks the total deadline between chunks, so a test double that only
+    answers ``post`` no longer describes a real vendor client. The helper keeps
+    the existing fakes meaningful: one whole body arrives as one chunk, exactly
+    like a response that fits inside the deadline.
+    """
+
+    def __init__(self, response):
+        self._response = response
+        self.closed = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+    def raise_for_status(self):
+        return self._response.raise_for_status()
+
+    def iter_bytes(self, *args, **kwargs):
+        yield json.dumps(self._response.json()).encode("utf-8")
+
+    def close(self):
+        self.closed = True
+
+
 def _env(monkeypatch) -> None:
     for name in (
         "GIGMATE_LLM_PROVIDER",
@@ -114,6 +144,9 @@ def _scripted_client(raw: dict):
             type(self).requests.append({"url": url, "json": json, "headers": headers})
             return _Response()
 
+        def stream(self, method, url, json=None, headers=None):
+            return _StreamedResponse(self.post(url, json=json, headers=headers))
+
     return _Client
 
 
@@ -135,6 +168,9 @@ def _timeout_client():
         def post(self, url, json=None, headers=None):
             type(self).requests.append({"url": url, "json": json, "headers": headers})
             raise httpx.ReadTimeout("synthetic timeout", request=httpx.Request("POST", url))
+
+        def stream(self, method, url, json=None, headers=None):
+            return _StreamedResponse(self.post(url, json=json, headers=headers))
 
     return _Client
 

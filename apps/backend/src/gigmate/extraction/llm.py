@@ -110,7 +110,16 @@ _DEEPSEEK_DEFAULT_ENDPOINT = _VENDOR_DEFAULT_ENDPOINTS["deepseek"]
 # ``_call_chat_completion``) instead of unconditionally asking for the full
 # per-attempt timeout again.
 _REQUEST_TIMEOUT_S = 30.0
-_TOTAL_DEADLINE_S = 45.0
+# Review fix P2-1 (second round). ``gigmate.worker`` leases a job for
+# ``_WORKER_LEASE_S`` seconds and only renews it between processing steps, so
+# an extraction allowed to run longer than the lease can still be in flight
+# after another worker has legitimately reclaimed the same row. The total
+# budget therefore has to fit *inside* the lease with room for the trace and
+# proposal writes that follow the call, which is why it is 20 s and not the
+# 45 s this module used to declare. ``test_extraction_gates`` asserts the
+# relation instead of the literal.
+_WORKER_LEASE_S = 30.0
+_TOTAL_DEADLINE_S = 20.0
 _MAX_RETRIES = 1
 # An attempt that cannot be granted at least this much read budget is not
 # issued at all: a request into a guaranteed timeout only holds the worker's
@@ -147,13 +156,34 @@ _DEFAULT_COST_BUDGET_USD = "0.10"
 # after the vendor had already spent it.
 _COST_MAX_INPUT_TOKENS_ENV = "GIGMATE_LLM_MAX_INPUT_TOKENS"
 _COST_MAX_OUTPUT_TOKENS_ENV = "GIGMATE_LLM_MAX_OUTPUT_TOKENS"
-_DEFAULT_MAX_INPUT_TOKENS = 4000
+# The ceilings are compared against :func:`_estimate_tokens`, which returns a
+# *provable upper bound* (UTF-8 bytes), not a typical count. Codes with ASCII
+# prompts cost roughly one token per four bytes and CJK roughly one token per
+# three, so the input ceiling is sized for the bound and not for a token count:
+# the 6.5 kB system prompt plus the request together stay under it, while an
+# operator who lowers it still gets ``llm:cost-input-too-large`` rather than a
+# silently truncated call.
+_DEFAULT_MAX_INPUT_TOKENS = 16000
 _DEFAULT_MAX_OUTPUT_TOKENS = 1000
-# Conservative characters-per-token approximation for the mixed CJK/English
-# prompts this project sends. It deliberately over-estimates (a CJK character
-# can be a token on its own), because an over-estimate can only refuse a call,
-# never under-count its cost.
-_CHARS_PER_TOKEN = 3
+# Review fix P2-2 (second round). A "characters / 3" rule is an average, not a
+# bound: against the real tokenizer it under-counts CJK text badly (每 is one
+# token and three bytes), and an under-count silently raises the real worst
+# case above the ceiling the budget was computed from.
+#
+# For a byte-level BPE tokenizer every token covers at least one byte, so the
+# UTF-8 byte count of a text is a *provable* upper bound on its token count.
+# These are the vendor/model pairs whose tokenizer has that property; any other
+# model cannot be bounded this way, so it must keep the hard ceiling as an
+# unmet activation gate (``llm:cost-estimate-unsupported``) instead of having
+# an estimate reported as a ceiling.
+# The tokenizer belongs to the model, not to the vendor pair, so the bound is
+# keyed on the model name and still applies when the same model is reached
+# through a custom endpoint.
+_BYTE_LEVEL_BPE_MODELS = frozenset({"deepseek-chat", "deepseek-reasoner", "gpt-4o-mini", "gpt-4o"})
+# Role markers, separators and the json_object preamble of the two-message chat
+# payload are not part of the rendered text but are still billed, so framing is
+# charged separately instead of being ignored (review fix P2-2, second round).
+_CHAT_FRAMING_TOKENS = 16
 
 # Pre-activation gate 4 / review fix P2-5: the fields and the value kinds that
 # carry a date, and therefore may only be produced against a real time basis.
@@ -194,6 +224,19 @@ class _TotalDeadlineExceeded(RuntimeError):
     *and* against a response that only arrived after it. This is deliberately
     not an :class:`httpx.HTTPError`, so :func:`_is_transient` never retries
     it — retrying after the deadline can only hold the worker's lock longer.
+    """
+
+
+class _MalformedVendorResponse(RuntimeError):
+    """Raised when a vendor payload is valid JSON but not a usable envelope.
+
+    Review fix P2-6 (extended stable boundary). ``{"choices": 17}`` and
+    ``{"choices": [{"message": 17}]}`` are legal JSON, so the old
+    ``data["choices"][0]["message"]["content"]`` indexing raised a bare
+    ``TypeError`` that escaped the vendor boundary: the worker turned it into a
+    process failure and retry with no evidence row, which after activation is a
+    repeated paid call. Every accessor is now type-checked and the failure is
+    mapped to the stable note ``llm:response-malformed`` with its request id.
     """
 
 
@@ -287,6 +330,33 @@ def _stable_http_code(exc: BaseException) -> str:
     return "llm:http-failed:unknown"
 
 
+def _envelope_content(data: object) -> str:
+    """Return the assistant content of a chat-completions envelope.
+
+    Review fix P2-6. Every level is type-checked before it is subscripted:
+    ``{"choices": 17}`` and ``{"choices": [{"message": 17}]}`` are legal JSON,
+    and indexing them used to raise a bare ``TypeError`` that escaped to the
+    worker. A ``TypeError`` here becomes :class:`_MalformedVendorResponse`, so
+    the call ends as one recorded ``llm:response-malformed`` outcome rather
+    than an unrecorded job failure that could be retried and paid for twice.
+    """
+    if not isinstance(data, dict):
+        raise TypeError("envelope is not an object")
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise TypeError("choices is not a non-empty array")
+    choice = choices[0]
+    if not isinstance(choice, dict):
+        raise TypeError("choice is not an object")
+    message = choice.get("message")
+    if not isinstance(message, dict):
+        raise TypeError("message is not an object")
+    content = message.get("content")
+    if not isinstance(content, str):
+        raise TypeError("message.content is not a string")
+    return content
+
+
 def _resolve_pricing(vendor: str, model: str) -> tuple[Decimal, Decimal] | None:
     """Return ``(input, output) USD per 1K tokens`` for ``(vendor, model)``.
 
@@ -330,18 +400,36 @@ def _compute_cost(
     return cost.quantize(Decimal("0.000001")), None
 
 
-def _cost_budget() -> Decimal:
-    """Return the per-call budget in USD, falling back to the default."""
-    raw = os.environ.get(_COST_BUDGET_ENV, _DEFAULT_COST_BUDGET_USD)
+def _money(raw: str) -> Decimal | None:
+    """Return a usable non-negative amount, or ``None`` for anything else.
+
+    Review fix P2-7. ``Decimal`` accepts ``NaN`` and ``Infinity`` as perfectly
+    valid numbers, and comparing against them either answers nonsense or raises
+    ``InvalidOperation`` inside a call that has already been paid for. Only a
+    finite, non-negative amount can bound money; anything else is refused here
+    *and* reported at startup by :func:`_cost_configuration_problem` rather
+    than silently falling back to the default.
+    """
     try:
-        return Decimal(raw)
+        value = Decimal(raw)
     except (InvalidOperation, ValueError):
-        return Decimal(_DEFAULT_COST_BUDGET_USD)
+        return None
+    if not value.is_finite() or value < 0:
+        return None
+    return value
+
+
+def _cost_budget() -> Decimal | None:
+    """Return the per-call budget in USD, or ``None`` when it cannot bound money."""
+    return _money(os.environ.get(_COST_BUDGET_ENV, _DEFAULT_COST_BUDGET_USD))
 
 
 def _cost_budget_problem(cost: Decimal) -> str | None:
-    """Return ``llm:cost-budget-exceeded`` when ``cost`` exceeds the configured budget."""
-    return "llm:cost-budget-exceeded" if cost > _cost_budget() else None
+    """Return a stable code when ``cost`` overran the usable per-call budget."""
+    budget = _cost_budget()
+    if budget is None:
+        return "llm:cost-budget-invalid"
+    return "llm:cost-budget-exceeded" if cost > budget else None
 
 
 def _positive_int_env(name: str, default: int) -> int:
@@ -376,11 +464,21 @@ def _tokens_configuration_problem(env: Mapping[str, str] | None = None) -> str |
     return None
 
 
-def _estimate_tokens(text: str | None) -> int:
-    """Conservative token estimate used to bound a call before it is paid for."""
+def _estimate_tokens(text: str | None, model: str | None = None) -> int | None:
+    """Return a provable upper bound on the tokens ``text`` is billed for.
+
+    Review fix P2-2 (second round). ``None`` means this tokenizer cannot be
+    bounded here, so the caller must keep the hard ceiling as an unmet
+    activation gate instead of reporting an estimate as a ceiling. For a
+    byte-level BPE (see :data:`_BYTE_LEVEL_BPE_MODELS`) every token covers at
+    least one byte, so the UTF-8 byte count can only ever over-count, and an
+    over-count can only refuse a call, never under-fund its budget.
+    """
     if not text:
         return 0
-    return max(1, -(-len(text) // _CHARS_PER_TOKEN))
+    if model is not None and model not in _BYTE_LEVEL_BPE_MODELS:
+        return None
+    return len(text.encode("utf-8"))
 
 
 def _value_kind(value: object) -> str | None:
@@ -422,25 +520,23 @@ def _cost_configuration_problem(
     if tokens_problem is not None:
         return tokens_problem
     budget_raw = get(_COST_BUDGET_ENV, _DEFAULT_COST_BUDGET_USD)
-    try:
-        budget = Decimal(budget_raw)
-    except (InvalidOperation, ValueError):
+    # Review fix P2-7: ``Decimal`` parses ``NaN`` and ``Infinity`` as numbers,
+    # but neither can bound money — comparing against them either answers
+    # nonsense or raises ``InvalidOperation`` inside a paid comparison. A
+    # budget that cannot bound money is rejected at startup rather than later.
+    budget = _money(budget_raw)
+    if budget is None:
         return "llm:cost-budget-invalid"
     # Review fix P2-2 (round 2): a *negative* budget is nonsense and must be
     # reported at startup. A budget of exactly zero is left to ``_cost_plan``,
     # which refuses the call with ``llm:cost-budget-exceeded`` — "no money may
     # be spent" is a budget nothing fits into, not a malformed setting.
-    if budget < 0:
-        return "llm:cost-budget-invalid"
     in_override = get(_COST_INPUT_ENV)
     out_override = get(_COST_OUTPUT_ENV)
     if (in_override is None) != (out_override is None):
         return "llm:cost-pricing-partial"
     if in_override and out_override:
-        try:
-            Decimal(in_override)
-            Decimal(out_override)
-        except (InvalidOperation, ValueError):
+        if _money(in_override) is None or _money(out_override) is None:
             return "llm:cost-pricing-invalid"
         return None
     if not vendor or not model:
@@ -960,17 +1056,29 @@ class LLMProvider:
         # only through the worst-case comparison below) is what stops a
         # zero-priced vendor from "fitting" a zero budget and reaching the
         # network.
-        if _cost_budget() <= 0:
+        budget = _cost_budget()
+        if budget is None:
+            # Review fix P2-7: ``NaN``/``Infinity`` cannot bound money at all,
+            # so nothing may be paid for.
+            return "llm:cost-budget-invalid", 0
+        if budget <= 0:
             return "llm:cost-budget-exceeded", 0
         pricing = _resolve_pricing(self._configured_provider or "", self._configured_model or "")
         if pricing is None:
             return "llm:cost-pricing-missing", 0
         in_price, out_price = pricing
         max_input, max_output = self._token_ceiling()
-        per_attempt = _cost_budget() / Decimal(_MAX_RETRIES + 1)
-        estimated_input = _estimate_tokens(prompt_body) + _estimate_tokens(
-            self._render_user_message(request)
-        )
+        per_attempt = budget / Decimal(_MAX_RETRIES + 1)
+        model = self._configured_model or ""
+        system_tokens = _estimate_tokens(prompt_body, model)
+        user_tokens = _estimate_tokens(self._render_user_message(request), model)
+        if system_tokens is None or user_tokens is None:
+            # Review fix P2-2 (second round): this tokenizer has no provable
+            # bound here, so the hard per-call ceiling stays an unmet
+            # activation gate instead of being claimed as enforced.
+            return "llm:cost-estimate-unsupported", 0
+        # Chat framing is billed on top of the two rendered messages.
+        estimated_input = system_tokens + user_tokens + _CHAT_FRAMING_TOKENS
         if estimated_input > max_input:
             return "llm:cost-input-too-large", 0
         input_cost = (Decimal(estimated_input) / Decimal(1000)) * in_price
@@ -1105,7 +1213,9 @@ class LLMProvider:
                 notes=("llm:http-failed",),
                 request_id=request_id,
             )
-        except (json.JSONDecodeError, KeyError, IndexError):
+        except (json.JSONDecodeError, _MalformedVendorResponse, KeyError, IndexError):
+            # Review fix P2-6: an unshaped envelope is one recorded outcome with
+            # its request id, never a programming exception escaping to the worker.
             return self._needs_review(
                 request,
                 reason="llm:response-malformed: the vendor response did not "
@@ -1234,11 +1344,25 @@ class LLMProvider:
                 raise _TotalDeadlineExceeded()
             try:
                 with self._client_factory(timeout=timeout) as client:
-                    response = client.post(url, json=body, headers=headers)
-                response.raise_for_status()
-                data = response.json()
-                raw = data["choices"][0]["message"]["content"]
-                usage = data.get("usage") if isinstance(data, dict) else None
+                    # Review fix P2-1 (second round). ``client.post`` bounded
+                    # each *phase* (connect/read/write), not the request: a
+                    # server that keeps sending a little before every read
+                    # timeout could hold the worker's lease far past the
+                    # declared deadline. The body is therefore read as a stream
+                    # with the wall clock re-checked between chunks, and the
+                    # stream is closed before giving up — closing tears down
+                    # the transfer itself instead of only abandoning the wait.
+                    with client.stream("POST", url, json=body, headers=headers) as response:
+                        response.raise_for_status()
+                        payload = bytearray()
+                        for chunk in response.iter_bytes():
+                            payload.extend(chunk)
+                            if _now() - began > _TOTAL_DEADLINE_S:
+                                response.close()
+                                raise _TotalDeadlineExceeded()
+                data = json.loads(bytes(payload))
+                raw = _envelope_content(data)
+                usage = data.get("usage")
                 if not isinstance(usage, dict):
                     usage = None
                 # A response that only arrived after the deadline is refused:
@@ -1247,6 +1371,10 @@ class LLMProvider:
                 if _now() - began > _TOTAL_DEADLINE_S:
                     raise _TotalDeadlineExceeded()
                 return raw, usage
+            except (TypeError, ValueError, KeyError, IndexError) as exc:
+                # Review fix P2-6: wrong shapes now leave the vendor boundary
+                # as one typed error instead of a stray TypeError.
+                raise _MalformedVendorResponse(str(exc)) from exc
             except _TotalDeadlineExceeded:
                 raise
             except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
