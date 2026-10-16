@@ -26,6 +26,7 @@ from gigmate.contracts import (
     ConnectorStatus,
     Conversation,
     ConversationMessage,
+    CreateWorkOrderCommand,
     Detail,
     Model,
     Page,
@@ -33,6 +34,7 @@ from gigmate.contracts import (
     ReissueActionCommand,
     RejectActionCommand,
     RequirementChange,
+    SetWorkOrderStatusCommand,
     Task,
     Text,
     WahaAttachmentView,
@@ -77,7 +79,8 @@ from gigmate.waha_ingress import binding_for, configured_binding, receive, statu
 from gigmate.waha_probe import MAX_BODY, _non_json_constant, _pairs, verify_hmac
 from gigmate.waha_recovery import issue_view, record_rejection
 from gigmate.waha_send_api import install as install_sending
-from gigmate.workorders import command_cache, confirm, owned, save_result
+from gigmate.workorders import command_cache, confirm, create, owned, save_result, set_status
+from gigmate.workspace_api import install as install_workspace
 
 app = FastAPI(title="GigMate replay skeleton", version="0.2.0")
 
@@ -110,7 +113,16 @@ class ChangeView(RequirementChange):
 
 
 class ActionView(ApprovalAction):
-    trigger: Literal["schedule_conflict"]
+    trigger: Literal["schedule_conflict", "open_items"]
+    open_items: list[
+        Literal[
+            "missing_schedule",
+            "verify_schedule",
+            "missing_time",
+            "missing_address",
+            "verify_address",
+        ]
+    ]
     closed_reason: str | None
     closed_note: str | None
     reissuable: bool
@@ -137,7 +149,7 @@ async def business_error(request: Request, exc: BusinessError):
     return JSONResponse(
         status_code=exc.status,
         content={
-            "error": {"code": exc.code, "message": exc.message, "details": {}},
+            "error": {"code": exc.code, "message": exc.message, "details": exc.details},
             "request_id": request.state.request_id,
         },
     )
@@ -314,6 +326,17 @@ def orders(
     )
 
 
+@app.post("/api/v1/work-orders", status_code=201, response_model=Detail[WorkOrder])
+def create_order(
+    command: CreateWorkOrderCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    return detail(request, create(db, account, command, idempotency_key, request.state.request_id))
+
+
 @app.get("/api/v1/work-orders/{order_id}", response_model=Detail[WorkOrder])
 def order_detail(order_id: UUID, request: Request, account=Depends(actor), db=Depends(database)):
     return detail(request, owned(db, WorkOrderRow, str(order_id), account.id).data)
@@ -342,7 +365,13 @@ def changes(
         lambda row: {
             **row.data,
             "context_version": row.context_version,
-            "conflict_ids": conflicts(db, account.id, str(order_id), row.data["new_value"]),
+            "conflict_ids": (
+                conflicts(db, account.id, str(order_id), row.data["new_value"])
+                if row.data["field"] == "schedule"
+                and isinstance(row.data["new_value"], dict)
+                and row.data["new_value"].get("kind") == "timed"
+                else []
+            ),
         },
     )
 
@@ -370,6 +399,21 @@ def confirm_change(
             idempotency_key,
             request.state.request_id,
         ),
+    )
+
+
+@app.post("/api/v1/work-orders/{order_id}/status", response_model=Detail[WorkOrder])
+def set_order_status(
+    order_id: UUID,
+    command: SetWorkOrderStatusCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    return detail(
+        request,
+        set_status(db, account, str(order_id), command, idempotency_key, request.state.request_id),
     )
 
 
@@ -1280,3 +1324,4 @@ def replay_custom(
 
 
 install_sending(app, database, setup_actor, detail, page, sending_io_actor)
+install_workspace(app, database, actor, detail, page, conversation_info)

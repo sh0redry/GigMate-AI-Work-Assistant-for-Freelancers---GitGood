@@ -1,5 +1,7 @@
 # WAHA message synchronization and metadata acceptance
 
+Current frontend routing (2026-10-16): use GIGMATE_REAL_API_URL and the root URL. The delivered UI has one backend and no environment switch/public test credentials. The disposable setup runner still uses its own loopback service; its fixtures are developer-only and the product no longer labels a separate test mode. Earlier dated screenshots/environment descriptions are historical. See [current user guide](role-d-frontend-user-guide.md).
+
 2026-10-09 · branch **Andy_WAHA_message_sync**, based on **ebf9398** (PR #11's existing integration). [Chinese](../zh/role-a-message-sync-acceptance.md). Implementation decisions: [ADR 0005](adr/0005-bounded-waha-observations.md).
 
 ## Delivered scope
@@ -54,12 +56,11 @@ Keep private config, database and session volumes. Team installation: `python sc
 From `apps/web`, select your actual ingress and the real environment (replace 18702 if your installation uses another port):
 
 ```bash
-GIGMATE_REAL_API_URL=http://127.0.0.1:18702 GIGMATE_DEFAULT_ENV=real npm run dev
+GIGMATE_REAL_API_URL=http://127.0.0.1:18702 npm run dev
 ```
 
 ```powershell
 $env:GIGMATE_REAL_API_URL = 'http://127.0.0.1:18702'
-$env:GIGMATE_DEFAULT_ENV = 'real'
 npm run dev
 ```
 

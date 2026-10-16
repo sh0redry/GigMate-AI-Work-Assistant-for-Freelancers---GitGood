@@ -1127,6 +1127,78 @@
       "title": "ConversationMessage",
       "type": "object"
     },
+    "CreateWorkOrderCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "anyOf": [
+            {
+              "maxLength": 300,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Address"
+        },
+        "address_sources": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Address Sources",
+          "type": "array"
+        },
+        "confirm_additional_order": {
+          "default": false,
+          "title": "Confirm Additional Order",
+          "type": "boolean"
+        },
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "schedule": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimedSchedule"
+            },
+            {
+              "$ref": "#/$defs/DateOnly"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Schedule"
+        },
+        "schedule_sources": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Schedule Sources",
+          "type": "array"
+        },
+        "summary": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "conversation_id",
+        "summary"
+      ],
+      "title": "CreateWorkOrderCommand",
+      "type": "object"
+    },
     "CustomerConfirmation": {
       "enum": [
         "not_requested",
@@ -1393,6 +1465,67 @@
     "Id": {
       "format": "uuid",
       "type": "string"
+    },
+    "InspectWorkOrderCommand": {
+      "additionalProperties": false,
+      "description": "Look up an exact completed command; never execute or resubmit it.",
+      "properties": {
+        "change_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Change Id"
+        },
+        "command": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CreateWorkOrderCommand"
+            },
+            {
+              "$ref": "#/$defs/SetWorkOrderStatusCommand"
+            },
+            {
+              "$ref": "#/$defs/ConfirmChangeCommand"
+            }
+          ],
+          "title": "Command"
+        },
+        "kind": {
+          "enum": [
+            "create",
+            "status",
+            "confirm"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "order_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Order Id"
+        }
+      },
+      "required": [
+        "kind",
+        "command"
+      ],
+      "title": "InspectWorkOrderCommand",
+      "type": "object"
     },
     "InstantDeadline": {
       "additionalProperties": false,
@@ -2094,6 +2227,69 @@
       "title": "RequirementChange",
       "type": "object"
     },
+    "ReviewItem": {
+      "additionalProperties": false,
+      "properties": {
+        "context_version": {
+          "minimum": 1,
+          "title": "Context Version",
+          "type": "integer"
+        },
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "current_context_version": {
+          "minimum": 1,
+          "title": "Current Context Version",
+          "type": "integer"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "message_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Message Id"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "state": {
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "conversation_id",
+        "message_id",
+        "context_version",
+        "current_context_version",
+        "reason",
+        "state",
+        "observed_at"
+      ],
+      "title": "ReviewItem",
+      "type": "object"
+    },
     "ScheduleValue": {
       "anyOf": [
         {
@@ -2103,6 +2299,33 @@
           "$ref": "#/$defs/DateOnly"
         }
       ]
+    },
+    "SetWorkOrderStatusCommand": {
+      "additionalProperties": false,
+      "description": "Merchant moves an order along its life cycle (see TRANSITIONS in workorders).",
+      "properties": {
+        "expected_version": {
+          "minimum": 1,
+          "title": "Expected Version",
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "in_progress",
+            "waiting_customer",
+            "completed",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "expected_version"
+      ],
+      "title": "SetWorkOrderStatusCommand",
+      "type": "object"
     },
     "SourceRef": {
       "additionalProperties": false,
@@ -4835,6 +5058,49 @@
       ],
       "title": "WorkOrderStatus",
       "type": "string"
+    },
+    "WorkspaceCapabilities": {
+      "additionalProperties": false,
+      "description": "Release gates, not connector permissions or claims of live acceptance.",
+      "properties": {
+        "address_confirmation": {
+          "default": true,
+          "title": "Address Confirmation",
+          "type": "boolean"
+        },
+        "automatic_understanding": {
+          "default": false,
+          "title": "Automatic Understanding",
+          "type": "boolean"
+        },
+        "business_sending": {
+          "default": false,
+          "title": "Business Sending",
+          "type": "boolean"
+        },
+        "calendar_export": {
+          "default": true,
+          "title": "Calendar Export",
+          "type": "boolean"
+        },
+        "create_order": {
+          "default": true,
+          "title": "Create Order",
+          "type": "boolean"
+        },
+        "manual_assignment": {
+          "default": false,
+          "title": "Manual Assignment",
+          "type": "boolean"
+        },
+        "order_status": {
+          "default": true,
+          "title": "Order Status",
+          "type": "boolean"
+        }
+      },
+      "title": "WorkspaceCapabilities",
+      "type": "object"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",

@@ -32,6 +32,7 @@ from gigmate.extraction import (
     provider,
 )
 from gigmate.extraction.llm import validate_provider_config
+from gigmate.planning import CLOSED
 from gigmate.understanding import extract
 from gigmate.waha_recovery import worker_heartbeat
 
@@ -39,6 +40,20 @@ log = logging.getLogger("gigmate.worker")
 
 EXTRACTION_NEEDS_REVIEW = "EXTRACTION_NEEDS_REVIEW"
 OWN_SEND_ECHO = "OWN_SEND_ECHO"
+
+
+def open_orders(db, conversation_id):
+    """Orders this conversation can still change: cancelled/completed ones are history."""
+    return [
+        order.id
+        for order in db.scalars(
+            select(WorkOrderRow)
+            .join(ConversationOrder, ConversationOrder.work_order_id == WorkOrderRow.id)
+            .where(ConversationOrder.conversation_id == conversation_id)
+            .order_by(WorkOrderRow.id)
+        )
+        if order.data["status"] not in CLOSED
+    ]
 
 
 def run_once(factory=Session):
@@ -118,13 +133,7 @@ def run_once(factory=Session):
                 # never trigger extraction, another question or another send.
                 job.state, job.error_code = "completed", OWN_SEND_ECHO
             elif event["connector"] == "waha":
-                linked = list(
-                    db.scalars(
-                        select(ConversationOrder.work_order_id).where(
-                            ConversationOrder.conversation_id == conversation.id
-                        )
-                    )
-                )
+                linked = open_orders(db, conversation.id)
                 matched = _route_through_provider(
                     db,
                     account=account,
@@ -137,13 +146,7 @@ def run_once(factory=Session):
                 job.state = "completed"
                 job.error_code = None if matched else EXTRACTION_NEEDS_REVIEW
             else:
-                linked = list(
-                    db.scalars(
-                        select(ConversationOrder.work_order_id).where(
-                            ConversationOrder.conversation_id == conversation.id
-                        )
-                    )
-                )
+                linked = open_orders(db, conversation.id)
                 if len(linked) != 1:
                     job.state, job.error_code = "completed", "ASSIGNMENT_NEEDS_REVIEW"
                 else:

@@ -233,10 +233,6 @@ def synthetic_frontend_environment(environment):
     return {
         **{name: environment[name] for name in runtime_names if name in environment},
         "GIGMATE_REAL_API_URL": "http://127.0.0.1:18802",
-        # No second backend is provisioned. Vite disables this proxy and App disables switching.
-        "GIGMATE_ISOLATED_API_URL": "http://127.0.0.1:18804",
-        "GIGMATE_DEFAULT_ENV": "real",
-        "GIGMATE_SYNTHETIC_PROVIDER": "1",
         "CI": "1",
     }
 
@@ -800,7 +796,7 @@ def main():
             )
             checkpoint("synthetic_frontend_serving_18803")
             print(
-                "http://127.0.0.1:18803/environments/real/ — synthetic provider and "
+                "http://127.0.0.1:18803/ — synthetic provider and "
                 "disposable data only; the fixture QR cannot pair WhatsApp",
                 flush=True,
             )

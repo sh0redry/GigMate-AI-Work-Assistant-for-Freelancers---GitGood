@@ -16,6 +16,9 @@ from pydantic import TypeAdapter  # noqa: E402
 def domain_schema():
     definitions = {}
     models = [
+        c.WorkspaceCapabilities,
+        c.InspectWorkOrderCommand,
+        c.ReviewItem,
         c.SourceRef,
         c.ConnectorStatus,
         c.ConnectorReceipt,
@@ -68,10 +71,12 @@ def domain_schema():
         c.ApprovalAction,
         c.AuditLog,
         c.ConfirmChangeCommand,
+        c.CreateWorkOrderCommand,
         c.RejectCommand,
         c.ApproveActionCommand,
         c.RejectActionCommand,
         c.ReissueActionCommand,
+        c.SetWorkOrderStatusCommand,
     ]
     for model in models:
         schema = model.model_json_schema()

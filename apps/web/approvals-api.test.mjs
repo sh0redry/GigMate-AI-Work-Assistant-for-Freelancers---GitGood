@@ -163,7 +163,7 @@ test("same-context repeated reissue is blocked in UI while the C uniqueness defe
   data.conversation.context_version = 5;
   assert.equal(reissueProblem(await api.load("a1", signal())), "");
 });
-test("attempts are isolated by account/environment and transport destination is bound at construction", async () => {
+test("attempts remain account-scoped and legacy injected environments cannot redirect requests", async () => {
   const { data, fetcher } = fixture();
   const storage = memoryStorage();
   globalThis.__GIGMATE_ENVIRONMENTS__ = {
@@ -185,17 +185,15 @@ test("attempts are isolated by account/environment and transport destination is 
     });
     globalThis.__GIGMATE_ENVIRONMENTS__.defaultEnvironment = "real";
     assert.equal(
-      approvalsApi("csrf", accountId, fetcher, storage).attempt(),
-      null,
+      approvalsApi("csrf", accountId, fetcher, storage).attempt()?.actionId,
+      "a1",
     );
     assert.equal(
       approvalsApi("csrf", "another-account", fetcher, storage).attempt(),
       null,
     );
     await isolated.retryOriginal();
-    assert.ok(
-      data.writes.every((w) => w.url.startsWith("/environments/isolated/api/")),
-    );
+    assert.ok(data.writes.every((w) => w.url.startsWith("/api/")));
   } finally {
     delete globalThis.__GIGMATE_ENVIRONMENTS__;
   }
@@ -443,4 +441,21 @@ test("a journal read refusal cannot erase an existing unknown request; restoring
     data.writes[1].options.headers["Idempotency-Key"],
   );
   assert.equal(storage.values.size, 0);
+});
+
+test("an unresolved legacy approval is preserved and blocks fresh writes after product routing changes", async () => {
+  for (const old of ["real", "isolated"]) {
+    const { data, fetcher } = fixture(),
+      storage = memoryStorage();
+    const name = `gigmate-approval-attempt:/environments/${old}/api/v1:${accountId}`;
+    storage.setItem(name, "synthetic legacy unknown receipt");
+    const api = approvalsApi("csrf", accountId, fetcher, storage);
+    const snapshot = await api.load("a1", signal());
+    assert.ok(snapshot.action);
+    await assert.rejects(api.submit(data.actions[0], "approve", 4), {
+      code: "ATTEMPT_STORAGE_UNAVAILABLE",
+    });
+    assert.equal(data.writes.length, 0);
+    assert.equal(storage.getItem(name), "synthetic legacy unknown receipt");
+  }
 });

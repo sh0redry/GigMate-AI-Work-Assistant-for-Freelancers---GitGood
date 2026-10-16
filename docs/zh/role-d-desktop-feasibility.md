@@ -1,5 +1,7 @@
 # GigMate 桌面与可安装应用可行性
 
+2026-10-16 当前候选：已提供网页安装信息／图标和独立窗口启动资料，没有安装离线业务缓存。浏览器安装取决于 [MDN 条件](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable)，原生安装／实体设备验收仍待完成；没有生成 exe／macOS 安装器或签名。见[当前验收](role-d-final-acceptance.md)，下方评估为旧日期历史。
+
 2026-10-12 · 仅作评估；没有生成 exe、macOS app、安装器、签名或部署。[English counterpart](../en/role-d-desktop-feasibility.md)。
 
 现有 React/TypeScript/Vite 界面可复用于 Windows 和 macOS。但前端打包不会自动包含 FastAPI、独立 worker、PostgreSQL 和 WAHA，也不会解决生产认证、持久任务、审批重验和未知结果核对。浏览器目前采用同源 session cookie、CSRF 和相对 `/api/v1` 路径；桌面外壳必须保留可信应用来源／后端代理，不能关闭校验或把连接器密钥放进 JavaScript。

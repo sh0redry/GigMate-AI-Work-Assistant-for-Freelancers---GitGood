@@ -1,5 +1,7 @@
 # Kyrie's file map: start small, look up the rest later
 
+Current delivery files (2026-10-16): [OrderCreation](../../apps/web/src/OrderCreation.tsx) collects customer-backed order details; [OrderLifecycle](../../apps/web/src/OrderLifecycle.tsx) explains state changes; [CalendarWorkspace](../../apps/web/src/CalendarWorkspace.tsx) draws month/tasks and downloads; [ReviewWorkspace](../../apps/web/src/ReviewWorkspace.tsx) surfaces manual review; [order-command-api](../../apps/web/src/order-command-api.ts) keeps original numbered requests; [features](../../apps/web/src/features.ts) explains blocked dependencies. [workspace_api.py](../../apps/backend/src/gigmate/workspace_api.py) supplies owned read helpers; [calendar_export.py](../../apps/backend/src/gigmate/calendar_export.py) writes the calendar file. main includes #25; the current candidate is `codex/d-final-workspace`. Older exhaustive tables below retain dated path/history observations.
+
 D-03 files: [ApprovalsWorkspace.tsx](../../apps/web/src/ApprovalsWorkspace.tsx) draws review/history; [approvals-api.ts](../../apps/web/src/approvals-api.ts) reads canonical APIs and preserves the original uncertain request; [approval-view.ts](../../apps/web/src/approval-view.ts) explains states and approval blockers. These files are in the pending D-03 branch, not main.
 
 Updated 2026-10-12. [中文地图](../zh/kyrie-file-atlas.md) · [Beginner guide](kyrie-learning-guide.md).
@@ -138,7 +140,7 @@ The remaining reference is for lookup, not first-day memorization. Vocabulary is
 | [apps/web/local-pairing.test.mjs](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/blob/c702f0c/apps/web/local-pairing.test.mjs) | Legacy bridge routes/QR/failure regressions; not phone pairing | D/E | Retired |
 | [apps/web/package-lock.json](../../apps/web/package-lock.json) | Exact installed dependency versions, maintained by npm | D | Both |
 | [apps/web/package.json](../../apps/web/package.json) | Frontend tool list and commands available through npm run | D | Both |
-| [apps/web/replay-store.test.mjs](../../apps/web/replay-store.test.mjs) | Replay subscriptions/races/login/proposal/confirm state regression | D/E | Both |
+| [apps/web/business-store.test.mjs](../../apps/web/business-store.test.mjs) | Replay subscriptions/races/login/proposal/confirm state regression | D/E | Both |
 | [apps/web/src/ChatChoices.tsx](../../apps/web/src/ChatChoices.tsx) | Draws loaded checkbox rows without losing hidden selections | D | Added in main |
 | [apps/web/src/ConnectionWorkspace.tsx](../../apps/web/src/ConnectionWorkspace.tsx) | Connection screen: state, real QR and saved/withdrawn chat consent | D | Both |
 | [apps/web/src/ReplayWorkspace.tsx](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/blob/bbb0074/apps/web/src/ReplayWorkspace.tsx) | Old workspace; D-02 replaces it with WorkOrderWorkspace; linked main history | D | main history |
@@ -149,7 +151,7 @@ The remaining reference is for lookup, not first-day memorization. Vocabulary is
 | [apps/web/src/connection.css](../../apps/web/src/connection.css) | Connection/chat layout; obsolete demo styles removed | D | Both |
 | [apps/web/src/generated/api.d.ts](../../apps/web/src/generated/api.d.ts) | Tool-generated API data descriptions; do not edit manually | A/B/C/D | Both |
 | [apps/web/src/main.tsx](../../apps/web/src/main.tsx) | Starts the page; App.tsx now handles login/navigation | D | Both |
-| [apps/web/src/replay-store.ts](../../apps/web/src/replay-store.ts) | Tracks reads/writes and prevents late responses replacing newer selections; legacy ReplayStore name remains | D | Both |
+| [apps/web/src/business-store.ts](../../apps/web/src/business-store.ts) | Tracks reads/writes and prevents late responses replacing newer selections; renamed BusinessStore; no fictional input action | D | Both |
 | [apps/web/src/style.css](../../apps/web/src/style.css) | Global colors/layout/wrapping and narrow-screen adjustments | D | Both |
 | [apps/web/src/waha-live-api.ts](../../apps/web/src/waha-live-api.ts) | Sends connection/consent requests and checks the original request after lost responses | D | Added in main |
 | [apps/web/src/waha-sync-api.ts](../../apps/web/src/waha-sync-api.ts) | Queries messages and bounded history-import progress | A/D | Added in main |
@@ -312,3 +314,8 @@ D: entry → connection workspace → adapters/state → chat helpers/view → t
 A #11: controls/0005_waha_controls/0006/setup acceptance; D #15: live adapter/workspace. A #14: sync/0008/WahaMessages/sync acceptance; D #16: chat choices/component tests. B #9/#18/#20: extraction/0005_extraction_evidence/evaluation. C #13 new-order work remains a target in api-v1.md, not an implemented endpoint. 0007 merges A/B migration heads.
 
 See guide section 3 for remaining issues and acceptance. English/Chinese counterparts are one delivery, not separate achievements. File count is not a contribution score.
+
+
+## Update after C integration (2026-10-16)
+
+`InspectOrderAttempt.tsx` explains and reviews a saved command receipt; `order-command-api.ts` retains the exact key and clears only verified completed records. `workspace_api.py` only reads the existing command cache; C still owns all business writes. Generated API types now include C's create/status commands and the typed readonly inspection request.

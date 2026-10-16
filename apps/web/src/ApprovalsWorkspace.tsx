@@ -9,6 +9,7 @@ import {
   actionStates,
   deliveryStates,
   closedReasons,
+  triggerDescription,
   approvalBinding,
   approveProblem,
   reissueProblem,
@@ -268,7 +269,7 @@ export function ApprovalsWorkspace({
           {shown.length === 0 && (
             <p>
               {data ? "此筛选下没有草稿。" : "等待审批列表。"}{" "}
-              没有草稿不代表已经发送，也不会自动生成演示内容。
+              新的回复草稿会显示在这里，请稍后刷新；没有草稿不代表已经发送。
             </p>
           )}
           {shown.map((a) => (
@@ -302,11 +303,7 @@ export function ApprovalsWorkspace({
               </p>
               <dl className="approval-facts">
                 <dt>为什么需要回复</dt>
-                <dd>
-                  {action.trigger === "schedule_conflict"
-                    ? "客户提出的时间与已有安排冲突"
-                    : "后端未提供可识别原因"}
-                </dd>
+                <dd>{triggerDescription(action.trigger, action.open_items)}</dd>
                 <dt>收件会话（系统编号）</dt>
                 <dd>
                   <code>{action.recipient}</code>
