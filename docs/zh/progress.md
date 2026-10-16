@@ -2,13 +2,13 @@
 
 ## 2026-10-16 功能冻结：AI 识别新生意并提议建单，记为后续（C）— 2026-10-16
 
-仅文档记录，**冻结后没有新增任何功能**。对照方案 v2 和契约里划给 C 的范围，只剩这一项，按事实记为后续而非已完成：
+仅文档记录，**冻结后没有新增任何功能**。本条记录的**范围只有一项**：从 AI 新建提议创建工单（`contracts/api-v1.md` §1–§2，`from_proposal_id`），按事实记为后续而非已完成。它不是 C 全部工作的总结：其余 C 项（例如 #32 里仍在评审的归单/延期与业务发送）另行记录。
 
-- **延期，阻塞在 B：** 识别会话里的新生意、落成「新建工单提议」、再由商户从提议建单（`contracts/api-v1.md` §1–§2，`from_proposal_id`）。B 侧的「新工单」识别结果格式仍未定义——每个 job 一个结果、`new_work_order` 这样的赋值取值、`needs_review` 分支。Will 在 #31 里说下一步提供，冻结前没有交付。C 只执行 provider 给出的结果、不自己定义，也绝不自行判断两条消息是不是同一单，因此该项等 B 的格式，留在「尚待实现」。
-- **demo 改用什么：** 商户手动建单，主干上已实现（`POST /api/v1/work-orders`，返回 201；`CreateWorkOrderCommand` 含 `conversation_id`、`summary`、可选 schedule/address 及其来源引用、`confirm_additional_order`）。这是商户自己录入的单，不是 AI 提议链路：`CreateWorkOrderCommand` 没有 `from_proposal_id`，`AssignmentResult` 仍只有 `matched` / `needs_review`，`new_work_order` 在后端源码和生成契约里都搜不到，因此当前没有任何代码路径能从提议建单。demo 按计划走手动建单。
+- **冻结时、以当前 main 为准的状态：** main 上没有任何「从提议建单」的实现。`CreateWorkOrderCommand` 没有 `from_proposal_id`，`AssignmentResult` 仍只有 `matched` / `needs_review`，`new_work_order` 在后端源码和生成契约里都不存在。商户手动建单已实现（`POST /api/v1/work-orders`，返回 201；`CreateWorkOrderCommand` 含 `conversation_id`、`summary`、可选 schedule/address 及其来源引用、`confirm_additional_order`），**demo 用的就是手动建单**，不存在缺兜底的问题。
+- **为什么不能写成「只等 B 给格式」：** PR #31（B 侧，分支 `william/role-b-preactivation-gates`）里已经有提议形状——`contracts.py` 的 `ExtractionOutcome.new_work_order: NewWorkOrderSuggestion | None`——但**冻结时未合入 main**。未合入分支上的提议不等于已交付的契约；即使 #31 合入，C 自己的工作仍然独立未完：`from_proposal_id` 命令路径、带 used/superseded 状态的提议持久化、以及每个 job 的合并判断。B 有提议格式不等于自动建单闭环已完成。因此这条记录应在 #31 合入后重新阅读，而不是继续把 B 的格式写成未交付。
 - 本条未改动：运行代码、生成契约、迁移都没动。既有工单的变更抽取、撞期校验、商户确认、工单状态流转与审批闭环，仍按下方主干较新条目所记录的实现为准。
 
-证据：`apps/backend/src/gigmate/api.py` 注册了 `GET /api/v1/work-orders` 与 `POST /api/v1/work-orders`（201）；生成的 `contracts/openapi.json` 里 `/api/v1/work-orders` 有 `get` 和 `post`；`grep -rn "from_proposal_id\|new_work_order" apps/backend/src contracts/domain/models.schema.json` 无命中，该字样只存在于 `contracts/api-v1.md`。本批只改两份进度记录和 `contracts/api-v1.md` 里的一句状态说明；`.venv/bin/python scripts/check_baseline.py` PASS（84 个 Markdown、983 个本地链接、3 个 schema、13 个合法样例、7 个拒绝样例、12 个合成场景），`scripts/export_contracts.py --check` 保持同步。Ruff 与 pytest 不覆盖纯文档改动，未重跑；未涉及真实 WhatsApp、模型、发送或部署。
+证据：`apps/backend/src/gigmate/api.py` 注册了 `GET /api/v1/work-orders` 与 `POST /api/v1/work-orders`（201）；生成的 `contracts/openapi.json` 里 `/api/v1/work-orders` 有 `get` 和 `post`；在本分支头上 `grep -rn "from_proposal_id\|new_work_order" apps/backend/src contracts/domain/models.schema.json` 无命中，而同样的标识符出现在 #31 的头 `038ae3b`（`contracts.py`）里，说明上述结论针对 main、而非所有分支。本批只改两份进度记录和 `contracts/api-v1.md` 里的一句状态说明；`.venv/bin/python scripts/check_baseline.py` PASS（84 个 Markdown、983 个本地链接、3 个 schema、13 个合法样例、7 个拒绝样例、12 个合成场景），`scripts/export_contracts.py --check` 保持同步。Ruff 与 pytest 不覆盖纯文档改动，未重跑；未涉及真实 WhatsApp、模型、发送或部署。
 
 ## PR #30：处理 Andy 的来源／列表评审 — 2026-10-16
 
@@ -623,7 +623,7 @@ PR #3 的 backend run 37432110763 在 test_waha_team.py 收集阶段报 `ModuleN
 - 对外审批、outbox、代发、发送结果未知核对、API echo 和发送并发测试。
 - 完整工作时间/缓冲规则、生产身份/密钥系统、完整账号及备份删除；WAHA 30 天正文清理已实现。
 - 媒体、外部日历和其他增强模块。
-- 截至 2026-10-16 冻结仍缺（见首条记录）：AI 识别新生意并从提议建单（`from_proposal_id`、B 侧 `new_work_order` 识别结果格式、#31），因此 demo 用手动建单。
+- 截至 2026-10-16 冻结仍缺（见首条记录，仅本条记录范围内）：从 AI 新建提议创建工单——`from_proposal_id` 以及 C 侧提议持久化、每个 job 的合并判断；因此 demo 用手动建单。C 的其他在评审中的工作另行记录。
 
 后续先完成持久真实接入与独立统一验收，再规划对外审批执行闭环。真实使用仅限明确授权的本地测试账号/聊天，不用于生产或宣称完整 P0。所有新增工作按协作检查表交付，持续记录完成证据，不能把回放成功写成真实接入成功。
 
