@@ -23,6 +23,8 @@ for (const name of [
   "features",
   "business-store",
   "environment",
+  "read-cache",
+  "useStableState",
   "workspace-api",
   "work-order-view",
 ]) {

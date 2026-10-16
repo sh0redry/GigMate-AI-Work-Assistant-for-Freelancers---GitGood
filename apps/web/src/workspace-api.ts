@@ -1,3 +1,4 @@
+import { sessionFetch } from "./read-cache.ts";
 import type { OrderCommands } from "./order-command-api";
 import { apiBase } from "./environment.ts";
 import type { components } from "./generated/api";
@@ -28,6 +29,8 @@ export function workspaceApi(
   csrf = "",
   fetcher: typeof fetch = fetch,
 ): RequestApi {
+  const cachedFetch = (url: string, options: RequestInit) =>
+    sessionFetch(url, options, fetcher);
   const base = apiBase();
   return async <T>(
     path: string,
@@ -38,7 +41,7 @@ export function workspaceApi(
     let response: Response;
     let result;
     try {
-      response = await fetcher(`${base}${path}`, {
+      response = await cachedFetch(`${base}${path}`, {
         method: body === undefined ? "GET" : "POST",
         credentials: "same-origin",
         cache: "no-store",
@@ -66,7 +69,11 @@ export function workspaceApi(
       const code =
         response.status === 401
           ? "UNAUTHENTICATED"
-          : (result?.error?.code ?? "UNAVAILABLE");
+          : response.status === 403
+            ? (result?.error?.code ?? "FORBIDDEN")
+            : response.status === 404
+              ? (result?.error?.code ?? "NOT_FOUND")
+              : (result?.error?.code ?? "UNAVAILABLE");
       const messages: Record<string, string> = {
         UNAUTHENTICATED:
           path === "/auth/login"

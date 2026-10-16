@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useStableState as useState } from "./useStableState";
+import { useEffect } from "react";
 import type { OrderCommands } from "./order-command-api";
 import type { Order } from "./workspace-api";
 import { orderStates } from "./work-order-view";

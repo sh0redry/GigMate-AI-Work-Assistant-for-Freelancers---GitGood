@@ -1,3 +1,4 @@
+import { sessionFetch } from "./read-cache.ts";
 import { ConnectionError } from "./connection-api";
 import { apiBase } from "./environment.ts";
 import type { components } from "./generated/api";
@@ -50,7 +51,7 @@ export function sendingApi(connection: string, csrf: string) {
   ): Promise<T> {
     let response: Response;
     try {
-      response = await fetch(base + path, {
+      response = await sessionFetch(base + path, {
         method: body ? "POST" : "GET",
         credentials: "same-origin",
         cache: "no-store",

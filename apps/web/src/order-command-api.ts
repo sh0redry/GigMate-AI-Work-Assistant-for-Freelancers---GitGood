@@ -1,3 +1,4 @@
+import { sessionFetch } from "./read-cache.ts";
 import { apiBase } from "./environment.ts";
 import { WorkspaceError, type Order } from "./workspace-api.ts";
 import type { components } from "./generated/api";
@@ -96,6 +97,8 @@ export function orderCommands(
   fetcher: typeof fetch = fetch,
   provided?: Storage | null,
 ) {
+  const cachedFetch = (url: string, options: RequestInit) =>
+    sessionFetch(url, options, fetcher);
   const base = apiBase(),
     name = `gigmate-order-attempt:${base}:${accountId}`;
   let storage: Storage | null = null,
@@ -155,7 +158,7 @@ export function orderCommands(
             ? `/work-orders/${i.orderId}/status`
             : `/work-orders/${i.orderId}/changes/${i.changeId}/confirm`;
     try {
-      const response = await fetcher(base + path, {
+      const response = await cachedFetch(base + path, {
         method: "POST",
         credentials: "same-origin",
         cache: "no-store",
@@ -286,7 +289,7 @@ export function orderCommands(
       const saved = attempt!,
         i = saved.intent;
       try {
-        const response = await fetcher(
+        const response = await cachedFetch(
           base + `/work-order-command-results/${saved.key}/inspect`,
           {
             method: "POST",

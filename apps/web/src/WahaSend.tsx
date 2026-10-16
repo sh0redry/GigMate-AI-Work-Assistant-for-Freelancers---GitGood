@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { privateReadDenied } from "./read-cache";
+import { useStableState as useState } from "./useStableState";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   sendingApi,
   sendingMime,
@@ -190,7 +192,12 @@ export function WahaSend({
         epoch === scope.current &&
         sequence === refreshSequence.current
       ) {
-        setInstalled(false);
+        if (privateReadDenied(error)) {
+          setActions([]);
+          setPolicies([]);
+          setDraftView(null);
+          setInstalled(false);
+        }
         setPermission(null);
         setPreview(null);
         report(error);

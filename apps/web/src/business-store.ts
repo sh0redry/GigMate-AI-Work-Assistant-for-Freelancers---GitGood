@@ -1,3 +1,4 @@
+import { stableShare, privateReadDenied } from "./read-cache.ts";
 import {
   changeContext,
   type Change,
@@ -26,6 +27,8 @@ export class BusinessStore {
     notice: "",
     updatedAt: 0,
   };
+  private checkedAt = 0;
+  private reading = false;
   private listeners = new Set<() => void>();
   private controller: AbortController | null = null;
   private generation = 0;
@@ -46,7 +49,9 @@ export class BusinessStore {
     };
   };
   private patch(value: Partial<BusinessState>) {
-    this.state = { ...this.state, ...value };
+    const next = stableShare(this.state, { ...this.state, ...value });
+    if (next === this.state) return;
+    this.state = next;
     for (const listener of this.listeners) listener();
   }
   start() {
@@ -73,6 +78,7 @@ export class BusinessStore {
       return;
     }
     this.patch({
+      ...(privateReadDenied(error) ? { data: null } : {}),
       loading: false,
       mutating: false,
       stale: true,
@@ -86,17 +92,24 @@ export class BusinessStore {
     const controller = new AbortController();
     this.controller = controller;
     const generation = ++this.generation;
-    this.patch({ loading: true });
+    this.reading = true;
+    this.patch({
+      loading:
+        !this.state.data || this.state.data.selected !== this.state.selected,
+    });
     try {
       const data = await this.api.load(this.state.selected, controller.signal);
       if (!this.active || generation !== this.generation) return;
+      this.checkedAt = this.now();
+      const next = stableShare(this.state.data, data);
       this.patch({
-        data,
+        data: next,
         selected: data.selected,
         loading: false,
         stale: false,
         error: "",
-        updatedAt: this.now(),
+        updatedAt:
+          next === this.state.data ? this.state.updatedAt : this.checkedAt,
       });
     } catch (error) {
       if (
@@ -105,10 +118,12 @@ export class BusinessStore {
         !controller.signal.aborted
       )
         this.failure(error);
+    } finally {
+      if (generation === this.generation) this.reading = false;
     }
   }
   poll() {
-    if (!this.state.loading) void this.refresh();
+    if (!this.reading) void this.refresh();
   }
   select(id: string) {
     if (this.state.mutating || id === this.state.selected) return;
@@ -122,7 +137,7 @@ export class BusinessStore {
       !this.state.stale &&
       !this.state.loading &&
       !this.state.mutating &&
-      this.now() - this.state.updatedAt < 10000
+      this.now() - this.checkedAt < 10000
     );
   }
   private async mutate(operation: () => Promise<string>) {

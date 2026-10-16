@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useStableState as useState } from "./useStableState";
+import { useEffect, useMemo } from "react";
 import { LoopCommand } from "./LoopCommand";
 import type { LoopApi, Loop } from "./business-loop-api";
 import {
@@ -62,7 +63,7 @@ export function BusinessLoopReview({
     onError,
     onBusy,
     disabled: !checked,
-    expiresAt: checked + 10000,
+    expiresAt: checked + 300000,
   };
   useEffect(() => {
     const a = new AbortController();

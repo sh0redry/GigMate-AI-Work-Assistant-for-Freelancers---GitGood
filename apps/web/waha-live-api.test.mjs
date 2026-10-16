@@ -9,6 +9,7 @@ import ts from "typescript";
 const directory = await mkdtemp(join(tmpdir(), "gigmate-http-api-"));
 for (const name of [
   "environment",
+  "read-cache",
   "connection-api",
   "waha-live-api",
   "waha-sync-api",
@@ -26,6 +27,7 @@ for (const name of [
     },
   }).outputText;
   code = code
+    .replaceAll('"./read-cache.ts"', '"./read-cache.mjs"')
     .replaceAll('"./environment.ts"', '"./environment.mjs"')
     .replaceAll('"./connection-api"', '"./connection-api.mjs"')
     .replaceAll('"./waha-live-api"', '"./waha-live-api.mjs"');

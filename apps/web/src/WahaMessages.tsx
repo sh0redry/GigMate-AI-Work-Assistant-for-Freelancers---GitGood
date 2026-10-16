@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { privateReadDenied } from "./read-cache";
+import { useStableState as useState } from "./useStableState";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   synchronizationApi,
   type SourceGap,
@@ -46,6 +48,7 @@ export function WahaMessages({
     () => synchronizationApi(connection, csrf),
     [connection, csrf],
   );
+  const [readStale, setReadStale] = useState(false);
   const [chats, setChats] = useState<Choice[]>([]),
     [chat, setChat] = useState("");
   const [messages, setMessages] = useState<TimelineMessage[]>([]),
@@ -65,8 +68,11 @@ export function WahaMessages({
     } | null>(null);
   const report = useCallback(
     (e: unknown) => {
-      setMessages([]);
-      setCursor(null);
+      setReadStale(true);
+      if (privateReadDenied(e)) {
+        setMessages([]);
+        setCursor(null);
+      }
       const code = e instanceof Error ? e.message : "查询失败";
       setNotice(code);
       if (
@@ -88,6 +94,7 @@ export function WahaMessages({
         api.gaps(),
       ]);
       if (!active.current || initial !== epoch.current) return;
+      setReadStale(false);
       setChats(choices);
       setJobs(jobPage.items);
       setGaps(gapPage.items);
@@ -137,6 +144,7 @@ export function WahaMessages({
     setCursor(page.next_cursor);
   }
   async function start(issue?: Issue, gap?: SourceGap, retry?: SyncJob) {
+    if (readStale) return;
     if (!attempt.current) {
       const until = new Date(),
         since = new Date(until.getTime() - Number(days) * 86400000);
@@ -201,7 +209,7 @@ export function WahaMessages({
         </button>
         <button
           className="secondary"
-          disabled={busy}
+          disabled={readStale || busy}
           onClick={() => void refresh()}
         >
           刷新同步状态
@@ -262,7 +270,10 @@ export function WahaMessages({
         </ol>
       )}
       {cursor && (
-        <button disabled={busy} onClick={() => void action(() => load(true))}>
+        <button
+          disabled={readStale || busy}
+          onClick={() => void action(() => load(true))}
+        >
           加载更早消息
         </button>
       )}
@@ -278,7 +289,7 @@ export function WahaMessages({
           onSessionExpired={onSessionExpired}
         />
       )}
-      <fieldset disabled={busy || !enabled || !chat || waiting}>
+      <fieldset disabled={readStale || busy || !enabled || !chat || waiting}>
         <legend>近期历史导入</legend>
         <label>
           时间范围
@@ -340,7 +351,7 @@ export function WahaMessages({
               {j.skipped} · {labels[j.coverage]}
               <button
                 className="secondary"
-                disabled={busy}
+                disabled={readStale || busy}
                 onClick={() =>
                   void action(async () => {
                     const detail = await api.job(j.id);
@@ -373,7 +384,7 @@ export function WahaMessages({
                 )}
               {["pending", "running"].includes(j.state) && (
                 <button
-                  disabled={busy}
+                  disabled={readStale || busy}
                   onClick={() =>
                     void action(async () => {
                       await api.cancel(j.id);
@@ -403,7 +414,7 @@ export function WahaMessages({
             .map((i) => (
               <button
                 key={i.id}
-                disabled={busy}
+                disabled={readStale || busy}
                 onClick={() => void action(() => start(i))}
               >
                 补查 {new Date(i.started_at).toLocaleString()} 的故障时段
@@ -421,7 +432,9 @@ export function WahaMessages({
                 <li key={g.id}>
                   {labels[g.state]} · {new Date(g.observed_at).toLocaleString()}
                   <button
-                    disabled={busy || !enabled || !consent || waiting}
+                    disabled={
+                      readStale || busy || !enabled || !consent || waiting
+                    }
                     onClick={() => void action(() => start(undefined, g))}
                   >
                     查询来源快照，不重建修订

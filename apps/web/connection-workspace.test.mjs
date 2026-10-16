@@ -26,6 +26,8 @@ const modules = [
   "ChatChoices",
   "WahaMessages",
   "environment",
+  "read-cache",
+  "useStableState",
   "WahaMedia",
   "WahaSend",
   "connection-api",

@@ -1,3 +1,4 @@
+import { sessionFetch } from "./read-cache.ts";
 import type { components } from "./generated/api";
 import { apiBase } from "./environment.ts";
 import {
@@ -118,6 +119,8 @@ export function approvalsApi(
   fetcher: typeof fetch = fetch,
   providedStorage?: Storage | null,
 ) {
+  const cachedFetch = (url: string, options: RequestInit) =>
+    sessionFetch(url, options, fetcher);
   const base = apiBase();
   const request = workspaceApi(csrf, fetcher);
   const storageKey = `gigmate-approval-attempt:${base}:${accountId}`;
@@ -210,7 +213,7 @@ export function approvalsApi(
     let response: Response;
     let result: Detail<Action> | { error?: { code?: string } } | null;
     try {
-      response = await fetcher(
+      response = await cachedFetch(
         `${base}/actions/${encodeURIComponent(original.actionId)}/${original.operation}`,
         {
           method: "POST",

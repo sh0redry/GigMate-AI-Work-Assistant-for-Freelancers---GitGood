@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { privateReadDenied } from "./read-cache";
+import { useStableState as useState } from "./useStableState";
+import { useEffect, useMemo } from "react";
 import {
   allPages,
   workspaceApi,
@@ -39,10 +41,9 @@ export function ReviewWorkspace({
     [version, setVersion] = useState(0);
   useEffect(() => {
     const abort = new AbortController();
-    setLoading(true);
+    setLoading(!items.length && !orders.length);
     setError("");
-    setSelected(null);
-    setMessages([]);
+
     void (async () => {
       try {
         const [queue, list] = await Promise.all([
@@ -61,15 +62,22 @@ export function ReviewWorkspace({
           )
         ).flat();
         if (!abort.signal.aborted) {
+          setSelected((old) =>
+            old ? (queue.find((i) => i.id === old.id) ?? null) : null,
+          );
           setItems(queue);
           setOrders(list);
           setChanges(allChanges);
         }
       } catch (e) {
         if (!abort.signal.aborted) {
-          setItems([]);
-          setOrders([]);
-          setChanges([]);
+          if (privateReadDenied(e)) {
+            setItems([]);
+            setOrders([]);
+            setChanges([]);
+            setSelected(null);
+            setMessages([]);
+          }
           setError(e instanceof Error ? e.message : "复核数据暂不可用");
           if ((e as { code?: string })?.code === "UNAUTHENTICATED")
             onSessionExpired();
@@ -82,7 +90,6 @@ export function ReviewWorkspace({
   }, [api, version, onSessionExpired]);
   useEffect(() => {
     const abort = new AbortController();
-    setMessages([]);
     setContextError("");
     if (selected)
       void allPages<Message>(
@@ -106,7 +113,13 @@ export function ReviewWorkspace({
           }
         });
     return () => abort.abort();
-  }, [api, selected, onSessionExpired]);
+  }, [
+    api,
+    selected?.id,
+    selected?.current_context_version,
+    version,
+    onSessionExpired,
+  ]);
   return (
     <section aria-label="人工复核">
       <div className="page-heading">
@@ -155,7 +168,11 @@ export function ReviewWorkspace({
               <button
                 className="secondary"
                 aria-pressed={selected?.id === item.id}
-                onClick={() => setSelected(item)}
+                onClick={() => {
+                  if (selected?.conversation_id !== item.conversation_id)
+                    setMessages([]);
+                  setSelected(item);
+                }}
               >
                 查看这条会话原文
               </button>

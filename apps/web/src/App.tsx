@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useStableState as useState } from "./useStableState";
+import { useCallback, useEffect } from "react";
+import { clearReadCache, setReadScope } from "./read-cache";
 import { BusinessLoopWorkspace } from "./BusinessLoopWorkspace";
 import { ConnectionWorkspace } from "./ConnectionWorkspace";
 import { ApprovalsWorkspace } from "./ApprovalsWorkspace";
@@ -33,6 +35,8 @@ export function App() {
     [featureError, setFeatureError] = useState("");
   const clearSession = useCallback((message: string) => {
     clearConnectionAttempts();
+    setReadScope("");
+    clearReadCache();
     setLogin(null);
     setPassword("");
     setUsername("");
@@ -101,6 +105,7 @@ export function App() {
         username,
         password,
       });
+      setReadScope(result.data.account_id + ":" + result.data.csrf_token);
       setLogin(result.data);
       setPassword("");
       setView("business");
@@ -269,7 +274,7 @@ export function App() {
                 </div>
                 <WorkOrderWorkspace
                   {...props}
-                  key={login.account_id + selectedOrder}
+                  key={login.account_id}
                   accountId={login.account_id}
                   features={features}
                   initialSelected={selectedOrder}

@@ -1,5 +1,9 @@
 # GigMate frontend user guide
 
+## Refresh without losing your place
+
+The business workspace revalidates every five seconds while visible. Equal JSON snapshots keep their references, content, focus and review checkbox. Initial loading is separate from background refresh. Temporary network errors retain a clearly marked old view; writes stay blocked where current verification is needed. Expired sessions or revoked access clear private content. Server version checks still decide every mutation. QR and file downloads are excluded from cached reads. No chats are saved for offline use.
+
 ## API delivery update (2026-10-17)
 
 New-order and lifecycle operations now follow server capability flags; unsupported controls are hidden. The business-management extension is prepared for PR32 but stays absent until the server advertises completed security acceptance. See the [API inventory and release conditions](role-d-api-audit.md).

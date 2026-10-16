@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useStableState as useState } from "./useStableState";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { ChatChoices } from "./ChatChoices";
 import { WahaMessages } from "./WahaMessages";
 import {

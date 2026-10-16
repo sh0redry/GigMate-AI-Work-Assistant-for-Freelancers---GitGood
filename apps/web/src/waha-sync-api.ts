@@ -1,3 +1,4 @@
+import { sessionFetch } from "./read-cache.ts";
 import { apiBase } from "./environment.ts";
 import { ConnectionError } from "./connection-api";
 import type { components } from "./generated/api";
@@ -18,7 +19,7 @@ export function synchronizationApi(connection: string, csrf: string) {
   ): Promise<T> {
     let response: Response;
     try {
-      response = await fetch(base + path, {
+      response = await sessionFetch(base + path, {
         method: body ? "POST" : "GET",
         credentials: "same-origin",
         cache: "no-store",

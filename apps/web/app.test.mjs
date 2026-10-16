@@ -48,6 +48,8 @@ for (const name of [
   "approval-view",
   "business-store",
   "environment",
+  "read-cache",
+  "useStableState",
   "workspace-api",
   "work-order-view",
   "connection-api",

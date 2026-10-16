@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useStableState as useState } from "./useStableState";
 import type { LoopApi, LoopIntent } from "./business-loop-api";
 export function LoopCommand({
   api,
@@ -88,38 +88,67 @@ export function LoopCommand({
           </button>
         </div>
       )}
-      {api.pending?.intent.path === intent.path && (
-        <div className="notice stale">
-          <strong>有一笔原操作等待核对</strong>
-          <p>{api.pending.intent.review}</p>
-          <p>
-            编号 {api.pending.key}。不会自动重发；先读取当前数据，再核对原内容。
-          </p>
-          <label className="inline-check">
-            <input
-              type="checkbox"
-              checked={consent && review === JSON.stringify(api.pending.intent)}
-              onChange={(e) => {
-                setReview(JSON.stringify(api.pending!.intent));
-                setConsent(e.target.checked);
-              }}
-            />
-            我已核对原操作，按原编号查询／重试
-          </label>
-          <button
-            disabled={
-              disabled ||
-              busy ||
-              !consent ||
-              review !== JSON.stringify(api.pending.intent)
-            }
-            onClick={() => void submit(true)}
-          >
-            核对原编号
-          </button>
-        </div>
-      )}
       {api.error && <p role="alert">{api.error}</p>}
+    </div>
+  );
+}
+
+// A recovery entry remains available even after the successful operation removed
+// its original form (for example an order was archived before the response died).
+export function LoopRecovery({
+  api,
+  onDone,
+  onError,
+  onBusy,
+}: {
+  api: LoopApi;
+  onDone: () => void;
+  onError: (e: unknown) => void;
+  onBusy: (v: boolean) => void;
+}) {
+  const [review, setReview] = useState(""),
+    [busy, setBusy] = useState(false);
+  const pending = api.pending,
+    binding = JSON.stringify(pending);
+  if (!pending) return null;
+  async function retry() {
+    if (busy || review !== binding) return;
+    setBusy(true);
+    onBusy(true);
+    try {
+      await api.retry();
+      setReview("");
+      onDone();
+    } catch (e) {
+      onError(e);
+    } finally {
+      setBusy(false);
+      onBusy(false);
+    }
+  }
+  return (
+    <div className="notice stale" role="region" aria-label="原业务操作核对">
+      <h2>有一笔原操作等待核对</h2>
+      <p>{pending.intent.review}</p>
+      <small>原编号 {pending.key}</small>
+      <p>
+        先用页面刷新读取当前状态，再核对原内容。不会自动重发，也不会换编号提交新操作；排期设置仅查询保存结果。
+      </p>
+      <label className="inline-check">
+        <input
+          type="checkbox"
+          checked={review === binding}
+          disabled={busy}
+          onChange={(e) => setReview(e.target.checked ? binding : "")}
+        />
+        我已读取当前状态并核对原操作，确认按原编号核查
+      </label>
+      <button
+        disabled={busy || review !== binding}
+        onClick={() => void retry()}
+      >
+        核对原业务操作
+      </button>
     </div>
   );
 }

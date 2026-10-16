@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useStableState as useState } from "./useStableState";
+import { useCallback, useEffect, useMemo } from "react";
 import {
   businessLoopApi,
   type Loop,
   type LoopOrder,
 } from "./business-loop-api";
 import { BusinessLoopReview } from "./BusinessLoopReview";
-import { LoopCommand } from "./LoopCommand";
+import { LoopCommand, LoopRecovery } from "./LoopCommand";
 import { loopReady, type Features } from "./features";
 import {
   allPages,
@@ -91,7 +92,7 @@ function BusinessLoopContent({
   };
   useEffect(() => {
     const abort = new AbortController();
-    setLoading(true);
+    setLoading(!summary);
     setError("");
     void Promise.all([
       allPages<Order>(request, "/work-orders", abort.signal),
@@ -117,10 +118,12 @@ function BusinessLoopContent({
   useEffect(() => {
     const abort = new AbortController();
     setDetailReady(false);
-    setOrder(null);
-    setChecklist(null);
-    setSchedule(null);
-    setSource("");
+    if (order?.id !== id) {
+      setOrder(null);
+      setChecklist(null);
+      setSchedule(null);
+      setSource("");
+    }
     if (id)
       void (async () => {
         const [o, c, s, ch] = await Promise.all([
@@ -188,7 +191,7 @@ function BusinessLoopContent({
     : [];
   const common = {
     api,
-    expiresAt: checkedAt + 10000,
+    expiresAt: checkedAt + 300000,
     disabled: !detailReady,
     onDone: done,
     onError: report,
@@ -261,6 +264,12 @@ function BusinessLoopContent({
           ))}
         </section>
       )}
+      <LoopRecovery
+        api={api}
+        onDone={done}
+        onError={report}
+        onBusy={onBusyChange}
+      />
       <BusinessLoopReview
         api={api}
         csrf={csrf}
@@ -409,7 +418,7 @@ function BusinessLoopContent({
           <LoopCommand
             {...common}
             disabled={!settingsAt}
-            expiresAt={settingsAt + 10000}
+            expiresAt={settingsAt + 300000}
             label="核对排期设置"
             intent={{
               path: "/settings/schedule",

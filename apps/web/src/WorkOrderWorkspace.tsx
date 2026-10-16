@@ -1,8 +1,9 @@
+import { useStableState as useState } from "./useStableState";
 import { orderCommands } from "./order-command-api";
 import { OrderLifecycle } from "./OrderLifecycle";
 import { InspectOrderAttempt } from "./InspectOrderAttempt";
 import { unavailableFeatures, type Features } from "./features";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import {
   canConfirm,
   changePresentation,
@@ -114,7 +115,9 @@ export function WorkOrderWorkspace({
   useEffect(() => {
     store.start();
     if (initialSelected) store.select(initialSelected);
-    const timer = setInterval(() => store.poll(), 1500);
+    const timer = setInterval(() => {
+      if (!document.hidden) store.poll();
+    }, 5000);
     return () => {
       clearInterval(timer);
       store.dispose();

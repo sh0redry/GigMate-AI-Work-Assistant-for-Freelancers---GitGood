@@ -1,3 +1,4 @@
+import { sessionFetch } from "./read-cache.ts";
 import { apiBase } from "./environment.ts";
 import { workspaceApi, WorkspaceError } from "./workspace-api.ts";
 import { loopReady, type Features } from "./features.ts";
@@ -26,6 +27,8 @@ export function businessLoopApi(
   fetcher = fetch,
   supplied?: Storage,
 ) {
+  const cachedFetch = (url: string, options: RequestInit) =>
+    sessionFetch(url, options, fetcher);
   const read = workspaceApi(csrf, fetcher),
     name = `gigmate-loop-attempt:${apiBase()}:${account}`;
   let storage: Storage | undefined,
@@ -116,7 +119,7 @@ export function businessLoopApi(
         pending = null;
         return current.data;
       }
-      const response = await fetcher(apiBase() + saved.intent.path, {
+      const response = await cachedFetch(apiBase() + saved.intent.path, {
         method: saved.intent.method ?? "POST",
         credentials: "same-origin",
         cache: "no-store",

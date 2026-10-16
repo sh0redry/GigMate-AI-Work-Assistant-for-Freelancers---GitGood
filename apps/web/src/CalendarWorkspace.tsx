@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import { useStableState as useState } from "./useStableState";
+import { useEffect, useRef } from "react";
 import {
   allPages,
   type Calendar,

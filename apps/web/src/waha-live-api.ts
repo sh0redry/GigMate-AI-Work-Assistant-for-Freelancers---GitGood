@@ -1,3 +1,4 @@
+import { sessionFetch } from "./read-cache.ts";
 import { apiBase, attemptNamespace } from "./environment.ts";
 import {
   ConnectionError,
@@ -106,7 +107,7 @@ export function liveConnectionApi(csrf: string): ConnectionApi {
   ) {
     let value: Response;
     try {
-      value = await fetch(`${api}${path}`, {
+      value = await sessionFetch(`${api}${path}`, {
         method,
         credentials: "same-origin",
         cache: "no-store",

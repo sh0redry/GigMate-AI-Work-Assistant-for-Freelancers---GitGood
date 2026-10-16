@@ -22,6 +22,8 @@ for (const name of [
   "approvals-api",
   "approval-view",
   "environment",
+  "read-cache",
+  "useStableState",
   "workspace-api",
   "work-order-view",
 ]) {
@@ -243,4 +245,19 @@ test("rendering with a denied storage getter shows readable guidance, still load
     Object.defineProperty(globalThis, "sessionStorage", previous);
     globalThis.fetch = oldFetch;
   }
+});
+
+test("unchanged refresh preserves reviewed consent, focused checkbox and enabled action without a loading flash", async () => {
+  const f = fixture();
+  await mount(f);
+  await review();
+  const checkbox = document.querySelector('input[type="checkbox"]');
+  checkbox.focus();
+  await click("刷新审批");
+  assert.equal(document.querySelector('input[type="checkbox"]'), checkbox);
+  assert.equal(checkbox.checked, true);
+  assert.equal(document.activeElement, checkbox);
+  assert.equal(button("批准这份草稿").disabled, false);
+  assert.doesNotMatch(document.body.textContent, /正在读取审批数据/);
+  assert.equal(f.data.writes.length, 0);
 });

@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { stableShare, privateReadDenied } from "./read-cache";
+import { useStableState as useState } from "./useStableState";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   approvalsApi,
   type ApprovalsApi,
@@ -47,6 +49,9 @@ export function ApprovalsWorkspace({
   const [review, setReview] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
   const [reason, setReason] = useState("");
+  const lastData = useRef<ApprovalSnapshot | null>(null),
+    checkedAt = useRef(0),
+    hasData = useRef(false);
   const mounted = useRef(false);
   const writing = useRef(false);
   const generation = useRef(0);
@@ -57,14 +62,19 @@ export function ApprovalsWorkspace({
     readController.current?.abort();
     const controller = new AbortController();
     readController.current = controller;
-    setLoading(true);
+    setLoading(!hasData.current);
     try {
       const next = await api.load(selected, controller.signal);
       if (!mounted.current || generation.current !== id) return;
-      setData(next);
+      checkedAt.current = Date.now();
+      hasData.current = true;
+      const shared = stableShare(lastData.current, next);
+      if (shared !== lastData.current) setUpdatedAt(Date.now());
+      lastData.current = shared;
+      setData(shared);
       setStale(false);
       setError("");
-      setUpdatedAt(Date.now());
+
       if (!selected && next.action) setSelected(next.action.id);
     } catch (failure) {
       if (
@@ -73,6 +83,10 @@ export function ApprovalsWorkspace({
         controller.signal.aborted
       )
         return;
+      if (privateReadDenied(failure)) {
+        setData(null);
+        hasData.current = false;
+      }
       setStale(true);
       setReview(null);
       setConsent(false);
@@ -92,7 +106,9 @@ export function ApprovalsWorkspace({
   useEffect(() => {
     mounted.current = true;
     void refresh();
-    const poll = setInterval(() => void refresh(), 5000);
+    const poll = setInterval(() => {
+      if (!document.hidden) void refresh();
+    }, 5000);
     const clock = setInterval(() => setNow(Date.now()), 1000);
     return () => {
       mounted.current = false;
@@ -123,7 +139,11 @@ export function ApprovalsWorkspace({
   const detailReady = !!action && action.id === selected;
   const attempt = api.attempt();
   const fresh =
-    detailReady && !stale && !loading && !busy && now - updatedAt < 10000;
+    detailReady &&
+    !stale &&
+    !loading &&
+    !busy &&
+    now - checkedAt.current < 10000;
   const reviewed = fresh && review === binding && consent;
   const approveBlocked = data ? approveProblem(data, now) : "请先读取草稿。";
   const reissueBlocked = data ? reissueProblem(data) : "请先读取草稿。";

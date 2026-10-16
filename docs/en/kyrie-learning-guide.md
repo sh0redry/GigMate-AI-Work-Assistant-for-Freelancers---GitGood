@@ -1,5 +1,9 @@
 # Kyrie's GigMate learning guide: start from zero
 
+## Cache: keep your notebook open
+
+Imagine leaving the current page of your notebook open while asking the office “has this changed?”. An ETag is the office’s fingerprint of the current answer. A 304 says “same answer”; a 200 brings the new answer. We still ask the office and it still checks who you are. The browser keeps the notebook only in this login’s memory, clears it on account changes and never treats an offline old page as permission to save. The backend still reads and authorizes before comparing; this reduces transfer and UI replacement, not all database work. `stableShare` reuses unchanged branches, like replacing one sticky note without tearing out the entire page.
+
 ## Today: a menu is a promise
 
 An API is a service window: the frontend submits a form, the backend checks permission and saves it. A type describes the form; it does not prove that the window is open. A capability flag is a sign provided by the server. This version prepares the PR32 forms but waits for the server to say both “implemented” and “security accepted”. You cannot open that window from a browser switch. See the [actual route inventory](role-d-api-audit.md).

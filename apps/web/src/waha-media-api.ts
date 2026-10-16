@@ -1,3 +1,4 @@
+import { sessionFetch } from "./read-cache.ts";
 import { apiBase } from "./environment.ts";
 import { ConnectionError } from "./connection-api";
 import type { components } from "./generated/api";
@@ -13,7 +14,7 @@ export function mediaApi(connection: string, csrf: string) {
   async function response(path: string, body?: object, key?: string) {
     let value: Response;
     try {
-      value = await fetch(base + path, {
+      value = await sessionFetch(base + path, {
         method: body ? "POST" : "GET",
         credentials: "same-origin",
         cache: "no-store",

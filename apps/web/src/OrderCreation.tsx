@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { privateReadDenied } from "./read-cache";
+import { useStableState as useState } from "./useStableState";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   allPages,
   workspaceApi,
@@ -65,14 +67,7 @@ export function OrderCreation({
   );
   useEffect(() => {
     const abort = new AbortController();
-    setLoading(true);
-    setReview("");
-    setConsent(false);
-    setMessages([]);
-    setContext(0);
-    setScheduleSources([]);
-    setAddressSources([]);
-    setAdditional(false);
+    setLoading(!conversations.length);
     setError("");
     void (async () => {
       try {
@@ -108,8 +103,14 @@ export function OrderCreation({
         }
       } catch (e) {
         if (!abort.signal.aborted) {
-          setConversations([]);
-          setOrders([]);
+          setReview("");
+          setConsent(false);
+          if (privateReadDenied(e)) {
+            setConversations([]);
+            setOrders([]);
+            setMessages([]);
+            setContext(0);
+          }
           report(e);
         }
       } finally {

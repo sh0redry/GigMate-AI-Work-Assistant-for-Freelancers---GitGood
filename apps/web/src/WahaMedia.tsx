@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { privateReadDenied } from "./read-cache";
+import { useStableState as useState } from "./useStableState";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { mediaApi, type Attachment, type MediaJob } from "./waha-media-api";
 import { ConnectionError } from "./connection-api";
 
@@ -45,6 +47,7 @@ export function WahaMedia({
   onSessionExpired?: () => void;
 }) {
   const api = useMemo(() => mediaApi(connection, csrf), [connection, csrf]);
+  const [readStale, setReadStale] = useState(false);
   const [open, setOpen] = useState(false),
     [busy, setBusy] = useState(false),
     [notice, setNotice] = useState("");
@@ -79,12 +82,19 @@ export function WahaMedia({
   const report = useCallback(
     (error: unknown) => {
       if (!active.current) return;
-      clearPreview();
-      setAsset(null);
-      setHandoff(null);
+      setReadStale(true);
+      if (privateReadDenied(error)) {
+        clearPreview();
+        setAsset(null);
+        setHandoff(null);
+      }
       const code =
         error instanceof ConnectionError ? error.code : "MEDIA_UNAVAILABLE";
-      setNotice(errors[code] ?? code);
+      setNotice(
+        code === "NETWORK_ERROR"
+          ? "连接暂时失败，下面保留上次读取的内容，暂不提交新操作。"
+          : (errors[code] ?? code),
+      );
       if (code === "UNAUTHENTICATED") onSessionExpired?.();
     },
     [clearPreview, onSessionExpired],
@@ -124,6 +134,8 @@ export function WahaMedia({
       ? await api.job(current.latest_job_id)
       : null;
     if (active.current && generation === epoch.current) {
+      setReadStale(false);
+      setNotice((old) => (old.startsWith("连接暂时失败") ? "" : old));
       setCaps(capabilities);
       setAsset(current);
       setHandoff((previous) =>
@@ -192,6 +204,7 @@ export function WahaMedia({
     }
   }
   async function start() {
+    if (readStale) return;
     attempt.current ??= {
       key: crypto.randomUUID(),
       value: {
@@ -320,7 +333,10 @@ export function WahaMedia({
             </button>
           </fieldset>
           {attempt.current && !job && (
-            <button disabled={busy} onClick={() => void act(start)}>
+            <button
+              disabled={readStale || busy}
+              onClick={() => void act(start)}
+            >
               使用原请求核对（保留原下载和模型同意选项）
             </button>
           )}
@@ -333,7 +349,7 @@ export function WahaMedia({
           )}
           {job && ["pending", "running", "retry_wait"].includes(job.state) && (
             <button
-              disabled={busy}
+              disabled={readStale || busy}
               onClick={() =>
                 void act(async () => {
                   const current = await api.cancel(job.id);
@@ -346,7 +362,7 @@ export function WahaMedia({
           )}
           {job?.state === "result_unknown" && (
             <button
-              disabled={busy}
+              disabled={readStale || busy}
               onClick={() =>
                 void act(async () => {
                   const current = await api.reconcile(job.id);
@@ -376,7 +392,10 @@ export function WahaMedia({
                 {asset.source_fingerprint.slice(0, 12)}
               </p>
               {asset.preview_available && (
-                <button disabled={busy} onClick={() => void act(preview)}>
+                <button
+                  disabled={readStale || busy}
+                  onClick={() => void act(preview)}
+                >
                   预览原附件
                 </button>
               )}
@@ -449,7 +468,7 @@ export function WahaMedia({
                     />
                   </label>
                   <button
-                    disabled={busy || !enabled}
+                    disabled={readStale || busy || !enabled}
                     onClick={() =>
                       void act(async () => {
                         const current = await api.review(asset, note);
@@ -467,7 +486,9 @@ export function WahaMedia({
                     </p>
                   )}
                   <button
-                    disabled={busy || !enabled || !asset.reviewed_at}
+                    disabled={
+                      readStale || busy || !enabled || !asset.reviewed_at
+                    }
                     onClick={() =>
                       void act(async () => {
                         const generation = epoch.current;

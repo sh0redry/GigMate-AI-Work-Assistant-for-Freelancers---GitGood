@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useStableState as useState } from "./useStableState";
+import { useEffect } from "react";
 import type { Choice } from "./connection-api";
 import { choiceExpired } from "./connection-state";
 import { choicePage, type ChatFilter } from "./chat-choices";
