@@ -112,10 +112,19 @@ _DEEPSEEK_DEFAULT_ENDPOINT = _VENDOR_DEFAULT_ENDPOINTS["deepseek"]
 _REQUEST_TIMEOUT_S = 30.0
 _TOTAL_DEADLINE_S = 45.0
 _MAX_RETRIES = 1
-# An attempt that cannot be granted at least this much of the remaining total
-# budget is not issued at all: a request into a guaranteed timeout only holds
-# the worker's lock and burns the deadline for no possible result.
+# An attempt that cannot be granted at least this much read budget is not
+# issued at all: a request into a guaranteed timeout only holds the worker's
+# lock and burns the deadline for no possible result.
 _MIN_REQUEST_TIMEOUT_S = 1.0
+# Review fix P2-1 (round 2): ``httpx`` applies one timeout value to *each*
+# operation it performs, so a scalar timeout never bounded an attempt — a
+# request that spent 30 s connecting and then 30 s reading was "within" a
+# 30 s timeout and one extraction could run 60 s against the declared 45 s
+# deadline. The remaining budget is therefore split across the operations
+# (see :func:`_attempt_timeout`) so their **sum** cannot exceed it.
+_CONNECT_TIMEOUT_S = 5.0
+_WRITE_TIMEOUT_S = 5.0
+_POOL_TIMEOUT_S = 1.0
 
 # Header carrying the persistent correlation id (gate 3). The same value is
 # persisted on the ``model_call_traces`` row so an operator can match a trace
@@ -205,6 +214,55 @@ def _is_transient(exc: BaseException) -> bool:
     if isinstance(exc, httpx.HTTPStatusError):
         return exc.response.status_code >= 500
     return False
+
+
+def _attempt_timeout(remaining: float) -> httpx.Timeout | None:
+    """Split ``remaining`` across the ``httpx`` operations of one attempt.
+
+    Review fix P2-1 (round 2). ``httpx.Client(timeout=scalar)`` copies that
+    scalar into *each* of connect / read / write / pool, so one request could
+    legally spend the whole timeout on connecting and then the whole timeout
+    again on reading — the declared ``_TOTAL_DEADLINE_S`` was only checked
+    between attempts, never inside one, and a 30 s timeout plus a retry ran
+    60 s. The remaining budget is now divided between the operations, so the
+    largest wall time one attempt can spend is the remaining budget itself:
+
+    * the fixed per-operation ceilings (:data:`_CONNECT_TIMEOUT_S`,
+      :data:`_WRITE_TIMEOUT_S`, :data:`_POOL_TIMEOUT_S`) are capped further
+      when the remaining budget is small;
+    * the read budget is what is left after those three, still capped by
+      :data:`_REQUEST_TIMEOUT_S`;
+    * an attempt whose read budget would fall below
+      :data:`_MIN_REQUEST_TIMEOUT_S` is not issued at all (``None``), because
+      a request into a guaranteed timeout only holds the worker's lock.
+    """
+    if remaining <= 0:
+        return None
+    pool = min(_POOL_TIMEOUT_S, remaining / 10.0)
+    connect = min(_CONNECT_TIMEOUT_S, remaining / 4.0)
+    write = min(_WRITE_TIMEOUT_S, remaining / 4.0)
+    read = min(_REQUEST_TIMEOUT_S, remaining - pool - connect - write)
+    if read < _MIN_REQUEST_TIMEOUT_S:
+        return None
+    return httpx.Timeout(connect=connect, read=read, write=write, pool=pool)
+
+
+def _timeout_budget_s(timeout: httpx.Timeout | float | None) -> float:
+    """Return the largest wall time ``timeout`` can spend (its components' sum)."""
+    if timeout is None:
+        return 0.0
+    if isinstance(timeout, httpx.Timeout):
+        return sum(
+            value
+            for value in (
+                timeout.connect,
+                timeout.read,
+                timeout.write,
+                timeout.pool,
+            )
+            if value is not None
+        )
+    return float(timeout)
 
 
 def _stable_http_code(exc: BaseException) -> str:
@@ -334,6 +392,19 @@ def _value_kind(value: object) -> str | None:
     return kind if isinstance(kind, str) else None
 
 
+def _carries_a_date(value: object) -> bool:
+    """Whether a date-bearing field value states a date (gate 4, round 2).
+
+    A structured value states a date through its contract ``kind``; a scalar
+    value (``str`` / ``int`` / ``float`` / ``bool``) states one whenever it is
+    not ``None``, because the contract lets a ``deadline`` carry free text and
+    "明天下午三点" is exactly the relative date the guard exists to stop.
+    """
+    if value is None:
+        return False
+    return _value_kind(value) in _DATE_BEARING_KINDS or isinstance(value, (str, int, float, bool))
+
+
 def _cost_configuration_problem(
     vendor: str, model: str, env: Mapping[str, str] | None = None
 ) -> str | None:
@@ -352,8 +423,14 @@ def _cost_configuration_problem(
         return tokens_problem
     budget_raw = get(_COST_BUDGET_ENV, _DEFAULT_COST_BUDGET_USD)
     try:
-        Decimal(budget_raw)
+        budget = Decimal(budget_raw)
     except (InvalidOperation, ValueError):
+        return "llm:cost-budget-invalid"
+    # Review fix P2-2 (round 2): a *negative* budget is nonsense and must be
+    # reported at startup. A budget of exactly zero is left to ``_cost_plan``,
+    # which refuses the call with ``llm:cost-budget-exceeded`` — "no money may
+    # be spent" is a budget nothing fits into, not a malformed setting.
+    if budget < 0:
         return "llm:cost-budget-invalid"
     in_override = get(_COST_INPUT_ENV)
     out_override = get(_COST_OUTPUT_ENV)
@@ -864,6 +941,8 @@ class LLMProvider:
 
         * the budget covers *every* attempt of one extraction, so a single
           attempt may only spend its share of it;
+        * a non-positive budget refuses every attempt outright — "no money may
+          be spent" is not a budget a zero-priced worst case may fit into;
         * the worst case is the estimated input plus the configured output
           ceiling — a call whose worst case does not fit its share is never
           issued (``llm:cost-budget-exceeded``), and a prompt that is itself
@@ -876,6 +955,13 @@ class LLMProvider:
         A ``None`` note means the call may be issued with the returned
         ``max_tokens``.
         """
+        # Review fix P2-2 (round 2): a non-positive budget means no call may
+        # be paid for, whatever the price list says. Checking it here (and not
+        # only through the worst-case comparison below) is what stops a
+        # zero-priced vendor from "fitting" a zero budget and reaching the
+        # network.
+        if _cost_budget() <= 0:
+            return "llm:cost-budget-exceeded", 0
         pricing = _resolve_pricing(self._configured_provider or "", self._configured_model or "")
         if pricing is None:
             return "llm:cost-pricing-missing", 0
@@ -1088,11 +1174,13 @@ class LLMProvider:
         * the **total** wall time is bounded by :data:`_TOTAL_DEADLINE_S`, so a
           slow vendor cannot hold the worker's lock for the full per-attempt
           timeout plus an unbounded backoff. Each attempt is granted only the
-          *remaining* budget as its own timeout
-          (``min(_REQUEST_TIMEOUT_S, remaining)``) instead of asking for the
-          full per-attempt timeout again;
-        * an attempt that would have less than
-          :data:`_MIN_REQUEST_TIMEOUT_S` left is not issued, and a response
+          *remaining* budget, and that budget is split across the ``httpx``
+          operations by :func:`_attempt_timeout` so the **sum** of connect /
+          write / read / pool cannot exceed it — a scalar ``httpx`` timeout
+          bounds each operation separately, which is how a 30 s timeout plus
+          one retry used to run 60 s against the declared 45 s deadline;
+        * an attempt whose read budget would fall below
+          :data:`_MIN_REQUEST_TIMEOUT_S` is not issued, and a response
           that only arrives after the deadline is refused with
           :class:`_TotalDeadlineExceeded` — a late success is worthless once
           the worker's lease has run out;
@@ -1136,12 +1224,14 @@ class LLMProvider:
         last_exc: Exception | None = None
         for attempt in range(_MAX_RETRIES + 1):
             # Review fix P2-1: the *remaining* total budget bounds this
-            # attempt. Without this the retry would ask for the full 30 s
-            # again and the extraction could overrun the declared deadline.
+            # attempt, and (round 2) that budget is split across the httpx
+            # operations so their sum — not each one separately — is what is
+            # granted. Without this the retry would ask for the full 30 s
+            # again and a single attempt could spend it twice.
             remaining = _TOTAL_DEADLINE_S - (_now() - began)
-            if remaining <= _MIN_REQUEST_TIMEOUT_S:
+            timeout = _attempt_timeout(remaining)
+            if timeout is None:
                 raise _TotalDeadlineExceeded()
-            timeout = min(_REQUEST_TIMEOUT_S, remaining)
             try:
                 with self._client_factory(timeout=timeout) as client:
                     response = client.post(url, json=body, headers=headers)
@@ -1163,7 +1253,7 @@ class LLMProvider:
                 last_exc = exc
                 retryable = _is_transient(exc)
                 remaining = _TOTAL_DEADLINE_S - (_now() - began)
-                if attempt == _MAX_RETRIES or not retryable or remaining <= _MIN_REQUEST_TIMEOUT_S:
+                if attempt == _MAX_RETRIES or not retryable or _attempt_timeout(remaining) is None:
                     raise
                 _log.warning(
                     "LLM call attempt %d/%d failed (%s); retrying within the "
@@ -1266,10 +1356,17 @@ class LLMProvider:
             if data.get("base_work_order_version") != request.base_work_order_version:
                 return "llm:response-provenance-failed:base_work_order_version"
         # P2-3: the context version is server-owned; a different value is a
-        # mismatch, not something to overwrite silently.
+        # mismatch, not something to overwrite silently. Round 2 also refuses
+        # an echoed value that is merely *equal* after coercion — ``7.0`` and
+        # ``True`` compare equal to ``7`` / ``1`` in Python, and a value the
+        # request did not send is still the model speaking about a version it
+        # was never given.
         declared_context = data.get("base_context_version")
-        if declared_context is not None and declared_context != request.context_version:
-            return "llm:response-provenance-failed:base_context_version"
+        if declared_context is not None:
+            if not isinstance(declared_context, int) or isinstance(declared_context, bool):
+                return "llm:response-provenance-failed:base_context_version"
+            if declared_context != request.context_version:
+                return "llm:response-provenance-failed:base_context_version"
         changes = data.get("changes")
         if changes is not None and not isinstance(changes, list):
             return "llm:response-provenance-failed:changes-shape"
@@ -1286,6 +1383,16 @@ class LLMProvider:
                     return "llm:response-provenance-failed:source-message-id"
                 if source.get("message_revision") != request.message_revision:
                     return "llm:response-provenance-failed:source-message-revision"
+        # P2-4 (round 2): every other collection the module reads is
+        # type-checked here as well, before Pydantic sees it. A wrong shape is
+        # then reported as a provenance code instead of a schema one, and no
+        # code path iterates a value the model chose the type of.
+        candidates = data.get("candidates")
+        if candidates is not None and not isinstance(candidates, list):
+            return "llm:response-provenance-failed:candidates-shape"
+        questions = data.get("unresolved_questions")
+        if questions is not None and not isinstance(questions, list):
+            return "llm:response-provenance-failed:unresolved-questions-shape"
         # Batch 3: a new-work-order suggestion carries critical fields too, so
         # every suggested value is bound to the same source message that was
         # issued with this request. Without this check a compromised model could
@@ -1310,6 +1417,12 @@ class LLMProvider:
                         return "llm:response-provenance-failed:suggested-source-message-id"
                     if source.get("message_revision") != request.message_revision:
                         return "llm:response-provenance-failed:suggested-source-message-revision"
+            missing = suggestion.get("missing_fields")
+            if missing is not None and not isinstance(missing, list):
+                return "llm:response-provenance-failed:missing-fields-shape"
+            suggested_questions = suggestion.get("unresolved_questions")
+            if suggested_questions is not None and not isinstance(suggested_questions, list):
+                return "llm:response-provenance-failed:suggested-questions-shape"
         return None
 
     def _time_basis_problem(self, proposal, request: ExtractionRequest) -> str | None:
@@ -1327,6 +1440,15 @@ class LLMProvider:
         ``InstantDeadline`` (``kind: instant``, the "明天交稿" shape) through
         untouched, so the most common relative date a customer types was the
         one the guard missed. Both the old and the new value are checked.
+
+        Review fix P2-5 (round 2): the guard is keyed on the *field*, not only
+        on the value shape. ``FieldValue`` also admits plain strings and
+        numbers, so a model that wrote ``"明天下午三点"`` — or "2026-10-18"
+        without a timezone — into a ``deadline`` / ``schedule`` change still
+        produced a date the customer never stated, and the kind-based check
+        let it through as ``matched``. Any non-null value on a date-bearing
+        field now needs the basis; only a missing value (``None``, the
+        "customer has not said yet" case) is exempt.
         """
         basis, invalid = self._time_basis(request)
         if basis is not None:
@@ -1335,7 +1457,7 @@ class LLMProvider:
             if change.field not in _DATE_BEARING_FIELDS:
                 continue
             for value in (change.old_value, change.new_value):
-                if _value_kind(value) in _DATE_BEARING_KINDS:
+                if _carries_a_date(value):
                     return invalid or "llm:time-basis-missing:schedule"
         # Batch 3: the same rule guards a new-work-order suggestion. A relative
         # date inside a suggestion ("下星期三") is exactly as unfounded as one
@@ -1346,7 +1468,7 @@ class LLMProvider:
             for suggested in suggestion.fields:
                 if suggested.field not in _DATE_BEARING_FIELDS:
                     continue
-                if _value_kind(suggested.value) in _DATE_BEARING_KINDS:
+                if _carries_a_date(suggested.value):
                     return invalid or "llm:time-basis-missing:schedule"
         return None
 

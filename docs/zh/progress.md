@@ -1,5 +1,11 @@
 # 已完成工作与验证记录
 
+## Role B 真实启用前评审修正第二轮（PR #31） — 2026-10-17
+
+[PR #31](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/pull/31) 的五个评审线程在分支 `william/role-b-preactivation-gates` 上用假传输与假时钟重新复现，证明第一批修正对其中四项并不充分；五项全部重新修正，**仍不翻接缝**（`_SKELETON_SEAM = True`、媒体 `_ENABLED = False`）：(1) 剩余时限预算改为分摊到 `httpx` 各操作 —— 标量超时是按操作分别套用的，单次尝试可以先花 30 秒连接再花 30 秒读取，假时钟实测由 **60.0 秒**降到 **45.0 秒**；(2) 非正费用预算在任何计价算术**之前**即拒绝，堵住「单价为 0 时 `0 > 0` 为假、零预算仍发请求」的角落；(3) 模型回显的 `base_context_version` 必须是与请求相等的 `int`（且非 `bool`），因为 `7.0 == 7`；(4) `candidates` / `unresolved_questions` 及建议块的 `missing_fields` / `unresolved_questions` 与已有的 `changes` / `sources` 一样，在 Pydantic 之前先做形状检查；(5) 时间依据守卫改为按**字段**判定，`schedule` / `deadline` 上以自由文本或裸数字写出的日期在无依据时不再被晋升为 `matched`。完整理由与新的稳定码见 [role-b-extraction.md](role-b-extraction.md)。无迁移、契约或 API 表面变更。
+
+全部使用合成夹具：`apps/backend/tests/test_extraction_gates.py` **62 通过**（本轮之前 39）；启用前套件（gates + batch2 + batch3 + batch3_provider + extraction）**169 通过**；后端全套 **829 通过／25 跳过／12 失败**，12 项失败是原生 macOS 上既有的 PDF 拒绝（`MEDIA_PDF_LIMIT_UNAVAILABLE`），未改动的 main 上同样失败。Ruff 检查／格式 **105 文件**、`scripts/export_contracts.py --check` 一致、`check_baseline.py` **84 Markdown／993 本地链接**、Alembic 唯一 head `0018_model_call_cost` 且 `alembic check` 干净、离线评测 **7 通过／0 失败**（prompt 1.2.0）。没有真实模型、密钥、供应商请求、网络调用或部署操作。未验证：PostgreSQL 并发／行锁（未配 `TEST_DATABASE_URL`）、Linux 容器内 PDF 复跑，以及真实供应商是否尊重分摊后的超时。
+
 ## PR #31 分支合并 main `e912977` — 2026-10-17
 
 把 `origin/main` `e912977`（#26/#27/#30：C 的工单状态命令、D-04 交付前端、Andy 的来源/列表评审修正）合入 `william/role-b-preactivation-gates` 以解除 PR #31 的冲突；迁移未动，唯一 head 仍为 `0018_model_call_cost`。冲突处理：`apps/backend/src/gigmate/worker.py` 两侧在同一位置各加了一条导入，两条都保留（batch 2 启动审计用的 `validate_provider_config` 与 C 的开放工单过滤用的 `CLOSED`，各自调用点都在）；两份进度文档两侧都在顶部追加条目，条目全部保留、PR #31 评审修正条目置顶；`apps/web/src/generated/api.d.ts` 通过 `npm run generate:api` 从合并后的 `contracts/openapi.json` 重新生成（不手改生成文件）。合并后证据（全部合成／本地）：启用前套件 **106 通过**；后端全套 **808 通过／25 跳过／12 失败**（12 项仍是既有 macOS PDF 拒绝 `MEDIA_PDF_LIMIT_UNAVAILABLE`）；前端 `check:api`、`format:check`、`build`（node 测试 + `tsc --noEmit` + Vite）全部通过；Ruff 检查／格式 **107 文件**；`check_baseline.py` **84 Markdown／993 本地链接**；`alembic check` 干净；离线评测 **7 通过／0 失败**。未验证：PostgreSQL 并发／行锁、Linux 容器内 PDF 复跑、真实供应商行为。

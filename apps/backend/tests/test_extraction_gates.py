@@ -156,13 +156,19 @@ class _FakeClock:
 
 
 def _timeout_client(clock: _FakeClock):
-    """A client that always times out, spending exactly the timeout it was given."""
+    """A client that always times out, spending the whole budget it was granted.
+
+    The budget is the **sum** of the ``httpx`` timeout components: a scalar
+    timeout is copied into every operation, so granting "30 s" used to allow
+    30 s of connecting plus 30 s of reading inside one attempt.
+    """
 
     class _Client:
         requests: list[dict] = []
 
         def __init__(self, **kwargs):
             self.timeout = kwargs.get("timeout")
+            self.budget = llm_module._timeout_budget_s(self.timeout)
 
         def __enter__(self):
             return self
@@ -171,8 +177,8 @@ def _timeout_client(clock: _FakeClock):
             return False
 
         def post(self, url, json=None, headers=None):
-            type(self).requests.append({"timeout": self.timeout})
-            clock.advance(self.timeout or 0.0)
+            type(self).requests.append({"timeout": self.timeout, "budget": self.budget})
+            clock.advance(self.budget)
             raise httpx.ReadTimeout("timed out")
 
     return _Client
@@ -372,6 +378,69 @@ def test_gate1_server_context_version_is_always_bound(monkeypatch):
     assert outcome.proposal.base_context_version == 7
 
 
+@pytest.mark.parametrize("echoed", [7.0, "7", True, "7.0"])
+def test_gate1_coerced_context_version_is_refused(monkeypatch, echoed):
+    """Review round 2: a value that merely *compares* equal is still the model's.
+
+    ``7.0 == 7`` and ``True == 1`` in Python, so an equality check alone let a
+    non-integer echo through; the request's context version is an integer and
+    anything else the model says about it is a mismatch.
+    """
+    outcome, _ = _run(
+        monkeypatch,
+        _schedule_payload(base_context_version=echoed),
+        _grounded_request(context_version=7),
+    )
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert outcome.notes == ("llm:response-provenance-failed",)
+    assert outcome.refused_reason == "llm:response-provenance-failed:base_context_version"
+
+
+@pytest.mark.parametrize(
+    ("shape", "expected"),
+    [
+        ("candidates", "llm:response-provenance-failed:candidates-shape"),
+        ("unresolved_questions", "llm:response-provenance-failed:unresolved-questions-shape"),
+    ],
+)
+def test_gate1_proposal_level_collections_are_shape_checked(monkeypatch, shape, expected):
+    """Review round 2: every collection the guard reads is checked before use."""
+    payload = _schedule_payload()
+    payload[shape] = 17
+    outcome, _ = _run(monkeypatch, payload, _grounded_request())
+    assert outcome.notes == ("llm:response-provenance-failed",)
+    assert outcome.refused_reason == expected
+
+
+@pytest.mark.parametrize(
+    ("shape", "expected"),
+    [
+        ("missing_fields", "llm:response-provenance-failed:missing-fields-shape"),
+        ("unresolved_questions", "llm:response-provenance-failed:suggested-questions-shape"),
+    ],
+)
+def test_gate1_suggestion_collections_are_shape_checked(monkeypatch, shape, expected):
+    payload = {
+        "assignment": "needs_review",
+        "work_order_id": None,
+        "base_work_order_version": None,
+        "candidates": [],
+        "changes": [],
+        "unresolved_questions": [],
+        "new_work_order": {
+            "summary": "new job",
+            "fields": [],
+            "missing_fields": [],
+            "unresolved_questions": [],
+            "confidence": 0.5,
+        },
+    }
+    payload["new_work_order"][shape] = 17
+    outcome, _ = _run(monkeypatch, payload, _grounded_request())
+    assert outcome.notes == ("llm:response-provenance-failed",)
+    assert outcome.refused_reason == expected
+
+
 @pytest.mark.parametrize("changes", [17, True, "not-a-list"])
 def test_gate1_non_list_changes_are_refused(monkeypatch, changes):
     """Legal JSON that is not a list must not raise out of ``propose``."""
@@ -424,6 +493,36 @@ def test_gate2_non_url_endpoint_is_refused(monkeypatch):
     provider = _gate_open_provider(_boom_client())
     outcome = provider.propose(_grounded_request())
     assert outcome.notes == ("llm:endpoint-invalid",)
+
+
+@pytest.mark.parametrize("zero_priced", [False, True])
+def test_gate2_zero_budget_never_reaches_the_vendor(monkeypatch, zero_priced):
+    """Review round 2: "no money may be spent" is not a budget to fit into.
+
+    A zero-priced worst case (a free local model, or an override of ``0``)
+    compared as "within" a zero budget, so the call was still issued; the
+    ceiling now refuses a non-positive budget before any pricing arithmetic.
+    ``_boom_client`` turns an attempted call into a test failure.
+    """
+    extra = {}
+    if zero_priced:
+        extra = {
+            "GIGMATE_LLM_COST_INPUT_USD_PER_1K": "0",
+            "GIGMATE_LLM_COST_OUTPUT_USD_PER_1K": "0",
+        }
+    _configure(monkeypatch, GIGMATE_LLM_COST_BUDGET_USD="0", **extra)
+    provider = _gate_open_provider(_boom_client())
+    outcome = provider.propose(_grounded_request())
+    assert outcome.notes == ("llm:cost-budget-exceeded",)
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert "llm:cost-budget-exceeded" in (outcome.refused_reason or "")
+
+
+def test_gate2_negative_budget_is_reported_by_the_startup_audit(monkeypatch):
+    _configure(monkeypatch, GIGMATE_LLM_COST_BUDGET_USD="-0.01")
+    assert "llm:cost-budget-invalid" in llm_module.validate_provider_config()
+    _configure(monkeypatch, GIGMATE_LLM_COST_BUDGET_USD="0")
+    assert "llm:cost-budget-invalid" not in llm_module.validate_provider_config()
 
 
 def test_gate2_known_vendor_uses_its_own_default_endpoint(monkeypatch):
@@ -534,10 +633,41 @@ def test_gate3_each_attempt_inherits_the_remaining_deadline(monkeypatch):
     client = _timeout_client(clock)
     outcome = _run_with_clock(monkeypatch, clock, client)
     assert len(client.requests) == 2
-    assert client.requests[0]["timeout"] == pytest.approx(30.0)
-    assert client.requests[1]["timeout"] == pytest.approx(15.0)
+    assert client.requests[0]["budget"] == pytest.approx(41.0)
+    assert client.requests[1]["budget"] == pytest.approx(4.0)
+    assert sum(request["budget"] for request in client.requests) == pytest.approx(
+        llm_module._TOTAL_DEADLINE_S
+    )
     assert clock.value - 1000.0 == pytest.approx(45.0)
     assert outcome.refused_reason == "llm:http-failed:timeout"
+
+
+def test_gate3_one_attempt_cannot_spend_the_budget_twice(monkeypatch):
+    """Review round 2: a scalar timeout bounds each httpx operation separately.
+
+    ``httpx`` copies one timeout value into connect / read / write / pool, so a
+    request granted "30 s" could spend 30 s connecting and then 30 s reading.
+    The granted components must therefore sum to at most the remaining budget.
+    """
+    clock = _FakeClock()
+    client = _timeout_client(clock)
+    _run_with_clock(monkeypatch, clock, client)
+    for request in client.requests:
+        timeout = request["timeout"]
+        assert isinstance(timeout, httpx.Timeout)
+        assert request["budget"] <= llm_module._TOTAL_DEADLINE_S
+        assert timeout.read is not None and timeout.read <= llm_module._REQUEST_TIMEOUT_S
+
+
+def test_gate3_attempt_grant_shrinks_with_the_remaining_budget(monkeypatch):
+    """A small remaining budget can never be granted twice over."""
+    assert llm_module._timeout_budget_s(llm_module._attempt_timeout(45.0)) <= 45.0
+    assert llm_module._timeout_budget_s(llm_module._attempt_timeout(10.0)) <= 10.0
+    assert llm_module._timeout_budget_s(llm_module._attempt_timeout(3.0)) <= 3.0
+    # Below the minimum read budget no attempt is issued at all.
+    assert llm_module._attempt_timeout(2.0) is None
+    assert llm_module._attempt_timeout(0.0) is None
+    assert llm_module._attempt_timeout(-1.0) is None
 
 
 def test_gate3_no_request_is_issued_when_the_budget_is_already_gone(monkeypatch):
@@ -593,6 +723,86 @@ def test_gate4_instant_deadline_with_a_time_basis_is_accepted(monkeypatch):
     outcome, _ = _run(monkeypatch, _instant_payload(), _grounded_request())
     assert outcome.notes == ("llm:matched",)
     assert outcome.refused_reason is None
+
+
+@pytest.mark.parametrize("value", ["明天下午三点", "2026-10-18", 7, True])
+def test_gate4_scalar_date_value_without_a_basis_is_refused(monkeypatch, value):
+    """Review round 2: a date-bearing field is guarded by field, not by shape.
+
+    ``FieldValue`` also admits free text and numbers, so a model that wrote
+    "明天下午三点" into a ``deadline`` produced a date the customer never
+    stated — and the kind-based check let it through as ``matched``.
+    """
+    payload = _schedule_payload()
+    payload["changes"] = [
+        {
+            "field": "deadline",
+            "old_value": None,
+            "new_value": value,
+            "field_status": "proposed",
+            "customer_confirmation": "pending",
+            "sources": [{"message_id": MESSAGE_ID, "message_revision": 1}],
+            "reason": "Customer promised to deliver tomorrow.",
+        }
+    ]
+    outcome, _ = _run(monkeypatch, payload, _request())
+    assert outcome.notes == ("llm:time-basis-missing",)
+    assert outcome.refused_reason == "llm:time-basis-missing:schedule"
+    assert outcome.proposal.assignment.value == "needs_review"
+
+
+def test_gate4_a_missing_date_value_without_a_basis_is_allowed(monkeypatch):
+    """ "The customer has not said yet" states no date, so it needs no basis."""
+    payload = _schedule_payload()
+    payload["changes"] = [
+        {
+            "field": "deadline",
+            "old_value": None,
+            "new_value": None,
+            "field_status": "missing",
+            "customer_confirmation": "pending",
+            "sources": [{"message_id": MESSAGE_ID, "message_revision": 1}],
+            "reason": "No deadline was mentioned.",
+        }
+    ]
+    outcome, _ = _run(monkeypatch, payload, _request())
+    assert outcome.notes == ("llm:matched",)
+
+
+@pytest.mark.parametrize("received", ["not-a-date", "2026-10-07T00:00:00"])
+def test_gate4_unusable_received_at_is_refused(monkeypatch, received):
+    """A basis that cannot be parsed (or carries no zone) is not a basis."""
+    outcome, _ = _run(
+        monkeypatch,
+        _schedule_payload(),
+        _request(message_received_at=received, workspace_timezone=TIMEZONE),
+    )
+    assert outcome.notes == ("llm:time-basis-missing",)
+    assert outcome.refused_reason == "llm:time-basis-invalid:received-at"
+
+
+def test_gate4_relative_date_is_resolved_against_the_attached_basis(monkeypatch):
+    """Real relative-date regression: 下星期四 is only 2026-10-15 given this basis.
+
+    RECEIVED_AT is 2026-10-07 (a Wednesday) in Asia/Hong_Kong, so "next
+    Thursday 15:00" resolves to 2026-10-15T07:00:00Z. The provider cannot
+    check the arithmetic, but it must hand the model that basis and refuse the
+    same answer when the basis is absent.
+    """
+    payload = _instant_payload()
+    payload["changes"][0]["new_value"] = {
+        "kind": "instant",
+        "at": "2026-10-15T07:00:00Z",
+        "timezone": TIMEZONE,
+    }
+    outcome, client = _run(monkeypatch, payload, _grounded_request())
+    assert outcome.notes == ("llm:matched",)
+    sent = json.loads(client.requests[0]["json"]["messages"][1]["content"])
+    assert sent["time_basis"] == {"received_at": RECEIVED_AT, "timezone": TIMEZONE}
+    assert sent["relative_dates_allowed"] is True
+    # The same answer without a basis is refused instead of guessed.
+    ungrounded, _ = _run(monkeypatch, payload, _request())
+    assert ungrounded.refused_reason == "llm:time-basis-missing:schedule"
 
 
 def test_gate4_invalid_timezone_is_refused(monkeypatch):
