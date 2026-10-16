@@ -247,3 +247,110 @@ def test_dispatched_reply_cannot_be_withdrawn(setup):  # noqa: F811
     )
     assert late.status_code == 409
     assert late.json()["error"]["code"] == "SEND_ALREADY_DISPATCHED"
+
+
+def age_send(s, action, hours=25):
+    from datetime import UTC, datetime, timedelta
+
+    with s[1].begin() as db:
+        row = db.get(ActionRow, action["id"])
+        gateway = db.scalar(
+            select(WahaSendAction).where(WahaSendAction.request_key == f"c-action:{row.id}")
+        )
+        gateway.dispatched_at = datetime.now(UTC) - timedelta(hours=hours)
+        # Messages that existed before the send stay before it.
+        before = (datetime.now(UTC) - timedelta(hours=hours + 1)).isoformat()
+        for message in db.scalars(
+            select(MessageRow).where(MessageRow.conversation_id == row.conversation_id)
+        ):
+            if message.data["occurred_at"] > before.replace("+00:00", "Z"):
+                message.data = {**message.data, "occurred_at": before.replace("+00:00", "Z")}
+
+
+def run_follow_up(s):
+    from gigmate.approvals import follow_up_unanswered
+
+    with s[1].begin() as db:
+        return follow_up_unanswered(db)
+
+
+class FreshIds(Provider):
+    """A fake provider that gives every send its own WhatsApp message ID."""
+
+    def send_message(self, path, body):
+        super().send_message(path, body)
+        return {"id": f"true_{body['chatId']}_{uuid4().hex[:12].upper()}"}
+
+
+def approve_and_send(s, draft):
+    approved = (
+        s[0]
+        .post(
+            f"/api/v1/actions/{draft['id']}/approve",
+            json={
+                "expected_version": draft["bound_work_order_version"],
+                "expected_context_version": draft["bound_context_version"],
+                "expected_action_revision": draft["revision"],
+                "snapshot_hash": draft["snapshot_hash"],
+            },
+            headers={**s[2], "Idempotency-Key": str(uuid4())},
+        )
+        .json()["data"]
+    )
+    assert send(s, approved).status_code == 202
+    assert execute(s, FreshIds())
+    return approved
+
+
+def pending_for(s, order_id):
+    return [
+        item
+        for item in s[0]
+        .get("/api/v1/actions", params={"state": "pending_approval"})
+        .json()["items"]
+        if item["work_order_id"] == order_id
+    ]
+
+
+def test_unanswered_question_is_asked_again_twice_then_flagged(setup):  # noqa: F811
+    from gigmate.db import TaskRow, WorkOrderRow
+
+    s = setup
+    order, action = approved_question(s)
+    assert send(s, action).status_code == 202
+    assert execute(s, Provider())
+    # Not yet 24 hours: nothing happens.
+    age_send(s, action, hours=2)
+    assert run_follow_up(s) == 0
+    current = action
+    for round_number in (1, 2):
+        age_send(s, current)
+        assert run_follow_up(s) == 1
+        [draft] = pending_for(s, order["id"])
+        assert draft["trigger"] == "open_items"
+        assert draft["open_items"] == ["missing_schedule"]
+        current = approve_and_send(s, draft)
+        with s[1]() as db:
+            links = db.get(WorkOrderRow, order["id"]).data["task_links"]
+            task = db.get(TaskRow, links[f"no_reply_{round_number}"])
+            assert task.data["title"].endswith("跟进 陈小姐证件照拍摄：客人未回复")
+    age_send(s, current)
+    assert run_follow_up(s) == 1
+    assert pending_for(s, order["id"]) == []
+    with s[1]() as db:
+        data = db.get(WorkOrderRow, order["id"]).data
+    assert data["attention"] == ["customer_not_replying"]
+    assert run_follow_up(s) == 0
+
+
+def test_a_customer_reply_stops_the_no_reply_follow_up(setup):  # noqa: F811
+    s = setup
+    order, action = approved_question(s)
+    assert send(s, action).status_code == 202
+    assert execute(s, Provider())
+    age_send(s, action)
+    event = raw(event_id="synthetic:event-reply")
+    event["payload"] = {**event["payload"], "id": "synthetic:reply", "body": "星期六下午可以"}
+    assert post(s_ingress(s), event).status_code in {200, 202}
+    assert run_follow_up(s) == 0
+    assert pending_for(s, order["id"]) == []

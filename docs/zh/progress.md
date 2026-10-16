@@ -1,5 +1,9 @@
 # 已完成工作与验证记录
 
+## 草稿编辑与客户未回复跟进（C）— 2026-10-16
+
+方案 §4.5（编辑后发送）和契约 §3 "No reply"。`POST /actions/{id}/edit` 编辑待批准草稿，生成新的 revision、snapshot hash 和有效期；旧快照不能再被批准。worker 每小时的维护会运行 `follow_up_unanswered`：发送网关已接受的待确认项问题，若 24 小时内没有收到客户来信，就为剩余项目生成跟进待办和新草稿（最多两次，记在 `task_links.no_reply_N`），之后给工单加上 `attention: ["customer_not_replying"]`。客户一回复就停止。证据：`test_business_send.py` 9 项通过（新增 2 项），`test_approvals.py` 20 项通过（新增 1 项）。
+
 ## 业务细节字段、需求条目与承诺待办（C）— 2026-10-16
 
 方案 §4.3（服务内容、数量与规格、约定日期、所需资料、双方承诺、未决问题）和 §4.4（从承诺生成待办，具有负责人、到期时间和原文依据）。`WorkOrderFields` 新增 `specification`、`quantity`、`deadline`（默认缺失）；确认接口支持这几项和 `summary`，不影响关键项规则；确认后的交付期限生成一条交付待办（`WorkOrder.task_links.delivery`），期限改动时替换。`WorkOrder.requirements` 支持新增和关闭；资料和承诺生成备忘录式待办。重新确认关键项时只取消与时间挂钩的准备待办，不再误取消交付、需求或跟进待办。证据：`test_requirements.py` **4 项通过**；C 的测试 109 项通过。

@@ -72,6 +72,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/actions/{action_id}/edit": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Edit Action */
+    post: operations["edit_action_api_v1_actions__action_id__edit_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/actions/{action_id}/reissue": {
     parameters: {
       query?: never;
@@ -2053,6 +2070,18 @@ export interface components {
       request_id: string;
     };
     /**
+     * EditActionCommand
+     * @description Merchant edits a draft before approving it (new revision and snapshot hash).
+     */
+    EditActionCommand: {
+      /** Body */
+      body: string;
+      /** Expected Action Revision */
+      expected_action_revision: number;
+      /** Snapshot Hash */
+      snapshot_hash: string;
+    };
+    /**
      * FieldStatus
      * @enum {string}
      */
@@ -3567,6 +3596,11 @@ export interface components {
        * Format: uuid
        */
       account_id: string;
+      /**
+       * Attention
+       * @default []
+       */
+      attention: "customer_not_replying"[];
       /** Conversation Ids */
       conversation_ids: string[];
       /**
@@ -3755,6 +3789,43 @@ export interface operations {
     requestBody: {
       content: {
         "application/json": components["schemas"]["RejectActionCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_ActionView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  edit_action_api_v1_actions__action_id__edit_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        action_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["EditActionCommand"];
       };
     };
     responses: {

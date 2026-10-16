@@ -415,6 +415,7 @@ class WorkOrder(Model):
     deferred: dict[Literal["schedule", "address"], DeferredItem] = {}
     requirements: list[RequirementItem] = []
     task_links: dict[str, Id] = {}
+    attention: list[Literal["customer_not_replying"]] = []
 
 
 class AccountConsent(Model):
@@ -1031,6 +1032,14 @@ class AddRequirementCommand(Model):
 class UpdateRequirementCommand(Model):
     status: Literal["done", "cancelled"]
     expected_version: Positive
+
+
+class EditActionCommand(Model):
+    """Merchant edits a draft before approving it (new revision and snapshot hash)."""
+
+    body: Annotated[str, Field(min_length=1, max_length=4096)]
+    expected_action_revision: Positive
+    snapshot_hash: Annotated[str, Field(pattern=r"^sha256:[a-f0-9]{64}$")]
 
 
 class SetWorkOrderStatusCommand(Model):

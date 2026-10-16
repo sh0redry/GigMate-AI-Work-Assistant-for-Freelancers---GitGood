@@ -388,6 +388,10 @@ def maintain(factory=Session):
         for identifier in identifiers:
             with factory.begin() as db:
                 purge_expired(db, identifier)
+        from gigmate.approvals import follow_up_unanswered
+
+        with factory.begin() as db:
+            follow_up_unanswered(db)
         from gigmate.waha_media import purge as purge_media
 
         purge_media(factory)

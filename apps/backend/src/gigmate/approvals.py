@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
-from gigmate.contracts import ApprovalAction, AuditLog
+from gigmate.contracts import ApprovalAction, AuditLog, WorkOrder
 from gigmate.db import ActionRow, AuditRow, ChangeRow, ConversationRow, MessageRow, WorkOrderRow
 from gigmate.errors import BusinessError
 from gigmate.planning import conflicts
@@ -700,3 +700,114 @@ def cancel_handed_off(db, account, row, command, scope, key, digest, request_id)
     result = send_view(db, row, view(row))
     save_result(db, account.id, scope, key, digest, result)
     return result
+
+
+def edit(db, account, action_id, command, key, request_id):
+    """Edit a pending draft (方案 §4.5 编辑后发送). The edited text needs its own approval.
+
+    The revision increases and the snapshot hash is recomputed, so an approval
+    of the old text can never apply to the new one.
+    """
+    scope = f"edit:{action_id}"
+    digest, cached = command_cache(db, account.id, scope, key, command.model_dump())
+    if cached:
+        return cached.data
+    row = expire_if_due(locked(db, account.id, action_id))
+    if row.data["state"] != "pending_approval":
+        raise BusinessError(
+            409, "APPROVAL_STALE", "Only a draft waiting for approval can be edited"
+        )
+    if (
+        command.expected_action_revision != row.data["revision"]
+        or command.snapshot_hash != row.data["snapshot_hash"]
+    ):
+        raise BusinessError(409, "APPROVAL_STALE", "The draft changed; review it again")
+    body = command.body.strip()
+    if not body:
+        raise BusinessError(422, "VALIDATION_FAILED", "The message is empty")
+    data = {
+        **row.data,
+        "body": body,
+        "revision": row.data["revision"] + 1,
+        "expires_at": utc_text(datetime.now(UTC) + DRAFT_LIFETIME),
+    }
+    data["snapshot_hash"] = snapshot_hash(data)
+    row.data = validate(ApprovalAction, data)
+    audit(db, account.id, row, "edit_action", request_id)
+    result = send_view(db, row, view(row))
+    save_result(db, account.id, scope, key, digest, result)
+    return result
+
+
+# --- No reply (契约 §3 "No reply"): at most two follow-ups, then flag the order.
+
+NO_REPLY_AFTER = timedelta(hours=24)
+NO_REPLY_ROUNDS = 2
+
+
+def follow_up_unanswered(db, now=None):
+    """Hourly check: a sent open-item question unanswered for 24 hours.
+
+    Creates a follow-up task and a new draft (still needing approval) for the
+    items that remain, at most twice; after that the order is flagged
+    ``customer_not_replying`` for the merchant to decide. Nothing is sent.
+    Returns the number of questions handled.
+    """
+    from gigmate.workorders import memo_task, now_text
+
+    now = now or datetime.now(UTC)
+    handled = 0
+    for row in db.scalars(
+        select(ActionRow)
+        .where(ActionRow.trigger.startswith("open_items:"), ActionRow.reason.is_(None))
+        .with_for_update()
+    ):
+        if row.data["state"] != "executing":
+            continue
+        gateway = linked_send(db, row)
+        if gateway is None or gateway.state != "accepted" or gateway.dispatched_at is None:
+            continue
+        sent_at = gateway.dispatched_at.replace(tzinfo=gateway.dispatched_at.tzinfo or UTC)
+        if now - sent_at < NO_REPLY_AFTER:
+            continue
+        order = db.scalar(
+            select(WorkOrderRow).where(WorkOrderRow.id == row.work_order_id).with_for_update()
+        )
+        conversation = db.get(ConversationRow, row.conversation_id)
+        replied = any(
+            message.data.get("direction") == "incoming"
+            and datetime.fromisoformat(message.data["occurred_at"].replace("Z", "+00:00")) > sent_at
+            for message in db.scalars(
+                select(MessageRow).where(MessageRow.conversation_id == row.conversation_id)
+            )
+        )
+        if replied or order.data["status"] != "pending_confirmation":
+            row.reason = "answered"
+            continue
+        value = json.loads(json.dumps(order.data))
+        links = dict(value.get("task_links") or {})
+        rounds = sum(1 for name in links if name.startswith("no_reply_"))
+        value["version"] += 1
+        value["updated_at"] = now_text()
+        row.reason = "no_reply"
+        handled += 1
+        if rounds >= NO_REPLY_ROUNDS:
+            value["attention"] = sorted({*value.get("attention", []), "customer_not_replying"})
+            order.data = validate(WorkOrder, value)
+            continue
+        local = now.astimezone(ZoneInfo("Asia/Hong_Kong"))
+        task = memo_task(
+            row.account_id,
+            value,
+            f"{local:%m/%d %H:%M} 跟进 {value['summary']}：客人未回复",
+            {"kind": "instant", "at": utc_text(now), "timezone": "Asia/Hong_Kong"},
+            row.data["sources"],
+        )
+        db.add(task)
+        links[f"no_reply_{rounds + 1}"] = task.id
+        value["task_links"] = links
+        order.data = validate(WorkOrder, value)
+        db.flush()
+        ask_open_items(db, row.account_id, order, conversation, round_of=row.id)
+    db.flush()
+    return handled

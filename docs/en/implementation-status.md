@@ -1,5 +1,9 @@
 # Implementation status and validation
 
+## Draft editing and no-reply follow-up (role C) — 2026-10-16
+
+方案 §4.5 (编辑后发送) and 契约 §3 "No reply". `POST /actions/{id}/edit` edits a pending draft with a new revision, snapshot hash and expiry; the old snapshot cannot be approved. The worker's hourly maintenance runs `follow_up_unanswered`: an open-item question accepted by the gateway with no incoming customer message for 24 hours gets a follow-up task and a new draft for the remaining items (at most twice, `task_links.no_reply_N`), then the order is flagged `attention: ["customer_not_replying"]`. A customer reply stops it. Evidence: `test_business_send.py` 9 passed (2 new), `test_approvals.py` 20 passed (1 new).
+
 ## Business detail fields, requirements and commitment tasks (role C) — 2026-10-16
 
 方案 §4.3 (服务内容、数量与规格、约定日期、所需资料、双方承诺、未决问题) and §4.4 (从承诺生成待办，具有负责人、到期时间和原文依据). `WorkOrderFields` gains `specification`, `quantity`, `deadline` (default missing); confirm handles them and `summary` without touching the key-item rule; a confirmed deadline creates one delivery task (`WorkOrder.task_links.delivery`), replaced on change. `WorkOrder.requirements` with add/close commands; materials and promises create memo tasks. Re-confirming a key item now only cancels the time-bound preparation task, never delivery, requirement or follow-up tasks. Evidence: `test_requirements.py` **4 passed**; role C suites 109 passed.

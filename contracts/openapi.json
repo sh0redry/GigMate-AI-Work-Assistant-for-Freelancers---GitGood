@@ -1924,6 +1924,35 @@
         "title": "Detail[list[WahaChoice]]",
         "type": "object"
       },
+      "EditActionCommand": {
+        "additionalProperties": false,
+        "description": "Merchant edits a draft before approving it (new revision and snapshot hash).",
+        "properties": {
+          "body": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "expected_action_revision": {
+            "minimum": 1.0,
+            "title": "Expected Action Revision",
+            "type": "integer"
+          },
+          "snapshot_hash": {
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "title": "Snapshot Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body",
+          "expected_action_revision",
+          "snapshot_hash"
+        ],
+        "title": "EditActionCommand",
+        "type": "object"
+      },
       "FieldStatus": {
         "enum": [
           "missing",
@@ -5858,6 +5887,15 @@
             "title": "Account Id",
             "type": "string"
           },
+          "attention": {
+            "default": [],
+            "items": {
+              "const": "customer_not_replying",
+              "type": "string"
+            },
+            "title": "Attention",
+            "type": "array"
+          },
           "conversation_ids": {
             "items": {
               "format": "uuid",
@@ -6243,6 +6281,65 @@
           }
         },
         "summary": "Cancel Action"
+      }
+    },
+    "/api/v1/actions/{action_id}/edit": {
+      "post": {
+        "operationId": "edit_action_api_v1_actions__action_id__edit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Action Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditActionCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_ActionView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit Action"
       }
     },
     "/api/v1/actions/{action_id}/reissue": {

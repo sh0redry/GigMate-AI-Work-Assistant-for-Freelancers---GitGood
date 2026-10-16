@@ -33,6 +33,7 @@ from gigmate.contracts import (
     CreateWorkOrderCommand,
     DeferItemCommand,
     Detail,
+    EditActionCommand,
     Model,
     Page,
     RecoveryIssue,
@@ -637,6 +638,23 @@ def send_action(
     return detail(
         request,
         send(db, account, str(action_id), command, idempotency_key, request.state.request_id),
+    )
+
+
+@app.post("/api/v1/actions/{action_id}/edit", response_model=Detail[ActionView])
+def edit_action(
+    action_id: UUID,
+    command: EditActionCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    from gigmate.approvals import edit
+
+    return detail(
+        request,
+        edit(db, account, str(action_id), command, idempotency_key, request.state.request_id),
     )
 
 
