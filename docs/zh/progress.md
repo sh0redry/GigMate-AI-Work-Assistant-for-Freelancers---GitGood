@@ -196,7 +196,7 @@ Kyrie 现要求推送已完成的 D-02 前端分支并创建 PR，取代之前�
 - **撞期：** 已取消或已完成的工单不再占用时段。
 - 未实现：`from_proposal_id`（B 尚无 `new_work_order` 归属）、按单识别、延后及其跟进待办（需要 B 标出延后项）、取消/完成工单时作废草稿（随计划中的状态命令）、用 AI 的 `draft_text` 作正文（B 的 prompt v1 把它定义为给商户的摘要）。
 
-证据：`test_create_order.py` **28 项通过**（原 24 项 + #26 评审的 4 条回归：拒绝商户发出的来源、拒绝空白地址、已确认改为只有日期时回到待确认而不是 500、从 trigger 右侧解析原因代码）。合并 main `53991dc`（#23、#25）后：SQLite 全套 671 通过、12 跳过；Alembic 只有一个 head `0016_d03_sending_heads`（本 PR 无新迁移）；Ruff/格式、契约导出、baseline、前端接口检查和类型检查通过。原 24 项的 PostgreSQL 结果早于这次修正，本轮没有重跑；SQLite 不能证明行锁。未触碰真实 WhatsApp、发送、模型或部署。
+证据：`test_create_order.py` **30 项通过**（原 24 项 + #26 第一轮评审的 4 条回归：拒绝商户发出的来源、拒绝空白地址、已确认改为只有日期时回到待确认而不是 500、从 trigger 右侧解析原因代码；+ 10/16 评审的 2 条：客人未确认的具体时间改期，日历为暂定、不占时段；客人确认后恢复为正式）。本地 PostgreSQL 16 上 `test_create_order.py`、`test_approvals.py`、`test_workflow.py` 共 70 项通过。合并 main `53991dc`（#23、#25）后：SQLite 全套 673 通过、12 跳过；Alembic 只有一个 head `0016_d03_sending_heads`（本 PR 无新迁移）；Ruff/格式、契约导出、baseline、前端接口检查和类型检查通过。PostgreSQL 只跑了这三个文件，没有测并发请求。未触碰真实 WhatsApp、发送、模型或部署。
 
 ## PR #22 审批动作评审跟进（C）— 2026-10-13
 

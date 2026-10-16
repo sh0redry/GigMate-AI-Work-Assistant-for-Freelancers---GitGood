@@ -175,20 +175,24 @@ def confirm(db, account, work_order_id, change_id, command, key, request_id):
 
         # The accepted time resolves any open conflict question for this order.
         cancel_pending(db, account.id, work_order_id=order.id, reason="resolved")
+        # contracts/api-v1.md section 3: the slot is held only by a timed value
+        # the customer has confirmed. A time still awaiting the customer is a
+        # tentative entry (shown, not counted in conflict checks) until they do.
+        tentative = not (timed and customer_confirmed)
         calendar = db.scalar(
             select(CalendarRow).where(
                 CalendarRow.work_order_id == order.id, CalendarRow.account_id == account.id
             )
         )
         if calendar is None:
-            db.add(calendar_row(account.id, value, new_value, change.data["sources"], not timed))
+            db.add(calendar_row(account.id, value, new_value, change.data["sources"], tentative))
         else:
             calendar.data = validate(
                 CalendarEvent,
                 {
                     **calendar.data,
                     "schedule": new_value,
-                    "tentative": not timed,
+                    "tentative": tentative,
                     "work_order_version": value["version"],
                     "sources": change.data["sources"],
                 },
