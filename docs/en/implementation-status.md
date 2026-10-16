@@ -780,3 +780,7 @@ Verification (repo `.venv`, SQLite — conditional compatibility, not locking pr
 - `python scripts/check_baseline.py`: PASS.
 - Frontend: `npm run check:api`, `format:check`, `build` all pass (dependencies installed with `npm ci` in this environment).
 - `run_evaluation.py` (disposable SQLite): deterministic 9/9 exit 0; `--provider llm` 7 pass, 2 expected fail (cases 1-2 need a real model).
+
+## Independent PR31 contract repair — 2026-10-17
+
+Latest d9e1fe7 passes the original provenance, collection-type, zero-budget and instant-date probes using a streaming fake transport. An independent cross-contract check still found that every canonical ChangeProposal dump (including new_work_order=null) was rejected by the public AI schema. Added optional nullable NewWorkOrderSuggestion to independently maintained AI schema revision 0.1.1, keeping wire schema_version=0.1.0 and old fixtures valid. Matched proposals cannot carry new-order suggestions; no execution fields are accepted. Live seams remain closed. No runtime enablement or vendor acceptance is implied.

@@ -786,3 +786,7 @@ PR #18（`llm:live-gate-off` + malformed-prompt/证据修复）以 `cc2ac8e` 合
 - `python scripts/check_baseline.py`：PASS。
 - 前端：`npm run check:api`、`format:check`、`build` 全部通过（本环境用 `npm ci` 安装依赖）。
 - `run_evaluation.py`（一次性 SQLite）：deterministic 9/9 退出 0；`--provider llm` 7 通过、2 预期失败（用例 1-2 需真实模型）。
+
+## PR31 独立合同修复 — 2026-10-17
+
+最新 d9e1fe7 已通过适配流式假传输的原来源/集合类型/零预算/instant 时间依据探针。额外跨合同检查仍发现：规范 ChangeProposal 的输出（即使 new_work_order=null）都会被公共 AI schema 拒绝。现为独立维护的 AI schema 0.1.1 增加可选、可空的新工单建议，wire schema_version 保持 0.1.0，旧样例兼容。matched 提议不能携带新建建议，禁止执行字段。真实模型开关仍关闭；不表示已经启用或通过供应商验收。

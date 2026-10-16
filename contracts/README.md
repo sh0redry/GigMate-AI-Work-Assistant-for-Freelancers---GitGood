@@ -21,3 +21,5 @@ Calendar intervals use ScheduleValue (timed interval or date-only event). Task d
 Run the [baseline checker](../docs/en/getting-started.md). Positive fixtures must validate; negative fixtures must fail. Scenario expectations are not executed test results. Application tests must implement the cases independently, including race conditions and persistence.
 
 Breaking field/state changes require a major version/API transition with migration notes. Coordinate optional additions with strict clients. Change schema, manifest, fixtures and affected documentation together. Resolve schema disagreements before implementation.
+
+AI proposal schema artifact revision **0.1.1** adds an optional nullable `new_work_order` suggestion, retaining wire `schema_version=0.1.0` for additive compatibility. Canonical producer dumps and independent schema are cross-validated; no suggestion grants creation or execution authority.
