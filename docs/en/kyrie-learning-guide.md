@@ -1,5 +1,14 @@
 # Kyrie's GigMate learning guide: start from zero
 
+## What changed after C #26/#27 merged (2026-10-16)
+
+Think of a work order as a shared notebook: the customer says something, the program writes a suggestion, and you decide whether to accept it. Accepting an uncertain date saves your decision but still waits for the customer. A successful HTTP response therefore may contain a proposed field; it does not always mean confirmed.
+
+An idempotency key is the number on one operation receipt. If the reply is lost, keep that number. “Read saved result” only checks the server's receipt: it does not perform the operation again. A missing receipt does not prove nothing happened. Once an exact saved receipt is found, you can review it and explicitly finish the local record. That removes a reminder from this tab, not the server's business history.
+
+The generated API types now describe C's real create/status commands. We reuse those types rather than maintaining a second handwritten agreement. Manual creation, status and address confirmation work; real AI and automatic WhatsApp business sending still await B and A/C.
+
+
 **Current delivery candidate, 2026-10-16:** #25 is merged in main `53991dc`. D-04 through the final web delivery are developed on `codex/d-final-workspace`; a PR is still different from a deployment. There is one business service and no product environment switch or public test password. Read [the current guide](role-d-frontend-user-guide.md) and [acceptance](role-d-final-acceptance.md) before older teaching screenshots.
 
 ## A new lesson: a grey button can be the correct result

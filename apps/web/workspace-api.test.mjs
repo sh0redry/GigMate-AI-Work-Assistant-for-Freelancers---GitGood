@@ -90,7 +90,7 @@ test("confirmation binds the loaded order and context versions without altering 
       orders: [{ id: "order", version: 7 }],
       contextVersion: 9,
     },
-    { id: "change", work_order_id: "order" },
+    { id: "change", work_order_id: "order", field: "schedule" },
   );
   assert.equal(sent.path, "/work-orders/order/changes/change/confirm");
   assert.deepEqual(sent.body, {

@@ -20,6 +20,7 @@ const require = createRequire(import.meta.url);
 const components = [
   "App",
   "OrderLifecycle",
+  "InspectOrderAttempt",
   "OrderCreation",
   "CalendarWorkspace",
   "ReviewWorkspace",
@@ -205,7 +206,7 @@ test("authenticated product lands in honest empty business workspace, connects t
   await login();
   assert.equal(button("业务工作台").getAttribute("aria-pressed"), "true");
   assert.match(document.body.textContent, /当前还没有工单/);
-  assert.match(document.body.textContent, /自动建单和手动新建功能尚未开放/);
+  assert.match(document.body.textContent, /自动建单尚未开放/);
   assert.deepEqual(JSON.parse(calls[0].options.body), {
     username: "learner",
     password: "synthetic-password",
@@ -344,6 +345,7 @@ function deliveryFixture() {
             work_order_version: 3,
             tentative: false,
             schedule,
+            sources: [source],
             buffer_minutes: 0,
           },
           {
@@ -352,6 +354,7 @@ function deliveryFixture() {
             work_order_version: 3,
             tentative: true,
             schedule,
+            sources: [source],
             buffer_minutes: 0,
           },
         ]);
@@ -438,7 +441,7 @@ test("new-order flow selects only customer sources, binds review and stays gated
   await act(async () => button("核对新工单").click());
   await tick("我已核对摘要");
   assert.equal(button("保存新工单").disabled, true);
-  assert.match(document.body.textContent, /接口 #26 还在修复/);
+  assert.match(document.body.textContent, /当前连接的后端未开放建单功能/);
   await fill(summary, "Changed after review");
   assert.match(document.body.textContent, /内容或来源已变化/);
   assert.equal(data.calls.filter((c) => c.options.method === "POST").length, 1);

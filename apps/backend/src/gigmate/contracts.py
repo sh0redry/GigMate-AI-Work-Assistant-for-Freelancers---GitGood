@@ -56,9 +56,9 @@ class WorkspaceCapabilities(Model):
     """Release gates, not connector permissions or claims of live acceptance."""
 
     calendar_export: bool = True
-    create_order: bool = False
-    order_status: bool = False
-    address_confirmation: bool = False
+    create_order: bool = True
+    order_status: bool = True
+    address_confirmation: bool = True
     manual_assignment: bool = False
     business_sending: bool = False
     automatic_understanding: bool = False
@@ -858,6 +858,18 @@ class EvaluationRun(Model):
     cases: Annotated[list[EvaluationCase], Field(min_length=0)]
 
 
+class CreateWorkOrderCommand(Model):
+    conversation_id: Id
+    summary: Annotated[str, Field(min_length=1, max_length=120)]
+    schedule: TimedSchedule | DateOnly | None = None
+    # The customer message(s) where the time was stated; required with a schedule.
+    schedule_sources: list[SourceRef] = []
+    address: Annotated[str, Field(min_length=1, max_length=300)] | None = None
+    # The customer message(s) where the address was stated; required with an address.
+    address_sources: list[SourceRef] = []
+    confirm_additional_order: bool = False
+
+
 class RejectCommand(Model):
     expected_version: Positive
     reason: Text
@@ -872,6 +884,37 @@ class ApproveActionCommand(Model):
 
 class ReissueActionCommand(Model):
     expected_context_version: Positive
+
+
+class SetWorkOrderStatusCommand(Model):
+    """Merchant moves an order along its life cycle (see TRANSITIONS in workorders)."""
+
+    status: Literal["in_progress", "waiting_customer", "completed", "cancelled"]
+    expected_version: Positive
+
+
+class InspectWorkOrderCommand(Model):
+    """Look up an exact completed command; never execute or resubmit it."""
+
+    kind: Literal["create", "status", "confirm"]
+    order_id: Id | None = None
+    change_id: Id | None = None
+    command: CreateWorkOrderCommand | SetWorkOrderStatusCommand | ConfirmChangeCommand
+
+    @model_validator(mode="after")
+    def bind_scope(self):
+        expected = {
+            "create": CreateWorkOrderCommand,
+            "status": SetWorkOrderStatusCommand,
+            "confirm": ConfirmChangeCommand,
+        }[self.kind]
+        if not isinstance(self.command, expected):
+            raise ValueError("Command kind does not match its body")
+        if (self.order_id is not None) != (self.kind != "create"):
+            raise ValueError("An order is required only for status/confirmation")
+        if (self.change_id is not None) != (self.kind == "confirm"):
+            raise ValueError("A change is required only for confirmation")
+        return self
 
 
 class RejectActionCommand(ApproveActionCommand):

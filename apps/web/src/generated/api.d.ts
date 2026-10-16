@@ -1045,6 +1045,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/work-order-command-results/{key}/inspect": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Inspect Command */
+    post: operations["inspect_command_api_v1_work_order_command_results__key__inspect_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/work-orders": {
     parameters: {
       query?: never;
@@ -1055,7 +1072,8 @@ export interface paths {
     /** Orders */
     get: operations["orders_api_v1_work_orders_get"];
     put?: never;
-    post?: never;
+    /** Create Order */
+    post: operations["create_order_api_v1_work_orders_post"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1107,6 +1125,23 @@ export interface paths {
     put?: never;
     /** Confirm Change */
     post: operations["confirm_change_api_v1_work_orders__order_id__changes__change_id__confirm_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/work-orders/{order_id}/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Set Order Status */
+    post: operations["set_order_status_api_v1_work_orders__order_id__status_post"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1219,6 +1254,14 @@ export interface components {
        * @constant
        */
       kind: "send_text";
+      /** Open Items */
+      open_items: (
+        | "missing_schedule"
+        | "verify_schedule"
+        | "missing_time"
+        | "missing_address"
+        | "verify_address"
+      )[];
       /** Provider Message Id */
       provider_message_id: string | null;
       /** Recipient */
@@ -1234,9 +1277,9 @@ export interface components {
       state: components["schemas"]["ActionState"];
       /**
        * Trigger
-       * @constant
+       * @enum {string}
        */
-      trigger: "schedule_conflict";
+      trigger: "schedule_conflict" | "open_items";
       /**
        * Work Order Id
        * Format: uuid
@@ -1542,6 +1585,38 @@ export interface components {
       /** Text */
       text: string | null;
     };
+    /** CreateWorkOrderCommand */
+    CreateWorkOrderCommand: {
+      /** Address */
+      address?: string | null;
+      /**
+       * Address Sources
+       * @default []
+       */
+      address_sources: components["schemas"]["SourceRef"][];
+      /**
+       * Confirm Additional Order
+       * @default false
+       */
+      confirm_additional_order: boolean;
+      /**
+       * Conversation Id
+       * Format: uuid
+       */
+      conversation_id: string;
+      /** Schedule */
+      schedule?:
+        | components["schemas"]["TimedSchedule"]
+        | components["schemas"]["DateOnly"]
+        | null;
+      /**
+       * Schedule Sources
+       * @default []
+       */
+      schedule_sources: components["schemas"]["SourceRef"][];
+      /** Summary */
+      summary: string;
+    };
     /**
      * CustomerConfirmation
      * @enum {string}
@@ -1795,6 +1870,26 @@ export interface components {
     HTTPValidationError: {
       /** Detail */
       detail?: components["schemas"]["ValidationError"][];
+    };
+    /**
+     * InspectWorkOrderCommand
+     * @description Look up an exact completed command; never execute or resubmit it.
+     */
+    InspectWorkOrderCommand: {
+      /** Change Id */
+      change_id?: string | null;
+      /** Command */
+      command:
+        | components["schemas"]["CreateWorkOrderCommand"]
+        | components["schemas"]["SetWorkOrderStatusCommand"]
+        | components["schemas"]["ConfirmChangeCommand"];
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "create" | "status" | "confirm";
+      /** Order Id */
+      order_id?: string | null;
     };
     /** InstantDeadline */
     InstantDeadline: {
@@ -2136,6 +2231,19 @@ export interface components {
       reason: string;
       /** State */
       state: string;
+    };
+    /**
+     * SetWorkOrderStatusCommand
+     * @description Merchant moves an order along its life cycle (see TRANSITIONS in workorders).
+     */
+    SetWorkOrderStatusCommand: {
+      /** Expected Version */
+      expected_version: number;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "in_progress" | "waiting_customer" | "completed" | "cancelled";
     };
     /** SourceRef */
     SourceRef: {
@@ -3184,7 +3292,7 @@ export interface components {
     WorkspaceCapabilities: {
       /**
        * Address Confirmation
-       * @default false
+       * @default true
        */
       address_confirmation: boolean;
       /**
@@ -3204,7 +3312,7 @@ export interface components {
       calendar_export: boolean;
       /**
        * Create Order
-       * @default false
+       * @default true
        */
       create_order: boolean;
       /**
@@ -3214,7 +3322,7 @@ export interface components {
       manual_assignment: boolean;
       /**
        * Order Status
-       * @default false
+       * @default true
        */
       order_status: boolean;
     };
@@ -5413,6 +5521,41 @@ export interface operations {
       };
     };
   };
+  inspect_command_api_v1_work_order_command_results__key__inspect_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        key: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["InspectWorkOrderCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkOrder_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   orders_api_v1_work_orders_get: {
     parameters: {
       query?: {
@@ -5432,6 +5575,41 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Page_WorkOrder_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  create_order_api_v1_work_orders_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateWorkOrderCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkOrder_"];
         };
       };
       /** @description Validation Error */
@@ -5525,6 +5703,43 @@ export interface operations {
     requestBody: {
       content: {
         "application/json": components["schemas"]["ConfirmChangeCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkOrder_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  set_order_status_api_v1_work_orders__order_id__status_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        order_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetWorkOrderStatusCommand"];
       };
     };
     responses: {

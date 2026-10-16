@@ -17,9 +17,9 @@ def test_capabilities_fail_closed_for_unimplemented_commands(environment, signed
     assert result.status_code == 200
     assert result.json()["data"] == {
         "calendar_export": True,
-        "create_order": False,
-        "order_status": False,
-        "address_confirmation": False,
+        "create_order": True,
+        "order_status": True,
+        "address_confirmation": True,
         "manual_assignment": False,
         "business_sending": False,
         "automatic_understanding": False,
@@ -106,7 +106,16 @@ def test_calendar_download_owned_readonly_utc_escaped_and_utf8_folded(signed_in)
 
 
 @pytest.mark.parametrize(
-    "case", ["tentative", "date_only", "cancelled", "completed", "stale", "changed_schedule"]
+    "case",
+    [
+        "tentative",
+        "date_only",
+        "cancelled",
+        "completed",
+        "future_version",
+        "changed_schedule",
+        "changed_sources",
+    ],
 )
 def test_calendar_refuses_noncurrent_or_nonformal_events(signed_in, case):
     client, factory, _, _ = signed_in
@@ -125,8 +134,12 @@ def test_calendar_refuses_noncurrent_or_nonformal_events(signed_in, case):
             }
         elif case in {"cancelled", "completed"}:
             o["status"] = case
-        elif case == "stale":
-            o["version"] += 1
+        elif case == "future_version":
+            e["work_order_version"] = o["version"] + 1
+        elif case == "changed_sources":
+            o["fields"]["schedule"]["sources"] = [
+                {"message_id": str(uuid4()), "message_revision": 1}
+            ]
         else:
             o["fields"]["schedule"]["value"]["start_at"] = "2026-11-01T00:00:00Z"
         event.data = e
@@ -195,14 +208,20 @@ def test_export_preserves_dst_instants_and_omits_unconfirmed_address():
         "end_at": "2026-11-01T06:30:00Z",
         "timezone": "America/New_York",
     }
-    event = {"id": str(uuid4()), "work_order_version": 4, "tentative": False, "schedule": schedule}
+    event = {
+        "id": str(uuid4()),
+        "work_order_version": 4,
+        "tentative": False,
+        "schedule": schedule,
+        "sources": [],
+    }
     order = {
         "version": 4,
         "status": "confirmed",
         "summary": "Synthetic DST appointment",
         "updated_at": "2026-10-16T00:00:00Z",
         "fields": {
-            "schedule": {"status": "confirmed", "value": schedule},
+            "schedule": {"status": "confirmed", "value": schedule, "sources": []},
             "address": {"status": "proposed", "value": "Unverified location"},
         },
     }

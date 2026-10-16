@@ -105,13 +105,16 @@ export function reissueProblem(data: ApprovalSnapshot) {
   return "";
 }
 
-export function triggerDescription(trigger: string) {
+export function triggerDescription(
+  trigger: string,
+  openItems: readonly string[] = [],
+) {
   if (
     trigger === "schedule_conflict" ||
     trigger.startsWith("schedule_conflict:")
   )
     return "客户提出的时间与已有安排冲突";
-  if (trigger.startsWith("open_items:")) {
+  if (trigger === "open_items" || trigger.startsWith("open_items:")) {
     const labels: Record<string, string> = {
       missing_schedule: "等待客户提供日期和时间",
       verify_schedule: "等待客户核实日期和时间",
@@ -119,13 +122,13 @@ export function triggerDescription(trigger: string) {
       missing_address: "等待客户提供地址",
       verify_address: "等待客户核实地址",
     };
-    const found =
-      trigger
-        .split(":")
-        .at(-1)
-        ?.split(",")
-        .map((code) => labels[code])
-        .filter(Boolean) ?? [];
+    const found = (
+      openItems.length
+        ? openItems
+        : (trigger.split(":").at(-1)?.split(/[+,]/) ?? [])
+    )
+      .map((code) => labels[code])
+      .filter(Boolean);
     return found.length
       ? found.join("；")
       : "工单还有未确认的信息，请核对完整正文和来源";

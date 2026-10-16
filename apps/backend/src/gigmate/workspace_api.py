@@ -1,4 +1,4 @@
-"""Read-only delivery helpers for D; no replacement for C's pending commands."""
+"""Read-only delivery helpers for D; mutations remain in C's canonical services."""
 
 from datetime import UTC
 from uuid import UUID
@@ -7,12 +7,49 @@ from fastapi import Depends, Query, Request, Response
 from sqlalchemy import select
 
 from gigmate.calendar_export import export_event
-from gigmate.contracts import Conversation, Detail, Page, ReviewItem, WorkspaceCapabilities
+from gigmate.contracts import (
+    Conversation,
+    Detail,
+    InspectWorkOrderCommand,
+    Page,
+    ReviewItem,
+    WorkOrder,
+    WorkspaceCapabilities,
+)
 from gigmate.db import CalendarRow, ConversationRow, Inbox, Job, WorkOrderRow
-from gigmate.workorders import owned
+from gigmate.errors import BusinessError
+from gigmate.workorders import command_cache, owned
 
 
 def install(app, database, actor, detail, page, conversation_info):
+    @app.post("/api/v1/work-order-command-results/{key}/inspect", response_model=Detail[WorkOrder])
+    def inspect_command(
+        key: UUID,
+        command: InspectWorkOrderCommand,
+        request: Request,
+        account=Depends(actor),
+        db=Depends(database),
+    ):
+        # POST carries the typed original body and requires CSRF/account locking.
+        # Only the immutable cache is read: absence never authorizes a new write.
+        scope = (
+            "create_work_order"
+            if command.kind == "create"
+            else f"status:{command.order_id}"
+            if command.kind == "status"
+            else f"confirm:{command.order_id}:{command.change_id}"
+        )
+        _, cached = command_cache(
+            db, account.id, scope, str(key), command.command.model_dump(mode="json")
+        )
+        if cached is None:
+            raise BusinessError(
+                409,
+                "COMMAND_RESULT_PENDING",
+                "No completed receipt is available; keep the original command identity",
+            )
+        return detail(request, cached.data)
+
     @app.get("/api/v1/workspace-capabilities", response_model=Detail[WorkspaceCapabilities])
     def capabilities(request: Request, account=Depends(actor)):
         return detail(request, WorkspaceCapabilities())

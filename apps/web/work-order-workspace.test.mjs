@@ -18,6 +18,7 @@ const require = createRequire(import.meta.url);
 for (const name of [
   "WorkOrderWorkspace",
   "OrderLifecycle",
+  "InspectOrderAttempt",
   "order-command-api",
   "features",
   "business-store",
@@ -27,7 +28,7 @@ for (const name of [
 ]) {
   const source = await readFile(
     new URL(
-      `./src/${name}.${["WorkOrderWorkspace", "OrderLifecycle"].includes(name) ? "tsx" : "ts"}`,
+      `./src/${name}.${["WorkOrderWorkspace", "OrderLifecycle", "InspectOrderAttempt"].includes(name) ? "tsx" : "ts"}`,
       import.meta.url,
     ),
     "utf8",
@@ -36,7 +37,11 @@ for (const name of [
     .transpileModule(source, {
       fileName:
         name +
-        (["WorkOrderWorkspace", "OrderLifecycle"].includes(name)
+        ([
+          "WorkOrderWorkspace",
+          "OrderLifecycle",
+          "InspectOrderAttempt",
+        ].includes(name)
           ? ".tsx"
           : ".ts"),
       compilerOptions: {
@@ -212,7 +217,7 @@ async function click(text) {
   assert.equal(b.disabled, false, text);
   await act(async () => b.click());
 }
-async function mount(f) {
+async function mount(f, props = {}) {
   root = createRoot(document.getElementById("root"));
   await act(async () =>
     root.render(
@@ -221,6 +226,7 @@ async function mount(f) {
         onSessionExpired: () => {},
         onBusyChange: () => {},
         request: f.request,
+        ...props,
       }),
     ),
   );
@@ -257,7 +263,7 @@ test("business workspace renders both conversations, missing fields and history 
     expected_context_version: 9,
     apply_calendar_update: true,
   });
-  assert.match(document.body.textContent, /已确认并持久化/);
+  assert.match(document.body.textContent, /已保存本次提议/);
 });
 test("a refreshed changed proposal invalidates an open review and never silently submits new content", async () => {
   const f = fixture();
@@ -305,4 +311,69 @@ test("conflicts and missing source revisions stay blocked without replay control
   assert.match(document.body.textContent, /该版本未载入，需复核/);
   assert.equal(button("核对并确认安排").disabled, true);
   assert.equal(f.writes.length, 0);
+});
+
+test("an address proposal uses explicit review and the canonical non-calendar confirmation", async () => {
+  const f = fixture();
+  f.update({
+    field: "address",
+    new_value: "Synthetic new venue",
+    customer_confirmation: "pending",
+  });
+  await mount(f, { features: { address_confirmation: true } });
+  await click("核对并确认地址");
+  await act(async () =>
+    document.querySelector('input[type="checkbox"]').click(),
+  );
+  await click("确认并同步安排");
+  assert.equal(f.writes.length, 1);
+  assert.equal(f.writes[0].body.apply_calendar_update, false);
+  assert.match(document.body.textContent, /仍等待客户核实/);
+});
+
+test("receipt recovery requires a readonly result and separate consent before retiring the local journal", async () => {
+  const { InspectOrderAttempt } = await import(
+    pathToFileURL(join(directory, "InspectOrderAttempt.mjs"))
+  );
+  let inspected = 0,
+    retired = 0,
+    done = 0;
+  const commands = {
+    attempt: { key: "synthetic-key" },
+    error: "",
+    inspect: async () => {
+      inspected++;
+      return {
+        summary: "Synthetic saved order",
+        version: 4,
+        status: "pending_confirmation",
+      };
+    },
+    retireInspected: () => retired++,
+  };
+  root = createRoot(document.getElementById("root"));
+  await act(async () =>
+    root.render(
+      createElement(InspectOrderAttempt, {
+        commands,
+        ready: true,
+        busy: false,
+        onBusy: () => {},
+        onError: (e) => {
+          throw e;
+        },
+        onDone: () => done++,
+      }),
+    ),
+  );
+  assert.equal(button("结束已核对的原记录"), undefined);
+  await click("只读核对已保存结果");
+  assert.equal(inspected, 1);
+  assert.equal(button("结束已核对的原记录").disabled, true);
+  await act(async () =>
+    document.querySelector('input[type="checkbox"]').click(),
+  );
+  await click("结束已核对的原记录");
+  assert.equal(retired, 1);
+  assert.equal(done, 1);
 });

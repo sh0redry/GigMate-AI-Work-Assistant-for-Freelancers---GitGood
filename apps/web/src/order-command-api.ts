@@ -1,37 +1,25 @@
 import { apiBase } from "./environment.ts";
 import { WorkspaceError, type Order } from "./workspace-api.ts";
 import type { components } from "./generated/api";
-// #26/#27 are target contracts, not implemented main routes. Release capability
-// gates keep these commands off until C publishes and accepts the same shapes.
-export type CreateOrderInput = {
-  conversation_id: string;
-  summary: string;
-  schedule:
-    | components["schemas"]["TimedSchedule"]
-    | components["schemas"]["DateOnly"]
-    | null;
-  schedule_sources: components["schemas"]["SourceRef"][];
-  address: string | null;
-  address_sources: components["schemas"]["SourceRef"][];
-  confirm_additional_order: boolean;
-};
+export type CreateOrderInput = Required<
+  components["schemas"]["CreateWorkOrderCommand"]
+>;
 export type OrderTarget =
-  | "in_progress"
-  | "waiting_customer"
-  | "completed"
-  | "cancelled";
+  components["schemas"]["SetWorkOrderStatusCommand"]["status"];
 export type Intent =
   | { kind: "create"; body: CreateOrderInput }
   | {
       kind: "status";
       orderId: string;
-      body: { expected_version: number; status: OrderTarget };
+      body: components["schemas"]["SetWorkOrderStatusCommand"];
     }
   | {
       kind: "confirm";
       orderId: string;
       changeId: string;
       review: {
+        // Old journals only supported schedule, so absence keeps that meaning.
+        field?: "schedule" | "address";
         summary: string;
         oldValue: unknown;
         newValue: unknown;
@@ -41,6 +29,15 @@ export type Intent =
     };
 type Attempt = { intent: Intent; key: string };
 const idPattern = /^[a-f0-9-]{36}$/i;
+function storedAddress(value: unknown) {
+  // Match C's str.strip() normalization without altering the source/review.
+  return typeof value === "string"
+    ? value.replace(
+        /^[\u0009-\u000d\u001c-\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\u0009-\u000d\u001c-\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/g,
+        "",
+      )
+    : value;
+}
 function valid(a: Attempt) {
   if (
     !a ||
@@ -77,7 +74,9 @@ function valid(a: Attempt) {
         Array.isArray(i.review.sources) &&
         Number.isInteger(i.body.expected_context_version) &&
         i.body.expected_context_version > 0 &&
-        i.body.apply_calendar_update === true)
+        ["schedule", "address"].includes(i.review.field ?? "schedule") &&
+        i.body.apply_calendar_update ===
+          ((i.review.field ?? "schedule") === "schedule"))
   );
 }
 function sameValue(a: unknown, b: unknown): boolean {
@@ -102,7 +101,8 @@ export function orderCommands(
   let storage: Storage | null = null,
     attempt: Attempt | null = null,
     error = "",
-    busy = false;
+    busy = false,
+    inspectedKey = "";
   try {
     storage = provided === undefined ? globalThis.sessionStorage : provided;
     if (!storage) throw new Error();
@@ -146,6 +146,7 @@ export function orderCommands(
     const saved = attempt!;
     checkStorage();
     busy = true;
+    inspectedKey = "";
     const i = saved.intent,
       path =
         i.kind === "create"
@@ -212,13 +213,20 @@ export function orderCommands(
             order.version !== i.body.expected_version + 1)) ||
         (i.kind === "status" && order.status !== i.body.status) ||
         (i.kind === "confirm" &&
-          (order.fields.schedule.status !== "confirmed" ||
-            !sameValue(order.fields.schedule.value, i.review.newValue))) ||
+          (!["confirmed", "proposed"].includes(
+            order.fields[i.review.field ?? "schedule"].status,
+          ) ||
+            !sameValue(
+              order.fields[i.review.field ?? "schedule"].value,
+              i.review.field === "address"
+                ? storedAddress(i.review.newValue)
+                : i.review.newValue,
+            ))) ||
         (i.kind === "create" &&
           (!order.conversation_ids.includes(i.body.conversation_id) ||
             order.summary !== i.body.summary ||
             !sameValue(order.fields.schedule.value, i.body.schedule) ||
-            order.fields.address.value !== i.body.address))
+            order.fields.address.value !== storedAddress(i.body.address)))
       )
         fail(
           "RESULT_UNKNOWN",
@@ -268,6 +276,75 @@ export function orderCommands(
       if (error || busy || !attempt)
         fail("UNRESOLVED_ATTEMPT", error || "没有可核对的原操作。");
       return dispatch(true);
+    },
+    async inspect() {
+      if (error || busy || !attempt)
+        fail("UNRESOLVED_ATTEMPT", error || "没有可核对的原操作。");
+      checkStorage();
+      busy = true;
+      inspectedKey = "";
+      const saved = attempt!,
+        i = saved.intent;
+      try {
+        const response = await fetcher(
+          base + `/work-order-command-results/${saved.key}/inspect`,
+          {
+            method: "POST",
+            credentials: "same-origin",
+            cache: "no-store",
+            signal: AbortSignal.timeout(10000),
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRF-Token": csrf,
+            },
+            body: JSON.stringify({
+              kind: i.kind,
+              command: i.body,
+              ...(i.kind !== "create" ? { order_id: i.orderId } : {}),
+              ...(i.kind === "confirm" ? { change_id: i.changeId } : {}),
+            }),
+          },
+        );
+        const value = await response.json().catch(() => null);
+        if (!response.ok)
+          fail(
+            response.status === 401
+              ? "UNAUTHENTICATED"
+              : (value?.error?.code ?? "RESULT_UNKNOWN"),
+            "尚未核对到原操作的已保存结果；记录保留。这不代表未执行，不能另开重复请求。",
+          );
+        const order = value?.data as Order;
+        if (
+          !order ||
+          order.account_id !== accountId ||
+          !idPattern.test(order.id) ||
+          !Number.isInteger(order.version) ||
+          !order.fields ||
+          !Array.isArray(order.conversation_ids) ||
+          (i.kind === "create"
+            ? !order.conversation_ids.includes(i.body.conversation_id)
+            : order.id !== i.orderId ||
+              order.version !== i.body.expected_version + 1)
+        )
+          fail("RESULT_UNKNOWN", "保存结果的归属或版本无法核对，原记录保留。");
+        checkStorage();
+        inspectedKey = saved.key;
+        return order;
+      } catch (e) {
+        if (e instanceof WorkspaceError) throw e;
+        fail("RESULT_UNKNOWN", "暂时无法只读核对原操作；记录保留，没有重发。");
+      } finally {
+        busy = false;
+      }
+    },
+    retireInspected() {
+      if (error || busy || !attempt || inspectedKey !== attempt.key)
+        fail(
+          "UNRESOLVED_ATTEMPT",
+          "先只读核对到原操作的已保存结果，再结束记录。",
+        );
+      clear();
+      inspectedKey = "";
     },
   };
 }

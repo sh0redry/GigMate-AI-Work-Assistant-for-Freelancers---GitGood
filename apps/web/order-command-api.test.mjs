@@ -233,3 +233,145 @@ test("creation and lifecycle target payloads retain original values on lost resp
     );
   }
 });
+
+test("successful proposed timed/date-only confirmations clear the journal and allow the next operation", async () => {
+  for (const value of [
+    {
+      kind: "timed",
+      start_at: "2026-12-01T07:00:00Z",
+      end_at: "2026-12-01T08:00:00Z",
+      timezone: "Asia/Hong_Kong",
+    },
+    { kind: "date_only", date: "2026-12-01", timezone: "Asia/Hong_Kong" },
+  ]) {
+    let count = 0;
+    const api = orderCommands(
+      "csrf",
+      account,
+      async () => {
+        const body = (await result().json()).data;
+        count++;
+        if (count === 1) {
+          body.status = "pending_confirmation";
+          body.fields.schedule = { value, status: "proposed" };
+        } else {
+          body.version = 5;
+          body.status = "cancelled";
+        }
+        return Response.json({ data: body });
+      },
+      memory(),
+    );
+    const saved = await api.submit({
+      ...intent,
+      review: { ...intent.review, field: "schedule", newValue: value },
+    });
+    assert.equal(saved.fields.schedule.status, "proposed");
+    assert.equal(api.attempt, null);
+    await api.submit({
+      kind: "status",
+      orderId: id,
+      body: { expected_version: 4, status: "cancelled" },
+    });
+    assert.equal(count, 2);
+  }
+});
+test("address confirmation binds address value and does not request calendar synchronization", async () => {
+  for (const status of ["proposed", "confirmed"]) {
+    const api = orderCommands(
+      "csrf",
+      account,
+      async (_url, opts) => {
+        assert.equal(JSON.parse(opts.body).apply_calendar_update, false);
+        const body = (await result().json()).data;
+        body.fields.address = { value: "Synthetic venue", status };
+        return Response.json({ data: body });
+      },
+      memory(),
+    );
+    await api.submit({
+      ...intent,
+      review: {
+        ...intent.review,
+        field: "address",
+        newValue: " \u0085Synthetic venue\u3000 ",
+      },
+      body: { ...intent.body, apply_calendar_update: false },
+    });
+    assert.equal(api.attempt, null);
+  }
+});
+test("read-only receipt inspection can retire a completed original after explicit review without replaying it", async () => {
+  const calls = [],
+    storage = memory();
+  const api = orderCommands(
+    "csrf",
+    account,
+    async (url, opts) => {
+      calls.push({ url, opts });
+      if (calls.length === 1) throw new Error("synthetic lost response");
+      assert.match(url, /\/work-order-command-results\/.+\/inspect$/);
+      assert.equal(opts.headers["Idempotency-Key"], undefined);
+      assert.deepEqual(JSON.parse(opts.body), {
+        kind: "confirm",
+        order_id: id,
+        change_id: change,
+        command: intent.body,
+      });
+      return result();
+    },
+    storage,
+  );
+  await assert.rejects(api.submit(intent), { code: "RESULT_UNKNOWN" });
+  assert.throws(() => api.retireInspected(), { code: "UNRESOLVED_ATTEMPT" });
+  const key = api.attempt.key;
+  const saved = await api.inspect();
+  assert.equal(saved.id, id);
+  assert.equal(api.attempt.key, key);
+  const reopened = orderCommands(
+    "csrf",
+    account,
+    async () => result(),
+    storage,
+  );
+  assert.throws(() => reopened.retireInspected(), {
+    code: "UNRESOLVED_ATTEMPT",
+  });
+  api.retireInspected();
+  assert.equal(api.attempt, null);
+  assert.equal(calls.length, 2);
+});
+test("missing, foreign and unavailable receipts never permit dropping an uncertain command", async () => {
+  for (const response of [
+    () =>
+      Response.json(
+        { error: { code: "COMMAND_RESULT_PENDING" } },
+        { status: 409 },
+      ),
+    async () => {
+      const body = await result().json();
+      body.data.account_id = "foreign";
+      return Response.json(body);
+    },
+    () => {
+      throw new Error("offline");
+    },
+  ]) {
+    let calls = 0;
+    const api = orderCommands(
+      "csrf",
+      account,
+      (...args) => {
+        if (++calls === 1) throw new Error("lost original");
+        return response(...args);
+      },
+      memory(),
+    );
+    await assert.rejects(api.submit(intent));
+    const key = api.attempt.key;
+    await assert.rejects(api.inspect());
+    assert.throws(() => api.retireInspected(), { code: "UNRESOLVED_ATTEMPT" });
+    assert.equal(api.attempt.key, key);
+    assert.equal(calls, 2);
+  }
+});

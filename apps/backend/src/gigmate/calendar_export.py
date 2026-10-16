@@ -35,8 +35,9 @@ def stamp(value):
 
 def export_event(event, order):
     if (
-        event["work_order_version"] != order["version"]
+        event["work_order_version"] > order["version"]
         or event["schedule"] != order["fields"]["schedule"]["value"]
+        or event["sources"] != order["fields"]["schedule"]["sources"]
     ):
         raise BusinessError(409, "VERSION_CONFLICT", "Refresh the current appointment")
     if (

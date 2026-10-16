@@ -139,7 +139,12 @@ export function ReviewWorkspace({
           </small>
           {items.map((item) => (
             <article className="review-item" key={item.id}>
-              <h3>{reasons[item.reason] ?? "需要人工核对"}</h3>
+              <h3>
+                {item.reason === "PROCESSING_FAILED" &&
+                ["pending", "processing"].includes(item.state)
+                  ? "处理暂未完成，系统正在自动重试"
+                  : (reasons[item.reason] ?? "需要人工核对")}
+              </h3>
               <small>
                 会话 {item.conversation_id.slice(-6)} · 记录 v
                 {item.context_version} / 当前 v{item.current_context_version}

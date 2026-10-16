@@ -22,17 +22,17 @@ export const featureDescriptions: Record<
   },
   create_order: {
     title: "从会话新建工单",
-    reason: "等待 C 修复并交付建单接口；目前可填写核对，不能保存。",
+    reason: "本版支持从已授权会话建单；需要引用客户原文并明确确认。",
     issue: "26",
   },
   order_status: {
     title: "开始、等待客户、完成和取消工单",
-    reason: "等待 C 的状态接口与建单修复一起验收。",
+    reason: "本版支持状态操作；完成或取消会处理自动待办与未发送草稿。",
     issue: "27",
   },
   address_confirmation: {
     title: "确认地址和补齐缺项",
-    reason: "当前正式确认接口只支持时间；地址和关键项规则等待 C 交付。",
+    reason: "本版支持确认时间和地址提议；仍未获客户确认的值会保持待确认。",
     issue: "29",
   },
   manual_assignment: {

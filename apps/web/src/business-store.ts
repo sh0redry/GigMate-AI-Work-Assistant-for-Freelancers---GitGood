@@ -176,7 +176,7 @@ export class BusinessStore {
       return Promise.resolve();
     return this.mutate(async () => {
       await this.api.confirm(data, change);
-      return "已确认并持久化工单、日历和待办。";
+      return "已保存本次提议；仍需客户核实的信息保持待确认，日历与待办按确认状态更新。";
     });
   }
 }
@@ -187,7 +187,7 @@ export function canConfirm(
   contextVersion: number,
 ) {
   return (
-    change.field === "schedule" &&
+    ["schedule", "address"].includes(change.field) &&
     change.status === "proposed" &&
     change.conflict_ids.length === 0 &&
     change.base_work_order_version === orderVersion &&
@@ -198,7 +198,10 @@ export function changePresentation(change: Change, current: boolean) {
   if (change.status === "confirmed")
     return {
       label: "已确认",
-      text: "已同步正式日历，旧自动待办已取消，并已生成新的准备事项。",
+      text:
+        change.customer_confirmation === "confirmed"
+          ? "商户已接受此提议；日历与待办按工单的当前确认状态更新。"
+          : "商户已接受此值，仍等待客户核实；这不代表客户已经确认。",
       warning: false,
     };
   if (change.status !== "proposed" || !current)
@@ -215,7 +218,7 @@ export function changePresentation(change: Change, current: boolean) {
     };
   return {
     label: "待商户确认",
-    text: "确认后将同步正式日历，取消旧自动待办并生成新的准备事项。",
+    text: "商户接受后会保存此值；仍需客户核实的内容保持待确认，日历与准备待办按确认状态处理。",
     warning: false,
   };
 }

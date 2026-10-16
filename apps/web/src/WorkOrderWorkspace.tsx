@@ -1,5 +1,6 @@
 import { orderCommands } from "./order-command-api";
 import { OrderLifecycle } from "./OrderLifecycle";
+import { InspectOrderAttempt } from "./InspectOrderAttempt";
 import { unavailableFeatures, type Features } from "./features";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
@@ -156,6 +157,7 @@ export function WorkOrderWorkspace({
     !commands?.attempt &&
     !commands?.error &&
     openOrder &&
+    (change.field !== "address" || features.address_confirmation) &&
     canConfirm(change, order.version, changeContext(data, change) ?? -1);
   const tasks = detailReady
     ? (data?.tasks ?? []).filter(
@@ -190,7 +192,7 @@ export function WorkOrderWorkspace({
               ? "新建工单"
               : commands.attempt.intent.kind === "status"
                 ? "修改工单状态"
-                : "确认时间安排"}{" "}
+                : `确认${commands.attempt.intent.review.field === "address" ? "地址" : "时间安排"}`}{" "}
             · 请求编号 {commands.attempt.key}
           </p>
           {commands.attempt.intent.kind === "create" ? (
@@ -268,6 +270,21 @@ export function WorkOrderWorkspace({
           >
             核对原编号操作
           </button>
+          <InspectOrderAttempt
+            commands={commands}
+            ready={ready}
+            busy={commandBusy || state.mutating}
+            onBusy={setCommandBusy}
+            onDone={() => {
+              setCommandError("");
+              void store.refresh();
+            }}
+            onError={(e) => {
+              setCommandError(e instanceof Error ? e.message : "核对失败");
+              if ((e as { code?: string })?.code === "UNAUTHENTICATED")
+                onSessionExpired();
+            }}
+          />
         </section>
       )}
       <div
@@ -343,7 +360,7 @@ export function WorkOrderWorkspace({
             <p>
               {data.orders.length
                 ? "没有匹配的工单，调整搜索或状态筛选。"
-                : "当前还没有工单。你可以先在「WhatsApp 连接」中管理会话授权；自动建单和手动新建功能尚未开放。"}
+                : "当前还没有工单。先在「WhatsApp 连接」中授权会话，再到「新建工单」引用客户原文建单；自动建单尚未开放。"}
             </p>
           )}
           {!data && (
@@ -407,7 +424,9 @@ export function WorkOrderWorkspace({
                   )
                   .join("；") ||
                   "当前已记录时间和地址的确认；请继续核对变更来源。"}{" "}
-                地址确认与人工补项接口尚未交付。
+                {!features.address_confirmation &&
+                  "当前后端未开放地址提议确认。"}
+                人工归单与延期保存仍未开放。
               </p>
               <h2>
                 待核对变更 <span className="tag">{pending.length} 项提议</span>
@@ -456,11 +475,11 @@ export function WorkOrderWorkspace({
                     <p>
                       {context === null
                         ? "来源版本或归属无法完整核对，保持待复核。"
-                        : change.field !== "schedule"
-                          ? "当前接口仅支持时间安排确认，此字段保持待核对。"
+                        : !["schedule", "address"].includes(change.field)
+                          ? "当前接口仅支持时间和地址确认，此字段保持待核对。"
                           : display.text}
                     </p>
-                    {change.field === "schedule" && (
+                    {["schedule", "address"].includes(change.field) && (
                       <button
                         disabled={!confirmable(change)}
                         onClick={() => {
@@ -471,7 +490,9 @@ export function WorkOrderWorkspace({
                           setConsent(false);
                         }}
                       >
-                        核对并确认安排
+                        {change.field === "address"
+                          ? "核对并确认地址"
+                          : "核对并确认安排"}
                       </button>
                     )}
                   </article>
@@ -483,7 +504,7 @@ export function WorkOrderWorkspace({
                   role="region"
                   aria-label="确认安排复核"
                 >
-                  <h3>复核本次正式更新</h3>
+                  <h3>复核本次业务更新</h3>
                   {reviewCurrent && reviewed ? (
                     <>
                       <p>
@@ -509,7 +530,7 @@ export function WorkOrderWorkspace({
                       }
                       onChange={(e) => setConsent(e.target.checked)}
                     />
-                    我已核对，确认更新工单、同步正式日历、取消旧自动待办并生成新的准备事项。
+                    我已核对原文，接受本次提议。仍未获客户确认的信息保持待确认；日历与准备待办按确认状态处理。
                   </label>
                   <button
                     disabled={
@@ -665,7 +686,8 @@ export function WorkOrderWorkspace({
           ))}
           {detailReady && !tasks.length && <p>当前工单在该范围暂无待办。</p>}
           <small>
-            新建工单与工单状态修改尚未开放。回复草稿请到“回复审批”核对；此页面不会发送消息。
+            新建工单请到“新建工单”；支持的状态操作在工单详情核对。回复草稿请到“回复审批”，业务审批尚未接通
+            WhatsApp 发送。
           </small>
         </aside>
       </div>

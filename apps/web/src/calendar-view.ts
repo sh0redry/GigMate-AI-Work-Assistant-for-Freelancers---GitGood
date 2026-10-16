@@ -31,8 +31,10 @@ export function exportProblem(event: Calendar, order?: Order) {
   if (["completed", "cancelled"].includes(order.status))
     return "已结束工单仅保留历史，不能导出。";
   if (
-    event.work_order_version !== order.version ||
-    !sameSchedule(event.schedule, order.fields.schedule.value)
+    event.work_order_version > order.version ||
+    !sameSchedule(event.schedule, order.fields.schedule.value) ||
+    JSON.stringify(event.sources) !==
+      JSON.stringify(order.fields.schedule.sources)
   )
     return "预约与工单版本不一致，请刷新核对。";
   if (

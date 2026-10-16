@@ -194,7 +194,7 @@ test("a version rejection reads the current proposal and never retries confirmat
 test("confirmed and invalidated cards describe their completed or historical state", () => {
   assert.match(
     changePresentation(proposal({ status: "confirmed" }), false).text,
-    /已同步/,
+    /仍等待客户核实/,
   );
   assert.match(
     changePresentation(proposal({ conflict_ids: ["busy"] }), false).label,

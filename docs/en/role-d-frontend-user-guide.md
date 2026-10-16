@@ -4,12 +4,12 @@ Current delivery candidate · 2026-10-16. [中文手册](../zh/role-d-frontend-u
 
 ## 1 Current pages and capability
 
-The candidate follows merged #25/main `53991dc`. There is one business service, blank login fields and no public password, sample-input button or environment switch. Old `/environments/...` bookmarks stop at an explicit retired-entry page; open `/` only after checking the configured service. Existing records and WhatsApp sessions are not deleted or converted.
+The candidate follows merged #26/#27/main `71de8d9`. There is one business service, blank login fields and no public password, sample-input button or environment switch. Old `/environments/...` bookmarks stop at an explicit retired-entry page; open `/` only after checking the configured service. Existing records and WhatsApp sessions are not deleted or converted.
 
 | Page | What you can do |
 | --- | --- |
-| Business | Search existing orders, read linked source revisions, review and confirm a supported concrete-time change |
-| New order | Select an authorized conversation, fill missing/known details, choose customer evidence, review; saving waits for C #26 |
+| Business | Search existing orders, read linked source revisions, accept supported time/date-only/address proposals and use reviewed status commands |
+| New order | Select an authorized conversation, fill missing/known details, choose customer evidence, review and save through the merged C contract |
 | Reply approvals | Review exact recipient/body/source/expiry/versions; approve, reject/cancel, reissue and inspect history |
 | Calendar and tasks | Month view, all-appointment list, date keyboard navigation, full-account tasks, owned confirmed appointment `.ics` downloads |
 | Manual review | Read processing diagnostics, distinguish historical rounds, inspect original conversation and open linked orders |
@@ -58,13 +58,15 @@ Open WhatsApp, follow connection status and select the chats you authorize. Rece
 
 Check summary, status, time/address and exact source revision. A conversation can contain multiple orders. Missing values stay missing. A customer proposing a change, explicitly confirming it, and the merchant approving it are different facts.
 
-For a supported concrete-time proposal, open review, compare the displayed change and sources, tick consent and confirm. Stale versions, unavailable/changed sources and conflicts block submission. The current backend only confirms schedule changes; address confirmation and key-item completion await C. The status buttons explain their effects; saving remains disabled until #27 is repaired, integrated and accepted. Completed/cancelled orders are terminal; future closing effects do not recall a WhatsApp request already dispatched.
+For a time or address proposal, compare the value and exact original message, then explicitly accept it. A date without a time remains tentative. If the customer has not confirmed a resolved value, accepting it saves the value as proposed: it is still waiting for the customer, rather than becoming a formal appointment. Unsupported fields, stale versions, changed sources and conflicts remain blocked.
 
-A lost write response preserves its original numbered command and review snapshot before any POST. Refresh and sign-in do not resend it. Re-read current data, inspect the original content/versions and explicitly choose original-key recovery. Storage denial blocks submission while keeping reads available; cleanup failure retains the original record. No password is journaled. Temporary merchant-entered creation data and confirmation review metadata remain in tab session storage until verified completion; shared-computer users must account for this pending record. Do not manually erase an uncertain operation.
+Start, wait for customer, complete and cancel now use C's merged commands. Review the effect and version before saving. Completed/cancelled orders are final; closing deals with generated tasks and unsent business drafts, retains history and does not recall an already dispatched WhatsApp request.
+
+A lost response preserves the original numbered command before any POST. Refresh and sign-in do not resend it. There are two explicit options: review and retry the exact original key/body/version, or use “只读核对已保存结果” to look up its immutable server receipt without executing anything. Only a matching completed receipt unlocks “结束已核对的原记录”, after a separate checkbox. Missing/unknown results retain the original record; never infer that a missing receipt means the request was not executed. Storage denial/cleanup failure blocks new writes until recovered. No password is journaled; temporary original content stays in tab session storage until verified completion.
 
 ## D-03: review a reply before approving it
 
-Review the complete body, recipient conversation, source revisions, expiry and bound/current versions. Tick explicit consent after review. **已批准，尚未发送** means only that your decision was saved. This business approval is not automatically linked to a WhatsApp send. Do not paste an old approval into a sender and assume its versions remain valid.
+Review the complete body, recipient conversation, source revisions, expiry and bound/current work-order and conversation versions. Tick explicit consent after review. **已批准，尚未发送** means only that your decision was saved. This business approval is not automatically linked to a WhatsApp send. Do not paste an old approval into a sender and assume its versions remain valid.
 
 Reject/cancel requires a reason. Reissue creates a new pending draft, not a message. Missing-time/address and verification questions are described alongside conflict questions, including safely handled unfamiliar trigger formats. Full history retains closed records. Original-key approval recovery remains account-scoped; an unresolved legacy-entry record blocks new approvals instead of silently migrating it to a different service.
 
@@ -72,7 +74,7 @@ Reject/cancel requires a reason. Reissue creates a new pending draft, not a mess
 
 Choose an authorized conversation, enter a short summary, leave unknown time/address blank and choose the customer's latest unretracted original messages for any supplied values. Outgoing merchant messages are excluded as customer-confirmation evidence. Specific times use Hong Kong time; date-only values remain tentative. Another open order requires an explicit additional-order checkbox. Changing form/source data invalidates its review.
 
-Saving is disabled because #26 is not delivered. The frontend target command is prepared and tested separately; its type is explicitly a pending C contract, not a generated implemented route. After C publishes the accepted contract, C/D must compare shapes and enable the server release gate together. Endpoint presence or a user checkbox does not enable it automatically.
+Saving now uses the canonical generated CreateWorkOrderCommand from merged #26. The server capability enables manual creation, order status and address confirmation in this version; a missing/failed capability response still disables dependent operations. AI creation, assignment/deferred follow-up and C-to-A sending remain unavailable.
 
 Manual review shows safe owned/allowlisted job metadata and current original messages, not raw provider payloads. Historical rounds are labelled. Missing fields say whether customer input, clarification or merchant review is needed. Assignment/deferred-follow-up saving remains unavailable without B/C contracts. For media/partial results, use the WhatsApp attachment panel and its source review; this does not turn model output into a confirmed order.
 
@@ -80,7 +82,7 @@ Manual review shows safe owned/allowlisted job metadata and current original mes
 
 Month view starts on Monday. Choose a date; arrows move one day/week and Home/End move to the current week's ends. Today and previous/next month controls are available. All-appointments view and optional closed-order history help inspect other dates. Time is displayed in Hong Kong time; date-only entries keep their original date/timezone. Tasks are read-only because no manual completion/edit API exists.
 
-**加入我的日历 (.ics)** downloads one current formal timed appointment after a fresh server ownership/version check. Tentative, stale, unavailable and closed-order records cannot export. The file contains the business title, UTC instants, original-timezone note and a confirmed address when present. Your calendar displays the same instants in its configured timezone. Keep the downloaded business file private.
+**加入我的日历 (.ics)** downloads one current formal timed appointment after a fresh server ownership/time/source check (later address/status-only versions remain valid). Tentative, stale, unavailable and closed-order records cannot export. The file contains the business title, UTC instants, original-timezone note and a confirmed address when present. Your calendar displays the same instants in its configured timezone. Keep the downloaded business file private.
 
 Open/import the file in your own calendar. Rescheduling does not automatically update phone/Google/Outlook calendars; reimport/update manually and check for duplicates. No Google login, subscription or two-way synchronization is implemented. Actual iPhone/Google/Outlook imports remain independent device acceptance.
 

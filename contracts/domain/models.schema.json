@@ -1113,6 +1113,78 @@
       "title": "ConversationMessage",
       "type": "object"
     },
+    "CreateWorkOrderCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "anyOf": [
+            {
+              "maxLength": 300,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Address"
+        },
+        "address_sources": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Address Sources",
+          "type": "array"
+        },
+        "confirm_additional_order": {
+          "default": false,
+          "title": "Confirm Additional Order",
+          "type": "boolean"
+        },
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "schedule": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimedSchedule"
+            },
+            {
+              "$ref": "#/$defs/DateOnly"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Schedule"
+        },
+        "schedule_sources": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Schedule Sources",
+          "type": "array"
+        },
+        "summary": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "conversation_id",
+        "summary"
+      ],
+      "title": "CreateWorkOrderCommand",
+      "type": "object"
+    },
     "CustomerConfirmation": {
       "enum": [
         "not_requested",
@@ -1367,6 +1439,67 @@
     "Id": {
       "format": "uuid",
       "type": "string"
+    },
+    "InspectWorkOrderCommand": {
+      "additionalProperties": false,
+      "description": "Look up an exact completed command; never execute or resubmit it.",
+      "properties": {
+        "change_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Change Id"
+        },
+        "command": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CreateWorkOrderCommand"
+            },
+            {
+              "$ref": "#/$defs/SetWorkOrderStatusCommand"
+            },
+            {
+              "$ref": "#/$defs/ConfirmChangeCommand"
+            }
+          ],
+          "title": "Command"
+        },
+        "kind": {
+          "enum": [
+            "create",
+            "status",
+            "confirm"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "order_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Order Id"
+        }
+      },
+      "required": [
+        "kind",
+        "command"
+      ],
+      "title": "InspectWorkOrderCommand",
+      "type": "object"
     },
     "InstantDeadline": {
       "additionalProperties": false,
@@ -2013,6 +2146,33 @@
           "$ref": "#/$defs/DateOnly"
         }
       ]
+    },
+    "SetWorkOrderStatusCommand": {
+      "additionalProperties": false,
+      "description": "Merchant moves an order along its life cycle (see TRANSITIONS in workorders).",
+      "properties": {
+        "expected_version": {
+          "minimum": 1,
+          "title": "Expected Version",
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "in_progress",
+            "waiting_customer",
+            "completed",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "expected_version"
+      ],
+      "title": "SetWorkOrderStatusCommand",
+      "type": "object"
     },
     "SourceRef": {
       "additionalProperties": false,
@@ -4742,7 +4902,7 @@
       "description": "Release gates, not connector permissions or claims of live acceptance.",
       "properties": {
         "address_confirmation": {
-          "default": false,
+          "default": true,
           "title": "Address Confirmation",
           "type": "boolean"
         },
@@ -4762,7 +4922,7 @@
           "type": "boolean"
         },
         "create_order": {
-          "default": false,
+          "default": true,
           "title": "Create Order",
           "type": "boolean"
         },
@@ -4772,7 +4932,7 @@
           "type": "boolean"
         },
         "order_status": {
-          "default": false,
+          "default": true,
           "title": "Order Status",
           "type": "boolean"
         }

@@ -234,6 +234,11 @@ export function businessApi(
           "业务已切换，请刷新并重新核对。",
         );
       const context = changeContext(snapshot, change);
+      if (!["schedule", "address"].includes(change.field))
+        throw new WorkspaceError(
+          "VALIDATION_FAILED",
+          "当前只能确认时间或地址提议。",
+        );
       if (context === null)
         throw new WorkspaceError(
           "APPROVAL_STALE",
@@ -242,7 +247,7 @@ export function businessApi(
       const body = {
         expected_version: order.version,
         expected_context_version: context,
-        apply_calendar_update: true as const,
+        apply_calendar_update: change.field === "schedule",
       };
       if (commands)
         await commands.submit({
@@ -250,6 +255,7 @@ export function businessApi(
           orderId: order.id,
           changeId: change.id,
           review: {
+            field: change.field as "schedule" | "address",
             summary: order.summary,
             oldValue: change.old_value,
             newValue: change.new_value,

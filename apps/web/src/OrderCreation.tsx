@@ -236,8 +236,7 @@ export function OrderCreation({
       </div>
       {!features.create_order && (
         <p className="notice warning">
-          暂不可保存：C 的建单接口 #26
-          还在修复。下面可以填写和核对，提交按钮保持关闭；内容不会写入工单。
+          当前连接的后端未开放建单功能。下面可以填写和核对，提交按钮保持关闭。
         </p>
       )}
       {error && (

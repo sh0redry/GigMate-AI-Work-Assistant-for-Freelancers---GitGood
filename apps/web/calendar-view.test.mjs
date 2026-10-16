@@ -64,18 +64,41 @@ test("only current formal appointments on active orders can export", () => {
     order = {
       version: 3,
       status: "confirmed",
-      fields: { schedule: { status: "confirmed", value: schedule } },
+      fields: {
+        schedule: { status: "confirmed", value: schedule, sources: [] },
+      },
     },
-    event = { id: "e", work_order_version: 3, tentative: false, schedule };
+    event = {
+      id: "e",
+      work_order_version: 3,
+      tentative: false,
+      schedule,
+      sources: [],
+    };
   assert.equal(exportProblem(event, order), "");
   for (const changed of [
-    { ...order, version: 4 },
+    { ...order, version: 2 },
     { ...order, status: "cancelled" },
     { ...order, status: "completed" },
   ])
     assert.ok(exportProblem(event, changed));
   assert.ok(exportProblem({ ...event, tentative: true }, order));
   assert.ok(exportProblem(event));
+  assert.equal(
+    exportProblem(event, { ...order, version: 4, status: "in_progress" }),
+    "",
+  );
+  assert.ok(
+    exportProblem(event, {
+      ...order,
+      fields: {
+        schedule: {
+          ...order.fields.schedule,
+          sources: [{ message_id: "changed", message_revision: 2 }],
+        },
+      },
+    }),
+  );
 });
 test("calendar download uses authenticated same-origin read and rejects JSON/HTML/denied results", async () => {
   let request;
@@ -100,6 +123,10 @@ test("calendar download uses authenticated same-origin read and rejects JSON/HTM
   );
 });
 test("open-item reasons are explicit and malformed/extended triggers have a safe fallback", () => {
+  assert.match(
+    triggerDescription("open_items", ["missing_time", "verify_address"]),
+    /只有日期.*等待客户核实地址/,
+  );
   assert.match(
     triggerDescription("open_items:order:v3:missing_schedule,verify_address"),
     /等待客户提供日期和时间；等待客户核实地址/,

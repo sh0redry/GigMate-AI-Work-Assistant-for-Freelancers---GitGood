@@ -138,7 +138,8 @@ test("review binding changes for content, source, order or context changes", () 
   assert.notEqual(reviewBinding(d, change), binding);
 });
 test("unsupported field confirmation is disabled even when versions match", () => {
-  assert.equal(canConfirm({ ...change, field: "address" }, 7, 9), false);
+  assert.equal(canConfirm({ ...change, field: "quantity" }, 7, 9), false);
+  assert.equal(canConfirm({ ...change, field: "address" }, 7, 9), true);
   assert.equal(canConfirm(change, 7, 9), true);
 });
 test("search and status use canonical data and keep the original selection catalog intact", () => {

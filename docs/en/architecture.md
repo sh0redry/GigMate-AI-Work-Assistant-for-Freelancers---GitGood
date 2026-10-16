@@ -41,7 +41,7 @@ Replay ingestion, durable worker, fixed extraction stub, internal confirmation, 
 | actions | Approval snapshots, invalidation, outbox, reconciliation | Only external-write gateway |
 | audit | Actors, traces, deletion coverage | Traceability without full content in logs |
 
-Initial services are responsibility-named Python files under apps/backend/src/gigmate; split into packages when they grow. Do not create unused module packages. Services share deterministic rules. Schedule confirmation is implemented; other domain commands and external actions remain pending. Any team member may contribute to any module. Rotating module contacts coordinate interfaces and handoffs, with no exclusive approval rights; see [equal collaboration](team-governance.md).
+Initial services are responsibility-named Python files under apps/backend/src/gigmate; split into packages when they grow. Do not create unused module packages. Services share deterministic rules. Manual work-order creation, time/address confirmation and lifecycle commands are implemented; general model understanding and business-action external execution remain pending. Any team member may contribute to any module. Rotating module contacts coordinate interfaces and handoffs, with no exclusive approval rights; see [equal collaboration](team-governance.md).
 
 ## Data and reliability
 

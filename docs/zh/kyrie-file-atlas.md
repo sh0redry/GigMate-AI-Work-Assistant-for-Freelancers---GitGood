@@ -314,3 +314,8 @@ D 优先读 `main.tsx` → `ConnectionWorkspace.tsx` → adapters/state → `cha
 A #11 对应 controls/0005_waha_controls/0006、setup-api-acceptance；D #15 对应 live adapter/工作台。A #14 对应 sync/0008/WahaMessages/message-sync-acceptance；D #16 对应 chat choices/组件测试。B #9/#18/#20 对应 extraction/0005_extraction_evidence/评测；C #13 新建工单仍在 api-v1.md 目标段，不是已实现文件。A/B 0007 合并两条迁移头。
 
 具体剩余问题和验收标准见学习手册第 3 章；不要把英文/中文同主题文档当作两份不同交付，也不要以文件数量评估个人贡献。
+
+
+## 接通 C 之后新增的文件关系（2026-10-16）
+
+`InspectOrderAttempt.tsx` 是“拿原小票查保存记录”的小面板；`order-command-api.ts` 留住原编号，只在核对到已保存记录后允许结束本地提醒。`workspace_api.py` 只查原有记录，不代替 C 修改工单。自动生成的接口类型现在包含 C 的建单／状态命令，以及只读查记录的填表约定。

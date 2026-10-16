@@ -303,7 +303,7 @@ export function ApprovalsWorkspace({
               </p>
               <dl className="approval-facts">
                 <dt>为什么需要回复</dt>
-                <dd>{triggerDescription(action.trigger)}</dd>
+                <dd>{triggerDescription(action.trigger, action.open_items)}</dd>
                 <dt>收件会话（系统编号）</dt>
                 <dd>
                   <code>{action.recipient}</code>

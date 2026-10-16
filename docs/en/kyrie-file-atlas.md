@@ -314,3 +314,8 @@ D: entry → connection workspace → adapters/state → chat helpers/view → t
 A #11: controls/0005_waha_controls/0006/setup acceptance; D #15: live adapter/workspace. A #14: sync/0008/WahaMessages/sync acceptance; D #16: chat choices/component tests. B #9/#18/#20: extraction/0005_extraction_evidence/evaluation. C #13 new-order work remains a target in api-v1.md, not an implemented endpoint. 0007 merges A/B migration heads.
 
 See guide section 3 for remaining issues and acceptance. English/Chinese counterparts are one delivery, not separate achievements. File count is not a contribution score.
+
+
+## Update after C integration (2026-10-16)
+
+`InspectOrderAttempt.tsx` explains and reviews a saved command receipt; `order-command-api.ts` retains the exact key and clears only verified completed records. `workspace_api.py` only reads the existing command cache; C still owns all business writes. Generated API types now include C's create/status commands and the typed readonly inspection request.
