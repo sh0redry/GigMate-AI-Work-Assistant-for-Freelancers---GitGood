@@ -35,6 +35,8 @@
 
 验证证据（全部合成）：新增 `apps/backend/tests/test_extraction_boundaries.py` **24 通过**，含 400 块的涓流响应体在 0.05 秒预算下一秒内被放弃且生产者生成器被关闭（评审的意见正是「返回了但传输仍在跑」不算中止）、五种畸形信封、CJK 上界、无上界分词器的拒绝，以及 NaN/Infinity/负数金额。改用流式读取后的既有提取套件，连同新增的边界用例：`test_extraction.py`、`test_extraction_batch2.py`、`test_extraction_batch3.py`、`test_extraction_batch3_provider.py`、`test_extraction_gates.py`、`test_extraction_boundaries.py` **194 通过**——这些用例的假客户端现在通过 `_StreamedResponse` 应答 `stream`，因为只答 `post` 的替身已经不能描述真实的 httpx 客户端。后端全套 **854 通过／25 跳过／12 失败**，12 项失败是原生 macOS 上既有的 PDF 拒绝，未改动的 main 上同样失败。Ruff 检查／格式 **104 文件**、`scripts/export_contracts.py --check` 一致、`check_baseline.py` **84 Markdown／995 本地链接**。未验证：PostgreSQL 并发／行锁、容器内 PDF 复跑、真实供应商行为，以及任何真实 token 计数——这个上界是从字节级 BPE 结构性证明的，不是对厂家回复实测出来的。
 
+同一轮随后补充：`apps/backend/tests/test_extraction_loopback.py` 补上替身无法覆盖的那一段——评审是用回环 HTTP 复现问题的，所以这条用例让真实的 `httpx.Client` 去打 `127.0.0.1` 上真实的 `http.server`，该服务用约十秒时间把一段合成 chat-completions 响应体一点点吐出。在 3 秒总预算下，调用在 3.05 秒处被中止并返回 `llm:deadline-exceeded` 与 request id，而不是等响应体发完。仅使用回环套接字：仍然没有供应商、密钥、外部网络或真实模型启用。
+
 ## 真实启用前验收门槛已实现 — 2026-10-16
 
 下文["真实启用前验收门槛"](#真实启用前验收门槛)五项已全部落地，回归测试在 `apps/backend/tests/test_extraction_gates.py`。接缝仍关闭：`LLMProvider._SKELETON_SEAM` 仍为 `True`、`gigmate.media.processor._ENABLED` 仍为 `False`，本批次没有真实供应商请求、真实密钥或真实客户消息，**不构成启用授权**。
