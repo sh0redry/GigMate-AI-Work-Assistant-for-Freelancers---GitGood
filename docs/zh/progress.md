@@ -1,5 +1,15 @@
 # 已完成工作与验证记录
 
+## 2026-10-16 功能冻结：AI 识别新生意并提议建单，记为后续（C）— 2026-10-16
+
+仅文档记录，**冻结后没有新增任何功能**。对照方案 v2 和契约里划给 C 的范围，其余项已完成，只剩这一项，按事实记为后续而非已完成：
+
+- **延期，阻塞在 B：** 识别会话里的新生意、落成「新建工单提议」、再由商户从提议建单（`contracts/api-v1.md` §1–§2，`POST /work-orders` 带 `from_proposal_id`）。B 侧的「新工单」识别结果格式仍未定义——每个 job 一个结果、`new_work_order` 这样的赋值取值、`needs_review` 分支。Will 在 #31 里说下一步提供，冻结前没有交付。C 不替他猜：契约里写明 C 绝不自行判断两条消息是不是同一单，只执行 provider 给出的结果。因此该项等 B 的格式，留在「尚待实现」。
+- **对兜底方案的事实更正：** 手动建单目前也不存在。`apps/backend/src/gigmate/api.py` 只注册了 `GET /work-orders`、`GET /work-orders/{id}`、`GET /work-orders/{id}/changes` 和 `POST /work-orders/{id}/changes/{change_id}/confirm`；`contracts/openapi.json` 一致，没有 `CreateWorkOrderCommand`。`proposals` 表没有「新建提议」类型，前端 `apps/web` 也没有建单界面。所有工单仍来自开发种子（`apps/backend/src/gigmate/seed.py`），与契约状态行的说明一致。**因此 demo 跑的是种子里的既有工单，不是商户新建的。** 做手动建单属于新增功能，冻结后未获授权，不实施。
+- 本条未改动：`apps/` 下任何文件、生成契约、迁移都没动。`AssignmentResult` 仍只有 `matched` / `needs_review`；`extraction/persistence.py` 只对 `matched` 落变更提议，因此当前没有任何代码路径会写出新建提议。既有工单的变更抽取、撞期校验、商户确认与审批闭环仍按既有文档实现（真实模型评测依旧未完成）。
+
+证据：上述路由清单读自 `apps/backend/src/gigmate/api.py`；全仓库搜索 `from_proposal_id` 只命中 `contracts/api-v1.md`；生成的 `contracts/openapi.json` 里 `/api/v1/work-orders` 只有一个 `get`。本批只改两份进度记录和 `contracts/api-v1.md` 里的一句状态说明；`.venv/bin/python scripts/check_baseline.py` PASS（71 个 Markdown、430 个本地链接、3 个 schema、11 个合法样例、6 个拒绝样例、12 个合成场景），`scripts/export_contracts.py --check` 保持同步。Ruff 与 pytest 不覆盖纯文档改动，未重跑；未涉及真实 WhatsApp、模型、发送或部署。
+
 ## PR #22 第二轮评审：重新生成轮次与 main 兼容（C）— 2026-10-14
 
 - **重复重新生成（P2，Andy 和 Kyrie）：** 过期 → 重新生成 → 没有新消息又过期 → 再次重新生成会返回 503，因为第二轮生成了相同的 `<change>@<context>` trigger，撞上唯一约束。现在每轮重新生成都有持久的独立身份 `<change>@<context>~<被替换的草稿 id>`；一条草稿只能被重新生成一次（之后它就不是最新的），所以轮次不会冲突。同一个幂等键重放返回原结果，同键换内容返回 409 `IDEMPOTENCY_CONFLICT`，旧轮次返回 409，每单仍只有一条活动草稿。回归测试：`test_repeated_expiry_rounds_can_each_be_reissued`（未修复时得到 503）。
@@ -390,6 +400,8 @@ PR #3 的 backend run 37432110763 在 test_waha_team.py 收集阶段报 `ModuleN
 - 对外审批、outbox、代发、发送结果未知核对、API echo 和发送并发测试。
 - 完整工作时间/缓冲规则、生产身份/密钥系统、完整账号及备份删除；WAHA 30 天正文清理已实现。
 - 媒体、外部日历和其他增强模块。
+
+截至 2026-10-16 冻结，「从会话建工单」整条链路都未完成（见首条记录）：没有 `POST /work-orders`，没有手动建单界面，也没有 AI 新建工单提议——后者等 B 侧识别格式（#31）。当前所有工单来自开发种子。
 
 后续先完成持久真实接入与独立统一验收，再规划对外审批执行闭环。真实使用仅限明确授权的本地测试账号/聊天，不用于生产或宣称完整 P0。所有新增工作按协作检查表交付，持续记录完成证据，不能把回放成功写成真实接入成功。
 

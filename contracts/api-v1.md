@@ -74,7 +74,7 @@ For send_text snapshots, hash exactly these fields from the stored action: id, a
 
 ## Work orders from conversation to confirmation (planned, role C)
 
-Status: **planned contract, not implemented**. Proposed 2026-10-09 for team review (see Issue #7). Implementation adds source models/routes and regenerated OpenAPI; until then OpenAPI remains authoritative for implemented behavior. Everything below is a local database operation: none of it requires the WhatsApp connector or a model to be available, and nothing is sent without merchant approval.
+Status: **planned contract, not implemented**. Proposed 2026-10-09 for team review (see Issue #7). Implementation adds source models/routes and regenerated OpenAPI; until then OpenAPI remains authoritative for implemented behavior. At the 2026-10-16 feature freeze nothing here is implemented, including manual creation: there is no `POST /work-orders` route, and every work order still comes from the development seed. The recognition half is additionally blocked on role B publishing its "new work order" result format (Issue #31); role C enforces that result and does not define it, so this section cannot be implemented before that contract exists. Everything below is a local database operation: none of it requires the WhatsApp connector or a model to be available, and nothing is sent without merchant approval.
 
 Today every work order comes from the development seed, so a live conversation has no order to attach changes to. This section covers the whole path: recognizing jobs in a conversation, creating the order, following up on missing information, and confirming. The rule stays the same throughout: **AI proposes, deterministic rules check, the merchant decides.**
 
