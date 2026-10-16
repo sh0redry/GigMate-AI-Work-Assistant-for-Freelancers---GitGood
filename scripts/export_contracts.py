@@ -68,6 +68,7 @@ def domain_schema():
         c.ApprovalAction,
         c.AuditLog,
         c.ConfirmChangeCommand,
+        c.CreateWorkOrderCommand,
         c.RejectCommand,
         c.ApproveActionCommand,
         c.RejectActionCommand,

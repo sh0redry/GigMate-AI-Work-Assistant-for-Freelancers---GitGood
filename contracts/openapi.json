@@ -169,6 +169,20 @@
             "title": "Kind",
             "type": "string"
           },
+          "open_items": {
+            "items": {
+              "enum": [
+                "missing_schedule",
+                "verify_schedule",
+                "missing_time",
+                "missing_address",
+                "verify_address"
+              ],
+              "type": "string"
+            },
+            "title": "Open Items",
+            "type": "array"
+          },
           "provider_message_id": {
             "anyOf": [
               {
@@ -211,7 +225,10 @@
             "$ref": "#/components/schemas/ActionState"
           },
           "trigger": {
-            "const": "schedule_conflict",
+            "enum": [
+              "schedule_conflict",
+              "open_items"
+            ],
             "title": "Trigger",
             "type": "string"
           },
@@ -242,6 +259,7 @@
           "delivery_status",
           "sources",
           "trigger",
+          "open_items",
           "closed_reason",
           "closed_note",
           "reissuable"
@@ -1008,6 +1026,76 @@
           "revoked"
         ],
         "title": "ConversationMessage",
+        "type": "object"
+      },
+      "CreateWorkOrderCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "address_sources": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            },
+            "title": "Address Sources",
+            "type": "array"
+          },
+          "confirm_additional_order": {
+            "default": false,
+            "title": "Confirm Additional Order",
+            "type": "boolean"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimedSchedule"
+              },
+              {
+                "$ref": "#/components/schemas/DateOnly"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule"
+          },
+          "schedule_sources": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            },
+            "title": "Schedule Sources",
+            "type": "array"
+          },
+          "summary": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "summary"
+        ],
+        "title": "CreateWorkOrderCommand",
         "type": "object"
       },
       "CustomerConfirmation": {
@@ -8576,6 +8664,53 @@
           }
         },
         "summary": "Orders"
+      },
+      "post": {
+        "operationId": "create_order_api_v1_work_orders_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkOrderCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WorkOrder_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Order"
       }
     },
     "/api/v1/work-orders/{order_id}": {

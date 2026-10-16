@@ -835,6 +835,18 @@ class EvaluationRun(Model):
     cases: Annotated[list[EvaluationCase], Field(min_length=0)]
 
 
+class CreateWorkOrderCommand(Model):
+    conversation_id: Id
+    summary: Annotated[str, Field(min_length=1, max_length=120)]
+    schedule: TimedSchedule | DateOnly | None = None
+    # The customer message(s) where the time was stated; required with a schedule.
+    schedule_sources: list[SourceRef] = []
+    address: Annotated[str, Field(min_length=1, max_length=300)] | None = None
+    # The customer message(s) where the address was stated; required with an address.
+    address_sources: list[SourceRef] = []
+    confirm_additional_order: bool = False
+
+
 class RejectCommand(Model):
     expected_version: Positive
     reason: Text

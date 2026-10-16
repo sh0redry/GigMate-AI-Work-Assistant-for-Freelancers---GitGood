@@ -26,6 +26,7 @@ from gigmate.contracts import (
     ConnectorStatus,
     Conversation,
     ConversationMessage,
+    CreateWorkOrderCommand,
     Detail,
     Model,
     Page,
@@ -77,7 +78,7 @@ from gigmate.waha_ingress import binding_for, configured_binding, receive, statu
 from gigmate.waha_probe import MAX_BODY, _non_json_constant, _pairs, verify_hmac
 from gigmate.waha_recovery import issue_view, record_rejection
 from gigmate.waha_send_api import install as install_sending
-from gigmate.workorders import command_cache, confirm, owned, save_result
+from gigmate.workorders import command_cache, confirm, create, owned, save_result
 
 app = FastAPI(title="GigMate replay skeleton", version="0.2.0")
 
@@ -110,7 +111,16 @@ class ChangeView(RequirementChange):
 
 
 class ActionView(ApprovalAction):
-    trigger: Literal["schedule_conflict"]
+    trigger: Literal["schedule_conflict", "open_items"]
+    open_items: list[
+        Literal[
+            "missing_schedule",
+            "verify_schedule",
+            "missing_time",
+            "missing_address",
+            "verify_address",
+        ]
+    ]
     closed_reason: str | None
     closed_note: str | None
     reissuable: bool
@@ -137,7 +147,7 @@ async def business_error(request: Request, exc: BusinessError):
     return JSONResponse(
         status_code=exc.status,
         content={
-            "error": {"code": exc.code, "message": exc.message, "details": {}},
+            "error": {"code": exc.code, "message": exc.message, "details": exc.details},
             "request_id": request.state.request_id,
         },
     )
@@ -312,6 +322,17 @@ def orders(
         cursor,
         limit,
     )
+
+
+@app.post("/api/v1/work-orders", status_code=201, response_model=Detail[WorkOrder])
+def create_order(
+    command: CreateWorkOrderCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    return detail(request, create(db, account, command, idempotency_key, request.state.request_id))
 
 
 @app.get("/api/v1/work-orders/{order_id}", response_model=Detail[WorkOrder])

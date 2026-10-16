@@ -174,6 +174,18 @@ Kyrie 现要求推送已完成的 D-02 前端分支并创建 PR，取代之前�
 
 证据：SQLite 全套 **569 通过、9 跳过**；审批和迁移测试在本地 PostgreSQL 16 上也通过；Ruff/格式（main 上已有的 `scripts/check_baseline.py` F401 与本 PR 无关）、契约导出检查、前端接口检查和基线通过。未触碰真实 WhatsApp、发送、模型或部署。
 
+## 新建工单与关键项规则（C）— 2026-10-13
+
+叠在 PR #22 之上。新增 `POST /work-orders`（`CreateWorkOrderCommand`）以及契约第 3 节的关键项规则。
+
+- **新建：** 商户在自己名下、已授权的会话里新建工单；`summary` 1–120 字（空白拒绝）。填写的每个值都要标出客人在哪条消息里说的（`schedule_sources`、`address_sources`），来源必须是本会话里当前、未撤回的修订，而且是客人发来的消息（`direction: incoming`）；商户自己的回复或我们发送的回显会返回 422。只有空格或制表符的地址返回 422，绝不算已确认。没填的值保持 `missing`。具体时间必须在未来，且不能与已确认预约重叠（409 `SCHEDULE_CONFLICT`，附 `work_order_ids`）。没有 `confirm_additional_order` 时，会话已有未完成工单会返回 409 `OPEN_ORDER_EXISTS` 并列出这些工单。按账号串行、幂等，并写审计。
+- **关键项规则：** 只有具体时间和地址都**经商户确认且客人确认**后，工单才是 `confirmed`。商户确认一条 `customer_confirmation` 不是 `confirmed` 的提议（例如 AI 换算出来的相对日期）时，值会写入，但字段保持 `proposed`，这一项仍未完成；已确认的工单如果关键项变成等客人确认，或时间被换成只有日期，会回到 `pending_confirmation`，日历变为暂定，自动生成的准备待办取消（只有日期的情况之前会返回 500）。商户新建时填写的值引用了客人自己的消息，视为客人已确认；只有日期的值保持 `proposed`。只有时间时，正式日历占住时段，但工单保持待确认、不生成准备待办；只有日期（新建或确认时）都是暂定日历，不参与撞期检查（之前确认只有日期的提议会出错）。规则生效前已确认的工单（演示数据缺地址）不降级。
+- **待确认项草稿：** 工单新建或确认后仍是 `pending_confirmation` 时，生成一条 `send_text` 草稿（trigger `open_items`，原因代码在 `open_items` 中：`missing_schedule`、`verify_schedule`、`missing_time`、`missing_address`、`verify_address`），只问未完成的项，并复述待客人核对的值，例如「你好，想跟你确认一下：你说的是 10/17 吗？几点方便？见面地址是？」。它会替换旧的未发送草稿（`superseded`）；最后一项确认后关闭（`resolved`）。收到新消息后沿用现有的暂停/重新生成规则；重新生成会按工单当前的未完成项重新组织问题（已无未完成项则 409）。trigger 身份为 `open_items:<工单>:v<版本>:<原因代码>`，重新生成轮次为 `open_items:<被替换的草稿>:r<上下文版本>:<原因代码>`，多轮不会冲突，长度也在 128 字符的列宽以内。
+- **撞期：** 已取消或已完成的工单不再占用时段。
+- 未实现：`from_proposal_id`（B 尚无 `new_work_order` 归属）、按单识别、延后及其跟进待办（需要 B 标出延后项）、取消/完成工单时作废草稿（随计划中的状态命令）、用 AI 的 `draft_text` 作正文（B 的 prompt v1 把它定义为给商户的摘要）。
+
+证据：`test_create_order.py` **30 项通过**（原 24 项 + #26 第一轮评审的 4 条回归：拒绝商户发出的来源、拒绝空白地址、已确认改为只有日期时回到待确认而不是 500、从 trigger 右侧解析原因代码；+ 10/16 评审的 2 条：客人未确认的具体时间改期，日历为暂定、不占时段；客人确认后恢复为正式）。本地 PostgreSQL 16 上 `test_create_order.py`、`test_approvals.py`、`test_workflow.py` 共 70 项通过。合并 main `53991dc`（#23、#25）后：SQLite 全套 673 通过、12 跳过；Alembic 只有一个 head `0016_d03_sending_heads`（本 PR 无新迁移）；Ruff/格式、契约导出、baseline、前端接口检查和类型检查通过。PostgreSQL 只跑了这三个文件，没有测并发请求。未触碰真实 WhatsApp、发送、模型或部署。
+
 ## PR #22 审批动作评审跟进（C）— 2026-10-13
 
 PR #22（`lena/approval-actions`，head `e79ef7b`）新增 C 的审批动作：改期提议与已确认预约撞期时，生成一条 `send_text` 草稿（`pending_approval`、固定模板、24 小时过期）；GET /actions、GET /actions/{id}、批准（202，核对快照哈希、版本和来源）、拒绝和取消（只改本地状态，保留原因）。批准只记录决定，不发送。已按 Kyrie（要求修改）和 Andy 的评审修正：
