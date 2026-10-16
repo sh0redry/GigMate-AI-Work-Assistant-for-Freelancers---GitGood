@@ -2638,6 +2638,8 @@ export interface components {
        * @enum {string}
        */
       coverage: "complete" | "partial" | "unknown";
+      /** Injection Markers */
+      injection_markers?: string[];
       /** Model Version */
       model_version: string;
       /** Prompt Version */

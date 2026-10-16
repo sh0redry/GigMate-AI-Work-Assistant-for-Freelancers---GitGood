@@ -21,6 +21,8 @@ from typing import Any, Mapping
 from gigmate.contracts import WahaMediaResult, WahaMediaSegment
 from gigmate.media_processing import ProcessingUncertain
 
+from . import injection
+
 log = logging.getLogger(__name__)
 
 
@@ -57,7 +59,12 @@ def _parse_message_object(payload: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def coerce_chat_response(
-    payload: Mapping[str, Any], *, prompt_version: str, vendor: str, model_version: str
+    payload: Mapping[str, Any],
+    *,
+    prompt_version: str,
+    vendor: str,
+    model_version: str,
+    caption: str | None = None,
 ) -> WahaMediaResult:
     """Normalise a chat-completions payload into :class:`WahaMediaResult`.
 
@@ -65,11 +72,18 @@ def coerce_chat_response(
     parsed as a JSON object) and the older plain-text body. Anything that
     cannot be coerced into a valid proposal raises
     :class:`ProcessingUncertain`.
+
+    ``caption`` is merchant/attacker supplied text that rode along with the
+    attachment; it is classified with the rest of the untrusted surfaces.
     """
 
     parsed = _parse_message_object(payload)
     return _coerce_proposal(
-        parsed, prompt_version=prompt_version, vendor=vendor, model_version=model_version
+        parsed,
+        prompt_version=prompt_version,
+        vendor=vendor,
+        model_version=model_version,
+        caption=caption,
     )
 
 
@@ -115,11 +129,27 @@ def coerce_pdf_extraction(
         "suggestions": parsed.get("suggestions", []),
         "unresolved_questions": unresolved,
     }
+    # The page text is untrusted too: a PDF can carry instructions in a
+    # hidden or white-on-white text layer, so the locally parsed pages are
+    # scanned alongside the model's own contribution.
+    assessment = injection.assess(
+        segments=segments,
+        summary=parsed.get("summary"),
+        suggestions=parsed.get("suggestions") or [],
+        unresolved=parsed.get("unresolved_questions") or [],
+    )
+    injection.log_assessment(assessment)
+    proposal["injection_markers"] = list(assessment.markers)
     return _validate(proposal)
 
 
 def coerce_transcription_response(
-    payload: Mapping[str, Any], *, prompt_version: str, vendor: str, model_version: str
+    payload: Mapping[str, Any],
+    *,
+    prompt_version: str,
+    vendor: str,
+    model_version: str,
+    caption: str | None = None,
 ) -> WahaMediaResult:
     """Normalise an audio-transcription payload into :class:`WahaMediaResult`.
 
@@ -179,6 +209,11 @@ def coerce_transcription_response(
         "suggestions": [],
         "unresolved_questions": [],
     }
+    # Spoken instructions are still instructions: the transcript is data,
+    # never a command, so it is flagged for review rather than trusted.
+    assessment = injection.assess(caption=caption, transcript=text)
+    injection.log_assessment(assessment)
+    proposal["injection_markers"] = list(assessment.markers)
     return _validate(proposal)
 
 
@@ -186,7 +221,12 @@ def coerce_transcription_response(
 
 
 def _coerce_proposal(
-    parsed: Mapping[str, Any], *, prompt_version: str, vendor: str, model_version: str
+    parsed: Mapping[str, Any],
+    *,
+    prompt_version: str,
+    vendor: str,
+    model_version: str,
+    caption: str | None = None,
 ) -> WahaMediaResult:
     if not isinstance(parsed, dict):
         raise ProcessingUncertain("Proposal payload is not an object")
@@ -195,7 +235,7 @@ def _coerce_proposal(
         isinstance(item, dict) and item.get("text") for item in parsed["segments"]
     ):
         raise ProcessingUncertain("Proposal has no readable segments")
-    proposal = {
+    proposal: dict[str, Any] = {
         "provider": vendor,
         "model_version": model_version,
         "prompt_version": prompt_version,
@@ -205,6 +245,17 @@ def _coerce_proposal(
         "suggestions": parsed.get("suggestions", []),
         "unresolved_questions": parsed.get("unresolved_questions", []),
     }
+    # The OCR text and the vendor's own business layer are equally untrusted:
+    # both are scanned before the result is handed to a human.
+    assessment = injection.assess(
+        caption=caption,
+        segments=parsed.get("segments") or [],
+        summary=parsed.get("summary"),
+        suggestions=parsed.get("suggestions") or [],
+        unresolved=parsed.get("unresolved_questions") or [],
+    )
+    injection.log_assessment(assessment)
+    proposal["injection_markers"] = list(assessment.markers)
     return _validate(proposal)
 
 

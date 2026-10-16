@@ -121,6 +121,18 @@
       "schema": "../domain/models.schema.json#/$defs/ScheduleValue",
       "valid": false,
       "reason": "Impossible calendar date"
+    },
+    {
+      "file": "proposal-new-work-order.json",
+      "schema": "../ai/change-proposal.schema.json",
+      "valid": true,
+      "reason": "Synthetic new-order suggestion; not a creation command or customer confirmation"
+    },
+    {
+      "file": "invalid-new-work-order-authority.json",
+      "schema": "../ai/change-proposal.schema.json",
+      "valid": false,
+      "reason": "A new-order suggestion cannot grant approval or execution authority"
     }
   ]
 }
