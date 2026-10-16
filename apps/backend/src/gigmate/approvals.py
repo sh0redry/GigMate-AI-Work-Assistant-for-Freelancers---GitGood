@@ -37,6 +37,8 @@ SNAPSHOT_FIELDS = (
 # Not yet handed to the sender: can still be replaced, rejected or cancelled.
 NOT_DISPATCHED = {"pending_approval", "approved"}
 CONFLICT_TEMPLATE = "收到，你想改到 {when}。这个时间我已有其他安排，方便换个时间吗？"
+# 附录 A: offer a time only when it comes from checked free time, never a guess.
+CONFLICT_WITH_SLOT = "收到，你想改到 {when}。这个时间我已有其他安排，{slot} 可以吗？"
 OPEN_ITEMS_TEMPLATE = "你好，想跟你确认一下：{questions}"
 
 
@@ -160,7 +162,7 @@ def draft_for_change(db, account_id, order, conversation, change, draft_text=Non
         return None
     # A newer draft for the same order replaces any older, unapproved one.
     cancel_pending(db, account_id, work_order_id=order.id, reason="superseded")
-    body = (draft_text or "").strip() or CONFLICT_TEMPLATE.format(when=local_label(schedule))
+    body = (draft_text or "").strip() or conflict_body(db, account_id, order, schedule)
     return new_draft(db, account_id, order, conversation, trigger, body, change["sources"])
 
 
@@ -280,6 +282,20 @@ def ask_open_items(db, account_id, order, conversation, round_of=None):
     cancel_pending(db, account_id, work_order_id=order.id, reason="superseded")
     body = OPEN_ITEMS_TEMPLATE.format(questions="".join(questions))
     return new_draft(db, account_id, order, conversation, trigger, body, sources)
+
+
+def conflict_body(db, account_id, order, schedule):
+    """The conflict question, offering the first free slot of the same length."""
+    from gigmate.scheduling import free_slots, parse
+
+    start, end = parse(schedule["start_at"]), parse(schedule["end_at"])
+    slots = free_slots(db, account_id, end - start, start, exclude_order_id=order.id, count=1)
+    when = local_label(schedule)
+    if not slots:
+        return CONFLICT_TEMPLATE.format(when=when)
+    offered = datetime.fromisoformat(slots[0]["start_at"].replace("Z", "+00:00"))
+    local = offered.astimezone(ZoneInfo(schedule["timezone"]))
+    return CONFLICT_WITH_SLOT.format(when=when, slot=f"{local:%m/%d %H:%M}")
 
 
 def latest_by_order(db, account_id, conversation_id):

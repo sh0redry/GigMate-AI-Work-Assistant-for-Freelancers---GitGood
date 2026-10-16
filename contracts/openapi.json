@@ -1491,6 +1491,44 @@
         "title": "Detail[ReplayResult]",
         "type": "object"
       },
+      "Detail_ScheduleCheck_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ScheduleCheck"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[ScheduleCheck]",
+        "type": "object"
+      },
+      "Detail_ScheduleSettings_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ScheduleSettings"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[ScheduleSettings]",
+        "type": "object"
+      },
       "Detail_WahaAttachmentView_": {
         "additionalProperties": false,
         "properties": {
@@ -2725,6 +2763,154 @@
         "title": "ReplayResult",
         "type": "object"
       },
+      "ScheduleCheck": {
+        "additionalProperties": false,
+        "description": "Deterministic checks for one order's time, plus free slots the merchant may offer.",
+        "properties": {
+          "risks": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduleRisk"
+            },
+            "title": "Risks",
+            "type": "array"
+          },
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/Slot"
+            },
+            "title": "Suggestions",
+            "type": "array"
+          },
+          "work_order_id": {
+            "format": "uuid",
+            "title": "Work Order Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "work_order_id",
+          "risks",
+          "suggestions"
+        ],
+        "title": "ScheduleCheck",
+        "type": "object"
+      },
+      "ScheduleRisk": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "enum": [
+              "schedule_conflict",
+              "outside_working_hours",
+              "during_break",
+              "buffer_too_short",
+              "preparation_time_short",
+              "in_the_past"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "minLength": 1,
+            "title": "Detail",
+            "type": "string"
+          },
+          "related_work_order_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Related Work Order Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "detail"
+        ],
+        "title": "ScheduleRisk",
+        "type": "object"
+      },
+      "ScheduleSettings": {
+        "additionalProperties": false,
+        "description": "User-set working time (方案 §4.4). Buffers are the user's own numbers, not travel time.",
+        "properties": {
+          "breaks": {
+            "default": [
+              {
+                "end": "13:30",
+                "start": "12:30"
+              }
+            ],
+            "items": {
+              "$ref": "#/components/schemas/TimeRange"
+            },
+            "title": "Breaks",
+            "type": "array"
+          },
+          "buffer_minutes": {
+            "default": 30,
+            "maximum": 240.0,
+            "minimum": 0.0,
+            "title": "Buffer Minutes",
+            "type": "integer"
+          },
+          "default_duration_minutes": {
+            "default": 60,
+            "maximum": 720.0,
+            "minimum": 15.0,
+            "title": "Default Duration Minutes",
+            "type": "integer"
+          },
+          "preparation_minutes": {
+            "default": 60,
+            "maximum": 1440.0,
+            "minimum": 0.0,
+            "title": "Preparation Minutes",
+            "type": "integer"
+          },
+          "timezone": {
+            "default": "Asia/Hong_Kong",
+            "minLength": 1,
+            "title": "Timezone",
+            "type": "string"
+          },
+          "version": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          },
+          "work_days": {
+            "default": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "items": {
+              "maximum": 7.0,
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            "minItems": 1,
+            "title": "Work Days",
+            "type": "array"
+          },
+          "work_hours": {
+            "$ref": "#/components/schemas/TimeRange",
+            "default": {
+              "end": "19:00",
+              "start": "09:00"
+            }
+          }
+        },
+        "title": "ScheduleSettings",
+        "type": "object"
+      },
       "SendApprovedActionCommand": {
         "additionalProperties": false,
         "description": "Merchant hands an approved business reply to the WhatsApp sending gateway.\n\nThe connection, control and send-permission versions are the ones the\nmerchant sees on the sending page; the action revision and snapshot hash\nare the exact approved reply.",
@@ -2790,6 +2976,35 @@
           "expected_version"
         ],
         "title": "SetWorkOrderStatusCommand",
+        "type": "object"
+      },
+      "Slot": {
+        "additionalProperties": false,
+        "properties": {
+          "end_at": {
+            "format": "date-time",
+            "pattern": "Z$",
+            "title": "End At",
+            "type": "string"
+          },
+          "label": {
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "start_at": {
+            "format": "date-time",
+            "pattern": "Z$",
+            "title": "Start At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start_at",
+          "end_at",
+          "label"
+        ],
+        "title": "Slot",
         "type": "object"
       },
       "SourceRef": {
@@ -2902,6 +3117,27 @@
         "title": "Task",
         "type": "object"
       },
+      "TimeRange": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "TimeRange",
+        "type": "object"
+      },
       "TimedSchedule": {
         "additionalProperties": false,
         "properties": {
@@ -2935,6 +3171,25 @@
           "timezone"
         ],
         "title": "TimedSchedule",
+        "type": "object"
+      },
+      "UpdateScheduleSettingsCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 0.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ScheduleSettings"
+          }
+        },
+        "required": [
+          "expected_version",
+          "settings"
+        ],
+        "title": "UpdateScheduleSettingsCommand",
         "type": "object"
       },
       "ValidationError": {
@@ -9045,6 +9300,60 @@
         "summary": "Assign Review Item"
       }
     },
+    "/api/v1/settings/schedule": {
+      "get": {
+        "operationId": "schedule_settings_api_v1_settings_schedule_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_ScheduleSettings_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Schedule Settings"
+      },
+      "put": {
+        "operationId": "update_schedule_settings_api_v1_settings_schedule_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateScheduleSettingsCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_ScheduleSettings_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Schedule Settings"
+      }
+    },
     "/api/v1/tasks": {
       "get": {
         "operationId": "tasks_api_v1_tasks_get",
@@ -9544,6 +9853,47 @@
           }
         },
         "summary": "Defer Order Item"
+      }
+    },
+    "/api/v1/work-orders/{order_id}/schedule-check": {
+      "get": {
+        "description": "Risks for this order's time and free slots the merchant may offer (read-only).",
+        "operationId": "schedule_check_api_v1_work_orders__order_id__schedule_check_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_ScheduleCheck_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Schedule Check"
       }
     },
     "/api/v1/work-orders/{order_id}/status": {

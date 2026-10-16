@@ -1014,6 +1014,24 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/settings/schedule": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Schedule Settings */
+    get: operations["schedule_settings_api_v1_settings_schedule_get"];
+    /** Update Schedule Settings */
+    put: operations["update_schedule_settings_api_v1_settings_schedule_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/tasks": {
     parameters: {
       query?: never;
@@ -1128,6 +1146,26 @@ export interface paths {
     put?: never;
     /** Defer Order Item */
     post: operations["defer_order_item_api_v1_work_orders__order_id__defer_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/work-orders/{order_id}/schedule-check": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Schedule Check
+     * @description Risks for this order's time and free slots the merchant may offer (read-only).
+     */
+    get: operations["schedule_check_api_v1_work_orders__order_id__schedule_check_get"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -1781,6 +1819,24 @@ export interface components {
        */
       request_id: string;
     };
+    /** Detail[ScheduleCheck] */
+    Detail_ScheduleCheck_: {
+      data: components["schemas"]["ScheduleCheck"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[ScheduleSettings] */
+    Detail_ScheduleSettings_: {
+      data: components["schemas"]["ScheduleSettings"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
     /** Detail[WahaAttachmentView] */
     Detail_WahaAttachmentView_: {
       data: components["schemas"]["WahaAttachmentView"];
@@ -2245,6 +2301,102 @@ export interface components {
       event_id: string;
     };
     /**
+     * ScheduleCheck
+     * @description Deterministic checks for one order's time, plus free slots the merchant may offer.
+     */
+    ScheduleCheck: {
+      /** Risks */
+      risks: components["schemas"]["ScheduleRisk"][];
+      /** Suggestions */
+      suggestions: components["schemas"]["Slot"][];
+      /**
+       * Work Order Id
+       * Format: uuid
+       */
+      work_order_id: string;
+    };
+    /** ScheduleRisk */
+    ScheduleRisk: {
+      /**
+       * Code
+       * @enum {string}
+       */
+      code:
+        | "schedule_conflict"
+        | "outside_working_hours"
+        | "during_break"
+        | "buffer_too_short"
+        | "preparation_time_short"
+        | "in_the_past";
+      /** Detail */
+      detail: string;
+      /**
+       * Related Work Order Ids
+       * @default []
+       */
+      related_work_order_ids: string[];
+    };
+    /**
+     * ScheduleSettings
+     * @description User-set working time (方案 §4.4). Buffers are the user's own numbers, not travel time.
+     */
+    ScheduleSettings: {
+      /**
+       * Breaks
+       * @default [
+       *       {
+       *         "end": "13:30",
+       *         "start": "12:30"
+       *       }
+       *     ]
+       */
+      breaks: components["schemas"]["TimeRange"][];
+      /**
+       * Buffer Minutes
+       * @default 30
+       */
+      buffer_minutes: number;
+      /**
+       * Default Duration Minutes
+       * @default 60
+       */
+      default_duration_minutes: number;
+      /**
+       * Preparation Minutes
+       * @default 60
+       */
+      preparation_minutes: number;
+      /**
+       * Timezone
+       * @default Asia/Hong_Kong
+       */
+      timezone: string;
+      /**
+       * Version
+       * @default 0
+       */
+      version: number;
+      /**
+       * Work Days
+       * @default [
+       *       1,
+       *       2,
+       *       3,
+       *       4,
+       *       5,
+       *       6
+       *     ]
+       */
+      work_days: number[];
+      /**
+       * @default {
+       *       "end": "19:00",
+       *       "start": "09:00"
+       *     }
+       */
+      work_hours: components["schemas"]["TimeRange"];
+    };
+    /**
      * SendApprovedActionCommand
      * @description Merchant hands an approved business reply to the WhatsApp sending gateway.
      *
@@ -2279,6 +2431,21 @@ export interface components {
        * @enum {string}
        */
       status: "in_progress" | "waiting_customer" | "completed" | "cancelled";
+    };
+    /** Slot */
+    Slot: {
+      /**
+       * End At
+       * Format: date-time
+       */
+      end_at: string;
+      /** Label */
+      label: string;
+      /**
+       * Start At
+       * Format: date-time
+       */
+      start_at: string;
     };
     /** SourceRef */
     SourceRef: {
@@ -2331,6 +2498,13 @@ export interface components {
       /** Work Order Version */
       work_order_version: number;
     };
+    /** TimeRange */
+    TimeRange: {
+      /** End */
+      end: string;
+      /** Start */
+      start: string;
+    };
     /** TimedSchedule */
     TimedSchedule: {
       /**
@@ -2350,6 +2524,12 @@ export interface components {
       start_at: string;
       /** Timezone */
       timezone: string;
+    };
+    /** UpdateScheduleSettingsCommand */
+    UpdateScheduleSettingsCommand: {
+      /** Expected Version */
+      expected_version: number;
+      settings: components["schemas"]["ScheduleSettings"];
     };
     /** ValidationError */
     ValidationError: {
@@ -5471,6 +5651,59 @@ export interface operations {
       };
     };
   };
+  schedule_settings_api_v1_settings_schedule_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_ScheduleSettings_"];
+        };
+      };
+    };
+  };
+  update_schedule_settings_api_v1_settings_schedule_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateScheduleSettingsCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_ScheduleSettings_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   tasks_api_v1_tasks_get: {
     parameters: {
       query?: {
@@ -5737,6 +5970,37 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Detail_WorkOrder_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  schedule_check_api_v1_work_orders__order_id__schedule_check_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        order_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_ScheduleCheck_"];
         };
       };
       /** @description Validation Error */

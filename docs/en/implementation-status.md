@@ -1,5 +1,9 @@
 # Implementation status and validation
 
+## Working-time settings, free slots and schedule risks (role C) — 2026-10-16
+
+方案 §4.4 (工作时间、休息时间、任务时长和缓冲; 检查时间重叠、缺少准备时间; 提出可用时间), §5.1 and 附录 A (候选时间必须来自已核对的可用时间). New `scheduling.py`, table `schedule_settings` (migration **0018_schedule_settings**). `GET/PUT /settings/schedule` (defaults: Mon–Sat 09:00–19:00, break 12:30–13:30, 60-minute duration, 30-minute buffer, 60-minute preparation); `GET /work-orders/{id}/schedule-check` returns risks and deterministic free slots; conflict drafts offer the first free slot of the same length; the preparation task uses the merchant's lead time. Evidence: `test_scheduling.py` **5 passed**; role C suites 93 passed.
+
 ## List filters from the contract inventory (role C) — 2026-10-16
 
 `GET /work-orders?status=`, `GET /tasks?work_order_id=`, `GET /calendar-events?start=&end=` (ISO times with zone; events overlapping the window, date-only entries cover their whole local day; 422 for invalid or reversed windows). Evidence: `test_list_filters.py` **3 passed**. The `.ics` download is delivered by D's #30 and not duplicated here.

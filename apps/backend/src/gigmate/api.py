@@ -39,10 +39,13 @@ from gigmate.contracts import (
     RejectActionCommand,
     RejectCommand,
     RequirementChange,
+    ScheduleCheck,
+    ScheduleSettings,
     SendApprovedActionCommand,
     SetWorkOrderStatusCommand,
     Task,
     Text,
+    UpdateScheduleSettingsCommand,
     WahaAttachmentView,
     WahaChoice,
     WahaControlCommand,
@@ -88,6 +91,7 @@ from gigmate.waha_recovery import issue_view, record_rejection
 from gigmate.waha_send_api import install as install_sending
 from gigmate.workorders import (
     assign_message,
+    audit_row,
     command_cache,
     confirm,
     create,
@@ -470,6 +474,38 @@ def defer_order_item(
         request,
         defer_item(db, account, str(order_id), command, idempotency_key, request.state.request_id),
     )
+
+
+@app.get("/api/v1/settings/schedule", response_model=Detail[ScheduleSettings])
+def schedule_settings(request: Request, account=Depends(actor), db=Depends(database)):
+    from gigmate import scheduling
+
+    return detail(request, scheduling.settings(db, account.id).model_dump(mode="json"))
+
+
+@app.put("/api/v1/settings/schedule", response_model=Detail[ScheduleSettings])
+def update_schedule_settings(
+    command: UpdateScheduleSettingsCommand,
+    request: Request,
+    account=Depends(actor),
+    db=Depends(database),
+):
+    from gigmate import scheduling
+
+    data = scheduling.update(db, account.id, command)
+    entry = audit_row(account.id, account.id, "update_schedule_settings", request.state.request_id)
+    entry.data = {**entry.data, "entity_type": "schedule_settings"}
+    db.add(entry)
+    return detail(request, data)
+
+
+@app.get("/api/v1/work-orders/{order_id}/schedule-check", response_model=Detail[ScheduleCheck])
+def schedule_check(order_id: UUID, request: Request, account=Depends(actor), db=Depends(database)):
+    """Risks for this order's time and free slots the merchant may offer (read-only)."""
+    from gigmate import scheduling
+
+    order = owned(db, WorkOrderRow, str(order_id), account.id)
+    return detail(request, scheduling.check(db, account.id, order))
 
 
 @app.post("/api/v1/work-orders/{order_id}/status", response_model=Detail[WorkOrder])

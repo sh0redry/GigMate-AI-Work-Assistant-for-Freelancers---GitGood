@@ -1,5 +1,9 @@
 # 已完成工作与验证记录
 
+## 工作时间设置、候选时间与排期风险（C）— 2026-10-16
+
+方案 §4.4（工作时间、休息时间、任务时长和缓冲；检查时间重叠、缺少准备时间；提出可用时间）、§5.1 和附录 A（候选时间必须来自已核对的可用时间）。新增 `scheduling.py` 和表 `schedule_settings`（迁移 **0018_schedule_settings**）。`GET/PUT /settings/schedule`（默认：周一至周六 09:00–19:00，休息 12:30–13:30，时长 60 分钟，缓冲 30 分钟，准备 60 分钟）；`GET /work-orders/{id}/schedule-check` 返回风险和按规则算出的空闲时段；撞期草稿会给出第一个同样长度的空闲时段；准备待办按商户设置的提前量生成。证据：`test_scheduling.py` **5 项通过**；C 的测试 93 项通过。
+
 ## 契约接口清单里的列表过滤（C）— 2026-10-16
 
 `GET /work-orders?status=`、`GET /tasks?work_order_id=`、`GET /calendar-events?start=&end=`（带时区的 ISO 时间；返回与时间窗重叠的事件，只有日期的条目覆盖当地整天；格式错误或起止颠倒返回 422）。证据：`test_list_filters.py` **3 项通过**。`.ics` 下载由 D 的 #30 交付，这里不重复。

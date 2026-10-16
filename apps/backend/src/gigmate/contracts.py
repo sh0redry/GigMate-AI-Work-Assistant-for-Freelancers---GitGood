@@ -929,6 +929,72 @@ class DeferItemCommand(Model):
     expected_version: Positive
 
 
+LocalTime = Annotated[str, Field(pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")]
+
+
+class TimeRange(Model):
+    start: LocalTime
+    end: LocalTime
+
+    @model_validator(mode="after")
+    def ordered(self):
+        if self.start >= self.end:
+            raise ValueError("A range must end after it starts")
+        return self
+
+
+class ScheduleSettings(Model):
+    """User-set working time (方案 §4.4). Buffers are the user's own numbers, not travel time."""
+
+    timezone: Timezone = "Asia/Hong_Kong"
+    work_days: Annotated[list[Annotated[int, Field(ge=1, le=7)]], Field(min_length=1)] = [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+    ]
+    work_hours: TimeRange = TimeRange(start="09:00", end="19:00")
+    breaks: list[TimeRange] = [TimeRange(start="12:30", end="13:30")]
+    default_duration_minutes: Annotated[int, Field(ge=15, le=720)] = 60
+    buffer_minutes: Annotated[int, Field(ge=0, le=240)] = 30
+    preparation_minutes: Annotated[int, Field(ge=0, le=1440)] = 60
+    version: NonNegative = 0
+
+
+class UpdateScheduleSettingsCommand(Model):
+    expected_version: NonNegative
+    settings: ScheduleSettings
+
+
+class Slot(Model):
+    start_at: UtcTimestamp
+    end_at: UtcTimestamp
+    label: Text
+
+
+class ScheduleRisk(Model):
+    code: Literal[
+        "schedule_conflict",
+        "outside_working_hours",
+        "during_break",
+        "buffer_too_short",
+        "preparation_time_short",
+        "in_the_past",
+    ]
+    detail: Text
+    related_work_order_ids: list[Id] = []
+
+
+class ScheduleCheck(Model):
+    """Deterministic checks for one order's time, plus free slots the merchant may offer."""
+
+    work_order_id: Id
+    risks: list[ScheduleRisk]
+    suggestions: list[Slot]
+
+
 class SetWorkOrderStatusCommand(Model):
     """Merchant moves an order along its life cycle (see TRANSITIONS in workorders)."""
 

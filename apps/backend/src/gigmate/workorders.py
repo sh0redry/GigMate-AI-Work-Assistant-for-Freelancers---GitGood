@@ -212,7 +212,11 @@ def confirm(db, account, work_order_id, change_id, command, key, request_id):
             if task.generated and task.data["state"] in {"pending", "blocked"}:
                 task.data = {**task.data, "state": "cancelled"}
     if confirmed_now and is_timed(schedule["value"]):
-        db.add(preparation_task(account.id, value, schedule["value"], schedule["sources"]))
+        db.add(
+            preparation_task(
+                account.id, value, schedule["value"], schedule["sources"], lead(db, account.id)
+            )
+        )
     from gigmate.approvals import ask_open_items, cancel_pending
 
     if was_pending and value["status"] == "confirmed":
@@ -245,12 +249,21 @@ def now_text():
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-def preparation_task(account_id, order_data, schedule, sources):
-    """Memo-style task, e.g. '10/08 15:30 准备 16:30 的陈小姐证件照拍摄'."""
+def lead(db, account_id):
+    from gigmate.scheduling import settings
+
+    return settings(db, account_id).preparation_minutes
+
+
+def preparation_task(account_id, order_data, schedule, sources, lead_minutes=60):
+    """Memo-style task, e.g. '10/08 15:30 准备 16:30 的陈小姐证件照拍摄'.
+
+    The lead time is the merchant's own preparation setting (方案 §4.4).
+    """
     task_id = str(uuid4())
     start = datetime.fromisoformat(schedule["start_at"]).astimezone(ZoneInfo(schedule["timezone"]))
     # Derive display and persisted due from the same absolute instant across DST.
-    ready_instant = datetime.fromisoformat(schedule["start_at"]) - timedelta(hours=1)
+    ready_instant = datetime.fromisoformat(schedule["start_at"]) - timedelta(minutes=lead_minutes)
     ready_by = ready_instant.astimezone(ZoneInfo(schedule["timezone"]))
     due = ready_instant.isoformat().replace("+00:00", "Z")
     task = validate(
@@ -444,7 +457,9 @@ def create(db, account, command, key, request_id):
         # Date-only entries are tentative: visible to the merchant, ignored by conflict checks.
         db.add(calendar_row(account.id, value, schedule, schedule_sources, tentative=not timed))
     if value["status"] == "confirmed":
-        db.add(preparation_task(account.id, value, schedule, schedule_sources))
+        db.add(
+            preparation_task(account.id, value, schedule, schedule_sources, lead(db, account.id))
+        )
     db.add(audit_row(account.id, order_id, "create_work_order", request_id))
     from gigmate.approvals import ask_open_items
 

@@ -404,6 +404,14 @@ class Job(Base):
     lease_recoveries: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
+class ScheduleSettingsRow(Base):
+    """Working hours, breaks, default duration, buffer and preparation lead time."""
+
+    __tablename__ = "schedule_settings"
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"), primary_key=True)
+    data: Mapped[dict] = mapped_column(JSON)
+
+
 class JobAssignment(Base):
     """The merchant's decision of which work order an unassigned message belongs to."""
 
