@@ -622,6 +622,18 @@
       "title": "ChangeProposal",
       "type": "object"
     },
+    "ChangeStatus": {
+      "description": "A requirement change: like a field status, plus the merchant's rejection.",
+      "enum": [
+        "missing",
+        "proposed",
+        "confirmed",
+        "needs_review",
+        "rejected"
+      ],
+      "title": "ChangeStatus",
+      "type": "string"
+    },
     "ComponentHealth": {
       "additionalProperties": false,
       "properties": {
@@ -1980,6 +1992,18 @@
           "title": "Proposer",
           "type": "string"
         },
+        "rejection_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rejection Reason"
+        },
         "sources": {
           "items": {
             "$ref": "#/$defs/SourceRef"
@@ -1989,7 +2013,7 @@
           "type": "array"
         },
         "status": {
-          "$ref": "#/$defs/FieldStatus"
+          "$ref": "#/$defs/ChangeStatus"
         },
         "work_order_id": {
           "format": "uuid",

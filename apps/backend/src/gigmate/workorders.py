@@ -9,6 +9,7 @@ from sqlalchemy import select
 from gigmate.contracts import AuditLog, CalendarEvent, Task, WorkOrder
 from gigmate.db import (
     Account,
+    ActionRow,
     AuditRow,
     CalendarRow,
     ChangeRow,
@@ -523,5 +524,61 @@ def set_status(db, account, work_order_id, command, key, request_id):
                     "state": "completed" if target == "completed" else "cancelled",
                 }
     db.add(audit_row(account.id, order.id, f"set_status_{target}", request_id))
+    save_result(db, account.id, scope, key, digest, order.data)
+    return order.data
+
+
+def reject_change(db, account, work_order_id, change_id, command, key, request_id):
+    """Merchant turns down a proposal (契约: POST /work-orders/{id}/changes/{id}/reject).
+
+    The proposal stays in history as ``rejected`` with the merchant's reason;
+    the order keeps its current values. A conflict question written for this
+    proposal is withdrawn, and the open-item question is refreshed against the
+    new order version. Nothing is sent.
+    """
+    scope = f"reject_change:{work_order_id}:{change_id}"
+    digest, cached = command_cache(db, account.id, scope, key, command.model_dump())
+    if cached:
+        return cached.data
+    order = db.scalar(
+        select(WorkOrderRow)
+        .where(WorkOrderRow.id == work_order_id, WorkOrderRow.account_id == account.id)
+        .with_for_update()
+    )
+    if order is None:
+        raise BusinessError(404, "NOT_FOUND", "Work order not found")
+    change = owned(db, ChangeRow, change_id, account.id)
+    if change.work_order_id != order.id:
+        raise BusinessError(404, "NOT_FOUND", "Change not found")
+    if order.data["version"] != command.expected_version:
+        raise BusinessError(409, "VERSION_CONFLICT", "Refresh the work order first")
+    if change.data["status"] not in {"proposed", "needs_review"}:
+        raise BusinessError(409, "VERSION_CONFLICT", "This proposal is no longer open")
+    reason = command.reason.strip()
+    if not reason:
+        raise BusinessError(422, "VALIDATION_FAILED", "Say why the proposal is rejected")
+    change.data = {**change.data, "status": "rejected", "rejection_reason": reason[:500]}
+    value = json.loads(json.dumps(order.data))
+    value["version"] += 1
+    value["updated_at"] = now_text()
+    value["pending_change_ids"] = [
+        item for item in value["pending_change_ids"] if item != change.id
+    ]
+    order.data = validate(WorkOrder, value)
+    from gigmate.approvals import NOT_DISPATCHED, ask_open_items, close
+
+    for row in db.scalars(
+        select(ActionRow).where(
+            ActionRow.account_id == account.id,
+            ActionRow.trigger.startswith(f"schedule_conflict:{change.id}"),
+        )
+    ):
+        if row.data["state"] in NOT_DISPATCHED:
+            close(row, "cancelled", "proposal_rejected")
+    db.flush()
+    conversation = db.get(ConversationRow, change.conversation_id)
+    if conversation is not None:
+        ask_open_items(db, account.id, order, conversation)
+    db.add(audit_row(account.id, order.id, "reject_change", request_id))
     save_result(db, account.id, scope, key, digest, order.data)
     return order.data

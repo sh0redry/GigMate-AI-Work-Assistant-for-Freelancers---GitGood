@@ -267,6 +267,16 @@ class FieldStatus(StrEnum):
     needs_review = "needs_review"
 
 
+class ChangeStatus(StrEnum):
+    """A requirement change: like a field status, plus the merchant's rejection."""
+
+    missing = "missing"
+    proposed = "proposed"
+    confirmed = "confirmed"
+    needs_review = "needs_review"
+    rejected = "rejected"
+
+
 class CustomerConfirmation(StrEnum):
     not_requested = "not_requested"
     pending = "pending"
@@ -612,11 +622,12 @@ class RequirementChange(Model):
     field: Literal["schedule", "address", "summary", "quantity", "specification", "deadline"]
     old_value: FieldValue
     new_value: FieldValue
-    status: Annotated[FieldStatus, Field(strict=False)]
+    status: Annotated[ChangeStatus, Field(strict=False)]
     customer_confirmation: Annotated[CustomerConfirmation, Field(strict=False)]
     proposer: Literal["customer", "merchant"]
     sources: Annotated[list[SourceRef], Field(min_length=1)]
     base_work_order_version: Positive
+    rejection_reason: str | None = None
 
 
 class Task(Model):

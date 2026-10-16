@@ -1063,6 +1063,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/work-orders/{order_id}/changes/{change_id}/reject": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Reject Order Change */
+    post: operations["reject_order_change_api_v1_work_orders__order_id__changes__change_id__reject_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/work-orders/{order_id}/status": {
     parameters: {
       query?: never;
@@ -1242,6 +1259,17 @@ export interface components {
       /** Work Order Version */
       work_order_version: number;
     };
+    /**
+     * ChangeStatus
+     * @description A requirement change: like a field status, plus the merchant's rejection.
+     * @enum {string}
+     */
+    ChangeStatus:
+      | "missing"
+      | "proposed"
+      | "confirmed"
+      | "needs_review"
+      | "rejected";
     /** ChangeView */
     ChangeView: {
       /**
@@ -1295,9 +1323,11 @@ export interface components {
        * @enum {string}
        */
       proposer: "customer" | "merchant";
+      /** Rejection Reason */
+      rejection_reason?: string | null;
       /** Sources */
       sources: components["schemas"]["SourceRef"][];
-      status: components["schemas"]["FieldStatus"];
+      status: components["schemas"]["ChangeStatus"];
       /**
        * Work Order Id
        * Format: uuid
@@ -2048,6 +2078,13 @@ export interface components {
       reason: string;
       /** Snapshot Hash */
       snapshot_hash: string;
+    };
+    /** RejectCommand */
+    RejectCommand: {
+      /** Expected Version */
+      expected_version: number;
+      /** Reason */
+      reason: string;
     };
     /** ReplayCommand */
     ReplayCommand: {
@@ -5366,6 +5403,44 @@ export interface operations {
     requestBody: {
       content: {
         "application/json": components["schemas"]["ConfirmChangeCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkOrder_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  reject_order_change_api_v1_work_orders__order_id__changes__change_id__reject_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        order_id: string;
+        change_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RejectCommand"];
       };
     };
     responses: {

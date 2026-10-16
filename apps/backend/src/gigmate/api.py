@@ -33,6 +33,7 @@ from gigmate.contracts import (
     RecoveryIssue,
     ReissueActionCommand,
     RejectActionCommand,
+    RejectCommand,
     RequirementChange,
     SetWorkOrderStatusCommand,
     Task,
@@ -79,7 +80,15 @@ from gigmate.waha_ingress import binding_for, configured_binding, receive, statu
 from gigmate.waha_probe import MAX_BODY, _non_json_constant, _pairs, verify_hmac
 from gigmate.waha_recovery import issue_view, record_rejection
 from gigmate.waha_send_api import install as install_sending
-from gigmate.workorders import command_cache, confirm, create, owned, save_result, set_status
+from gigmate.workorders import (
+    command_cache,
+    confirm,
+    create,
+    owned,
+    reject_change,
+    save_result,
+    set_status,
+)
 
 app = FastAPI(title="GigMate replay skeleton", version="0.2.0")
 
@@ -384,6 +393,32 @@ def confirm_change(
     return detail(
         request,
         confirm(
+            db,
+            account,
+            str(order_id),
+            str(change_id),
+            command,
+            idempotency_key,
+            request.state.request_id,
+        ),
+    )
+
+
+@app.post(
+    "/api/v1/work-orders/{order_id}/changes/{change_id}/reject", response_model=Detail[WorkOrder]
+)
+def reject_order_change(
+    order_id: UUID,
+    change_id: UUID,
+    command: RejectCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    return detail(
+        request,
+        reject_change(
             db,
             account,
             str(order_id),

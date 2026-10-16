@@ -365,6 +365,18 @@
         "title": "CalendarEvent",
         "type": "object"
       },
+      "ChangeStatus": {
+        "description": "A requirement change: like a field status, plus the merchant's rejection.",
+        "enum": [
+          "missing",
+          "proposed",
+          "confirmed",
+          "needs_review",
+          "rejected"
+        ],
+        "title": "ChangeStatus",
+        "type": "string"
+      },
       "ChangeView": {
         "additionalProperties": false,
         "properties": {
@@ -475,6 +487,17 @@
             "title": "Proposer",
             "type": "string"
           },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason"
+          },
           "sources": {
             "items": {
               "$ref": "#/components/schemas/SourceRef"
@@ -484,7 +507,7 @@
             "type": "array"
           },
           "status": {
-            "$ref": "#/components/schemas/FieldStatus"
+            "$ref": "#/components/schemas/ChangeStatus"
           },
           "work_order_id": {
             "format": "uuid",
@@ -2418,6 +2441,27 @@
           "reason"
         ],
         "title": "RejectActionCommand",
+        "type": "object"
+      },
+      "RejectCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_version",
+          "reason"
+        ],
+        "title": "RejectCommand",
         "type": "object"
       },
       "ReplayCommand": {
@@ -8915,6 +8959,75 @@
           }
         },
         "summary": "Confirm Change"
+      }
+    },
+    "/api/v1/work-orders/{order_id}/changes/{change_id}/reject": {
+      "post": {
+        "operationId": "reject_order_change_api_v1_work_orders__order_id__changes__change_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "change_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Change Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WorkOrder_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Order Change"
       }
     },
     "/api/v1/work-orders/{order_id}/status": {
