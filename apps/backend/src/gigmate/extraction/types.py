@@ -40,6 +40,13 @@ class ExtractionRequest:
     base_work_order_version: int | None = None
     base_work_order_snapshot: dict | None = None
     origin: Literal["synthetic", "live"] = "live"
+    # Date-grounding basis (pre-activation gate 4). Both are server-attached:
+    # ``message_received_at`` is the connector's sending time in UTC ``Z`` form
+    # and ``workspace_timezone`` is the merchant's validated IANA zone. Either
+    # may be ``None`` when the caller cannot supply it; a provider must then
+    # refuse to promote relative-date interpretations instead of guessing.
+    message_received_at: str | None = None
+    workspace_timezone: str | None = None
     extra: dict = field(default_factory=dict)
 
 
@@ -52,6 +59,23 @@ class ExtractionOutcome:
     latency_ms: int
     notes: tuple[str, ...] = ()
     refused_reason: str | None = None
+    # Stable per-call identifier sent to the vendor and persisted with the
+    # trace so an operator can correlate a row with the vendor's own logs.
+    # ``None`` when no vendor call was ever issued.
+    request_id: str | None = None
+    # Cost accounting (pre-activation batch 2). All four fields are
+    # ``None`` while the seam is closed; the next authorized batch populates
+    # them whenever a real vendor call completes. ``cost_usd`` is rounded to
+    # the same precision that ``model_call_traces.cost_usd`` stores
+    # (``Numeric(12, 6)``); callers should not rely on finer precision.
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cost_usd: float | None = None
+    # Stable, secret-free diagnostic note that explains why no cost was
+    # recorded (e.g. ``llm:cost-pricing-missing`` for an unknown model or
+    # ``llm:cost-usage-missing`` when the vendor omits ``usage``). ``None``
+    # when a cost row was recorded.
+    cost_note: str | None = None
 
 
 class Provider(Protocol):

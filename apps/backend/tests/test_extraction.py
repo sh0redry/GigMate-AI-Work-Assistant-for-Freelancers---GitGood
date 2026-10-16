@@ -55,6 +55,36 @@ ORDER_PATH = f"/api/v1/work-orders/{ORDER}"
 # ---------------------------------------------------------------------------
 
 
+class _StreamedResponse:
+    """Adapt a post-style fake response to the streaming production reader.
+
+    ``_call_chat_completion`` reads the body with ``client.stream(...)`` and
+    re-checks the total deadline between chunks, so a test double that only
+    answers ``post`` no longer describes a real vendor client. The helper keeps
+    the existing fakes meaningful: one whole body arrives as one chunk, exactly
+    like a response that fits inside the deadline.
+    """
+
+    def __init__(self, response):
+        self._response = response
+        self.closed = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+    def raise_for_status(self):
+        return self._response.raise_for_status()
+
+    def iter_bytes(self, *args, **kwargs):
+        yield json.dumps(self._response.json()).encode("utf-8")
+
+    def close(self):
+        self.closed = True
+
+
 @pytest.fixture
 def memory_factory(tmp_path):
     # No open NamedTemporaryFile handle: Windows denies SQLite reopening it.
@@ -138,7 +168,7 @@ def test_llm_provider_returns_needs_review_without_configuration(monkeypatch):
     assert outcome.refused_reason and "_SKELETON_SEAM" in outcome.refused_reason
     assert outcome.proposal.model_version == "skeleton:pending"
     # Prompt version is read from the bundled file by default.
-    assert outcome.proposal.prompt_version == "1.0.0"
+    assert outcome.proposal.prompt_version == "1.2.0"
     assert outcome.notes == ("llm:seam-pending",)
 
 
@@ -206,7 +236,7 @@ def test_llm_provider_reads_prompt_version_from_bundled_file():
 
     importlib.reload(llm_module)
     provider = llm_module.LLMProvider()
-    assert provider._read_prompt_version() == "1.0.0"
+    assert provider._read_prompt_version() == "1.2.0"
     assert provider._prompt_load_error is None
 
 
@@ -568,6 +598,9 @@ def test_llm_provider_live_gate_on_sends_fake_client_request(monkeypatch):
             type(self).requests.append({"url": url, "json": json, "headers": headers})
             return _FakeResponse()
 
+        def stream(self, method, url, json=None, headers=None):
+            return _StreamedResponse(self.post(url, json=json, headers=headers))
+
     class _GateOnSpy(LLMProvider):
         _SKELETON_SEAM = False
 
@@ -674,6 +707,9 @@ def test_llm_provider_live_origin_opt_in_reaches_fake_client(monkeypatch):
         def post(self, url, json=None, headers=None):
             type(self).requests.append({"url": url, "json": json, "headers": headers})
             return _FakeResponse()
+
+        def stream(self, method, url, json=None, headers=None):
+            return _StreamedResponse(self.post(url, json=json, headers=headers))
 
     class _GateOnSpy(LLMProvider):
         _SKELETON_SEAM = False
@@ -850,7 +886,7 @@ def test_provider_call_evidence_records_model_and_prompt_versions(memory_account
             select(ModelCallTrace).where(ModelCallTrace.proposal_id == proposal_row.id)
         )
     assert proposal_row.model_version == "synthetic:fixed-stub-v1"
-    assert proposal_row.prompt_version == "1.0.0"
+    assert proposal_row.prompt_version == "1.2.0"
     assert trace_row.provider_name == "deterministic"
     assert trace_row.notes == ["deterministic:matched-known-fixture"]
 
@@ -1167,9 +1203,9 @@ def test_list_provider_metadata_is_json_serialisable():
             f"got {type(row['prompt_version']).__name__}"
         )
     # The deterministic provider reads from the bundled prompt file, so
-    # its prompt_version should follow the file's header (1.0.0 today).
+    # its prompt_version should follow the file's header (1.2.0 today).
     deterministic_row = next(r for r in rows if r["name"] == "deterministic")
-    assert deterministic_row["prompt_version"] == "1.0.0"
+    assert deterministic_row["prompt_version"] == "1.2.0"
     # The LLM provider's class attribute is still the placeholder; the
     # real version is computed per call by ``_read_prompt_version``.
     llm_row = next(r for r in rows if r["name"] == "llm")

@@ -313,3 +313,45 @@ def test_daily_summary_rejects_nonexistent_dates(signed_in, day):
 
 def test_daily_summary_accepts_leap_day(signed_in):
     assert signed_in[0].get("/api/v1/daily-summary?date=2028-02-29").status_code == 200
+
+
+def test_legacy_cached_send_id_is_never_returned_as_a_trusted_link(setup):
+    from gigmate.db import CommandResult
+
+    s = setup
+    _, factory, _, _, _ = s
+    _, action = approved_question(s)
+    key = str(uuid4())
+    first = send(s, action, key=key)
+    assert first.status_code == 202
+    with factory.begin() as db:
+        db.get(ActionRow, action["id"]).send_action_id = None
+        cache = db.scalar(
+            select(CommandResult).where(
+                CommandResult.scope == f"send:{action['id']}", CommandResult.key == key
+            )
+        )
+        cache.data = {**cache.data, "send_action_id": str(uuid4())}
+    again = send(s, action, key=key)
+    assert again.status_code == 202, again.text
+    assert again.json()["data"]["state"] == "result_unknown"
+    assert again.json()["data"]["send_action_id"] is None
+    with factory() as db:
+        assert len(list(db.scalars(select(WahaSendAction)))) == 1
+
+
+def test_link_revalidates_the_immutable_body_before_disclosing_a_receipt(setup):
+    s = setup
+    client, factory, _, _, _ = s
+    _, action = approved_question(s)
+    sent = send(s, action).json()["data"]
+    with factory.begin() as db:
+        gateway = db.get(WahaSendAction, sent["send_action_id"])
+        gateway.command = {
+            **gateway.command,
+            "payload": {"kind": "text", "text": "Synthetic different message"},
+        }
+    shown = client.get(f"/api/v1/actions/{action['id']}")
+    assert shown.status_code == 200, shown.text
+    assert shown.json()["data"]["state"] == "result_unknown"
+    assert shown.json()["data"]["send_action_id"] is None

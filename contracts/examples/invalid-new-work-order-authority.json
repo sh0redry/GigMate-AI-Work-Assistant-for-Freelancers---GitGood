@@ -1,0 +1,39 @@
+{
+  "schema_version": "0.1.0",
+  "proposal_id": "f48812ce-7a56-4b00-9548-8680b49fe088",
+  "conversation_id": "00000000-0000-4000-8000-000000000002",
+  "work_order_id": null,
+  "base_work_order_version": null,
+  "base_context_version": 1,
+  "assignment": "needs_review",
+  "candidates": [],
+  "changes": [],
+  "unresolved_questions": [],
+  "new_work_order": {
+    "summary": "Customer asks for a new on-site repair visit.",
+    "fields": [
+      {
+        "field": "address",
+        "value": "中环德辅道中 88 号",
+        "sources": [
+          {
+            "message_id": "00000000-0000-4000-8000-000000000004",
+            "message_revision": 1
+          }
+        ],
+        "reason": "Customer stated the address in this message."
+      }
+    ],
+    "missing_fields": [
+      "schedule"
+    ],
+    "unresolved_questions": [
+      "Customer has not proposed a time yet."
+    ],
+    "confidence": 0.8,
+    "approved": true
+  },
+  "draft_text": null,
+  "model_version": "openai:gpt-4o-mini",
+  "prompt_version": "1.2.0"
+}

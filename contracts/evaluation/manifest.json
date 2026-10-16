@@ -40,7 +40,8 @@
       "expected_min_confidence": 0.9,
       "expected_change_fields": [
         "schedule"
-      ]
+      ],
+      "expected_new_work_order": false
     },
     {
       "case_id": "case-002-known-available-confirm",
@@ -130,7 +131,8 @@
         "base_work_order_snapshot": null
       },
       "expected_assignment": "needs_review",
-      "expected_change_fields": []
+      "expected_change_fields": [],
+      "expected_new_work_order": false
     },
     {
       "case_id": "case-005-multiple-order-linkage",

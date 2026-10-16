@@ -65,6 +65,22 @@ _INFRA_FAILURE_NOTES = frozenset(
         "llm:http-failed",
         "llm:response-malformed",
         "llm:response-schema-failed",
+        # Gate 2 (vendor/endpoint), gate 1 (provenance) and gate 4 (time
+        # basis) guards. None of them means the model was actually invoked.
+        "llm:vendor-unknown",
+        "llm:vendor-endpoint-mismatch",
+        "llm:endpoint-required",
+        "llm:endpoint-invalid",
+        "llm:response-provenance-failed",
+        "llm:time-basis-missing",
+        # Batch 2 cost accounting. None of them means the model was actually
+        # invoked successfully: either the call was never priced (so never
+        # issued) or it came back over budget and was refused.
+        "llm:cost-budget-exceeded",
+        "llm:cost-budget-invalid",
+        "llm:cost-pricing-missing",
+        "llm:cost-pricing-partial",
+        "llm:cost-pricing-invalid",
     }
 )
 
@@ -112,6 +128,11 @@ def _build_request() -> ExtractionRequest:
             },
         },
         origin="synthetic",
+        # Gate 4: without both values the provider refuses schedule changes
+        # instead of converting relative dates against nothing.
+        message_received_at="2026-10-07T00:00:00Z",
+        workspace_timezone=os.environ.get("GIGMATE_WORKSPACE_TIMEZONE")
+        or "Asia/Hong_Kong",
     )
 
 
@@ -129,6 +150,14 @@ def main() -> int:
         "latency_ms": outcome.latency_ms,
         "notes": list(outcome.notes),
         "refused_reason": outcome.refused_reason,
+        "request_id": outcome.request_id,
+        # Cost accounting (batch 2). None while the seam is closed or when
+        # the vendor omits its usage block; ``cost_note`` then explains why
+        # (llm:cost-usage-missing / llm:cost-pricing-missing).
+        "input_tokens": outcome.input_tokens,
+        "output_tokens": outcome.output_tokens,
+        "cost_usd": outcome.cost_usd,
+        "cost_note": outcome.cost_note,
         "unresolved_questions": list(outcome.proposal.unresolved_questions),
         "changes": [
             {

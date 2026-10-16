@@ -13,7 +13,11 @@ def upgrade():
     with op.batch_alter_table("approval_actions") as batch:
         batch.add_column(sa.Column("send_action_id", sa.String(36), nullable=True))
         batch.create_foreign_key(
-            "fk_approval_send_action", "waha_send_actions", ["send_action_id"], ["id"]
+            "fk_approval_send_action",
+            "waha_send_actions",
+            ["send_action_id"],
+            ["id"],
+            ondelete="SET NULL",
         )
         batch.create_unique_constraint("uq_approval_actions_send_action_id", ["send_action_id"])
 

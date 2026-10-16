@@ -9,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     UniqueConstraint,
     create_engine,
@@ -472,7 +473,7 @@ class ActionRow(Base):
 
     __tablename__ = "approval_actions"
     send_action_id: Mapped[str | None] = mapped_column(
-        ForeignKey("waha_send_actions.id", name="fk_approval_send_action"),
+        ForeignKey("waha_send_actions.id", name="fk_approval_send_action", ondelete="SET NULL"),
         nullable=True,
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -523,6 +524,17 @@ class ModelCallTrace(Base):
     latency_ms: Mapped[int] = mapped_column(Integer)
     refused_reason: Mapped[str | None] = mapped_column(String(256))
     notes: Mapped[list] = mapped_column(JSON)
+    # Correlation id sent to the vendor with the call (Role B pre-activation
+    # gate 3). ``None`` when no vendor request was ever issued.
+    request_id: Mapped[str | None] = mapped_column(String(64))
+    # Pre-activation cost accounting (batch 2). All three columns are
+    # ``None`` while the seam is closed; the next authorized batch populates
+    # them whenever a real vendor call completes. ``cost_usd`` is a
+    # ``Numeric(12, 6)`` so six decimal places of a dollar are representable
+    # (a 1k-token call at the default prices stays well below 1 cent).
+    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_usd: Mapped[float | None] = mapped_column(Numeric(12, 6), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 

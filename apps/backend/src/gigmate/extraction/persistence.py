@@ -66,6 +66,10 @@ def persist_proposal(
             latency_ms=outcome.latency_ms,
             refused_reason=outcome.refused_reason,
             notes=list(outcome.notes),
+            request_id=outcome.request_id,
+            input_tokens=outcome.input_tokens,
+            output_tokens=outcome.output_tokens,
+            cost_usd=outcome.cost_usd,
             created_at=now,
         )
     )

@@ -50,13 +50,18 @@ def migration_database(tmp_path):
         "0014_media_approvals",
         "0014_merge_approval_send",
         "0015_d03_approval_heads",
+        "0018_model_call_cost",
+        "0018_schedule_settings",
+        "0019_action_send_link",
     ],
 )
 def test_versioned_migration_preserves_replay_rows(migration_database, existing_revision):
     root = Path(__file__).resolve().parents[3]
-    assert ScriptDirectory(str(root / "apps/backend/migrations")).get_heads() == [
-        "0019_action_send_link"
-    ]
+    # Derived rather than hardcoded: every new batch appends a revision, and a
+    # pinned literal would have to be edited on every migration.
+    heads = ScriptDirectory(str(root / "apps/backend/migrations")).get_heads()
+    assert len(heads) == 1
+    head = heads[0]
     url = migration_database
     environment = {**os.environ, "DATABASE_URL": url, "PYTHONPATH": str(root / "apps/backend/src")}
 
@@ -171,10 +176,7 @@ def test_versioned_migration_preserves_replay_rows(migration_database, existing_
         item["name"] for item in inspect(engine).get_columns("waha_connections")
     }
     with engine.connect() as db:
-        assert (
-            db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0019_action_send_link"
-        )
+        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == head
         assert db.execute(text("SELECT accepted,duplicates,state FROM waha_connections")).one() == (
             3,
             1,
@@ -409,6 +411,7 @@ def test_media_evidence_upgrade_does_not_invent_old_sending_times(migration_data
 def test_merge_revision_joins_approval_and_media_branches(migration_database, existing_revision):
     """A database on either parent branch upgrades to the single merge head and keeps its rows."""
     root = Path(__file__).resolve().parents[3]
+    head = ScriptDirectory(str(root / "apps/backend/migrations")).get_heads()[0]
     environment = {
         **os.environ,
         "DATABASE_URL": migration_database,
@@ -481,10 +484,7 @@ def test_merge_revision_joins_approval_and_media_branches(migration_database, ex
         item["name"] for item in inspect(engine).get_columns("waha_media_jobs")
     }
     with engine.connect() as db:
-        assert (
-            db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0019_action_send_link"
-        )
+        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == head
         assert db.execute(text("SELECT context_version FROM conversations")).scalar_one() == 4
         actions = db.execute(text("SELECT id,trigger,active_key FROM approval_actions")).all()
         if existing_revision in {
