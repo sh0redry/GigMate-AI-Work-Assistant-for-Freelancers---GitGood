@@ -1,5 +1,9 @@
 # Implementation status and validation
 
+## Daily summary and rule-based suggestions (role C) — 2026-10-16
+
+方案 §4.6 每日摘要 and the deterministic part of 业务建议 (资料不齐、任务依赖、工作量可能超出时间安排; 建议依据必须可见). `GET /daily-summary` aggregates existing records into today / waiting for the customer / due soon / needs decision, plus suggestions; each entry carries the record IDs. It is read-only and pushes nothing; quiet hours and reminder frequency concern push/sending (role A) and are not part of this endpoint. Natural-language questions remain role B. Evidence: `test_daily_summary.py` **3 passed**.
+
 ## Draft editing and no-reply follow-up (role C) — 2026-10-16
 
 方案 §4.5 (编辑后发送) and 契约 §3 "No reply". `POST /actions/{id}/edit` edits a pending draft with a new revision, snapshot hash and expiry; the old snapshot cannot be approved. The worker's hourly maintenance runs `follow_up_unanswered`: an open-item question accepted by the gateway with no incoming customer message for 24 hours gets a follow-up task and a new draft for the remaining items (at most twice, `task_links.no_reply_N`), then the order is flagged `attention: ["customer_not_replying"]`. A customer reply stops it. Evidence: `test_business_send.py` 9 passed (2 new), `test_approvals.py` 20 passed (1 new).

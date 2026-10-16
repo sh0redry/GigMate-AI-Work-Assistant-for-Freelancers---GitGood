@@ -31,6 +31,7 @@ from gigmate.contracts import (
     Conversation,
     ConversationMessage,
     CreateWorkOrderCommand,
+    DailySummary,
     DeferItemCommand,
     Detail,
     EditActionCommand,
@@ -479,6 +480,22 @@ def defer_order_item(
         request,
         defer_item(db, account, str(order_id), command, idempotency_key, request.state.request_id),
     )
+
+
+@app.get("/api/v1/daily-summary", response_model=Detail[DailySummary])
+def daily_summary(
+    request: Request,
+    day: str | None = Query(None, alias="date", pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    """Today's work, waiting items, due soon, decisions and rule-based suggestions (read-only)."""
+    from datetime import date as date_cls
+
+    from gigmate import summary
+
+    chosen = date_cls.fromisoformat(day) if day else None
+    return detail(request, summary.build(db, account.id, chosen))
 
 
 @app.get("/api/v1/settings/schedule", response_model=Detail[ScheduleSettings])

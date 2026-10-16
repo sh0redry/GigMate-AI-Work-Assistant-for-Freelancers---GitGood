@@ -980,6 +980,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/daily-summary": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Daily Summary
+     * @description Today's work, waiting items, due soon, decisions and rule-based suggestions (read-only).
+     */
+    get: operations["daily_summary_api_v1_daily_summary_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/replay": {
     parameters: {
       query?: never;
@@ -1781,6 +1801,26 @@ export interface components {
       | "pending"
       | "confirmed"
       | "ambiguous";
+    /**
+     * DailySummary
+     * @description 方案 §4.6 每日摘要: each entry points at the record it comes from.
+     */
+    DailySummary: {
+      /** Date */
+      date: string;
+      /** Due Soon */
+      due_soon: components["schemas"]["SummaryEntry"][];
+      /** Needs Decision */
+      needs_decision: components["schemas"]["SummaryEntry"][];
+      /** Suggestions */
+      suggestions: components["schemas"]["Suggestion"][];
+      /** Timezone */
+      timezone: string;
+      /** Today */
+      today: components["schemas"]["SummaryEntry"][];
+      /** Waiting For Customer */
+      waiting_for_customer: components["schemas"]["SummaryEntry"][];
+    };
     /** DateOnly */
     DateOnly: {
       /**
@@ -1870,6 +1910,15 @@ export interface components {
     /** Detail[Conversation] */
     Detail_Conversation_: {
       data: components["schemas"]["Conversation"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[DailySummary] */
+    Detail_DailySummary_: {
+      data: components["schemas"]["DailySummary"];
       /**
        * Request Id
        * Format: uuid
@@ -2580,6 +2629,50 @@ export interface components {
       message_id: string;
       /** Message Revision */
       message_revision: number;
+    };
+    /** Suggestion */
+    Suggestion: {
+      /**
+       * Code
+       * @enum {string}
+       */
+      code:
+        | "task_overdue"
+        | "material_missing"
+        | "dependency_at_risk"
+        | "day_overbooked";
+      /** Detail */
+      detail: string;
+      /** Task Id */
+      task_id?: string | null;
+      /** Work Order Id */
+      work_order_id?: string | null;
+    };
+    /** SummaryEntry */
+    SummaryEntry: {
+      /** Action Id */
+      action_id?: string | null;
+      /** At */
+      at?: string | null;
+      /** Calendar Event Id */
+      calendar_event_id?: string | null;
+      /** Change Id */
+      change_id?: string | null;
+      /** Job Id */
+      job_id?: string | null;
+      /** Kind */
+      kind?: string | null;
+      /**
+       * Open Items
+       * @default []
+       */
+      open_items: string[];
+      /** Task Id */
+      task_id?: string | null;
+      /** Title */
+      title: string;
+      /** Work Order Id */
+      work_order_id?: string | null;
     };
     /** Task */
     Task: {
@@ -5723,6 +5816,37 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Page_ConversationMessage_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  daily_summary_api_v1_daily_summary_get: {
+    parameters: {
+      query?: {
+        date?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_DailySummary_"];
         };
       };
       /** @description Validation Error */

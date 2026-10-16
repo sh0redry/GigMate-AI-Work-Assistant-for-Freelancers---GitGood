@@ -1042,6 +1042,38 @@ class EditActionCommand(Model):
     snapshot_hash: Annotated[str, Field(pattern=r"^sha256:[a-f0-9]{64}$")]
 
 
+class SummaryEntry(Model):
+    kind: str | None = None
+    title: Text
+    at: UtcTimestamp | None = None
+    work_order_id: Id | None = None
+    task_id: Id | None = None
+    calendar_event_id: Id | None = None
+    action_id: Id | None = None
+    change_id: Id | None = None
+    job_id: Id | None = None
+    open_items: list[str] = []
+
+
+class Suggestion(Model):
+    code: Literal["task_overdue", "material_missing", "dependency_at_risk", "day_overbooked"]
+    detail: Text
+    work_order_id: Id | None = None
+    task_id: Id | None = None
+
+
+class DailySummary(Model):
+    """方案 §4.6 每日摘要: each entry points at the record it comes from."""
+
+    date: Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$")]
+    timezone: Timezone
+    today: list[SummaryEntry]
+    waiting_for_customer: list[SummaryEntry]
+    due_soon: list[SummaryEntry]
+    needs_decision: list[SummaryEntry]
+    suggestions: list[Suggestion]
+
+
 class SetWorkOrderStatusCommand(Model):
     """Merchant moves an order along its life cycle (see TRANSITIONS in workorders)."""
 

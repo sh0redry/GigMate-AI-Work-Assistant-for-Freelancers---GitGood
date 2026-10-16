@@ -1316,6 +1316,68 @@
         "title": "CustomerConfirmation",
         "type": "string"
       },
+      "DailySummary": {
+        "additionalProperties": false,
+        "description": "方案 §4.6 每日摘要: each entry points at the record it comes from.",
+        "properties": {
+          "date": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "title": "Date",
+            "type": "string"
+          },
+          "due_soon": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryEntry"
+            },
+            "title": "Due Soon",
+            "type": "array"
+          },
+          "needs_decision": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryEntry"
+            },
+            "title": "Needs Decision",
+            "type": "array"
+          },
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/Suggestion"
+            },
+            "title": "Suggestions",
+            "type": "array"
+          },
+          "timezone": {
+            "minLength": 1,
+            "title": "Timezone",
+            "type": "string"
+          },
+          "today": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryEntry"
+            },
+            "title": "Today",
+            "type": "array"
+          },
+          "waiting_for_customer": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryEntry"
+            },
+            "title": "Waiting For Customer",
+            "type": "array"
+          }
+        },
+        "required": [
+          "date",
+          "timezone",
+          "today",
+          "waiting_for_customer",
+          "due_soon",
+          "needs_decision",
+          "suggestions"
+        ],
+        "title": "DailySummary",
+        "type": "object"
+      },
       "DateOnly": {
         "additionalProperties": false,
         "properties": {
@@ -1515,6 +1577,25 @@
           "request_id"
         ],
         "title": "Detail[Conversation]",
+        "type": "object"
+      },
+      "Detail_DailySummary_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DailySummary"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[DailySummary]",
         "type": "object"
       },
       "Detail_LoginResult_": {
@@ -3206,6 +3287,175 @@
           "message_revision"
         ],
         "title": "SourceRef",
+        "type": "object"
+      },
+      "Suggestion": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "enum": [
+              "task_overdue",
+              "material_missing",
+              "dependency_at_risk",
+              "day_overbooked"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "minLength": 1,
+            "title": "Detail",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "work_order_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Order Id"
+          }
+        },
+        "required": [
+          "code",
+          "detail"
+        ],
+        "title": "Suggestion",
+        "type": "object"
+      },
+      "SummaryEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "action_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Id"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "pattern": "Z$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "calendar_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calendar Event Id"
+          },
+          "change_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Id"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "open_items": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Open Items",
+            "type": "array"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "work_order_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Order Id"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "SummaryEntry",
         "type": "object"
       },
       "Task": {
@@ -9438,6 +9688,54 @@
           }
         },
         "summary": "Messages"
+      }
+    },
+    "/api/v1/daily-summary": {
+      "get": {
+        "description": "Today's work, waiting items, due soon, decisions and rule-based suggestions (read-only).",
+        "operationId": "daily_summary_api_v1_daily_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_DailySummary_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Daily Summary"
       }
     },
     "/api/v1/replay": {
