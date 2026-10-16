@@ -28,7 +28,9 @@ export async function calendarFile(
         : (error?.error?.code ?? "UNAVAILABLE"),
       response.status === 401
         ? "登录已过期，请重新登录。"
-        : "预约已变化、未确认或不可导出，请刷新核对。",
+        : error?.error?.code === "APPROVAL_STALE"
+          ? "预约的来源消息已变化、撤回或无法核对，暂不能导出；请先核对原文。原预约仍保留。"
+          : "预约已变化、未确认或不可导出，请刷新核对。",
     );
   }
   if (

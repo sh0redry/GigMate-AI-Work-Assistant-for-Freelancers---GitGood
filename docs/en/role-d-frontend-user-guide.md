@@ -64,6 +64,9 @@ Start, wait for customer, complete and cancel now use C's merged commands. Revie
 
 A lost response preserves the original numbered command before any POST. Refresh and sign-in do not resend it. There are two explicit options: review and retry the exact original key/body/version, or use “只读核对已保存结果” to look up its immutable server receipt without executing anything. Only a matching completed receipt unlocks “结束已核对的原记录”, after a separate checkbox. Missing/unknown results retain the original record; never infer that a missing receipt means the request was not executed. Storage denial/cleanup failure blocks new writes until recovered. No password is journaled; temporary original content stays in tab session storage until verified completion.
 
+
+Calendar download also checks the actual latest customer messages behind the time and any confirmed location. If a message is edited, withdrawn, missing or no longer authorized, download stops and asks you to review the source. Your stored appointment/history remains; the program does not silently cancel it.
+
 ## D-03: review a reply before approving it
 
 Review the complete body, recipient conversation, source revisions, expiry and bound/current work-order and conversation versions. Tick explicit consent after review. **已批准，尚未发送** means only that your decision was saved. This business approval is not automatically linked to a WhatsApp send. Do not paste an old approval into a sender and assume its versions remain valid.

@@ -121,6 +121,12 @@ test("calendar download uses authenticated same-origin read and rejects JSON/HTM
     calendarFile("id", async () => new Response("", { status: 401 })),
     { code: "UNAUTHENTICATED" },
   );
+  await assert.rejects(
+    calendarFile("id", async () =>
+      Response.json({ error: { code: "APPROVAL_STALE" } }, { status: 409 }),
+    ),
+    { code: "APPROVAL_STALE", message: /来源消息.*暂不能导出.*原预约仍保留/ },
+  );
 });
 test("open-item reasons are explicit and malformed/extended triggers have a safe fallback", () => {
   assert.match(

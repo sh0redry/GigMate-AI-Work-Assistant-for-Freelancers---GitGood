@@ -9,15 +9,15 @@ An idempotency key is the number on one operation receipt. If the reply is lost,
 The generated API types now describe C's real create/status commands. We reuse those types rather than maintaining a second handwritten agreement. Manual creation, status and address confirmation work; real AI and automatic WhatsApp business sending still await B and A/C.
 
 
-**Current delivery candidate, 2026-10-16:** #25 is merged in main `53991dc`. D-04 through the final web delivery are developed on `codex/d-final-workspace`; a PR is still different from a deployment. There is one business service and no product environment switch or public test password. Read [the current guide](role-d-frontend-user-guide.md) and [acceptance](role-d-final-acceptance.md) before older teaching screenshots.
+**Current delivery candidate, 2026-10-16:** #26/#27 are merged in main `71de8d9`. D-04 through the final web delivery are developed on `codex/d-final-workspace`; a PR is still different from a deployment. There is one business service and no product environment switch or public test password. Read [the current guide](role-d-frontend-user-guide.md) and [acceptance](role-d-final-acceptance.md) before older teaching screenshots.
 
 ## A new lesson: a grey button can be the correct result
 
-A page is like a restaurant menu; the backend is the kitchen. Drawing “create order” does not mean the kitchen can safely prepare it. The candidate lets you fill and review an order but keeps Save disabled because C's accepted creation service is missing. The server's capability response is the kitchen's availability card; it is not your permission to act. Connection and sending consent are still checked separately.
+A page is like a restaurant menu; the backend is the kitchen. Drawing “create order” does not mean the kitchen can safely prepare it. Manual creation can now save through C’s merged service. Earlier versions kept Save grey while that service was missing; unsupported assignment and business sending still stay disabled. The server's capability response is the kitchen's availability card; it is not your permission to act. Connection and sending consent are still checked separately.
 
 A source revision is an edition number on a customer message. When the customer edits an address, the old edition cannot prove the new address. Choosing your own sent message cannot prove what the customer confirmed. The new-order page therefore offers only current incoming customer text as evidence.
 
-A calendar export is a copy of one appointment, like printing a ticket. Downloading it does not subscribe your phone to future changes. `.ics` is a standard file calendars can import; UTC records one precise instant and your phone chooses how to display it.
+A calendar export is a copy of one appointment, like printing a ticket. Before printing, the server checks the real message’s latest edition: matching two old photocopies is insufficient. If the customer edits or withdraws the message, export stops for review; the original appointment is retained. Downloading it does not subscribe your phone to future changes. `.ics` is a standard file calendars can import; UTC records one precise instant and your phone chooses how to display it.
 
 An idempotency key is a numbered order slip. If a receipt is lost, keep the same slip and content; do not place another order. `order-command-api.ts` retains the slip and original reviewed change before sending. Reads never resend it. If the browser cannot keep the slip safely, the page lets you look but stops submission.
 

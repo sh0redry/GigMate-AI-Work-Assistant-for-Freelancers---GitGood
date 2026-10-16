@@ -2,6 +2,11 @@
 
 2026-10-16 · Kyrie · [中文](../zh/role-d-final-acceptance.md). Follows merged #26/#27/main `71de8d9`; responds to [Andy’s #29 guidance](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/issues/29), [creation #7](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/issues/7), [calendar #12](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/issues/12) and the nonblocking history concern [#28](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/issues/28).
 
+## Andy review follow-up — 2026-10-16
+
+Actual source rows are now checked before ICS response, including latest schedule and confirmed-location evidence and owned/linked/allowlisted incoming messages. Changed/revoked/unavailable evidence stops export for review without altering stored history. Only timed schedule proposals compute list conflicts, so actual address/date-only list-and-confirm reads work. New boundary tests: **13 passed** (before repair, 12 failed and timed control passed); related native SQLite tests **83 passed / 1 PG-only skip** and frontend **143 passed**. Current Docker unavailable; local PostgreSQL/Linux not rerun. Exact-head CI and independent re-review remain separate.
+
+
 ## Delivered behavior
 
 - One product frontend: no environment picker, injected backend destinations, public credential hint, fictional input action or fallback service. A single loopback development target and same-origin delivery API preserve session/CSRF. Retired environment URLs stop without login/API reads; legacy unknown approval journals are preserved and block new writes rather than migrate automatically. Developer synthetic resources/tests remain outside the product flow.

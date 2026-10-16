@@ -365,7 +365,13 @@ def changes(
         lambda row: {
             **row.data,
             "context_version": row.context_version,
-            "conflict_ids": conflicts(db, account.id, str(order_id), row.data["new_value"]),
+            "conflict_ids": (
+                conflicts(db, account.id, str(order_id), row.data["new_value"])
+                if row.data["field"] == "schedule"
+                and isinstance(row.data["new_value"], dict)
+                and row.data["new_value"].get("kind") == "timed"
+                else []
+            ),
         },
     )
 

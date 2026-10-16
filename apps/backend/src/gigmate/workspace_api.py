@@ -16,9 +16,54 @@ from gigmate.contracts import (
     WorkOrder,
     WorkspaceCapabilities,
 )
-from gigmate.db import CalendarRow, ConversationRow, Inbox, Job, WorkOrderRow
+from gigmate.db import (
+    CalendarRow,
+    ConversationOrder,
+    ConversationRow,
+    Inbox,
+    Job,
+    MessageRow,
+    WorkOrderRow,
+)
 from gigmate.errors import BusinessError
 from gigmate.workorders import command_cache, owned
+
+
+def require_export_sources(db, account_id, order):
+    """Check actual current evidence, not just two matching historical snapshots."""
+    conversations = (
+        select(ConversationRow.id)
+        .join(ConversationOrder, ConversationOrder.conversation_id == ConversationRow.id)
+        .where(
+            ConversationOrder.work_order_id == order.id,
+            ConversationRow.account_id == account_id,
+            ConversationRow.allowlisted.is_(True),
+        )
+    )
+    fields = [order.data["fields"]["schedule"]]
+    address = order.data["fields"]["address"]
+    if address["status"] == "confirmed" and isinstance(address["value"], str):
+        fields.append(address)
+    for field in fields:
+        if not field["sources"]:
+            raise BusinessError(409, "APPROVAL_STALE", "Review the appointment sources first")
+        for source in field["sources"]:
+            latest = db.scalar(
+                select(MessageRow)
+                .where(
+                    MessageRow.account_id == account_id,
+                    MessageRow.id == source["message_id"],
+                    MessageRow.conversation_id.in_(conversations),
+                )
+                .order_by(MessageRow.revision.desc())
+            )
+            if (
+                latest is None
+                or latest.revision != source["message_revision"]
+                or latest.data["revoked"]
+                or latest.data["direction"] != "incoming"
+            ):
+                raise BusinessError(409, "APPROVAL_STALE", "Review the appointment sources first")
 
 
 def install(app, database, actor, detail, page, conversation_info):
@@ -137,8 +182,10 @@ def install(app, database, actor, detail, page, conversation_info):
     ):
         row = owned(db, CalendarRow, str(event_id), account.id)
         order = owned(db, WorkOrderRow, row.work_order_id, account.id)
+        content = export_event(row.data, order.data)
+        require_export_sources(db, account.id, order)
         return Response(
-            export_event(row.data, order.data),
+            content,
             media_type="text/calendar; charset=utf-8",
             headers={
                 "Content-Disposition": f'attachment; filename="gigmate-{event_id}.ics"',

@@ -2,6 +2,11 @@
 
 2026-10-16 · Kyrie。[English](../en/role-d-final-acceptance.md)。基于已合并 #26／#27 的 main `71de8d9`；对应 [Andy 的 #29 指导](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/issues/29)、[建单 #7](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/issues/7)、[日历 #12](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/issues/12)，保留[历史分页 #28](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/issues/28) 的非阻塞限制。
 
+## Andy 评审跟进 — 2026-10-16
+
+ICS 返回前已核对时间和导出地点的实际最新消息，要求账号／关联会话／仍授权／客户消息均符合。依据变化、撤回或无法核对时停止导出供人工复核，保留原历史。列表仅对具体时间计算冲突，真实地址／仅日期能读取并确认。新增边界 **13 项通过**（修复前 12 失败、具体时间对照正常），原生 SQLite 相关回归 **83 通过／1 PG 专项跳过**、前端 **143 通过**。本轮 Docker 不可用，未重新执行本机 PostgreSQL／Linux；精确提交 CI 和独立复审另行确认。
+
+
 ## 本批交付
 
 - 一个产品前端：无环境选择、后端地址注入、公开密码、虚构输入和备用服务。开发时只配置一个本机目标，交付使用同源 API，保留登录／CSRF。旧环境网址在读取接口前停住；旧未知审批不搬运、不删除，而是阻止新提交。虚构测试资源和测试代码保留在产品操作流程之外。
