@@ -27,8 +27,11 @@ Configuration (environment variables):
   call (e.g. ``deepseek-chat``, ``deepseek-reasoner``, ``gpt-4o-mini``).
 - ``GIGMATE_LLM_API_KEY`` - server-side only. Read on each call, never
   stored on the instance, never logged.
-- ``GIGMATE_LLM_ENDPOINT`` - base URL override (defaults to
-  ``https://api.deepseek.com``).
+- ``GIGMATE_LLM_ENDPOINT`` - base URL override. Each known vendor ships its
+  own documented default endpoint (``deepseek`` → ``https://api.deepseek.com``,
+  ``openai`` → ``https://api.openai.com``); ``custom`` has no default and
+  requires this variable. An override that equals another vendor's default
+  endpoint is refused so a worker can never quietly call the wrong vendor.
 - ``GIGMATE_LLM_PROMPT_PATH`` - optional override of the bundled prompt
   file (defaults to the versioned file in this package).
 - ``GIGMATE_LLM_LIVE=1`` - the explicit operator gate. Required to reach
@@ -57,8 +60,10 @@ import json
 import logging
 import os
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import httpx
 from pydantic import ValidationError
@@ -85,17 +90,71 @@ _MODEL_VERSION_PENDING = "skeleton:pending"
 # an OpenAI-compatible API (vLLM, TGI, etc.) without code changes.
 _KNOWN_VENDORS = frozenset({"deepseek", "openai", "custom"})
 
-# Default endpoint. DeepSeek is the default vendor; the endpoint matches the
-# documented DeepSeek API base URL.
-_DEEPSEEK_DEFAULT_ENDPOINT = "https://api.deepseek.com"
+# Pre-activation gate 2: every known vendor ships its own documented default
+# endpoint so ``GIGMATE_LLM_PROVIDER`` can never silently route a call to
+# another vendor's service. ``custom`` deliberately has no default — the
+# operator must supply ``GIGMATE_LLM_ENDPOINT`` explicitly.
+_VENDOR_DEFAULT_ENDPOINTS = {
+    "deepseek": "https://api.deepseek.com",
+    "openai": "https://api.openai.com",
+}
+_DEEPSEEK_DEFAULT_ENDPOINT = _VENDOR_DEFAULT_ENDPOINTS["deepseek"]
 
-# Network hygiene: bound the request time and retry once on HTTP/transport
-# or response-parse errors so a flaky network does not hang the worker
-# thread.
+# Network hygiene: bound the *per-attempt* request time and the *total* wall
+# time a single extraction may spend in the vendor call (pre-activation gate
+# 3). The total budget is what protects the worker's row lock and lease: a
+# retry is only issued when the remaining budget still allows it.
 _REQUEST_TIMEOUT_S = 30.0
+_TOTAL_DEADLINE_S = 45.0
 _MAX_RETRIES = 1
 
+# Header carrying the persistent correlation id (gate 3). The same value is
+# persisted on the ``model_call_traces`` row so an operator can match a trace
+# to the vendor's own request log.
+_REQUEST_ID_HEADER = "X-Gigmate-Request-Id"
+
 _log = logging.getLogger(__name__)
+
+
+def _is_transient(exc: BaseException) -> bool:
+    """Whether a vendor-call failure is worth one bounded retry (gate 3).
+
+    Only clearly transient classes are retried: connection/reset failures,
+    timeouts and ``5xx`` responses. Parse, schema and ``4xx`` failures are
+    deterministic — retrying them only doubles cost and latency for the same
+    outcome, and a ``4xx`` retry can resend a rejected payload.
+    """
+    if isinstance(exc, httpx.TimeoutException):
+        return True
+    if isinstance(exc, (httpx.ConnectError, httpx.ReadError, httpx.WriteError)):
+        return True
+    if isinstance(exc, httpx.RemoteProtocolError):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code >= 500
+    return False
+
+
+def _stable_http_code(exc: BaseException) -> str:
+    """Map a transport failure to a stable, secret-free diagnostic code.
+
+    Pre-activation gate 5: exception class names and messages can carry the
+    private endpoint path, the vendor name and key fragments, so nothing
+    free-form is echoed back. Only the failure *class* (and, for an HTTP
+    status, the coarse status bucket) is reported.
+    """
+    if isinstance(exc, httpx.TimeoutException):
+        return "llm:http-failed:timeout"
+    if isinstance(exc, httpx.HTTPStatusError):
+        bucket = "5xx" if exc.response.status_code >= 500 else "4xx"
+        return f"llm:http-failed:status-{bucket}"
+    if isinstance(exc, httpx.ConnectError):
+        return "llm:http-failed:connect"
+    if isinstance(exc, (httpx.ReadError, httpx.WriteError, httpx.RemoteProtocolError)):
+        return "llm:http-failed:transport"
+    if isinstance(exc, httpx.HTTPError):
+        return "llm:http-failed:transport"
+    return "llm:http-failed:unknown"
 
 
 class LLMIntegrationPending(RuntimeError):
@@ -277,6 +336,11 @@ class LLMProvider:
                 "silently fall back to a real model call once _invoke_model "
                 "is implemented.",
             )
+        # Gate 2 runs before the credential check so an unknown vendor is
+        # reported as such instead of being folded into ``not-configured``.
+        endpoint_problem = self._endpoint_problem()
+        if endpoint_problem is not None:
+            return endpoint_problem
         if not self._is_wired_for_live():
             return (
                 "llm:not-configured",
@@ -296,6 +360,67 @@ class LLMProvider:
         if not os.environ.get(_API_KEY_ENV):
             return False
         return True
+
+    def _endpoint_problem(self) -> tuple[str, str] | None:
+        """Pre-activation gate 2: refuse ambiguous vendor/endpoint combinations.
+
+        Without this check a worker configured for one vendor could quietly
+        call another vendor's service, because a bare ``GIGMATE_LLM_PROVIDER``
+        value used to mean "use the DeepSeek default endpoint". The rules are:
+
+        * an unknown vendor name is refused outright (it is never silently
+          mapped onto a default endpoint);
+        * ``custom`` has no default endpoint, so ``GIGMATE_LLM_ENDPOINT`` is
+          mandatory;
+        * an explicit override that equals another known vendor's documented
+          default endpoint is refused, because that is exactly the
+          misconfiguration this gate exists to catch.
+        """
+        vendor = self._configured_provider or ""
+        if vendor not in _KNOWN_VENDORS:
+            return (
+                "llm:vendor-unknown",
+                "GIGMATE_LLM_PROVIDER is not a vendor this build knows how to "
+                "call; refusing instead of falling back to another vendor's "
+                "default endpoint. Supported values: " + ", ".join(sorted(_KNOWN_VENDORS)) + ".",
+            )
+        override = (self._configured_endpoint or "").strip()
+        default = _VENDOR_DEFAULT_ENDPOINTS.get(vendor)
+        if override:
+            if not (override.startswith("https://") or override.startswith("http://")):
+                return (
+                    "llm:endpoint-invalid",
+                    "GIGMATE_LLM_ENDPOINT must be an absolute http(s) URL; "
+                    "refusing the call instead of posting to an arbitrary "
+                    "target.",
+                )
+            for other, other_default in _VENDOR_DEFAULT_ENDPOINTS.items():
+                if other != vendor and override.rstrip("/") == other_default.rstrip("/"):
+                    return (
+                        "llm:vendor-endpoint-mismatch",
+                        "GIGMATE_LLM_ENDPOINT points at another known vendor's "
+                        "documented default endpoint while "
+                        "GIGMATE_LLM_PROVIDER names a different vendor; "
+                        "refusing the call rather than sending this "
+                        "conversation to the wrong provider.",
+                    )
+            return None
+        if default is None:
+            return (
+                "llm:endpoint-required",
+                "GIGMATE_LLM_PROVIDER=custom has no built-in default endpoint; "
+                "set GIGMATE_LLM_ENDPOINT before live calls are allowed.",
+            )
+        return None
+
+    def _resolved_endpoint(self) -> str:
+        """Return the endpoint the call will actually use (gate 2)."""
+        override = (self._configured_endpoint or "").strip()
+        if override:
+            return override
+        return _VENDOR_DEFAULT_ENDPOINTS.get(
+            self._configured_provider or "", _DEEPSEEK_DEFAULT_ENDPOINT
+        )
 
     def _model_version(self) -> str:
         provider = self._configured_provider or "skeleton"
@@ -369,6 +494,7 @@ class LLMProvider:
         prompt_version: str,
         model_version: str,
         notes: tuple[str, ...],
+        request_id: str | None = None,
     ) -> ExtractionOutcome:
         proposal = {
             "schema_version": "0.1.0",
@@ -395,6 +521,7 @@ class LLMProvider:
             latency_ms=latency_ms,
             notes=notes,
             refused_reason=reason,
+            request_id=request_id,
         )
 
     @staticmethod
@@ -422,43 +549,56 @@ class LLMProvider:
         api_key = os.environ.get(_API_KEY_ENV)
         try:
             prompt_body = self._load_prompt_body()
-        except OSError as exc:
+        except OSError:
+            # Gate 5: the OSError message carries the prompt path, which is
+            # deployment-private. Only the stable code is surfaced.
             return self._needs_review(
                 request,
-                reason=f"LLM prompt file could not be loaded: {exc}",
+                reason="llm:prompt-load-failed: the configured prompt file "
+                "could not be read as UTF-8 text.",
                 latency_ms=self._elapsed(began),
                 prompt_version=prompt_version,
                 model_version=model_version,
                 notes=("llm:prompt-load-failed",),
             )
-        endpoint = self._configured_endpoint or _DEEPSEEK_DEFAULT_ENDPOINT
+        # Gate 3: one stable id per call, sent to the vendor and persisted so
+        # the trace can be correlated with the vendor's own request log.
+        request_id = uuid4().hex
         try:
             raw = self._call_chat_completion(
-                endpoint=endpoint,
+                endpoint=self._resolved_endpoint(),
                 api_key=api_key or "",
                 model=self._configured_model or "",
                 prompt_body=prompt_body,
                 request=request,
+                request_id=request_id,
+                began=began,
             )
         except httpx.HTTPError as exc:
             return self._needs_review(
                 request,
-                reason=f"LLM HTTP call failed: {type(exc).__name__}: {exc}",
+                # Stable, secret-free code; see ``_stable_http_code``.
+                reason=_stable_http_code(exc),
                 latency_ms=self._elapsed(began),
                 prompt_version=prompt_version,
                 model_version=model_version,
                 notes=("llm:http-failed",),
+                request_id=request_id,
             )
-        except (json.JSONDecodeError, KeyError, IndexError) as exc:
+        except (json.JSONDecodeError, KeyError, IndexError):
             return self._needs_review(
                 request,
-                reason=f"LLM response was not valid JSON: {type(exc).__name__}: {exc}",
+                reason="llm:response-malformed: the vendor response did not "
+                "carry a usable chat-completions message body.",
                 latency_ms=self._elapsed(began),
                 prompt_version=prompt_version,
                 model_version=model_version,
                 notes=("llm:response-malformed",),
+                request_id=request_id,
             )
-        return self._parse_response(raw, request, began, prompt_version, model_version)
+        return self._parse_response(
+            raw, request, began, prompt_version, model_version, request_id=request_id
+        )
 
     def _load_prompt_body(self) -> str:
         """Read the bundled (or override) prompt file as UTF-8 text."""
@@ -472,14 +612,21 @@ class LLMProvider:
         model: str,
         prompt_body: str,
         request: ExtractionRequest,
+        request_id: str,
+        began: float,
     ) -> str:
         """POST to ``{endpoint}/v1/chat/completions`` and return the raw assistant text.
 
-        Retries once on HTTP/transport or response-parse errors so a flaky
-        network does not cause a missed extraction. The
-        :class:`httpx.Client` is created through ``self._client_factory`` so
-        tests can inject a fake client without monkeypatching ``httpx``
-        globally.
+        Pre-activation gate 3 shapes the retry policy:
+
+        * the **total** wall time is bounded by :data:`_TOTAL_DEADLINE_S`, so a
+          slow vendor cannot hold the worker's lock for the full per-attempt
+          timeout plus an unbounded backoff;
+        * only clearly transient failures are retried (see
+          :func:`_is_transient`) — ``4xx``, parse and shape failures are
+          deterministic and are raised immediately;
+        * every attempt carries the same persistent ``request_id`` header so
+          the trace row and the vendor's log can be correlated.
         """
         url = endpoint.rstrip("/") + "/v1/chat/completions"
         body = {
@@ -496,6 +643,7 @@ class LLMProvider:
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
+            _REQUEST_ID_HEADER: request_id,
         }
         last_exc: Exception | None = None
         for attempt in range(_MAX_RETRIES + 1):
@@ -507,20 +655,60 @@ class LLMProvider:
                 return data["choices"][0]["message"]["content"]
             except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
                 last_exc = exc
-                if attempt == _MAX_RETRIES:
+                retryable = _is_transient(exc)
+                remaining = _TOTAL_DEADLINE_S - (time.monotonic() - began)
+                if attempt == _MAX_RETRIES or not retryable or remaining <= 0:
                     raise
                 _log.warning(
-                    "LLM call attempt %d/%d failed (%s); retrying",
+                    "LLM call attempt %d/%d failed (%s); retrying within the "
+                    "remaining %0.1fs budget",
                     attempt + 1,
                     _MAX_RETRIES + 1,
                     type(exc).__name__,
+                    remaining,
                 )
         # Unreachable: the loop either returns or raises on the last attempt.
         raise last_exc  # pragma: no cover
 
     @staticmethod
-    def _render_user_message(request: ExtractionRequest) -> str:
+    def _time_basis(request: ExtractionRequest) -> tuple[dict | None, str | None]:
+        """Return the date-grounding basis and, when unusable, a stable code.
+
+        Pre-activation gate 4: relative dates ("明天", "下星期六", "next
+        Thursday") are only meaningful against the moment the customer sent
+        the message *and* the merchant's timezone. Both are server-attached;
+        neither is inferred from the model's own "now". When either is absent
+        or fails validation the call continues with ``time_basis`` set to
+        ``null`` and ``relative_dates_allowed`` set to ``False``, and
+        :meth:`_parse_response` refuses any schedule-bearing proposal.
+        """
+        received = request.message_received_at
+        zone = request.workspace_timezone
+        if not received or not zone:
+            return None, None
+        try:
+            moment = datetime.fromisoformat(str(received).replace("Z", "+00:00"))
+        except ValueError:
+            return None, "llm:time-basis-invalid:received-at"
+        if moment.tzinfo is None:
+            return None, "llm:time-basis-invalid:received-at"
+        try:
+            ZoneInfo(zone)
+        except (KeyError, ValueError, OSError):
+            return None, "llm:time-basis-invalid:timezone"
+        return (
+            {
+                "received_at": moment.astimezone(UTC)
+                .isoformat(timespec="seconds")
+                .replace("+00:00", "Z"),
+                "timezone": zone,
+            },
+            None,
+        )
+
+    def _render_user_message(self, request: ExtractionRequest) -> str:
         """Render the request as the user-role JSON the prompt expects."""
+        basis, _ = self._time_basis(request)
         return json.dumps(
             {
                 "message_text": request.message_text,
@@ -528,9 +716,70 @@ class LLMProvider:
                 "candidate_work_order_ids": list(request.candidate_work_order_ids),
                 "base_work_order_version": request.base_work_order_version,
                 "base_work_order_snapshot": request.base_work_order_snapshot,
+                # Gate 4: the only reliable basis for relative dates. ``null``
+                # means the model must not resolve them at all.
+                "time_basis": basis,
+                "relative_dates_allowed": basis is not None,
             },
             ensure_ascii=False,
         )
+
+    @staticmethod
+    def _provenance_problem(data: dict, request: ExtractionRequest) -> str | None:
+        """Re-bind model-supplied identity fields to the issued request.
+
+        Pre-activation gate 1: ``_parse_response`` used to accept an
+        LLM-supplied ``work_order_id``, ``base_work_order_version``,
+        ``conversation_id`` and ``sources`` without checking them against the
+        request the server actually issued. A structurally valid response
+        could therefore attach a proposal to a different work order, a stale
+        version or another conversation's message. Every mismatch now
+        surfaces as a stable ``llm:response-provenance-failed:<field>`` code
+        and never as ``matched``.
+        """
+        if data.get("conversation_id") != request.conversation_id:
+            return "llm:response-provenance-failed:conversation_id"
+        if data.get("assignment") == "matched":
+            chosen = data.get("work_order_id")
+            if chosen not in request.candidate_work_order_ids:
+                return "llm:response-provenance-failed:work_order_id"
+            if data.get("base_work_order_version") != request.base_work_order_version:
+                return "llm:response-provenance-failed:base_work_order_version"
+        for change in data.get("changes") or []:
+            if not isinstance(change, dict):
+                return "llm:response-provenance-failed:change-shape"
+            for source in change.get("sources") or []:
+                if not isinstance(source, dict):
+                    return "llm:response-provenance-failed:source-shape"
+                if source.get("message_id") != request.message_id:
+                    return "llm:response-provenance-failed:source-message-id"
+                if source.get("message_revision") != request.message_revision:
+                    return "llm:response-provenance-failed:source-message-revision"
+        return None
+
+    def _time_basis_problem(self, proposal, request: ExtractionRequest) -> str | None:
+        """Refuse schedule values that were produced without a real basis.
+
+        Pre-activation gate 4: without the connector's sending time and the
+        merchant's timezone the model can only guess what "明天" or "next
+        Thursday" means, and a guessed date is indistinguishable from a
+        customer-confirmed one downstream. When the basis is missing (or
+        fails validation) any date-bearing change is refused for review
+        instead of being promoted.
+        """
+        basis, invalid = self._time_basis(request)
+        if basis is not None:
+            return None
+        for change in proposal.changes:
+            if change.field not in {"schedule", "deadline"}:
+                continue
+            for value in (change.old_value, change.new_value):
+                kind = getattr(value, "kind", None)
+                if kind is None and isinstance(value, dict):
+                    kind = value.get("kind")
+                if kind in {"timed", "date_only"}:
+                    return invalid or "llm:time-basis-missing:schedule"
+        return None
 
     def _parse_response(
         self,
@@ -539,6 +788,8 @@ class LLMProvider:
         began: float,
         prompt_version: str,
         model_version: str,
+        *,
+        request_id: str | None = None,
     ) -> ExtractionOutcome:
         """Parse the LLM's JSON response into a :class:`ChangeProposal`.
 
@@ -548,26 +799,33 @@ class LLMProvider:
         does not match :class:`ChangeProposal`. Any validation error is
         returned as a ``needs_review`` outcome with
         ``llm:response-schema-failed`` so the worker still records evidence.
+
+        Structural validity is not business validity: pre-activation gate 1
+        re-binds every identity the model echoes back to the request the
+        server actually issued, and gate 4 refuses schedule values that were
+        produced without a real time basis.
         """
         try:
             data = json.loads(raw) if isinstance(raw, str) else raw  # type: ignore[arg-type]
-        except (TypeError, ValueError) as exc:
+        except (TypeError, ValueError):
             return self._needs_review(
                 request,
-                reason=f"LLM response was not valid JSON: {exc}",
+                reason="llm:response-malformed:json",
                 latency_ms=self._elapsed(began),
                 prompt_version=prompt_version,
                 model_version=model_version,
                 notes=("llm:response-malformed",),
+                request_id=request_id,
             )
         if not isinstance(data, dict):
             return self._needs_review(
                 request,
-                reason=f"LLM response must be a JSON object, got {type(data).__name__}",
+                reason="llm:response-malformed:not-an-object",
                 latency_ms=self._elapsed(began),
                 prompt_version=prompt_version,
                 model_version=model_version,
                 notes=("llm:response-malformed",),
+                request_id=request_id,
             )
         # Force provider-set fields so the LLM cannot override them.
         data["model_version"] = model_version
@@ -598,16 +856,43 @@ class LLMProvider:
                 and request.base_work_order_version is not None
             ):
                 data["base_work_order_version"] = request.base_work_order_version
+        problem = self._provenance_problem(data, request)
+        if problem is not None:
+            return self._needs_review(
+                request,
+                reason=problem,
+                latency_ms=self._elapsed(began),
+                prompt_version=prompt_version,
+                model_version=model_version,
+                notes=("llm:response-provenance-failed",),
+                request_id=request_id,
+            )
         try:
             proposal = ChangeProposal.model_validate(data)
         except ValidationError as exc:
+            # Gate 5: surface the failing field path only. Pydantic messages
+            # echo input fragments, which may contain customer text.
+            first = exc.errors()[0]
+            field_path = ".".join(str(part) for part in first.get("loc", ())) or "root"
             return self._needs_review(
                 request,
-                reason=f"LLM response did not match ChangeProposal: {exc.errors()[0]['msg']}",
+                reason=f"llm:response-schema-failed:{field_path}",
                 latency_ms=self._elapsed(began),
                 prompt_version=prompt_version,
                 model_version=model_version,
                 notes=("llm:response-schema-failed",),
+                request_id=request_id,
+            )
+        time_problem = self._time_basis_problem(proposal, request)
+        if time_problem is not None:
+            return self._needs_review(
+                request,
+                reason=time_problem,
+                latency_ms=self._elapsed(began),
+                prompt_version=prompt_version,
+                model_version=model_version,
+                notes=("llm:time-basis-missing",),
+                request_id=request_id,
             )
         if proposal.assignment.value == "matched":
             return ExtractionOutcome(
@@ -616,6 +901,7 @@ class LLMProvider:
                 latency_ms=self._elapsed(began),
                 notes=("llm:matched",),
                 refused_reason=None,
+                request_id=request_id,
             )
         # LLM explicitly asked for review; pass through with a typed note so
         # the worker records evidence.
@@ -625,6 +911,7 @@ class LLMProvider:
             latency_ms=self._elapsed(began),
             notes=("llm:needs-review",),
             refused_reason="llm:needs-review",
+            request_id=request_id,
         )
 
 

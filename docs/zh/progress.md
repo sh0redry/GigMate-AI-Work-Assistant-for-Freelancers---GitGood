@@ -1,5 +1,11 @@
 # 已完成工作与验证记录
 
+## Role B 真实启用前验收门槛 — 2026-10-16
+
+基于已合入 main `53991dc`（分支 `role-b/real-text-activation`），实现 [role-b-extraction.md](role-b-extraction.md) 记录的五项启用前验收门槛：(1) `_parse_response` 把模型返回的全部身份字段——`conversation_id`、`work_order_id`（必须是 `candidate_work_order_ids` 成员）、`base_work_order_version` 以及每条 `sources[].message_id` / `message_revision`——重新绑定回实际发出的请求，不匹配以 `llm:response-provenance-failed` 拒绝，绝不会变成 `matched`；(2) 明确 vendor／endpoint 语义——每个 vendor 自带文档化默认端点，`custom` 必须显式配置 `GIGMATE_LLM_ENDPOINT`，未知／错配／非 URL 端点一律拒绝；(3) 重试只对瞬时类（超时、连接／重置、`5xx`）且有 45 秒总预算，每次调用带同一个持久化 `X-Gigmate-Request-Id` 头，该 id 经新增迁移 `0017_model_call_request_id` 落库到 `model_call_traces.request_id`；(4) 服务端附上的日期依据——`ExtractionRequest.message_received_at` 与 `workspace_timezone`（`GIGMATE_WORKSPACE_TIMEZONE`），prompt `role_b_extraction_v1.txt` 由 `1.0.0` 升到 `1.1.0` 并要求输出 UTC `Z`，依据缺失时含日期的变更以 `llm:time-basis-missing` 拒绝，worker 在调用后丢弃上下文／工单版本已变更或自身租约已过期的结果；(5) 稳定脱敏诊断码（`llm:http-failed:timeout`、`llm:http-failed:status-5xx`、`llm:response-schema-failed:<字段路径>` 等），不再回显端点、vendor、密钥或异常文本。
+
+全部使用合成夹具：新增 `apps/backend/tests/test_extraction_gates.py` **27 通过**；后端全套 **648 通过／22 跳过／12 失败**，12 项失败是原生 macOS 上既有的 PDF 拒绝（`MEDIA_PDF_LIMIT_UNAVAILABLE`，role-b-extraction.md 已记录），未改动的 main 上同样失败。Ruff 检查／格式 **95 文件**、`scripts/export_contracts.py --check` 一致、`check_baseline.py` **82 Markdown／957 本地链接**、Alembic 唯一 head `0017_model_call_request_id` 且升级／回退往返无漂移、评测工具 **7 通过／0 失败**（prompt 1.1.0）。`tests/test_waha_migration.py` 改为动态取 head，不再写死 `0016_d03_sending_heads`。接缝仍关闭（`_SKELETON_SEAM = True`、媒体 `_ENABLED = False`）；没有真实模型、密钥、网络请求、WhatsApp 消息或部署操作。未验证：PostgreSQL 并发／行锁（未配 `TEST_DATABASE_URL`）、Linux 容器内 PDF 复跑、以及任何真实供应商行为。
+
 ## PR #25 开放并兼容已合入的发送功能 — 2026-10-14
 
 队友评审已将 #25 开放为 Ready。之后 main 通过 #24／#23 更新到 **4177d1a**，产生迁移测试与双语进度冲突。本轮合入该 main，保留两边测试／记录及全部已发布迁移，新增无表结构变更的 **0016_d03_sending_heads** 汇合 **0015_d03_approval_heads** 与 **0014_merge_approval_send**。验证从两个最新 head 升级，保留审批记录、发送授权／取消标识和回放数据，Alembic 检查唯一 head 且无结构漂移。继承 main 的发送接口固定环境地址，App 测试同时加载审批／发送模块。后端生产源码／契约与 main 相同，未新增 C/A 审批执行桥接或真实发送。

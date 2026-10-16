@@ -498,6 +498,9 @@ class ModelCallTrace(Base):
     latency_ms: Mapped[int] = mapped_column(Integer)
     refused_reason: Mapped[str | None] = mapped_column(String(256))
     notes: Mapped[list] = mapped_column(JSON)
+    # Correlation id sent to the vendor with the call (Role B pre-activation
+    # gate 3). ``None`` when no vendor request was ever issued.
+    request_id: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 

@@ -65,6 +65,14 @@ _INFRA_FAILURE_NOTES = frozenset(
         "llm:http-failed",
         "llm:response-malformed",
         "llm:response-schema-failed",
+        # Gate 2 (vendor/endpoint), gate 1 (provenance) and gate 4 (time
+        # basis) guards. None of them means the model was actually invoked.
+        "llm:vendor-unknown",
+        "llm:vendor-endpoint-mismatch",
+        "llm:endpoint-required",
+        "llm:endpoint-invalid",
+        "llm:response-provenance-failed",
+        "llm:time-basis-missing",
     }
 )
 
@@ -112,6 +120,11 @@ def _build_request() -> ExtractionRequest:
             },
         },
         origin="synthetic",
+        # Gate 4: without both values the provider refuses schedule changes
+        # instead of converting relative dates against nothing.
+        message_received_at="2026-10-07T00:00:00Z",
+        workspace_timezone=os.environ.get("GIGMATE_WORKSPACE_TIMEZONE")
+        or "Asia/Hong_Kong",
     )
 
 
@@ -129,6 +142,7 @@ def main() -> int:
         "latency_ms": outcome.latency_ms,
         "notes": list(outcome.notes),
         "refused_reason": outcome.refused_reason,
+        "request_id": outcome.request_id,
         "unresolved_questions": list(outcome.proposal.unresolved_questions),
         "changes": [
             {

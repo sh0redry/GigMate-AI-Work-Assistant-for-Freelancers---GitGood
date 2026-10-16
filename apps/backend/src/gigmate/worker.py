@@ -5,6 +5,7 @@ import threading
 import time
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -130,6 +131,7 @@ def run_once(factory=Session):
                     event=event,
                     conversation=conversation,
                     linked=linked,
+                    job=job,
                 )
                 job.state = "completed"
                 job.error_code = None if matched else EXTRACTION_NEEDS_REVIEW
@@ -215,6 +217,7 @@ def _route_through_provider(
     event: dict,
     conversation: ConversationRow,
     linked: list[str],
+    job: Job | None = None,
 ) -> bool:
     """Invoke the registered extraction provider and persist its evidence.
 
@@ -224,6 +227,13 @@ def _route_through_provider(
     returns ``needs_review`` for live content even when the text equals a
     synthetic fixture. A provider that wants to mark ``matched`` for live
     content must be a separately authorized batch.
+
+    Pre-activation gate 3 also revalidates after the call: a model call can
+    take long enough for the conversation context or the work order version to
+    move on, or for this worker's lease to expire. In either case the result
+    describes a stale snapshot, so it is discarded instead of being promoted —
+    the job is retried against current data rather than writing outdated
+    business changes.
     """
     target_order_id: str | None = None
     base_snapshot = None
@@ -245,8 +255,24 @@ def _route_through_provider(
         base_work_order_version=base_version,
         base_work_order_snapshot=base_snapshot,
         origin="live",
+        # Gate 4: the connector's own sending time plus the merchant's
+        # configured zone are the only date-grounding basis the provider gets.
+        # Both stay ``None`` when unavailable and the provider then refuses
+        # relative-date proposals instead of guessing.
+        message_received_at=event.get("occurred_at"),
+        workspace_timezone=_workspace_timezone(),
     )
     outcome = provider().propose(request)
+    if job is not None and job.lease_until is not None:
+        if job.lease_until.replace(tzinfo=UTC) <= datetime.now(UTC):
+            return False
+    db.refresh(conversation)
+    if conversation.context_version != request.context_version:
+        return False
+    if target_order_id is not None:
+        current = db.get(WorkOrderRow, target_order_id)
+        if current is None or current.data.get("version") != base_version:
+            return False
     proposal_row = persist_proposal(
         db,
         account_id=account.id,
@@ -279,6 +305,25 @@ def _route_through_provider(
                 draft_for_change(db, account.id, order, conversation, change.data)
             return True
     return False
+
+
+def _workspace_timezone() -> str | None:
+    """The merchant's validated IANA zone used to ground relative dates.
+
+    Pre-activation gate 4. The zone is operator configuration, never taken
+    from the model or the message. An unknown or missing value yields
+    ``None``, which makes the provider refuse relative-date proposals instead
+    of silently anchoring them to a guessed zone.
+    """
+    raw = (os.environ.get("GIGMATE_WORKSPACE_TIMEZONE") or "").strip()
+    if not raw:
+        return None
+    try:
+        ZoneInfo(raw)
+    except (KeyError, ValueError, OSError):
+        log.error("workspace_timezone_invalid code=CONFIG_INVALID")
+        return None
+    return raw
 
 
 def complete_metrics(job, inbox, began):

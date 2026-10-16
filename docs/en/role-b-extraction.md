@@ -1,5 +1,19 @@
 # Role B extraction subsystem
 
+## Pre-activation gates implemented — 2026-10-16
+
+All five ["Pre-activation acceptance gates"](#pre-activation-acceptance-gates) below now have implementation and regression coverage in `apps/backend/tests/test_extraction_gates.py`. The seam is still closed: `LLMProvider._SKELETON_SEAM` remains `True` and `gigmate.media.processor._ENABLED` remains `False`, so no real vendor request, real credential or live customer message is involved. This batch does **not** authorize activation.
+
+What changed:
+
+- **Gate 1 — provenance re-binding.** `_parse_response` re-binds `conversation_id`, `work_order_id` (must be a member of `candidate_work_order_ids`), `base_work_order_version` (must equal the version the worker resolved) and every `sources[].message_id` / `message_revision` to the request actually issued. A mismatch returns `needs_review` with the stable note `llm:response-provenance-failed` and a `llm:response-provenance-failed:<field>` reason; it can never become `matched`.
+- **Gate 2 — vendor/endpoint semantics.** Each known vendor ships its own documented default endpoint (`deepseek` → `https://api.deepseek.com`, `openai` → `https://api.openai.com`); `custom` has none and requires `GIGMATE_LLM_ENDPOINT`. Unknown vendors are refused with `llm:vendor-unknown`, a non-URL override with `llm:endpoint-invalid`, and an override that equals another vendor's documented default with `llm:vendor-endpoint-mismatch`.
+- **Gate 3 — retry, budget and correlation.** Total wall time per extraction is bounded (`_TOTAL_DEADLINE_S = 45s`) and a retry is only issued while budget remains; only transient classes are retried (`httpx` timeouts/connect errors/resets and HTTP `5xx`) — `4xx`, parse and shape failures are never retried. Every attempt carries one persistent `X-Gigmate-Request-Id` header, and that id is persisted on `model_call_traces.request_id` (migration `0017_model_call_request_id`) so a trace can be correlated with the vendor's log.
+- **Gate 4 — real time basis.** `ExtractionRequest` carries server-attached `message_received_at` (the connector's sending time, UTC `Z`) and `workspace_timezone` (operator IANA setting, `GIGMATE_WORKSPACE_TIMEZONE`). The prompt (`role_b_extraction_v1.txt`, bumped to **1.1.0**) now tells the model to resolve relative dates only against `time_basis`, and to emit UTC `Z`. When the basis is missing or invalid the provider refuses any date-bearing change with `llm:time-basis-missing` instead of guessing; non-date fields (address/summary) are unaffected. The worker also re-reads the conversation context and work-order version after the call and discards a result computed against a stale snapshot, as well as any result produced after its own lease expired.
+- **Gate 5 — sanitised diagnostics.** Failure reasons are stable codes (`llm:http-failed:timeout`, `llm:http-failed:status-5xx`, `llm:response-malformed:json`, `llm:response-schema-failed:<field path>`, `llm:prompt-load-failed:…`). No exception class name, exception message, endpoint host, vendor name or key fragment is echoed into `refused_reason`.
+
+Still open before activation (not blocked by code): the separately authorized real-credential/live-origin flow, the prompt-injection regression suite, a latency budget measured under real load, and moving vendor I/O fully outside the worker's row lock — the last one is a structural worker change that must be agreed with A/C. `docs/en/implementation-status.md` records the verification evidence for this batch.
+
 ## PDF resource isolation
 
 The vendor preflight now calls a private child process, not pypdf in the business worker. Defaults: 20 seconds wall time, 512 MiB, one parser per worker process, 20 MiB input and 1 MiB serialized output. Trusted server settings `GIGMATE_PDF_TIMEOUT_SECONDS` (1–60) and `GIGMATE_PDF_MEMORY_MIB` (128–1024) are propagated to API/worker by the media Compose overlay; they are not request parameters. Existing page/segment/text bounds and partial coverage checks remain.
@@ -493,6 +507,11 @@ traffic is out of scope for this batch.
 
 ## Pre-activation acceptance gates
 
+2026-10-16: the guards below are implemented and regression-tested; see
+[the batch note above](#pre-activation-gates-implemented--2026-10-16). They are
+recorded as written so reviewers can still see the original requirement and
+confirm nothing silently opened the seam.
+
 The current batch ships the **inactive call implementation**: the
 HTTP / parse / schema paths are present, but `_SKELETON_SEAM = True`
 and the live gate default-off keep every request from reaching the
@@ -582,12 +601,12 @@ piece of work with its own batch and review.
 
 ## Open follow-ups
 
-- Real-model provider activation: the next authorized batch must
-  (a) clear the pre-activation acceptance gates above (provenance
-  re-binding, vendor/endpoint semantics, retry/lease design, date basis,
-  sanitised diagnostics), (b) flip
-  `LLMProvider._SKELETON_SEAM` to `False`, and (c) gate real
-  authorization + live-origin flow with their own dedicated review
+- Real-model provider activation: the gates above are implemented as of
+  2026-10-16, so the next authorized batch must
+  (a) supply real authorization + live-origin flow with their own dedicated
+  review, add the prompt-injection regression suite and measure the latency
+  budget under real load, and (b) flip
+  `LLMProvider._SKELETON_SEAM` to `False`
   (the live-origin guard currently lives in this provider but is
   unreachable while the seam flag is `True`; its
   `GIGMATE_LLM_ALLOW_LIVE_ORIGIN` opt-in is pinned by isolated

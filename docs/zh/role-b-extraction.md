@@ -1,5 +1,17 @@
 # Role B 抽取子系统
 
+## 真实启用前验收门槛已实现 — 2026-10-16
+
+下文["真实启用前验收门槛"](#真实启用前验收门槛)五项已全部落地，回归测试在 `apps/backend/tests/test_extraction_gates.py`。接缝仍关闭：`LLMProvider._SKELETON_SEAM` 仍为 `True`、`gigmate.media.processor._ENABLED` 仍为 `False`，本批次没有真实供应商请求、真实密钥或真实客户消息，**不构成启用授权**。
+
+- **门槛一：出处重绑定。** `_parse_response` 把 `conversation_id`、`work_order_id`（必须是 `candidate_work_order_ids` 成员）、`base_work_order_version`（必须等于 worker 解析到的版本）以及每条 `sources[].message_id` / `message_revision` 重新绑定回本次实际发出的请求；不匹配返回 `needs_review`、备注 `llm:response-provenance-failed`，原因码 `llm:response-provenance-failed:<字段>`，绝不会变成 `matched`。
+- **门槛二：vendor／endpoint 语义。** 每个已知 vendor 自带文档化默认端点（`deepseek` → `https://api.deepseek.com`，`openai` → `https://api.openai.com`）；`custom` 没有默认值，必须显式配置 `GIGMATE_LLM_ENDPOINT`。未知 vendor 以 `llm:vendor-unknown` 拒绝，非 URL 覆盖以 `llm:endpoint-invalid` 拒绝，覆盖值等于另一个 vendor 默认端点时以 `llm:vendor-endpoint-mismatch` 拒绝。
+- **门槛三：重试、预算与关联。** 单次抽取总耗时设上限（`_TOTAL_DEADLINE_S = 45s`），只有预算仍有剩余才重试；只对瞬时类重试（httpx 超时／连接错误／重置、HTTP `5xx`），`4xx`、解析与结构错误一律不重试。每次尝试都带同一个持久化 `X-Gigmate-Request-Id` 头，该 id 落库到 `model_call_traces.request_id`（迁移 `0017_model_call_request_id`），便于与供应商日志对齐。
+- **门槛四：真实时间依据。** `ExtractionRequest` 增加服务端附上的 `message_received_at`（连接器发送时间，UTC `Z`）与 `workspace_timezone`（运维 IANA 配置，`GIGMATE_WORKSPACE_TIMEZONE`）。prompt（`role_b_extraction_v1.txt`，升到 **1.1.0**）要求模型只依据 `time_basis` 解析相对日期并输出 UTC `Z`；依据缺失或不合法时，provider 以 `llm:time-basis-missing` 拒绝任何含日期的变更，而不是猜一个日期；地址／摘要等非日期字段不受影响。worker 在调用后还会重读会话上下文与工单版本，丢弃基于过期快照的结果；自身租约已过期的结果同样丢弃。
+- **门槛五：诊断脱敏。** 失败原因改为稳定码（`llm:http-failed:timeout`、`llm:http-failed:status-5xx`、`llm:response-malformed:json`、`llm:response-schema-failed:<字段路径>`、`llm:prompt-load-failed:…`）。异常类名、异常消息、端点主机、vendor 名称与密钥片段都不会进入 `refused_reason`。
+
+启用前仍缺的不是代码：单独授权的真实凭据／live-origin 通道、prompt-injection 回归集、真实负载下实测的延迟预算，以及把供应商 I/O 完全移出 worker 行锁（结构性改动，需与 A／C 达成一致）。验证证据记在 `docs/zh/progress.md`。
+
 ## PDF 资源隔离
 
 供应商调用前的 PDF 解析已改为私有子进程，不在业务 worker 内运行 pypdf。默认墙钟 20 秒、内存 512 MiB、每个 worker 同时一个解析进程、输入 20 MiB、序列化输出 1 MiB。可信服务端设置 `GIGMATE_PDF_TIMEOUT_SECONDS`（1–60）与 `GIGMATE_PDF_MEMORY_MIB`（128–1024）由媒体 Compose 覆盖传给 API/worker，不接受 HTTP 修改。原页数、片段、文字上限及 partial 校验保留。
@@ -424,6 +436,8 @@ PostgreSQL 测试是有意义的运行；SQLite 不证明行锁，只验证条�
 
 ## 真实启用前验收门槛
 
+2026-10-16：下列门槛已实现并有回归测试，见上文[批次说明](#真实启用前验收门槛已实现--2026-10-16)。原文保留，便于评审对照原始要求并确认接缝没有被悄悄打开。
+
 本批次只交付**未激活的调用实现**：HTTP / 解析 / Schema 路径已经就位，
 但 `_SKELETON_SEAM = True` 且活门默认关，所有请求都不会触达网络。
 接缝、prompt 版本链、live-origin 守门已落地为可测试代码；下列验收门槛
@@ -489,10 +503,10 @@ PostgreSQL 测试是有意义的运行；SQLite 不证明行锁，只验证条�
 
 ## 待办
 
-- 真实模型 provider 激活：下一单独授权批次必须完成三件事——(a) 清空上文
-  "真实启用前验收门槛"（出处重绑定、vendor/endpoint 语义、重试与租约
-  设计、日期依据、诊断脱敏）；(b) 把 `LLMProvider._SKELETON_SEAM` 翻为
-  `False`；(c) 把真实授权与 live-origin 通道接入独立的授权审查（当前
+- 真实模型 provider 激活：上文门槛已于 2026-10-16 实现，因此下一单独授权
+  批次需要 (a) 把真实授权与 live-origin 通道接入独立的授权审查，补
+  prompt-injection 回归并在真实负载下实测延迟预算；(b) 把
+  `LLMProvider._SKELETON_SEAM` 翻为 `False`。（当前
   live-origin guard 已经在该 provider 中实现，但骨架标志为 `True` 时
   不可达；其 `GIGMATE_LLM_ALLOW_LIVE_ORIGIN` 开关由仅测试子类的隔离
   测试固化）。同时补上 prompt-injection 回归与延迟预算。接缝、prompt

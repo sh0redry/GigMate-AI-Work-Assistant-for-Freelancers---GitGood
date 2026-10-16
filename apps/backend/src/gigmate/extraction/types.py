@@ -40,6 +40,13 @@ class ExtractionRequest:
     base_work_order_version: int | None = None
     base_work_order_snapshot: dict | None = None
     origin: Literal["synthetic", "live"] = "live"
+    # Date-grounding basis (pre-activation gate 4). Both are server-attached:
+    # ``message_received_at`` is the connector's sending time in UTC ``Z`` form
+    # and ``workspace_timezone`` is the merchant's validated IANA zone. Either
+    # may be ``None`` when the caller cannot supply it; a provider must then
+    # refuse to promote relative-date interpretations instead of guessing.
+    message_received_at: str | None = None
+    workspace_timezone: str | None = None
     extra: dict = field(default_factory=dict)
 
 
@@ -52,6 +59,10 @@ class ExtractionOutcome:
     latency_ms: int
     notes: tuple[str, ...] = ()
     refused_reason: str | None = None
+    # Stable per-call identifier sent to the vendor and persisted with the
+    # trace so an operator can correlate a row with the vendor's own logs.
+    # ``None`` when no vendor call was ever issued.
+    request_id: str | None = None
 
 
 class Provider(Protocol):
