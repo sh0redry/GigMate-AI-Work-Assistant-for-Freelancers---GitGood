@@ -486,6 +486,49 @@ def test_confirmed_order_reopens_when_a_key_item_awaits_the_customer(signed_in):
     [task] = rows(factory, TaskRow, order["id"])
     assert task.data["state"] == "cancelled"
     assert [d["open_items"] for d in drafts(client, order["id"])] == [["verify_address"]]
+    # Only the address awaits the customer: the confirmed time still holds the slot.
+    [calendar] = rows(factory, CalendarRow, order["id"])
+    assert calendar.data["tentative"] is False
+
+
+def reschedule_awaiting_customer(client, factory, headers):
+    """A confirmed order whose new timed proposal the customer has not confirmed yet."""
+    order = create(client, headers, schedule=future(days=9), address="中环").json()["data"]
+    new_time = future(days=10)
+    change_id, context, version = propose(
+        factory, order["id"], "schedule", new_time, customer="pending"
+    )
+    response = confirm(client, headers, order["id"], change_id, version, context)
+    assert response.status_code == 200, response.text
+    return order["id"], new_time, response.json()["data"]
+
+
+def test_time_awaiting_the_customer_is_tentative_and_does_not_block(signed_in):
+    client, factory, _, headers = signed_in
+    order_id, new_time, data = reschedule_awaiting_customer(client, factory, headers)
+    assert data["status"] == "pending_confirmation"
+    assert data["fields"]["schedule"]["status"] == "proposed"
+    [calendar] = rows(factory, CalendarRow, order_id)
+    assert calendar.data["schedule"] == new_time
+    assert calendar.data["tentative"] is True
+    assert [t.data["state"] for t in rows(factory, TaskRow, order_id)] == ["cancelled"]
+    # Not agreed by the customer, so another job can still take this time.
+    assert create(client, headers, schedule=new_time).status_code == 201
+
+
+def test_time_becomes_formal_again_once_the_customer_confirms(signed_in):
+    client, factory, _, headers = signed_in
+    order_id, new_time, _ = reschedule_awaiting_customer(client, factory, headers)
+    # The customer replies 对 → an ordinary proposal, now customer-confirmed.
+    change_id, context, version = propose(factory, order_id, "schedule", new_time)
+    done = confirm(client, headers, order_id, change_id, version, context)
+    assert done.status_code == 200, done.text
+    assert done.json()["data"]["status"] == "confirmed"
+    [calendar] = rows(factory, CalendarRow, order_id)
+    assert calendar.data["tentative"] is False
+    states = sorted(t.data["state"] for t in rows(factory, TaskRow, order_id))
+    assert states == ["cancelled", "pending"]
+    assert create(client, headers, schedule=new_time).status_code == 409
 
 
 def test_date_only_time_can_be_accepted_and_stays_tentative(signed_in):
