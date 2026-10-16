@@ -31,6 +31,7 @@ from gigmate.extraction import (
     persist_proposal,
     provider,
 )
+from gigmate.extraction.llm import validate_provider_config
 from gigmate.understanding import extract
 from gigmate.waha_recovery import worker_heartbeat
 
@@ -359,8 +360,44 @@ def heartbeat_loop(stop, factory=Session, interval=10):
         stop.wait(interval)
 
 
+def audit_provider_config():
+    """Audit the extraction provider configuration once at worker boot.
+
+    Pre-activation batch 2. ``validate_provider_config`` is pure — it takes
+    no database session and issues no network call — so it is safe to run
+    before the poll loop starts. Three policies apply:
+
+    * no issues → log nothing (the default closed-seam deployment);
+    * any issue while ``GIGMATE_LLM_LIVE=1`` → refuse to start. A worker
+      that is *about* to issue real vendor calls must not run against a
+      configuration it already knows is broken, because the first failure
+      would be a real request with real money behind it;
+    * any issue while the live gate is off → warn only, because the
+      closed skeleton seam (``_SKELETON_SEAM``) refuses every call anyway.
+    """
+    issues = validate_provider_config()
+    if not issues:
+        return True
+    live = os.environ.get("GIGMATE_LLM_LIVE") == "1"
+    if live:
+        log.error("provider_config_invalid code=CONFIG_INVALID live=1 issues=%s", ",".join(issues))
+        return False
+    log.warning(
+        "provider_config_invalid code=CONFIG_INVALID live=0 issues=%s "
+        "(ignored: the skeleton seam refuses every call)",
+        ",".join(issues),
+    )
+    return True
+
+
 def main():
     logging.basicConfig(level=logging.INFO)
+    if not audit_provider_config():
+        # Fail fast rather than boot into a poll loop that would attempt
+        # real vendor calls against a configuration already known to be
+        # wrong. The seam check above is the same one the provider applies
+        # at call time; running it at boot simply surfaces it earlier.
+        return
     stop = threading.Event()
     pulse = threading.Thread(
         target=heartbeat_loop, args=(stop,), name="gigmate-heartbeat", daemon=True

@@ -73,6 +73,14 @@ _INFRA_FAILURE_NOTES = frozenset(
         "llm:endpoint-invalid",
         "llm:response-provenance-failed",
         "llm:time-basis-missing",
+        # Batch 2 cost accounting. None of them means the model was actually
+        # invoked successfully: either the call was never priced (so never
+        # issued) or it came back over budget and was refused.
+        "llm:cost-budget-exceeded",
+        "llm:cost-budget-invalid",
+        "llm:cost-pricing-missing",
+        "llm:cost-pricing-partial",
+        "llm:cost-pricing-invalid",
     }
 )
 
@@ -143,6 +151,13 @@ def main() -> int:
         "notes": list(outcome.notes),
         "refused_reason": outcome.refused_reason,
         "request_id": outcome.request_id,
+        # Cost accounting (batch 2). None while the seam is closed or when
+        # the vendor omits its usage block; ``cost_note`` then explains why
+        # (llm:cost-usage-missing / llm:cost-pricing-missing).
+        "input_tokens": outcome.input_tokens,
+        "output_tokens": outcome.output_tokens,
+        "cost_usd": outcome.cost_usd,
+        "cost_note": outcome.cost_note,
         "unresolved_questions": list(outcome.proposal.unresolved_questions),
         "changes": [
             {

@@ -63,6 +63,19 @@ class ExtractionOutcome:
     # trace so an operator can correlate a row with the vendor's own logs.
     # ``None`` when no vendor call was ever issued.
     request_id: str | None = None
+    # Cost accounting (pre-activation batch 2). All four fields are
+    # ``None`` while the seam is closed; the next authorized batch populates
+    # them whenever a real vendor call completes. ``cost_usd`` is rounded to
+    # the same precision that ``model_call_traces.cost_usd`` stores
+    # (``Numeric(12, 6)``); callers should not rely on finer precision.
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cost_usd: float | None = None
+    # Stable, secret-free diagnostic note that explains why no cost was
+    # recorded (e.g. ``llm:cost-pricing-missing`` for an unknown model or
+    # ``llm:cost-usage-missing`` when the vendor omits ``usage``). ``None``
+    # when a cost row was recorded.
+    cost_note: str | None = None
 
 
 class Provider(Protocol):

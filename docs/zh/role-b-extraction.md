@@ -10,7 +10,17 @@
 - **门槛四：真实时间依据。** `ExtractionRequest` 增加服务端附上的 `message_received_at`（连接器发送时间，UTC `Z`）与 `workspace_timezone`（运维 IANA 配置，`GIGMATE_WORKSPACE_TIMEZONE`）。prompt（`role_b_extraction_v1.txt`，升到 **1.1.0**）要求模型只依据 `time_basis` 解析相对日期并输出 UTC `Z`；依据缺失或不合法时，provider 以 `llm:time-basis-missing` 拒绝任何含日期的变更，而不是猜一个日期；地址／摘要等非日期字段不受影响。worker 在调用后还会重读会话上下文与工单版本，丢弃基于过期快照的结果；自身租约已过期的结果同样丢弃。
 - **门槛五：诊断脱敏。** 失败原因改为稳定码（`llm:http-failed:timeout`、`llm:http-failed:status-5xx`、`llm:response-malformed:json`、`llm:response-schema-failed:<字段路径>`、`llm:prompt-load-failed:…`）。异常类名、异常消息、端点主机、vendor 名称与密钥片段都不会进入 `refused_reason`。
 
-启用前仍缺的不是代码：单独授权的真实凭据／live-origin 通道、prompt-injection 回归集、真实负载下实测的延迟预算，以及把供应商 I/O 完全移出 worker 行锁（结构性改动，需与 A／C 达成一致）。验证证据记在 `docs/zh/progress.md`。
+启用前仍缺的不是代码：单独授权的真实凭据／live-origin 通道、真实负载下实测的延迟预算，以及把供应商 I/O 完全移出 worker 行锁（结构性改动，需与 A／C 达成一致）。验证证据记在 `docs/zh/progress.md`。
+
+## 真实启用前第二批 — 费用边界、启动校验、注入回归 — 2026-10-16
+
+本批次落地了剩余启用待办中的三项，**同样不翻接缝**：`LLMProvider._SKELETON_SEAM` 仍为 `True`、`gigmate.media.processor._ENABLED` 仍为 `False`，没有真实供应商请求、凭据或客户消息；新代码路径通过与五项门槛相同的「测试子类开闸」方式验证。回归测试在 `apps/backend/tests/test_extraction_batch2.py`。
+
+- **费用边界。** 每次调用按内置千 token 单价表（键为 `(vendor, model)`）计价，可用 `GIGMATE_LLM_COST_INPUT_USD_PER_1K` / `GIGMATE_LLM_COST_OUTPUT_USD_PER_1K` 覆盖。预算来自 `GIGMATE_LLM_COST_BUDGET_USD`（默认每次 0.10 美元）。计算出的费用超预算时，在供应商调用**之后**以稳定备注 `llm:cost-budget-exceeded` 拒绝；完全无法计价则在调用**之前**就以 `llm:cost-pricing-missing`（模型未知且无覆盖）、`llm:cost-pricing-partial`（只配了两个覆盖之一）或 `llm:cost-pricing-invalid` 拒绝。供应商省略 `usage` 时不静默当免费：trace 记录 `llm:cost-usage-missing`（结构非法时 `llm:cost-usage-invalid`），`cost_usd` 保留为 null。`model_call_traces` 新增 `input_tokens`、`output_tokens`、`cost_usd`（迁移 `0018_model_call_cost`），运维可直接还原花费。检查放在 HTTP 与解析门槛**之后**，因为 `4xx` 响应没有 usage 数据，解析失败也不能计入预算。
+- **Provider 配置启动校验。** `gigmate.extraction.llm.validate_provider_config()` 是纯审计函数，不取会话、不开 socket，worker 启动时经 `gigmate.worker.audit_provider_config()` 调用。报告项包括 `llm:vendor-unknown`、`llm:endpoint-invalid`、`llm:vendor-endpoint-mismatch`、`llm:endpoint-required`、`llm:prompt-path-invalid`、`workspace-timezone-invalid`、上述四个费用码，以及（仅 `GIGMATE_LLM_LIVE=1` 时）`llm:api-key-missing`。策略：活门打开时任何问题都让 worker 拒绝启动 —— 一个即将发出真实供应商调用的进程，不能带着已知错误的配置运行；活门关闭时同样的问题只记 warning，因为关闭的接缝本就拒绝所有调用。传入 `env` 映射即可让测试在不改动真实环境的前提下驱动审计。
+- **Prompt-injection 回归集。** `contracts/evaluation/injection.json` 提供九个合成案例，每个案例把一条含注入指令的客户消息与「被诱导的模型」会返回的 `compromised_response` 配对。由 `test_extraction_batch2.py::test_injection_regression_suite` 驱动，断言任何案例都不会产出 `matched` 提案，且各自命中预期稳定码：`llm:response-provenance-failed`（外来 `work_order_id` / `conversation_id`、过期 `base_work_order_version`、伪造的 source 消息）、`llm:response-schema-failed`（AI 把字段标为 `confirmed`、夹带额外键）与 `llm:time-basis-missing`（用模型自己的「现在」凭空造日期）。这是纯文字回归集；媒体附件（OCR／ASR／PDF）的同类套件仍是单独授权批次。
+
+启用前仍待：带独立评审的真实凭据／live-origin 通道、真实负载下的延迟预算、媒体附件注入套件，以及把供应商 I/O 移出 worker 行锁。
 
 ## PDF 资源隔离
 
@@ -428,8 +438,11 @@ prompt 重试。
 .venv/bin/python -m alembic -c apps/backend/alembic.ini upgrade head
 .venv/bin/python -m alembic -c apps/backend/alembic.ini check
 .venv/bin/python -m pytest apps/backend/tests/test_media_processor.py apps/backend/tests -q --basetemp=local-data/pytest
+.venv/bin/python -m pytest apps/backend/tests/test_extraction_gates.py apps/backend/tests/test_extraction_batch2.py -q
 .venv/bin/python scripts/check_baseline.py
 ```
+
+最后一条 `pytest` 是真实启用前套件：五项门槛加第二批（费用边界、启动校验、注入回归）。两个文件都不打开接缝，因此均可离线运行、无需凭据。
 
 PostgreSQL 测试是有意义的运行；SQLite 不证明行锁，只验证条件兼容性。
 本批次不合成真实 WhatsApp 流量。
@@ -503,16 +516,15 @@ PostgreSQL 测试是有意义的运行；SQLite 不证明行锁，只验证条�
 
 ## 待办
 
-- 真实模型 provider 激活：上文门槛已于 2026-10-16 实现，因此下一单独授权
-  批次需要 (a) 把真实授权与 live-origin 通道接入独立的授权审查，补
-  prompt-injection 回归并在真实负载下实测延迟预算；(b) 把
-  `LLMProvider._SKELETON_SEAM` 翻为 `False`。（当前
-  live-origin guard 已经在该 provider 中实现，但骨架标志为 `True` 时
-  不可达；其 `GIGMATE_LLM_ALLOW_LIVE_ORIGIN` 开关由仅测试子类的隔离
-  测试固化）。同时补上 prompt-injection 回归与延迟预算。接缝、prompt
-  版本兜底链、`llm:prompt-malformed` 与 `llm:seam-pending` trace 备注、
-  `case-008-llm-skeleton-needs-review` 评测用例，以及
-  `_prompt_load_error` 审计字段均已就位。
+- 真实模型 provider 激活：上文门槛已于 2026-10-16 实现，且费用边界、启动
+  校验与文字注入回归集在同日的「真实启用前第二批」落地，因此下一单独授权
+  批次需要 (a) 把真实授权与 live-origin 通道接入独立的授权审查，并在真实
+  负载下实测延迟预算；(b) 把 `LLMProvider._SKELETON_SEAM` 翻为 `False`。
+  （当前 live-origin guard 已经在该 provider 中实现，但骨架标志为 `True`
+  时不可达；其 `GIGMATE_LLM_ALLOW_LIVE_ORIGIN` 开关由仅测试子类的隔离
+  测试固化）。接缝、prompt 版本兜底链、`llm:prompt-malformed` 与
+  `llm:seam-pending` trace 备注、`case-008-llm-skeleton-needs-review` 评测
+  用例，以及 `_prompt_load_error` 审计字段均已就位。
 - D 前端面向真实 provider 输出的 `pending_change_ids` 展示；当前
   Replay 卡片已能呈现，但真实 provider 来回之前不更新前端。
 - 真实 provider 上线后细化 `unresolved_questions` 给商户的人工核对呈现。
@@ -521,4 +533,6 @@ PostgreSQL 测试是有意义的运行；SQLite 不证明行锁，只验证条�
   后续批次可在接缝标志开启后追加厂家特定查找。
 - B 侧的 prompt-injection 回归套件（图像 OCR + 音频 ASR + PDF 解析）。
   当前处理器只信任捆绑的 prompt、对格式异常输入拒绝调用；后续授权
-  批次应加入对抗输入夹具。
+  批次应加入对抗输入夹具。文字套件已在「真实启用前第二批」
+  （`contracts/evaluation/injection.json`）落地，可作为范式复用，但媒体的
+  攻击面（图像中的对抗文字、音频播放注入、PDF 元数据）不同，需要独立夹具。

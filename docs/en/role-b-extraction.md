@@ -12,7 +12,63 @@ What changed:
 - **Gate 4 — real time basis.** `ExtractionRequest` carries server-attached `message_received_at` (the connector's sending time, UTC `Z`) and `workspace_timezone` (operator IANA setting, `GIGMATE_WORKSPACE_TIMEZONE`). The prompt (`role_b_extraction_v1.txt`, bumped to **1.1.0**) now tells the model to resolve relative dates only against `time_basis`, and to emit UTC `Z`. When the basis is missing or invalid the provider refuses any date-bearing change with `llm:time-basis-missing` instead of guessing; non-date fields (address/summary) are unaffected. The worker also re-reads the conversation context and work-order version after the call and discards a result computed against a stale snapshot, as well as any result produced after its own lease expired.
 - **Gate 5 — sanitised diagnostics.** Failure reasons are stable codes (`llm:http-failed:timeout`, `llm:http-failed:status-5xx`, `llm:response-malformed:json`, `llm:response-schema-failed:<field path>`, `llm:prompt-load-failed:…`). No exception class name, exception message, endpoint host, vendor name or key fragment is echoed into `refused_reason`.
 
-Still open before activation (not blocked by code): the separately authorized real-credential/live-origin flow, the prompt-injection regression suite, a latency budget measured under real load, and moving vendor I/O fully outside the worker's row lock — the last one is a structural worker change that must be agreed with A/C. `docs/en/implementation-status.md` records the verification evidence for this batch.
+Still open before activation (not blocked by code): the separately authorized real-credential/live-origin flow, a latency budget measured under real load, and moving vendor I/O fully outside the worker's row lock — the last one is a structural worker change that must be agreed with A/C. `docs/en/implementation-status.md` records the verification evidence for this batch.
+
+## Pre-activation batch 2 — cost boundary, startup validation, injection regression — 2026-10-16
+
+Three of the remaining activation follow-ups are implemented in this batch, again
+**without** flipping the seam: `LLMProvider._SKELETON_SEAM` stays `True` and
+`gigmate.media.processor._ENABLED` stays `False`, so no real vendor request,
+credential or customer message is involved and the new code paths are exercised
+through the same gate-open test subclass used for the five gates. Coverage lives
+in `apps/backend/tests/test_extraction_batch2.py`.
+
+- **Cost boundary.** Every call is priced against a built-in per-1K table keyed
+  by `(vendor, model)`, overridable with `GIGMATE_LLM_COST_INPUT_USD_PER_1K` /
+  `GIGMATE_LLM_COST_OUTPUT_USD_PER_1K`. The budget lives in
+  `GIGMATE_LLM_COST_BUDGET_USD` (default `0.10` USD per call). A response whose
+  computed cost exceeds the budget is refused *after* the vendor call with the
+  stable note `llm:cost-budget-exceeded`; a call that cannot be priced at all is
+  refused *before* it is issued with `llm:cost-pricing-missing` (unknown model and
+  no override), `llm:cost-pricing-partial` (only one of the two overrides set) or
+  `llm:cost-pricing-invalid`. A vendor that omits its `usage` block is not
+  silently treated as free: the trace records `llm:cost-usage-missing` (or
+  `llm:cost-usage-invalid` for a malformed block) and leaves `cost_usd` null.
+  `model_call_traces` gained `input_tokens`, `output_tokens` and `cost_usd`
+  (migration `0018_model_call_cost`), so an operator can reconstruct spend
+  without re-deriving it. The check runs after the HTTP and parse gates because a
+  `4xx` response produces no usage data and a parse failure cannot be charged to
+  a budget.
+- **Provider configuration startup validation.**
+  `gigmate.extraction.llm.validate_provider_config()` is a pure audit that takes
+  no session and opens no socket, so the worker can call it at boot via
+  `gigmate.worker.audit_provider_config()`. It reports
+  `llm:vendor-unknown`, `llm:endpoint-invalid`, `llm:vendor-endpoint-mismatch`,
+  `llm:endpoint-required`, `llm:prompt-path-invalid`,
+  `workspace-timezone-invalid`, the four cost codes above and
+  `llm:api-key-missing` (only when `GIGMATE_LLM_LIVE=1`). Policy: with
+  `GIGMATE_LLM_LIVE=1` any issue makes the worker refuse to start, because a
+  process that is about to issue real vendor calls must not run against a
+  configuration it already knows is broken; with the live gate off the same
+  issues are logged as warnings, since the closed seam refuses every call anyway.
+  Passing an `env` mapping lets tests drive the audit without mutating the real
+  environment.
+- **Prompt-injection regression suite.** `contracts/evaluation/injection.json`
+  ships nine synthetic cases, each pairing a customer message that carries an
+  instruction-injection attempt with a `compromised_response` that a fooled model
+  would emit. The suite is driven by
+  `test_extraction_batch2.py::test_injection_regression_suite`, which asserts that
+  no case ever produces a `matched` proposal and that each one surfaces the
+  expected stable code: `llm:response-provenance-failed` (foreign
+  `work_order_id` / `conversation_id` / stale `base_work_order_version` /
+  fabricated source message), `llm:response-schema-failed` (AI marks a field
+  `confirmed`, smuggled extra keys) and `llm:time-basis-missing` (date invented
+  from the model's own "now"). This is the text-only suite; the media attachment
+  (OCR / ASR / PDF) equivalent remains a separately authorized batch.
+
+Still pending for activation: the real-credential / live-origin flow with its own
+review, the latency budget under real load, the media-attachment injection suite,
+and moving vendor I/O outside the worker lock.
 
 ## PDF resource isolation
 
@@ -498,8 +554,13 @@ Authoritative checks for this batch:
 .venv/bin/python -m alembic -c apps/backend/alembic.ini upgrade head
 .venv/bin/python -m alembic -c apps/backend/alembic.ini check
 .venv/bin/python -m pytest apps/backend/tests/test_media_processor.py apps/backend/tests -q --basetemp=local-data/pytest
+.venv/bin/python -m pytest apps/backend/tests/test_extraction_gates.py apps/backend/tests/test_extraction_batch2.py -q
 .venv/bin/python scripts/check_baseline.py
 ```
+
+The last `pytest` invocation is the pre-activation suite: the five gates plus
+batch 2 (cost boundary, startup validation, injection regression). Neither file
+opens the seam, so both run offline with no credential.
 
 PostgreSQL tests are the meaningful run; SQLite does not prove row-locking
 and only confirms conditional compatibility. Synthesize real WhatsApp
@@ -602,17 +663,16 @@ piece of work with its own batch and review.
 ## Open follow-ups
 
 - Real-model provider activation: the gates above are implemented as of
-  2026-10-16, so the next authorized batch must
+  2026-10-16 and the cost boundary, startup validation and text injection
+  regression suite landed in pre-activation batch 2 on the same day, so the next
+  authorized batch must
   (a) supply real authorization + live-origin flow with their own dedicated
-  review, add the prompt-injection regression suite and measure the latency
-  budget under real load, and (b) flip
+  review and measure the latency budget under real load, and (b) flip
   `LLMProvider._SKELETON_SEAM` to `False`
   (the live-origin guard currently lives in this provider but is
   unreachable while the seam flag is `True`; its
   `GIGMATE_LLM_ALLOW_LIVE_ORIGIN` opt-in is pinned by isolated
-  test-only-subclass tests). Adding the
-  prompt-injection regression suite + latency budget is also part of
-  that batch. The seam, prompt-versioning fallback chain,
+  test-only-subclass tests). The seam, prompt-versioning fallback chain,
   `llm:prompt-malformed` and `llm:seam-pending` trace notes, the
   `case-008-llm-skeleton-needs-review` evaluation case and the
   `_prompt_load_error` audit attribute are all in place.
@@ -628,4 +688,7 @@ piece of work with its own batch and review.
 - B-side prompt-injection regression suite for media attachments (image OCR
   + audio ASR + PDF parsing). The processor trusts the bundled prompt today
   and refuses the call only on malformed input; a separately authorized batch
-  should add fixtures for adversarial inputs.
+  should add fixtures for adversarial inputs. The text-only suite shipped in
+  pre-activation batch 2 (`contracts/evaluation/injection.json`) is the pattern
+  to reuse, but the media attack surface (adversarial text in an image, audio
+  prompt playback, PDF metadata) is different and needs its own fixtures.

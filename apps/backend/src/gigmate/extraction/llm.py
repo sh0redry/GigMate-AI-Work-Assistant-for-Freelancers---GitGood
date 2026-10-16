@@ -61,7 +61,9 @@ import logging
 import os
 import time
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from typing import Mapping
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -113,6 +115,31 @@ _MAX_RETRIES = 1
 # to the vendor's own request log.
 _REQUEST_ID_HEADER = "X-Gigmate-Request-Id"
 
+# Pre-activation cost accounting (batch 2). The seam is still closed, so
+# these constants are part of the *next* authorized batch's contract; they
+# exist now so the price table and the budget check can be unit-tested in
+# isolation and so a future live deployment can flip the seam without
+# touching this module's surface. While the seam stays closed no call ever
+# reaches ``_compute_cost``; the helper is exercised by the cost test
+# through a gate-open subclass.
+_COST_INPUT_ENV = "GIGMATE_LLM_COST_INPUT_USD_PER_1K"
+_COST_OUTPUT_ENV = "GIGMATE_LLM_COST_OUTPUT_USD_PER_1K"
+_COST_BUDGET_ENV = "GIGMATE_LLM_COST_BUDGET_USD"
+_DEFAULT_COST_BUDGET_USD = "0.10"
+
+# Best-effort default price list in USD per 1K tokens, keyed by
+# (vendor, model). The values approximate the public price lists as of
+# 2026-10 and are an upper bound for what a call should cost. An operator
+# with a contract that differs (e.g. enterprise discount, custom model)
+# sets ``GIGMATE_LLM_COST_INPUT_USD_PER_1K`` /
+# ``GIGMATE_LLM_COST_OUTPUT_USD_PER_1K`` and the env override wins.
+_PRICING_PER_1K: dict[tuple[str, str], tuple[Decimal, Decimal]] = {
+    ("deepseek", "deepseek-chat"): (Decimal("0.00014"), Decimal("0.00028")),
+    ("deepseek", "deepseek-reasoner"): (Decimal("0.00055"), Decimal("0.00219")),
+    ("openai", "gpt-4o-mini"): (Decimal("0.00015"), Decimal("0.0006")),
+    ("openai", "gpt-4o"): (Decimal("0.0025"), Decimal("0.01")),
+}
+
 _log = logging.getLogger(__name__)
 
 
@@ -155,6 +182,172 @@ def _stable_http_code(exc: BaseException) -> str:
     if isinstance(exc, httpx.HTTPError):
         return "llm:http-failed:transport"
     return "llm:http-failed:unknown"
+
+
+def _resolve_pricing(vendor: str, model: str) -> tuple[Decimal, Decimal] | None:
+    """Return ``(input, output) USD per 1K tokens`` for ``(vendor, model)``.
+
+    Pre-activation batch 2 (cost boundary). Operator-supplied env overrides
+    take precedence and are validated as decimals; an unparseable override
+    is treated as "no override" so the call falls through to the default
+    table and reports a clean missing-pricing refusal instead of a
+    half-configured state. ``None`` means the caller must refuse the call
+    with :data:`llm:cost-pricing-missing` rather than silently guessing.
+    """
+    in_override = os.environ.get(_COST_INPUT_ENV)
+    out_override = os.environ.get(_COST_OUTPUT_ENV)
+    if in_override and out_override:
+        try:
+            return (Decimal(in_override), Decimal(out_override))
+        except (InvalidOperation, ValueError):
+            return _PRICING_PER_1K.get((vendor, model))
+    return _PRICING_PER_1K.get((vendor, model))
+
+
+def _compute_cost(
+    input_tokens: int, output_tokens: int, vendor: str, model: str
+) -> tuple[Decimal | None, str | None]:
+    """Return ``(cost_usd, note)`` for one vendor call.
+
+    ``note`` is non-``None`` only when pricing is missing for the configured
+    vendor/model and the operator has not supplied per-1K overrides; the
+    caller then refuses the call. Negative token counts are clamped to
+    zero — vendors do not emit negative usage but a defensive clamp keeps
+    a misbehaving client from producing a negative cost row.
+    """
+    safe_in = max(0, int(input_tokens))
+    safe_out = max(0, int(output_tokens))
+    pricing = _resolve_pricing(vendor, model)
+    if pricing is None:
+        return None, "llm:cost-pricing-missing"
+    in_price, out_price = pricing
+    cost = (Decimal(safe_in) / Decimal(1000)) * in_price + (
+        Decimal(safe_out) / Decimal(1000)
+    ) * out_price
+    return cost.quantize(Decimal("0.000001")), None
+
+
+def _cost_budget() -> Decimal:
+    """Return the per-call budget in USD, falling back to the default."""
+    raw = os.environ.get(_COST_BUDGET_ENV, _DEFAULT_COST_BUDGET_USD)
+    try:
+        return Decimal(raw)
+    except (InvalidOperation, ValueError):
+        return Decimal(_DEFAULT_COST_BUDGET_USD)
+
+
+def _cost_budget_problem(cost: Decimal) -> str | None:
+    """Return ``llm:cost-budget-exceeded`` when ``cost`` exceeds the configured budget."""
+    return "llm:cost-budget-exceeded" if cost > _cost_budget() else None
+
+
+def _cost_configuration_problem(
+    vendor: str, model: str, env: Mapping[str, str] | None = None
+) -> str | None:
+    """Return a stable code when cost accounting cannot be performed.
+
+    Pre-activation batch 2. The check is callable at startup (with an
+    explicit ``env`` mapping for testability) and at call time (with
+    ``os.environ``). A non-``None`` return refuses the call rather than
+    silently issuing an unpriceable request.
+    """
+    get = (env or os.environ).get
+    budget_raw = get(_COST_BUDGET_ENV, _DEFAULT_COST_BUDGET_USD)
+    try:
+        Decimal(budget_raw)
+    except (InvalidOperation, ValueError):
+        return "llm:cost-budget-invalid"
+    in_override = get(_COST_INPUT_ENV)
+    out_override = get(_COST_OUTPUT_ENV)
+    if (in_override is None) != (out_override is None):
+        return "llm:cost-pricing-partial"
+    if in_override and out_override:
+        try:
+            Decimal(in_override)
+            Decimal(out_override)
+        except (InvalidOperation, ValueError):
+            return "llm:cost-pricing-invalid"
+        return None
+    if not vendor or not model:
+        return None  # not configured; the call will be refused elsewhere
+    if (vendor, model) not in _PRICING_PER_1K:
+        return "llm:cost-pricing-missing"
+    return None
+
+
+def validate_provider_config(
+    env: Mapping[str, str] | None = None,
+) -> list[str]:
+    """Audit the LLM provider configuration and return a list of issue codes.
+
+    Pre-activation batch 2. The helper is callable at API and worker boot
+    time so a misconfigured deployment fails fast instead of silently
+    issuing a wrong call when the seam is finally opened. Every entry is
+    a stable, secret-free code (mirroring gate 5's sanitised diagnostic
+    style); ``[]`` means the configuration is internally consistent.
+
+    The check covers:
+
+    * unknown vendor (``llm:vendor-unknown``)
+    * a non-http(s) endpoint override (``llm:endpoint-invalid``)
+    * an endpoint override that equals another known vendor's default
+      (``llm:vendor-endpoint-mismatch``)
+    * ``custom`` without an endpoint override (``llm:endpoint-required``)
+    * an unparsable or non-existent prompt file
+      (``llm:prompt-path-invalid``)
+    * an invalid IANA workspace timezone
+      (``workspace-timezone-invalid`` — operator-side, not vendor-side)
+    * malformed / missing cost budget or pricing configuration
+      (``llm:cost-budget-invalid`` / ``llm:cost-pricing-invalid`` /
+      ``llm:cost-pricing-partial`` / ``llm:cost-pricing-missing``)
+    * a missing or empty API key when ``GIGMATE_LLM_LIVE=1``
+      (``llm:api-key-missing``)
+
+    Passing ``env`` lets tests drive the helper without touching the real
+    environment.
+    """
+    get = (env or os.environ).get
+    issues: list[str] = []
+    vendor = (get(_PROVIDER_ENV) or "").strip()
+    if vendor and vendor not in _KNOWN_VENDORS:
+        issues.append("llm:vendor-unknown")
+    endpoint = (get(_ENDPOINT_ENV) or "").strip()
+    if endpoint:
+        if not (endpoint.startswith("https://") or endpoint.startswith("http://")):
+            issues.append("llm:endpoint-invalid")
+        elif vendor in _KNOWN_VENDORS:
+            for other, other_default in _VENDOR_DEFAULT_ENDPOINTS.items():
+                if other != vendor and endpoint.rstrip("/") == other_default.rstrip("/"):
+                    issues.append("llm:vendor-endpoint-mismatch")
+                    break
+    elif vendor == "custom":
+        issues.append("llm:endpoint-required")
+    prompt_path = get(_PROMPT_PATH_ENV)
+    if prompt_path:
+        path = Path(prompt_path)
+        if not path.is_file():
+            issues.append("llm:prompt-path-invalid")
+        else:
+            try:
+                path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                issues.append("llm:prompt-path-invalid")
+    zone = get("GIGMATE_WORKSPACE_TIMEZONE")
+    if zone:
+        try:
+            ZoneInfo(zone)
+        except (KeyError, ValueError, OSError):
+            issues.append("workspace-timezone-invalid")
+    cost_problem = _cost_configuration_problem(
+        vendor,
+        get(_MODEL_ENV) or "",
+        env=env,
+    )
+    if cost_problem is not None:
+        issues.append(cost_problem)
+    if get(_LIVE_GATE) == "1" and not get(_API_KEY_ENV):
+        issues.append("llm:api-key-missing")
+    return issues
 
 
 class LLMIntegrationPending(RuntimeError):
@@ -341,6 +534,23 @@ class LLMProvider:
         endpoint_problem = self._endpoint_problem()
         if endpoint_problem is not None:
             return endpoint_problem
+        # Batch 2: refuse the call when its cost cannot be accounted for.
+        # A call that cannot be priced cannot be bounded, so it must never
+        # be issued — otherwise the first unlisted model would be the one
+        # that quietly burns the monthly budget.
+        cost_problem = _cost_configuration_problem(
+            self._configured_provider or "", self._configured_model or ""
+        )
+        if cost_problem is not None:
+            return (
+                cost_problem,
+                "LLM provider cannot account for the cost of this call "
+                f"({cost_problem}); refusing instead of issuing an "
+                "unbounded request. Set GIGMATE_LLM_COST_BUDGET_USD and, "
+                "for a model outside the built-in price list, "
+                "GIGMATE_LLM_COST_INPUT_USD_PER_1K / "
+                "GIGMATE_LLM_COST_OUTPUT_USD_PER_1K.",
+            )
         if not self._is_wired_for_live():
             return (
                 "llm:not-configured",
@@ -495,6 +705,10 @@ class LLMProvider:
         model_version: str,
         notes: tuple[str, ...],
         request_id: str | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        cost_usd: float | None = None,
+        cost_note: str | None = None,
     ) -> ExtractionOutcome:
         proposal = {
             "schema_version": "0.1.0",
@@ -522,11 +736,43 @@ class LLMProvider:
             notes=notes,
             refused_reason=reason,
             request_id=request_id,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost_usd,
+            cost_note=cost_note,
         )
 
     @staticmethod
     def _elapsed(began: float) -> int:
         return max(0, int((time.monotonic() - began) * 1000))
+
+    def _evaluate_cost(
+        self, usage: dict | None
+    ) -> tuple[Decimal | None, str | None, int | None, int | None]:
+        """Return ``(cost, note, input_tokens, output_tokens)`` for one vendor call.
+
+        Pre-activation batch 2. ``usage`` is the OpenAI-compatible token
+        block from the vendor response. Three outcomes are possible:
+
+        * ``usage`` is missing → no cost is known and ``cost_note`` is
+          ``llm:cost-usage-missing``; the caller must not assume zero cost.
+        * ``usage`` is present but the vendor/model has no price entry and
+          the operator supplied no override → ``llm:cost-pricing-missing``.
+        * otherwise the cost is computed from the token counts.
+        """
+        if usage is None:
+            return None, "llm:cost-usage-missing", None, None
+        input_tokens = usage.get("prompt_tokens")
+        output_tokens = usage.get("completion_tokens")
+        if not isinstance(input_tokens, int) or not isinstance(output_tokens, int):
+            return None, "llm:cost-usage-invalid", None, None
+        cost, note = _compute_cost(
+            input_tokens,
+            output_tokens,
+            self._configured_provider or "",
+            self._configured_model or "",
+        )
+        return cost, note, input_tokens, output_tokens
 
     # ---------------------------------------------------------- seam methods
 
@@ -545,6 +791,14 @@ class LLMProvider:
         response into a :class:`ChangeProposal`. Any failure (HTTP error,
         invalid JSON, schema mismatch) is returned as a ``needs_review``
         outcome with a typed note so the worker still records evidence.
+
+        Pre-activation batch 2: after the vendor call returns successfully
+        the call is *also* checked against the per-call cost budget
+        (``GIGMATE_LLM_COST_BUDGET_USD``). A response that exceeds the
+        budget surfaces as ``llm:cost-budget-exceeded`` so a runaway
+        billing event can never silently promote a proposal; a response
+        that omits ``usage`` is recorded with the stable note
+        ``llm:cost-usage-missing`` rather than pretending a cost of zero.
         """
         api_key = os.environ.get(_API_KEY_ENV)
         try:
@@ -565,7 +819,7 @@ class LLMProvider:
         # the trace can be correlated with the vendor's own request log.
         request_id = uuid4().hex
         try:
-            raw = self._call_chat_completion(
+            raw, usage = self._call_chat_completion(
                 endpoint=self._resolved_endpoint(),
                 api_key=api_key or "",
                 model=self._configured_model or "",
@@ -596,8 +850,36 @@ class LLMProvider:
                 notes=("llm:response-malformed",),
                 request_id=request_id,
             )
+        # Batch 2: cost accounting runs after the HTTP/parse gates because a
+        # 4xx response never produces usage data and a parse failure cannot
+        # be charged to a budget. The cost check therefore sees only calls
+        # that the gate layer has already accepted as legitimate.
+        cost, cost_note, input_tokens, output_tokens = self._evaluate_cost(usage)
+        if cost is not None and _cost_budget_problem(cost) is not None:
+            return self._needs_review(
+                request,
+                reason="llm:cost-budget-exceeded",
+                latency_ms=self._elapsed(began),
+                prompt_version=prompt_version,
+                model_version=model_version,
+                notes=("llm:cost-budget-exceeded",),
+                request_id=request_id,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=float(cost),
+                cost_note="llm:cost-budget-exceeded",
+            )
         return self._parse_response(
-            raw, request, began, prompt_version, model_version, request_id=request_id
+            raw,
+            request,
+            began,
+            prompt_version,
+            model_version,
+            request_id=request_id,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=float(cost) if cost is not None else None,
+            cost_note=cost_note,
         )
 
     def _load_prompt_body(self) -> str:
@@ -614,8 +896,8 @@ class LLMProvider:
         request: ExtractionRequest,
         request_id: str,
         began: float,
-    ) -> str:
-        """POST to ``{endpoint}/v1/chat/completions`` and return the raw assistant text.
+    ) -> tuple[str, dict | None]:
+        """POST to ``{endpoint}/v1/chat/completions`` and return ``(raw, usage)``.
 
         Pre-activation gate 3 shapes the retry policy:
 
@@ -627,6 +909,14 @@ class LLMProvider:
           deterministic and are raised immediately;
         * every attempt carries the same persistent ``request_id`` header so
           the trace row and the vendor's log can be correlated.
+
+        The returned ``usage`` dict is the OpenAI-compatible
+        ``{"prompt_tokens": int, "completion_tokens": int, "total_tokens": int}``
+        block from the vendor response when present, or ``None`` when the
+        vendor omits it (some compatible servers and proxy deployments do).
+        The caller uses it for the cost-accounting check; a missing block
+        surfaces as ``llm:cost-usage-missing`` so the audit row records the
+        cause instead of silently dropping the cost.
         """
         url = endpoint.rstrip("/") + "/v1/chat/completions"
         body = {
@@ -652,7 +942,11 @@ class LLMProvider:
                     response = client.post(url, json=body, headers=headers)
                 response.raise_for_status()
                 data = response.json()
-                return data["choices"][0]["message"]["content"]
+                raw = data["choices"][0]["message"]["content"]
+                usage = data.get("usage") if isinstance(data, dict) else None
+                if not isinstance(usage, dict):
+                    usage = None
+                return raw, usage
             except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
                 last_exc = exc
                 retryable = _is_transient(exc)
@@ -790,6 +1084,10 @@ class LLMProvider:
         model_version: str,
         *,
         request_id: str | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        cost_usd: float | None = None,
+        cost_note: str | None = None,
     ) -> ExtractionOutcome:
         """Parse the LLM's JSON response into a :class:`ChangeProposal`.
 
@@ -803,7 +1101,9 @@ class LLMProvider:
         Structural validity is not business validity: pre-activation gate 1
         re-binds every identity the model echoes back to the request the
         server actually issued, and gate 4 refuses schedule values that were
-        produced without a real time basis.
+        produced without a real time basis. The cost fields are threaded
+        through so the trace always records what the call actually cost,
+        even when the proposal is refused for another reason.
         """
         try:
             data = json.loads(raw) if isinstance(raw, str) else raw  # type: ignore[arg-type]
@@ -816,6 +1116,10 @@ class LLMProvider:
                 model_version=model_version,
                 notes=("llm:response-malformed",),
                 request_id=request_id,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost_usd,
+                cost_note=cost_note,
             )
         if not isinstance(data, dict):
             return self._needs_review(
@@ -826,6 +1130,10 @@ class LLMProvider:
                 model_version=model_version,
                 notes=("llm:response-malformed",),
                 request_id=request_id,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost_usd,
+                cost_note=cost_note,
             )
         # Force provider-set fields so the LLM cannot override them.
         data["model_version"] = model_version
@@ -866,6 +1174,10 @@ class LLMProvider:
                 model_version=model_version,
                 notes=("llm:response-provenance-failed",),
                 request_id=request_id,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost_usd,
+                cost_note=cost_note,
             )
         try:
             proposal = ChangeProposal.model_validate(data)
@@ -882,6 +1194,10 @@ class LLMProvider:
                 model_version=model_version,
                 notes=("llm:response-schema-failed",),
                 request_id=request_id,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost_usd,
+                cost_note=cost_note,
             )
         time_problem = self._time_basis_problem(proposal, request)
         if time_problem is not None:
@@ -893,6 +1209,10 @@ class LLMProvider:
                 model_version=model_version,
                 notes=("llm:time-basis-missing",),
                 request_id=request_id,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost_usd,
+                cost_note=cost_note,
             )
         if proposal.assignment.value == "matched":
             return ExtractionOutcome(
@@ -902,6 +1222,10 @@ class LLMProvider:
                 notes=("llm:matched",),
                 refused_reason=None,
                 request_id=request_id,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost_usd,
+                cost_note=cost_note,
             )
         # LLM explicitly asked for review; pass through with a typed note so
         # the worker records evidence.
@@ -912,7 +1236,15 @@ class LLMProvider:
             notes=("llm:needs-review",),
             refused_reason="llm:needs-review",
             request_id=request_id,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost_usd,
+            cost_note=cost_note,
         )
 
 
-__all__ = ["LLMProvider", "LLMIntegrationPending"]
+__all__ = [
+    "LLMProvider",
+    "LLMIntegrationPending",
+    "validate_provider_config",
+]
