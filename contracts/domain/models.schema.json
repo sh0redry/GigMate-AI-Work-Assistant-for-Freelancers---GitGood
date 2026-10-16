@@ -1664,6 +1664,67 @@
       "format": "uuid",
       "type": "string"
     },
+    "InspectWorkOrderCommand": {
+      "additionalProperties": false,
+      "description": "Look up an exact completed command; never execute or resubmit it.",
+      "properties": {
+        "change_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Change Id"
+        },
+        "command": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CreateWorkOrderCommand"
+            },
+            {
+              "$ref": "#/$defs/SetWorkOrderStatusCommand"
+            },
+            {
+              "$ref": "#/$defs/ConfirmChangeCommand"
+            }
+          ],
+          "title": "Command"
+        },
+        "kind": {
+          "enum": [
+            "create",
+            "status",
+            "confirm"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "order_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Order Id"
+        }
+      },
+      "required": [
+        "kind",
+        "command"
+      ],
+      "title": "InspectWorkOrderCommand",
+      "type": "object"
+    },
     "InstantDeadline": {
       "additionalProperties": false,
       "properties": {
@@ -2336,6 +2397,69 @@
         "sources"
       ],
       "title": "RequirementItem",
+      "type": "object"
+    },
+    "ReviewItem": {
+      "additionalProperties": false,
+      "properties": {
+        "context_version": {
+          "minimum": 1,
+          "title": "Context Version",
+          "type": "integer"
+        },
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "current_context_version": {
+          "minimum": 1,
+          "title": "Current Context Version",
+          "type": "integer"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "message_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Message Id"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "state": {
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "conversation_id",
+        "message_id",
+        "context_version",
+        "current_context_version",
+        "reason",
+        "state",
+        "observed_at"
+      ],
+      "title": "ReviewItem",
       "type": "object"
     },
     "ScheduleSettings": {
@@ -5349,6 +5473,49 @@
       ],
       "title": "WorkOrderStatus",
       "type": "string"
+    },
+    "WorkspaceCapabilities": {
+      "additionalProperties": false,
+      "description": "Release gates, not connector permissions or claims of live acceptance.",
+      "properties": {
+        "address_confirmation": {
+          "default": true,
+          "title": "Address Confirmation",
+          "type": "boolean"
+        },
+        "automatic_understanding": {
+          "default": false,
+          "title": "Automatic Understanding",
+          "type": "boolean"
+        },
+        "business_sending": {
+          "default": false,
+          "title": "Business Sending",
+          "type": "boolean"
+        },
+        "calendar_export": {
+          "default": true,
+          "title": "Calendar Export",
+          "type": "boolean"
+        },
+        "create_order": {
+          "default": true,
+          "title": "Create Order",
+          "type": "boolean"
+        },
+        "manual_assignment": {
+          "default": false,
+          "title": "Manual Assignment",
+          "type": "boolean"
+        },
+        "order_status": {
+          "default": true,
+          "title": "Order Status",
+          "type": "boolean"
+        }
+      },
+      "title": "WorkspaceCapabilities",
+      "type": "object"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",

@@ -760,7 +760,7 @@ def defer_item(db, account, work_order_id, command, key, request_id):
     if not any(item.endswith(prefix) for item in items):
         raise BusinessError(409, "VERSION_CONFLICT", f"The {command.field} is not open")
     conversation_id = order.data["conversation_ids"][0]
-    conversation = owned(db, ConversationRow, conversation_id, account.id)
+    conversation = authorized_order_conversation(db, account, order, conversation_id)
     sources = [source.model_dump() for source in command.sources]
     for ref in sources:
         latest = db.scalar(
@@ -979,10 +979,31 @@ def locked_order(db, account, work_order_id, expected_version):
         raise BusinessError(409, "VERSION_CONFLICT", "Refresh the work order first")
     if order.data["status"] in CLOSED:
         raise BusinessError(409, "VERSION_CONFLICT", "Work order is closed")
+    authorized_order_conversation(db, account, order, order.data["conversation_ids"][0])
     return order
 
 
+def authorized_order_conversation(db, account, order, conversation_id):
+    conversation = owned(db, ConversationRow, conversation_id, account.id)
+    linked = db.scalar(
+        select(ConversationOrder.work_order_id).where(
+            ConversationOrder.work_order_id == order.id,
+            ConversationOrder.conversation_id == conversation_id,
+        )
+    )
+    if (
+        not conversation.allowlisted
+        or conversation_id not in order.data["conversation_ids"]
+        or linked is None
+    ):
+        raise BusinessError(403, "CONSENT_REVOKED", "The linked conversation is not authorized")
+    return conversation
+
+
 def current_sources(db, account, conversation_id, sources):
+    conversation = owned(db, ConversationRow, conversation_id, account.id)
+    if not conversation.allowlisted:
+        raise BusinessError(403, "CONSENT_REVOKED", "Conversation processing is paused")
     for ref in sources:
         latest = db.scalar(
             select(MessageRow)

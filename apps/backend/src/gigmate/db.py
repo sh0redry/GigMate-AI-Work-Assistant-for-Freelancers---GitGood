@@ -471,6 +471,10 @@ class ActionRow(Base):
     """Merchant-reviewed outbound actions. P0 supports send_text drafts only."""
 
     __tablename__ = "approval_actions"
+    send_action_id: Mapped[str | None] = mapped_column(
+        ForeignKey("waha_send_actions.id", name="fk_approval_send_action"),
+        nullable=True,
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"), index=True)
     work_order_id: Mapped[str] = mapped_column(ForeignKey("work_orders.id"), index=True)
@@ -484,6 +488,9 @@ class ActionRow(Base):
     note: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     data: Mapped[dict] = mapped_column(JSON)
+    __table_args__ = (
+        UniqueConstraint("send_action_id", name="uq_approval_actions_send_action_id"),
+    )
 
 
 class Proposal(Base):

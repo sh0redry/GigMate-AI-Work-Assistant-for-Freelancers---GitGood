@@ -194,6 +194,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/calendar-events/{event_id}.ics": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Download Calendar */
+    get: operations["download_calendar_api_v1_calendar_events__event_id__ics_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/connection-status": {
     parameters: {
       query?: never;
@@ -946,6 +963,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/conversations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Conversations */
+    get: operations["conversations_api_v1_conversations_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/conversations/{conversation_id}": {
     parameters: {
       query?: never;
@@ -1034,6 +1068,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/review-items": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Review Items */
+    get: operations["review_items_api_v1_review_items_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/review-items/{job_id}/assign": {
     parameters: {
       query?: never;
@@ -1080,6 +1131,23 @@ export interface paths {
     get: operations["tasks_api_v1_tasks_get"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/work-order-command-results/{key}/inspect": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Inspect Command */
+    post: operations["inspect_command_api_v1_work_order_command_results__key__inspect_post"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1288,6 +1356,23 @@ export interface paths {
     put?: never;
     /** Set Order Status */
     post: operations["set_order_status_api_v1_work_orders__order_id__status_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/workspace-capabilities": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Capabilities */
+    get: operations["capabilities_api_v1_workspace_capabilities_get"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -2177,6 +2262,15 @@ export interface components {
        */
       request_id: string;
     };
+    /** Detail[WorkspaceCapabilities] */
+    Detail_WorkspaceCapabilities_: {
+      data: components["schemas"]["WorkspaceCapabilities"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
     /** Detail[dict[str, int]] */
     Detail_dict_str__int__: {
       /** Data */
@@ -2220,6 +2314,26 @@ export interface components {
     HTTPValidationError: {
       /** Detail */
       detail?: components["schemas"]["ValidationError"][];
+    };
+    /**
+     * InspectWorkOrderCommand
+     * @description Look up an exact completed command; never execute or resubmit it.
+     */
+    InspectWorkOrderCommand: {
+      /** Change Id */
+      change_id?: string | null;
+      /** Command */
+      command:
+        | components["schemas"]["CreateWorkOrderCommand"]
+        | components["schemas"]["SetWorkOrderStatusCommand"]
+        | components["schemas"]["ConfirmChangeCommand"];
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "create" | "status" | "confirm";
+      /** Order Id */
+      order_id?: string | null;
     };
     /** InstantDeadline */
     InstantDeadline: {
@@ -2317,10 +2431,34 @@ export interface components {
        */
       request_id: string;
     };
+    /** Page[Conversation] */
+    Page_Conversation_: {
+      /** Items */
+      items: components["schemas"]["Conversation"][];
+      /** Next Cursor */
+      next_cursor: string | null;
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
     /** Page[RecoveryIssue] */
     Page_RecoveryIssue_: {
       /** Items */
       items: components["schemas"]["RecoveryIssue"][];
+      /** Next Cursor */
+      next_cursor: string | null;
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Page[ReviewItem] */
+    Page_ReviewItem_: {
+      /** Items */
+      items: components["schemas"]["ReviewItem"][];
       /** Next Cursor */
       next_cursor: string | null;
       /**
@@ -2553,6 +2691,34 @@ export interface components {
       task_id?: string | null;
       /** Text */
       text: string;
+    };
+    /** ReviewItem */
+    ReviewItem: {
+      /** Context Version */
+      context_version: number;
+      /**
+       * Conversation Id
+       * Format: uuid
+       */
+      conversation_id: string;
+      /** Current Context Version */
+      current_context_version: number;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Message Id */
+      message_id: string | null;
+      /**
+       * Observed At
+       * Format: date-time
+       */
+      observed_at: string;
+      /** Reason */
+      reason: string;
+      /** State */
+      state: string;
     };
     /**
      * ScheduleCheck
@@ -3845,6 +4011,47 @@ export interface components {
       | "waiting_customer"
       | "completed"
       | "cancelled";
+    /**
+     * WorkspaceCapabilities
+     * @description Release gates, not connector permissions or claims of live acceptance.
+     */
+    WorkspaceCapabilities: {
+      /**
+       * Address Confirmation
+       * @default true
+       */
+      address_confirmation: boolean;
+      /**
+       * Automatic Understanding
+       * @default false
+       */
+      automatic_understanding: boolean;
+      /**
+       * Business Sending
+       * @default false
+       */
+      business_sending: boolean;
+      /**
+       * Calendar Export
+       * @default true
+       */
+      calendar_export: boolean;
+      /**
+       * Create Order
+       * @default true
+       */
+      create_order: boolean;
+      /**
+       * Manual Assignment
+       * @default false
+       */
+      manual_assignment: boolean;
+      /**
+       * Order Status
+       * @default true
+       */
+      order_status: boolean;
+    };
   };
   responses: never;
   parameters: never;
@@ -4215,6 +4422,37 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Page_CalendarEvent_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  download_calendar_api_v1_calendar_events__event_id__ics_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        event_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/calendar": string;
         };
       };
       /** @description Validation Error */
@@ -5852,6 +6090,38 @@ export interface operations {
       };
     };
   };
+  conversations_api_v1_conversations_get: {
+    parameters: {
+      query?: {
+        cursor?: string | null;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Page_Conversation_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   conversation_info_api_v1_conversations__conversation_id__get: {
     parameters: {
       query?: never;
@@ -6020,6 +6290,38 @@ export interface operations {
       };
     };
   };
+  review_items_api_v1_review_items_get: {
+    parameters: {
+      query?: {
+        cursor?: string | null;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Page_ReviewItem_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   assign_review_item_api_v1_review_items__job_id__assign_post: {
     parameters: {
       query?: never;
@@ -6130,6 +6432,41 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Page_Task_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  inspect_command_api_v1_work_order_command_results__key__inspect_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        key: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["InspectWorkOrderCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkOrder_"];
         };
       };
       /** @description Validation Error */
@@ -6597,6 +6934,26 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  capabilities_api_v1_workspace_capabilities_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkspaceCapabilities_"];
         };
       };
     };

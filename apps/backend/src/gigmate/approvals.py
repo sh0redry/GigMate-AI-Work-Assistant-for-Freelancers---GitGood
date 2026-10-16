@@ -11,7 +11,7 @@ from datetime import UTC, date, datetime, timedelta
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from gigmate.contracts import ApprovalAction, AuditLog, WorkOrder
 from gigmate.db import ActionRow, AuditRow, ChangeRow, ConversationRow, MessageRow, WorkOrderRow
@@ -371,13 +371,28 @@ def view(row, reissuable=False):
 
 def views(db, rows):
     """Mark which closed questions the merchant may ask again (the newest per order)."""
-    newest = {}
-    for row in db.scalars(
-        select(ActionRow)
-        .where(ActionRow.work_order_id.in_({row.work_order_id for row in rows}))
-        .order_by(ActionRow.created_at, ActionRow.id)
-    ):
-        newest[row.work_order_id] = row.id
+    ranked = (
+        select(
+            ActionRow.work_order_id.label("order_id"),
+            ActionRow.id.label("action_id"),
+            func.row_number()
+            .over(
+                partition_by=ActionRow.work_order_id,
+                order_by=(ActionRow.created_at.desc(), ActionRow.id.desc()),
+            )
+            .label("position"),
+        )
+        .where(
+            ActionRow.work_order_id.in_({row.work_order_id for row in rows}),
+            ActionRow.account_id.in_({row.account_id for row in rows}),
+        )
+        .subquery()
+    )
+    newest = dict(
+        db.execute(
+            select(ranked.c.order_id, ranked.c.action_id).where(ranked.c.position == 1)
+        ).all()
+    )
     return [send_view(db, row, view(row, newest.get(row.work_order_id) == row.id)) for row in rows]
 
 
@@ -439,7 +454,7 @@ def approve(db, account, action_id, command, key, request_id):
     scope = f"approve:{action_id}"
     digest, cached = command_cache(db, account.id, scope, key, command.model_dump())
     if cached:
-        return cached.data
+        return safe_cached_action(db, account, cached)
     row = expire_if_due(locked(db, account.id, action_id))
     if row.data["state"] != "pending_approval":
         raise BusinessError(409, "APPROVAL_STALE", "This draft can no longer be approved")
@@ -482,7 +497,7 @@ def reject(db, account, action_id, command, key, request_id, *, operation):
     scope = f"{operation}:{action_id}"
     digest, cached = command_cache(db, account.id, scope, key, command.model_dump())
     if cached:
-        return cached.data
+        return safe_cached_action(db, account, cached)
     row = expire_if_due(locked(db, account.id, action_id))
     if operation == "cancel" and row.data["state"] == "executing":
         return cancel_handed_off(db, account, row, command, scope, key, digest, request_id)
@@ -509,7 +524,7 @@ def reissue(db, account, action_id, command, key, request_id):
     scope = f"reissue:{action_id}"
     digest, cached = command_cache(db, account.id, scope, key, command.model_dump())
     if cached:
-        return cached.data
+        return safe_cached_action(db, account, cached)
     row = expire_if_due(locked(db, account.id, action_id))
     conversation = owned(db, ConversationRow, row.conversation_id, account.id)
     newest = latest_by_order(db, account.id, conversation.id).get(row.work_order_id)
@@ -570,17 +585,58 @@ SEND_STATES = {
 
 
 def linked_send(db, row):
-    from gigmate.db import WahaSendAction
+    """Read only the explicit owned immutable link, never a global request key."""
+    from gigmate.db import WahaChat, WahaConnection, WahaSendAction
 
-    return db.scalar(
-        select(WahaSendAction).where(WahaSendAction.request_key == SEND_KEY.format(row.id))
+    if not row.send_action_id:
+        return None
+    gateway = db.scalar(
+        select(WahaSendAction)
+        .join(WahaConnection, WahaConnection.id == WahaSendAction.connection_id)
+        .join(WahaChat, WahaChat.id == WahaSendAction.chat_id)
+        .where(
+            WahaSendAction.id == row.send_action_id,
+            WahaConnection.account_id == row.account_id,
+            WahaChat.connection_id == WahaSendAction.connection_id,
+            WahaChat.conversation_id == row.conversation_id,
+        )
     )
+    if gateway is None:
+        return None
+    command = gateway.command
+    if (
+        command.get("work_order_id") != row.work_order_id
+        or command.get("expected_work_order_version") != row.data["bound_work_order_version"]
+        or command.get("expected_context_version") != row.data["bound_context_version"]
+        or {k: v for k, v in (command.get("payload") or {}).items() if v is not None}
+        != {"kind": "text", "text": row.data["body"]}
+    ):
+        return None
+    return gateway
+
+
+def safe_cached_action(db, account, cached):
+    # Old buggy caches may contain an unowned request-key-derived send ID.
+    # Reproject links without dispatching or guessing a backfill.
+    if cached.data.get("send_action_id") is not None:
+        row = owned(db, ActionRow, cached.data["id"], account.id)
+        return send_view(db, row, view(row))
+    return cached.data
 
 
 def send_view(db, row, data):
     """Add the linked gateway outcome to a business action view (read-only)."""
     send = linked_send(db, row) if row.data["state"] == "executing" else None
     if send is None:
+        if row.data["state"] == "executing":
+            return {
+                **data,
+                "state": "result_unknown",
+                "delivery_status": "unknown",
+                "send_action_id": None,
+                "send_state": None,
+                "send_error": "SEND_LINK_UNVERIFIED",
+            }
         return {**data, "send_action_id": None, "send_state": None, "send_error": None}
     from gigmate import waha_send as sends
 
@@ -617,7 +673,7 @@ def send(db, account, action_id, command, key, request_id):
     scope = f"send:{action_id}"
     digest, cached = command_cache(db, account.id, scope, key, command.model_dump())
     if cached:
-        return cached.data
+        return safe_cached_action(db, account, cached)
     row = expire_if_due(locked(db, account.id, action_id))
     existing = linked_send(db, row)
     if row.data["state"] == "executing" and existing is not None:
@@ -670,7 +726,17 @@ def send(db, account, action_id, command, key, request_id):
         mode="manual",
         payload={"kind": "text", "text": row.data["body"]},
     )
+    from gigmate.db import WahaSendAction
+
+    if db.scalar(
+        select(WahaSendAction.id).where(
+            WahaSendAction.connection_id == connection.id,
+            WahaSendAction.request_key == SEND_KEY.format(row.id),
+        )
+    ):
+        raise BusinessError(409, "SEND_REQUEST_KEY_TAKEN", "The gateway key is already occupied")
     gateway = sends.create_draft(db, connection, account, draft, SEND_KEY.format(row.id))
+    row.send_action_id = gateway["id"]
     sends.approve(db, connection, account, gateway["id"], gateway["revision"])
     row.data = validate(ApprovalAction, {**row.data, "state": "executing"})
     row.active_key = None
@@ -711,7 +777,7 @@ def edit(db, account, action_id, command, key, request_id):
     scope = f"edit:{action_id}"
     digest, cached = command_cache(db, account.id, scope, key, command.model_dump())
     if cached:
-        return cached.data
+        return safe_cached_action(db, account, cached)
     row = expire_if_due(locked(db, account.id, action_id))
     if row.data["state"] != "pending_approval":
         raise BusinessError(
@@ -722,6 +788,17 @@ def edit(db, account, action_id, command, key, request_id):
         or command.snapshot_hash != row.data["snapshot_hash"]
     ):
         raise BusinessError(409, "APPROVAL_STALE", "The draft changed; review it again")
+    order = owned(db, WorkOrderRow, row.work_order_id, account.id)
+    from gigmate.workorders import authorized_order_conversation
+
+    conversation = authorized_order_conversation(db, account, order, row.conversation_id)
+    if (
+        order.data["status"] in {"completed", "cancelled"}
+        or order.data["version"] != row.data["bound_work_order_version"]
+        or conversation.context_version != row.data["bound_context_version"]
+    ):
+        raise BusinessError(409, "APPROVAL_STALE", "The order or conversation changed")
+    require_current_sources(db, account.id, conversation.id, row.data["sources"])
     body = command.body.strip()
     if not body:
         raise BusinessError(422, "VALIDATION_FAILED", "The message is empty")

@@ -146,6 +146,17 @@ export function approvalsApi(
   if (!storageError) {
     try {
       raw = storage!.getItem(storageKey);
+      for (const old of ["real", "isolated"]) {
+        if (
+          storage!.getItem(
+            `gigmate-approval-attempt:/environments/${old}/api/v1:${accountId}`,
+          ) !== null
+        ) {
+          failStorage(
+            "旧入口还有待核对的审批操作；记录已保留，不能搬运到当前服务重试。请让维护者先核对旧请求。",
+          );
+        }
+      }
     } catch {
       failStorage(
         "原请求记录无法读取；可以查看审批，但当前不能提交操作。请恢复存储后重新核对旧请求。",

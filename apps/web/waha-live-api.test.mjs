@@ -918,7 +918,7 @@ test("connection and synchronization adapters bind their environment when create
   };
   await connection.connectors();
   await sync.jobs();
-  assert.ok(urls.every((url) => url.startsWith("/environments/real/api/v1/")));
+  assert.ok(urls.every((url) => url.startsWith("/api/v1/")));
 });
 
 test("media API binds its environment including preview/download and exact-key mutation retry", async () => {
@@ -955,10 +955,8 @@ test("media API binds its environment including preview/download and exact-key m
   await api.start(input, "original-media-key");
   await api.start(input, "original-media-key");
   await api.preview("synthetic-asset");
-  assert.ok(calls.every((c) => c.url.startsWith("/environments/real/api/v1/")));
-  assert.ok(
-    api.downloadUrl("synthetic-asset").startsWith("/environments/real/api/v1/"),
-  );
+  assert.ok(calls.every((c) => c.url.startsWith("/api/v1/")));
+  assert.ok(api.downloadUrl("synthetic-asset").startsWith("/api/v1/"));
   const writes = calls.filter((c) => c.init.method === "POST");
   assert.equal(writes.length, 2);
   assert.equal(
@@ -997,7 +995,7 @@ test("sending binds the selected environment for upload, preview and original-ke
   await api.mutate(action, "approve");
   assert.ok(
     calls.every(({ url }) =>
-      url.startsWith(`/environments/real/api/v1/connectors/${id}/sending/`),
+      url.startsWith(`/api/v1/connectors/${id}/sending/`),
     ),
   );
   assert.equal(calls[1].options.body, file);
@@ -1010,9 +1008,9 @@ test("sending binds the selected environment for upload, preview and original-ke
     "original-send-key",
   );
   assert.equal(calls[2].options.body, calls[3].options.body);
-  assert.match(api.previewUrl(opid), /^\/environments\/real\/api\/v1\//);
+  assert.match(api.previewUrl(opid), /^\/api\/v1\//);
   assert.match(
     sendingApi(id, "synthetic-csrf").previewUrl(opid),
-    /^\/environments\/isolated\/api\/v1\//,
+    /^\/api\/v1\//,
   );
 });

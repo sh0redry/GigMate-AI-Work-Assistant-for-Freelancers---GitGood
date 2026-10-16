@@ -1,5 +1,7 @@
 # WAHA 消息同步与媒体元数据：整批交付和验收
 
+当前前端入口（2026-10-16）：使用 GIGMATE_REAL_API_URL，打开根网址。交付页面只有一个后端，没有环境切换／公开测试密码。临时自检仍使用它自己的本机服务，虚构数据仅供开发者测试，产品不再标出另一套测试模式；旧日期的截图／环境说明保留为历史。见[当前手册](role-d-frontend-user-guide.md)。
+
 2026-10-09 · **Andy_WAHA_message_sync** · 从 **ebf9398**（PR #11 当前成果）创建。[English](../en/role-a-message-sync-acceptance.md)，[实现决策 ADR 0005](../en/adr/0005-bounded-waha-observations.md)。
 
 ## 已交付什么
@@ -54,12 +56,11 @@
 在 `apps/web` 选择实际接入地址和真实环境（本机不是 18702 时换成实际端口）：
 
 ```bash
-GIGMATE_REAL_API_URL=http://127.0.0.1:18702 GIGMATE_DEFAULT_ENV=real npm run dev
+GIGMATE_REAL_API_URL=http://127.0.0.1:18702 npm run dev
 ```
 
 ```powershell
 $env:GIGMATE_REAL_API_URL = 'http://127.0.0.1:18702'
-$env:GIGMATE_DEFAULT_ENV = 'real'
 npm run dev
 ```
 

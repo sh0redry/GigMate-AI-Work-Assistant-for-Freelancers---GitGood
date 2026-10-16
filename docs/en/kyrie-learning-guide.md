@@ -1,6 +1,27 @@
 # Kyrie's GigMate learning guide: start from zero
 
-**D-03 update, 2026-10-13:** the new `codex/d03-approvals` branch uses the pending C approval API and D-02 UI. Main `e066b0c` includes #21; #22/#24 and D-03 remain separate review work. Approval saves your decision; the message has not been sent. A lost response is like a missing receipt: keep the original numbered request, read its status and only explicitly repeat that same request. See the [updated user guide](role-d-frontend-user-guide.md#d-03-review-a-reply-before-approving-it). Older version labels below are historical.
+## What changed after C #26/#27 merged (2026-10-16)
+
+Think of a work order as a shared notebook: the customer says something, the program writes a suggestion, and you decide whether to accept it. Accepting an uncertain date saves your decision but still waits for the customer. A successful HTTP response therefore may contain a proposed field; it does not always mean confirmed.
+
+An idempotency key is the number on one operation receipt. If the reply is lost, keep that number. “Read saved result” only checks the server's receipt: it does not perform the operation again. A missing receipt does not prove nothing happened. Once an exact saved receipt is found, you can review it and explicitly finish the local record. That removes a reminder from this tab, not the server's business history.
+
+The generated API types now describe C's real create/status commands. We reuse those types rather than maintaining a second handwritten agreement. Manual creation, status and address confirmation work; real AI and automatic WhatsApp business sending still await B and A/C.
+
+
+**Current delivery candidate, 2026-10-16:** #26/#27 are merged in main `71de8d9`. D-04 through the final web delivery are developed on `codex/d-final-workspace`; a PR is still different from a deployment. There is one business service and no product environment switch or public test password. Read [the current guide](role-d-frontend-user-guide.md) and [acceptance](role-d-final-acceptance.md) before older teaching screenshots.
+
+## A new lesson: a grey button can be the correct result
+
+A page is like a restaurant menu; the backend is the kitchen. Drawing “create order” does not mean the kitchen can safely prepare it. Manual creation can now save through C’s merged service. Earlier versions kept Save grey while that service was missing; unsupported assignment and business sending still stay disabled. The server's capability response is the kitchen's availability card; it is not your permission to act. Connection and sending consent are still checked separately.
+
+A source revision is an edition number on a customer message. When the customer edits an address, the old edition cannot prove the new address. Choosing your own sent message cannot prove what the customer confirmed. The new-order page therefore offers only current incoming customer text as evidence.
+
+A calendar export is a copy of one appointment, like printing a ticket. Before printing, the server checks the real message’s latest edition: matching two old photocopies is insufficient. If the customer edits or withdraws the message, export stops for review; the original appointment is retained. Downloading it does not subscribe your phone to future changes. `.ics` is a standard file calendars can import; UTC records one precise instant and your phone chooses how to display it.
+
+An idempotency key is a numbered order slip. If a receipt is lost, keep the same slip and content; do not place another order. `order-command-api.ts` retains the slip and original reviewed change before sending. Reads never resend it. If the browser cannot keep the slip safely, the page lets you look but stops submission.
+
+Try: inspect one appointment, use keyboard arrows, export its file, then explain why a tentative appointment and an unavailable Save button stay blocked. Use only developer-prepared disposable fixtures for exercises; the delivered page has no test mode.
 
 Version 2.0 · 2026-10-12, Hong Kong time. For Kyrie, a first-year student learning programming and working on Role D.
 
@@ -19,7 +40,7 @@ With 20 minutes, read the booking story and six terms, then do exercise A. Aim t
 | Code | Explain why paging preserves hidden checkbox selections |
 | A small change | Describe the effect, checks and remaining uncertainty |
 
-Your ordinary project directory is on main `bbb0074`. D-02 is in a separate worktree, branch `codex/d02-workspace`, with preceding commit `4665692`. The complete D-02 workspace, product cleanup and environment switching are now prepared for a PR under Kyrie’s updated instruction. They remain outside main until reviewed and merged. `git worktree list` shows the directories without changing them. Open `d02-workspace` to inspect current D code; main may still show the older UI. New-D GitHub links in the map refer to preceding `4665692` for location, not proof later local edits are uploaded.
+The ordinary main is `53991dc` with D-03 merged. The current delivery candidate is `codex/d-final-workspace`, located with `git worktree list`; its edits remain under PR review. Earlier version numbers/screenshots below are historical learning material, not the current capability list.
 
 Kyrie reports the team can now connect to WAHA. This is a team observation, not a new pairing test by this update. A working connection does not establish model extraction, order creation or message sending.
 
@@ -29,7 +50,7 @@ You photograph a customer on Wednesday at 15:00. They ask to move to Thursday at
 
 Customer proposal means what they want; customer confirmation means they explicitly accept it; merchant confirmation means you authorize changing your formal arrangement. AI drafts do not grant approval. A work order is a business record card: what, when, original evidence and unresolved details. One chat can discuss several orders, and an order can involve several chats.
 
-Current D supports existing internal schedule confirmation. Internal calendar means GigMate's own saved entries, not iPhone/Google synchronization. Creation, completion, reply approval and sending depend on subsequent backend capabilities.
+The current candidate supports existing orders, concrete-time confirmation, local reply approvals, manual-review reads and calendar/task views plus one-appointment export. New-order/status saving, address/assignment, real models and business approval sending remain explicitly blocked dependencies.
 
 ## 2 Six terms first
 
@@ -167,7 +188,7 @@ npm run dev
 GIGMATE_REAL_API_URL=http://127.0.0.1:18702 npm run dev
 ```
 
-Think of the same page opening two separate notebooks: **真实连接** uses your actual local WAHA/business data; **隔离测试** uses fictional data in a separate database. The top button switches notebooks and asks you to sign in again; it does not copy or delete records. The login form displays public default development credentials. Isolated testing offers the business workspace only; switch to the actual connection environment to use **WhatsApp 连接**. Defaults are real 18702 and isolated 18000; `GIGMATE_REAL_API_URL` / `GIGMATE_ISOLATED_API_URL` configure the respective destinations once. The page guide explains separate backend setup, alternate ports and PowerShell. Opening/switching a page does not start its backend or update the checkout.
+The delivery frontend has one configured backend. Test fixtures run outside the product; never point a disposable test command at an existing business database. Opening a page does not start its backend or update Git.
 
 After edits, in apps/web:
 

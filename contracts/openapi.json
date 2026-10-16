@@ -2094,6 +2094,25 @@
         "title": "Detail[WorkOrder]",
         "type": "object"
       },
+      "Detail_WorkspaceCapabilities_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/WorkspaceCapabilities"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[WorkspaceCapabilities]",
+        "type": "object"
+      },
       "Detail_dict_str__int__": {
         "additionalProperties": false,
         "properties": {
@@ -2190,6 +2209,65 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "InspectWorkOrderCommand": {
+        "additionalProperties": false,
+        "description": "Look up an exact completed command; never execute or resubmit it.",
+        "properties": {
+          "change_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Id"
+          },
+          "command": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CreateWorkOrderCommand"
+              },
+              {
+                "$ref": "#/components/schemas/SetWorkOrderStatusCommand"
+              },
+              {
+                "$ref": "#/components/schemas/ConfirmChangeCommand"
+              }
+            ],
+            "title": "Command"
+          },
+          "kind": {
+            "enum": [
+              "create",
+              "status",
+              "confirm"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "order_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Id"
+          }
+        },
+        "required": [
+          "kind",
+          "command"
+        ],
+        "title": "InspectWorkOrderCommand",
         "type": "object"
       },
       "InstantDeadline": {
@@ -2447,6 +2525,41 @@
         "title": "Page[ConversationMessage]",
         "type": "object"
       },
+      "Page_Conversation_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Conversation"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor",
+          "request_id"
+        ],
+        "title": "Page[Conversation]",
+        "type": "object"
+      },
       "Page_RecoveryIssue_": {
         "additionalProperties": false,
         "properties": {
@@ -2480,6 +2593,41 @@
           "request_id"
         ],
         "title": "Page[RecoveryIssue]",
+        "type": "object"
+      },
+      "Page_ReviewItem_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor",
+          "request_id"
+        ],
+        "title": "Page[ReviewItem]",
         "type": "object"
       },
       "Page_Task_": {
@@ -3157,6 +3305,69 @@
           "sources"
         ],
         "title": "RequirementItem",
+        "type": "object"
+      },
+      "ReviewItem": {
+        "additionalProperties": false,
+        "properties": {
+          "context_version": {
+            "minimum": 1.0,
+            "title": "Context Version",
+            "type": "integer"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "current_context_version": {
+            "minimum": 1.0,
+            "title": "Current Context Version",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "message_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Id"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "pattern": "Z$",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "conversation_id",
+          "message_id",
+          "context_version",
+          "current_context_version",
+          "reason",
+          "state",
+          "observed_at"
+        ],
+        "title": "ReviewItem",
         "type": "object"
       },
       "ScheduleCheck": {
@@ -6428,6 +6639,49 @@
         ],
         "title": "WorkOrderStatus",
         "type": "string"
+      },
+      "WorkspaceCapabilities": {
+        "additionalProperties": false,
+        "description": "Release gates, not connector permissions or claims of live acceptance.",
+        "properties": {
+          "address_confirmation": {
+            "default": true,
+            "title": "Address Confirmation",
+            "type": "boolean"
+          },
+          "automatic_understanding": {
+            "default": false,
+            "title": "Automatic Understanding",
+            "type": "boolean"
+          },
+          "business_sending": {
+            "default": false,
+            "title": "Business Sending",
+            "type": "boolean"
+          },
+          "calendar_export": {
+            "default": true,
+            "title": "Calendar Export",
+            "type": "boolean"
+          },
+          "create_order": {
+            "default": true,
+            "title": "Create Order",
+            "type": "boolean"
+          },
+          "manual_assignment": {
+            "default": false,
+            "title": "Manual Assignment",
+            "type": "boolean"
+          },
+          "order_status": {
+            "default": true,
+            "title": "Order Status",
+            "type": "boolean"
+          }
+        },
+        "title": "WorkspaceCapabilities",
+        "type": "object"
       }
     }
   },
@@ -7065,6 +7319,46 @@
           }
         },
         "summary": "Calendar"
+      }
+    },
+    "/api/v1/calendar-events/{event_id}.ics": {
+      "get": {
+        "operationId": "download_calendar_api_v1_calendar_events__event_id__ics_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/calendar": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Calendar"
       }
     },
     "/api/v1/connection-status": {
@@ -9735,6 +10029,64 @@
         "summary": "Connector Cancel Sync"
       }
     },
+    "/api/v1/conversations": {
+      "get": {
+        "operationId": "conversations_api_v1_conversations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_Conversation_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Conversations"
+      }
+    },
     "/api/v1/conversations/{conversation_id}": {
       "get": {
         "operationId": "conversation_info_api_v1_conversations__conversation_id__get",
@@ -9855,7 +10207,7 @@
             "schema": {
               "anyOf": [
                 {
-                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                  "format": "date",
                   "type": "string"
                 },
                 {
@@ -9989,6 +10341,64 @@
           }
         },
         "summary": "Replay Custom"
+      }
+    },
+    "/api/v1/review-items": {
+      "get": {
+        "operationId": "review_items_api_v1_review_items_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ReviewItem_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Items"
       }
     },
     "/api/v1/review-items/{job_id}/assign": {
@@ -10177,6 +10587,56 @@
           }
         },
         "summary": "Tasks"
+      }
+    },
+    "/api/v1/work-order-command-results/{key}/inspect": {
+      "post": {
+        "operationId": "inspect_command_api_v1_work_order_command_results__key__inspect_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InspectWorkOrderCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WorkOrder_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Inspect Command"
       }
     },
     "/api/v1/work-orders": {
@@ -10940,6 +11400,24 @@
           }
         },
         "summary": "Set Order Status"
+      }
+    },
+    "/api/v1/workspace-capabilities": {
+      "get": {
+        "operationId": "capabilities_api_v1_workspace_capabilities_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WorkspaceCapabilities_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Capabilities"
       }
     },
     "/health": {

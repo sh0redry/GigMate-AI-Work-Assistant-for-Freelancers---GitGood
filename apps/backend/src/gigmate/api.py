@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+from datetime import date as date_cls
 from datetime import datetime, timedelta
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
@@ -111,6 +112,7 @@ from gigmate.workorders import (
     set_status,
     update_requirement,
 )
+from gigmate.workspace_api import install as install_workspace
 
 app = FastAPI(title="GigMate replay skeleton", version="0.2.0")
 
@@ -399,7 +401,13 @@ def changes(
         lambda row: {
             **row.data,
             "context_version": row.context_version,
-            "conflict_ids": conflicts(db, account.id, str(order_id), row.data["new_value"]),
+            "conflict_ids": (
+                conflicts(db, account.id, str(order_id), row.data["new_value"])
+                if row.data["field"] == "schedule"
+                and isinstance(row.data["new_value"], dict)
+                and row.data["new_value"].get("kind") == "timed"
+                else []
+            ),
         },
     )
 
@@ -491,16 +499,15 @@ def defer_order_item(
 @app.get("/api/v1/daily-summary", response_model=Detail[DailySummary])
 def daily_summary(
     request: Request,
-    day: str | None = Query(None, alias="date", pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    day: date_cls | None = Query(None, alias="date"),
     account=Depends(actor),
     db=Depends(database),
 ):
     """Today's work, waiting items, due soon, decisions and rule-based suggestions (read-only)."""
-    from datetime import date as date_cls
 
     from gigmate import summary
 
-    chosen = date_cls.fromisoformat(day) if day else None
+    chosen = day
     return detail(request, summary.build(db, account.id, chosen))
 
 
@@ -635,7 +642,7 @@ def actions(
     if work_order_id:
         query = query.where(ActionRow.work_order_id == str(work_order_id))
     query = query.order_by(ActionRow.id)
-    batch, offset, chosen = max(limit * 2, 50), 0, []
+    batch, offset, chosen = (max(limit * 2, 50) if state else limit + 1), 0, []
     while len(chosen) <= limit:
         rows = list(db.scalars(query.offset(offset).limit(batch)))
         if not rows:
@@ -1612,3 +1619,4 @@ def replay_custom(
 
 
 install_sending(app, database, setup_actor, detail, page, sending_io_actor)
+install_workspace(app, database, actor, detail, page, conversation_info)
