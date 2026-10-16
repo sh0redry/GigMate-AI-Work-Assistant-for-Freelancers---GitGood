@@ -291,6 +291,16 @@ class FieldStatus(StrEnum):
     needs_review = "needs_review"
 
 
+class ChangeStatus(StrEnum):
+    """A requirement change: like a field status, plus the merchant's rejection."""
+
+    missing = "missing"
+    proposed = "proposed"
+    confirmed = "confirmed"
+    needs_review = "needs_review"
+    rejected = "rejected"
+
+
 class CustomerConfirmation(StrEnum):
     not_requested = "not_requested"
     pending = "pending"
@@ -381,9 +391,39 @@ class ProvenancedField(Model):
         return self
 
 
+def missing_field():
+    return ProvenancedField(value=None, status="missing", sources=[], interpretation=None)
+
+
 class WorkOrderFields(Model):
+    """Key items (schedule, address) decide confirmation; the others are business detail."""
+
     schedule: ProvenancedField
     address: ProvenancedField
+    specification: ProvenancedField = Field(default_factory=missing_field)
+    quantity: ProvenancedField = Field(default_factory=missing_field)
+    deadline: ProvenancedField = Field(default_factory=missing_field)
+
+
+class RequirementItem(Model):
+    """Required material, a promise either side made, or an open question (方案 §4.3)."""
+
+    id: Id
+    kind: Literal["material", "commitment", "question"]
+    text: Annotated[str, Field(min_length=1, max_length=300)]
+    owner: Literal["merchant", "customer"]
+    status: Literal["open", "done", "cancelled"]
+    due: DeadlineValue | None = None
+    task_id: Id | None = None
+    sources: Annotated[list[SourceRef], Field(min_length=1)]
+
+
+class DeferredItem(Model):
+    """A key item the customer said they will confirm later (契约 §3 Customer defers)."""
+
+    until: UtcTimestamp
+    follow_up_task_id: Id
+    sources: Annotated[list[SourceRef], Field(min_length=1)]
 
 
 class WorkOrder(Model):
@@ -396,6 +436,11 @@ class WorkOrder(Model):
     fields: WorkOrderFields
     pending_change_ids: list[Id]
     updated_at: UtcTimestamp
+    deferred: dict[Literal["schedule", "address"], DeferredItem] = {}
+    requirements: list[RequirementItem] = []
+    task_links: dict[str, Id] = {}
+    attention: list[Literal["customer_not_replying"]] = []
+    archived_at: UtcTimestamp | None = None
 
 
 class AccountConsent(Model):
@@ -636,11 +681,12 @@ class RequirementChange(Model):
     field: Literal["schedule", "address", "summary", "quantity", "specification", "deadline"]
     old_value: FieldValue
     new_value: FieldValue
-    status: Annotated[FieldStatus, Field(strict=False)]
+    status: Annotated[ChangeStatus, Field(strict=False)]
     customer_confirmation: Annotated[CustomerConfirmation, Field(strict=False)]
     proposer: Literal["customer", "merchant"]
     sources: Annotated[list[SourceRef], Field(min_length=1)]
     base_work_order_version: Positive
+    rejection_reason: str | None = None
 
 
 class Task(Model):
@@ -782,6 +828,48 @@ class ProposalChange(Model):
     )
 
 
+class NewWorkOrderSuggestedField(Model):
+    """One critical field of a new-work-order suggestion.
+
+    ``value`` may be ``None`` when the customer has not supplied the field
+    yet; the field name should then also appear in
+    :attr:`NewWorkOrderSuggestion.missing_fields`. Suggested values are
+    drafts bound to their source message revisions. They deliberately carry
+    no ``field_status`` and no ``customer_confirmation``: a suggestion is
+    neither a proposal against an existing work order nor any form of
+    confirmation, so those concepts do not apply.
+    """
+
+    field: Literal["schedule", "address", "summary", "quantity", "specification", "deadline"]
+    value: FieldValue
+    sources: Annotated[list[SourceRef], Field(min_length=1)]
+    reason: Text
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+
+class NewWorkOrderSuggestion(Model):
+    """Structured draft for creating a NEW work order from a conversation.
+
+    Recognition output only: the suggestion never creates a work order,
+    never marks anything confirmed and grants no execution authority. It
+    records what the model recognised (critical fields, each bound to its
+    source message revision), what is still missing, and the questions a
+    human must resolve before the merchant creates the order manually.
+    Customer proposal, customer confirmation and merchant approval remain
+    separate facts, as everywhere else in the contract.
+    """
+
+    summary: Text
+    fields: Annotated[list[NewWorkOrderSuggestedField], Field(min_length=0)]
+    missing_fields: Annotated[
+        list[Literal["schedule", "address", "summary", "quantity", "specification", "deadline"]],
+        Field(min_length=0),
+    ]
+    unresolved_questions: Annotated[list[Text], Field(min_length=0)]
+    confidence: Annotated[float, Field(ge=0, le=1)]
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+
 class ChangeProposal(Model):
     schema_version: Literal["0.1.0"]
     proposal_id: Id
@@ -793,6 +881,7 @@ class ChangeProposal(Model):
     candidates: Annotated[list[ProposalCandidate], Field(min_length=0)]
     changes: Annotated[list[ProposalChange], Field(min_length=0)]
     unresolved_questions: Annotated[list[Text], Field(min_length=0)]
+    new_work_order: NewWorkOrderSuggestion | None = None
     draft_text: Text | None
     model_version: Text
     prompt_version: Text
@@ -807,6 +896,7 @@ class ChangeProposal(Model):
                         "properties": {
                             "work_order_id": {"type": "string", "format": "uuid"},
                             "base_work_order_version": {"type": "integer", "minimum": 1},
+                            "new_work_order": {"type": "null"},
                         }
                     },
                 },
@@ -829,6 +919,15 @@ class ChangeProposal(Model):
         for change in self.changes:
             if change.field_status == "confirmed":
                 raise ValueError("AI proposals must not mark a field as confirmed")
+        # A new-work-order suggestion is recognition for the *absence* of a
+        # matching work order: it may only ride a needs_review proposal that
+        # targets no existing order, and can never smuggle a second fact
+        # alongside a matched change proposal.
+        if self.new_work_order is not None:
+            if self.assignment.value == "matched":
+                raise ValueError("A new-work-order suggestion requires needs_review")
+            if self.work_order_id is not None:
+                raise ValueError("A new-work-order suggestion cannot target an existing work order")
         return self
 
 
@@ -842,6 +941,10 @@ class EvaluationCase(Model):
     expected_change_fields: list[
         Literal["schedule", "address", "summary", "quantity", "specification", "deadline"]
     ] = Field(default_factory=list)
+    # Batch 3: when set, the case also asserts whether the provider emitted a
+    # ``new_work_order`` suggestion. ``None`` (the default) leaves the
+    # suggestion surface unchecked for older manifests.
+    expected_new_work_order: bool | None = None
     note: Text | None = None
     provider: Text | None = None
 
@@ -887,11 +990,200 @@ class ReissueActionCommand(Model):
     expected_context_version: Positive
 
 
+class SendApprovedActionCommand(Model):
+    """Merchant hands an approved business reply to the WhatsApp sending gateway.
+
+    The connection, control and send-permission versions are the ones the
+    merchant sees on the sending page; the action revision and snapshot hash
+    are the exact approved reply.
+    """
+
+    connection_id: Id
+    expected_control_version: NonNegative
+    expected_permission_version: Positive
+    expected_action_revision: Positive
+    snapshot_hash: Annotated[str, Field(pattern=r"^sha256:[a-f0-9]{64}$")]
+
+
+class AssignMessageCommand(Model):
+    """Merchant decides an unassigned message: which open order it belongs to, or none."""
+
+    action: Literal["assign", "dismiss"]
+    work_order_id: Id | None = None
+    expected_context_version: Positive
+
+    @model_validator(mode="after")
+    def target_matches_action(self):
+        if (self.action == "assign") != (self.work_order_id is not None):
+            raise ValueError("Assign needs a work order; dismiss takes none")
+        return self
+
+
+class AssignmentResult(Model):
+    job_id: Id
+    conversation_id: Id
+    action: Literal["assign", "dismiss"]
+    work_order_id: Id | None
+    state: str
+
+
+class DeferItemCommand(Model):
+    """The customer will confirm a key item later; ``until`` defaults to 3 days."""
+
+    field: Literal["schedule", "address"]
+    until: UtcTimestamp | None = None
+    sources: Annotated[list[SourceRef], Field(min_length=1)]
+    expected_version: Positive
+
+
+LocalTime = Annotated[str, Field(pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")]
+
+
+class TimeRange(Model):
+    start: LocalTime
+    end: LocalTime
+
+    @model_validator(mode="after")
+    def ordered(self):
+        if self.start >= self.end:
+            raise ValueError("A range must end after it starts")
+        return self
+
+
+class ScheduleSettings(Model):
+    """User-set working time (方案 §4.4). Buffers are the user's own numbers, not travel time."""
+
+    timezone: Timezone = "Asia/Hong_Kong"
+    work_days: Annotated[list[Annotated[int, Field(ge=1, le=7)]], Field(min_length=1)] = [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+    ]
+    work_hours: TimeRange = TimeRange(start="09:00", end="19:00")
+    breaks: list[TimeRange] = [TimeRange(start="12:30", end="13:30")]
+    default_duration_minutes: Annotated[int, Field(ge=15, le=720)] = 60
+    buffer_minutes: Annotated[int, Field(ge=0, le=240)] = 30
+    preparation_minutes: Annotated[int, Field(ge=0, le=1440)] = 60
+    version: NonNegative = 0
+
+
+class UpdateScheduleSettingsCommand(Model):
+    expected_version: NonNegative
+    settings: ScheduleSettings
+
+
+class Slot(Model):
+    start_at: UtcTimestamp
+    end_at: UtcTimestamp
+    label: Text
+
+
+class ScheduleRisk(Model):
+    code: Literal[
+        "schedule_conflict",
+        "outside_working_hours",
+        "during_break",
+        "buffer_too_short",
+        "preparation_time_short",
+        "in_the_past",
+    ]
+    detail: Text
+    related_work_order_ids: list[Id] = []
+
+
+class ScheduleCheck(Model):
+    """Deterministic checks for one order's time, plus free slots the merchant may offer."""
+
+    work_order_id: Id
+    risks: list[ScheduleRisk]
+    suggestions: list[Slot]
+
+
+class AddRequirementCommand(Model):
+    kind: Literal["material", "commitment", "question"]
+    text: Annotated[str, Field(min_length=1, max_length=300)]
+    owner: Literal["merchant", "customer"]
+    due: DeadlineValue | None = None
+    sources: Annotated[list[SourceRef], Field(min_length=1)]
+    expected_version: Positive
+
+
+class UpdateRequirementCommand(Model):
+    status: Literal["done", "cancelled"]
+    expected_version: Positive
+
+
+class EditActionCommand(Model):
+    """Merchant edits a draft before approving it (new revision and snapshot hash)."""
+
+    body: Annotated[str, Field(min_length=1, max_length=4096)]
+    expected_action_revision: Positive
+    snapshot_hash: Annotated[str, Field(pattern=r"^sha256:[a-f0-9]{64}$")]
+
+
+class SummaryEntry(Model):
+    kind: str | None = None
+    title: Text
+    at: UtcTimestamp | None = None
+    work_order_id: Id | None = None
+    task_id: Id | None = None
+    calendar_event_id: Id | None = None
+    action_id: Id | None = None
+    change_id: Id | None = None
+    job_id: Id | None = None
+    open_items: list[str] = []
+
+
+class Suggestion(Model):
+    code: Literal["task_overdue", "material_missing", "dependency_at_risk", "day_overbooked"]
+    detail: Text
+    work_order_id: Id | None = None
+    task_id: Id | None = None
+
+
+class DailySummary(Model):
+    """方案 §4.6 每日摘要: each entry points at the record it comes from."""
+
+    date: Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$")]
+    timezone: Timezone
+    today: list[SummaryEntry]
+    waiting_for_customer: list[SummaryEntry]
+    due_soon: list[SummaryEntry]
+    needs_decision: list[SummaryEntry]
+    suggestions: list[Suggestion]
+
+
+class ChecklistItem(Model):
+    kind: Literal["confirmed", "unfinished"]
+    title: Text
+    task_id: Id | None = None
+    change_id: Id | None = None
+    action_id: Id | None = None
+    requirement_id: Id | None = None
+
+
+class DeliveryChecklist(Model):
+    """方案 §4.6 交付前检查: confirmed requirements to check and what is still unfinished."""
+
+    work_order_id: Id
+    ready: bool
+    items: list[ChecklistItem]
+
+
+class ArchiveCommand(Model):
+    expected_version: Positive
+
+
 class SetWorkOrderStatusCommand(Model):
     """Merchant moves an order along its life cycle (see TRANSITIONS in workorders)."""
 
     status: Literal["in_progress", "waiting_customer", "completed", "cancelled"]
     expected_version: Positive
+    # Completing with unfinished checklist items needs the merchant's explicit acknowledgement.
+    acknowledge_open_items: bool = False
 
 
 class InspectWorkOrderCommand(Model):
@@ -980,6 +1272,13 @@ class WahaMediaResult(Model):
     )
     unresolved_questions: Annotated[
         list[Annotated[str, Field(max_length=1000)]], Field(max_length=30)
+    ] = Field(default_factory=list)
+    # Stable ``media:instruction-text-detected:<field>`` markers written by
+    # gigmate.media.injection when attachment content (or the vendor answer)
+    # carries instruction-shaped text. Review signal only: it never grants,
+    # removes or infers authority, and an empty list is the untainted case.
+    injection_markers: Annotated[
+        list[Annotated[str, Field(max_length=80)]], Field(max_length=20)
     ] = Field(default_factory=list)
 
     @model_validator(mode="after")

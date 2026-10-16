@@ -51,7 +51,11 @@ export function OrderLifecycle({
       await commands.submit({
         kind: "status",
         orderId: order.id,
-        body: { status: target, expected_version: order.version },
+        body: {
+          status: target,
+          expected_version: order.version,
+          acknowledge_open_items: false,
+        },
       });
       setTarget(null);
       setConsent(false);

@@ -81,10 +81,19 @@ def main() -> int:
                 "expected_change_fields": outcome.expected_change_fields,
                 "actual_change_fields": outcome.actual_change_fields,
                 "actual_confidence": outcome.actual_confidence,
+                "actual_new_work_order": outcome.actual_new_work_order,
+                "expected_new_work_order": outcome.expected_new_work_order,
+                "refused_reason": outcome.refused_reason,
+                "notes": outcome.notes,
                 "message": outcome.message,
             }
             for outcome in summary.cases
         ],
+        # Batch 3: a classification block so an operator (or E) can record what
+        # the run actually covered — the confusion counts, the failing cases and
+        # the refusal codes — instead of only a pass/fail number. Synthetic
+        # runs stay synthetic: the block never claims production accuracy.
+        "classification": _classification(summary.cases),
     }
     text = json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
     if args.json_out:
@@ -94,6 +103,29 @@ def main() -> int:
     if summary.run_row.failed:
         return 1
     return 0
+
+
+def _classification(cases) -> dict:
+    by_expected: dict[str, dict[str, int]] = {}
+    refusals: dict[str, int] = {}
+    failures: list[str] = []
+    for case in cases:
+        bucket = by_expected.setdefault(
+            case.expected_assignment, {"pass": 0, "fail": 0}
+        )
+        bucket[case.status] += 1
+        if case.refused_reason:
+            refusals[case.refused_reason] = refusals.get(case.refused_reason, 0) + 1
+        if case.status == "fail":
+            failures.append(f"{case.case_id}: {case.message}")
+    return {
+        "by_expected_assignment": dict(sorted(by_expected.items())),
+        "suggested_new_work_order_cases": sum(
+            1 for c in cases if c.actual_new_work_order
+        ),
+        "refusal_reasons": dict(sorted(refusals.items())),
+        "failing_cases": failures,
+    }
 
 
 if __name__ == "__main__":

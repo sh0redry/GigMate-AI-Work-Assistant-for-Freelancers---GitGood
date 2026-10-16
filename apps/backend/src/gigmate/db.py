@@ -9,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     UniqueConstraint,
     create_engine,
@@ -404,6 +405,24 @@ class Job(Base):
     lease_recoveries: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
+class ScheduleSettingsRow(Base):
+    """Working hours, breaks, default duration, buffer and preparation lead time."""
+
+    __tablename__ = "schedule_settings"
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"), primary_key=True)
+    data: Mapped[dict] = mapped_column(JSON)
+
+
+class JobAssignment(Base):
+    """The merchant's decision of which work order an unassigned message belongs to."""
+
+    __tablename__ = "job_assignments"
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), primary_key=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"))
+    work_order_id: Mapped[str] = mapped_column(ForeignKey("work_orders.id"))
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class ChangeRow(Base):
     __tablename__ = "requirement_changes"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -453,6 +472,10 @@ class ActionRow(Base):
     """Merchant-reviewed outbound actions. P0 supports send_text drafts only."""
 
     __tablename__ = "approval_actions"
+    send_action_id: Mapped[str | None] = mapped_column(
+        ForeignKey("waha_send_actions.id", name="fk_approval_send_action", ondelete="SET NULL"),
+        nullable=True,
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"), index=True)
     work_order_id: Mapped[str] = mapped_column(ForeignKey("work_orders.id"), index=True)
@@ -466,6 +489,9 @@ class ActionRow(Base):
     note: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     data: Mapped[dict] = mapped_column(JSON)
+    __table_args__ = (
+        UniqueConstraint("send_action_id", name="uq_approval_actions_send_action_id"),
+    )
 
 
 class Proposal(Base):
@@ -498,6 +524,17 @@ class ModelCallTrace(Base):
     latency_ms: Mapped[int] = mapped_column(Integer)
     refused_reason: Mapped[str | None] = mapped_column(String(256))
     notes: Mapped[list] = mapped_column(JSON)
+    # Correlation id sent to the vendor with the call (Role B pre-activation
+    # gate 3). ``None`` when no vendor request was ever issued.
+    request_id: Mapped[str | None] = mapped_column(String(64))
+    # Pre-activation cost accounting (batch 2). All three columns are
+    # ``None`` while the seam is closed; the next authorized batch populates
+    # them whenever a real vendor call completes. ``cost_usd`` is a
+    # ``Numeric(12, 6)`` so six decimal places of a dollar are representable
+    # (a 1k-token call at the default prices stays well below 1 cent).
+    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_usd: Mapped[float | None] = mapped_column(Numeric(12, 6), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 

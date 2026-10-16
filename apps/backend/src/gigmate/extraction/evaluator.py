@@ -9,7 +9,7 @@ model versions can be compared over time without replaying live content.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -40,6 +40,14 @@ class EvaluationOutcome:
     actual_change_fields: list[str]
     status: str  # "pass" | "fail"
     message: str | None
+    # Batch 3 classification evidence: whether the provider emitted a
+    # new-work-order suggestion, and the stable refusal code when the call was
+    # refused. Both are report-only — they are not persisted as columns, so
+    # adding them needs no migration.
+    actual_new_work_order: bool = False
+    expected_new_work_order: bool | None = None
+    refused_reason: str | None = None
+    notes: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -74,6 +82,11 @@ def _build_request(case_payload: dict[str, Any], provider_name: str) -> Extracti
         # Evaluation manifests are synthetic-only by contract; a case may still
         # declare origin "live" to assert that live input is refused.
         origin=payload.get("origin", "synthetic"),
+        # Batch 3: manifests may now supply the date-grounding basis so a case
+        # can assert relative-date behaviour (prompt 1.1.0 gate 4) and
+        # suggestion schedules instead of always falling back to "no basis".
+        message_received_at=payload.get("message_received_at"),
+        workspace_timezone=payload.get("workspace_timezone"),
         extra={"provider_name": provider_name, "case_id": case_payload.get("case_id")},
     )
 
@@ -90,6 +103,7 @@ def evaluate_case(provider: Provider, case_payload: dict[str, Any]) -> Evaluatio
     actual_confidence = max(
         (candidate.confidence for candidate in outcome.proposal.candidates), default=0.0
     )
+    actual_new_work_order = outcome.proposal.new_work_order is not None
     issues: list[str] = []
     if outcome.proposal.assignment.value != expected.expected_assignment.value:
         issues.append(
@@ -107,6 +121,13 @@ def evaluate_case(provider: Provider, case_payload: dict[str, Any]) -> Evaluatio
         missing = sorted(set(expected.expected_change_fields) - set(actual_change_fields))
         if missing:
             issues.append(f"missing fields: {missing}")
+    if expected.expected_new_work_order is not None and (
+        actual_new_work_order != expected.expected_new_work_order
+    ):
+        issues.append(
+            f"new_work_order suggestion {actual_new_work_order} "
+            f"!= expected {expected.expected_new_work_order}"
+        )
     return EvaluationOutcome(
         case_id=expected.case_id,
         scenario=expected.scenario,
@@ -118,6 +139,10 @@ def evaluate_case(provider: Provider, case_payload: dict[str, Any]) -> Evaluatio
         actual_change_fields=actual_change_fields,
         status="pass" if not issues else "fail",
         message="; ".join(issues) or None,
+        actual_new_work_order=actual_new_work_order,
+        expected_new_work_order=expected.expected_new_work_order,
+        refused_reason=outcome.refused_reason,
+        notes=list(outcome.notes),
     )
 
 
