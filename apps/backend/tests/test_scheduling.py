@@ -1,7 +1,6 @@
 """Working-time settings, free slots and risks (方案 §4.4、§5.1、附录 A)."""
 
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
