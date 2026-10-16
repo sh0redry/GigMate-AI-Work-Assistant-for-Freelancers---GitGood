@@ -450,3 +450,78 @@ def create(db, account, command, key, request_id):
     ask_open_items(db, account.id, db.get(WorkOrderRow, order_id), conversation)
     save_result(db, account.id, scope, key, digest, value)
     return value
+
+
+# Merchant status commands. Confirmation itself (pending_confirmation →
+# confirmed) only happens through confirm(), when every key item is settled.
+TRANSITIONS = {
+    "unclassified": {"cancelled"},
+    "pending_confirmation": {"cancelled"},
+    "confirmed": {"in_progress", "waiting_customer", "completed", "cancelled"},
+    "in_progress": {"waiting_customer", "completed", "cancelled"},
+    "waiting_customer": {"in_progress", "completed", "cancelled"},
+    "completed": set(),
+    "cancelled": set(),
+}
+
+
+def set_status(db, account, work_order_id, command, key, request_id):
+    """Start, pause for the customer, complete or cancel an order; keeps all history.
+
+    Closing an order (completed or cancelled) frees its calendar slot, cancels
+    its unsent drafts and its open generated tasks, and leaves pending
+    proposals for review. Nothing is deleted and nothing is sent.
+    """
+    scope = f"status:{work_order_id}"
+    digest, cached = command_cache(db, account.id, scope, key, command.model_dump())
+    if cached:
+        return cached.data
+    order = db.scalar(
+        select(WorkOrderRow)
+        .where(WorkOrderRow.id == work_order_id, WorkOrderRow.account_id == account.id)
+        .with_for_update()
+    )
+    if order is None:
+        raise BusinessError(404, "NOT_FOUND", "Work order not found")
+    if order.data["version"] != command.expected_version:
+        raise BusinessError(409, "VERSION_CONFLICT", "Refresh the work order first")
+    current, target = order.data["status"], command.status
+    if target not in TRANSITIONS[current]:
+        raise BusinessError(
+            409,
+            "INVALID_TRANSITION",
+            f"A {current} order cannot become {target}",
+            {"status": current, "allowed": sorted(TRANSITIONS[current])},
+        )
+    value = json.loads(json.dumps(order.data))
+    value["version"] += 1
+    value["updated_at"] = now_text()
+    value["status"] = target
+    if target in CLOSED:
+        value["pending_change_ids"] = []
+    order.data = validate(WorkOrder, value)
+    if target in CLOSED:
+        from gigmate.approvals import cancel_pending
+
+        # contracts/api-v1.md section 4: closing an order cancels its unsent drafts.
+        cancel_pending(db, account.id, work_order_id=order.id, reason=f"order_{target}")
+        for change in db.scalars(
+            select(ChangeRow).where(
+                ChangeRow.work_order_id == order.id, ChangeRow.account_id == account.id
+            )
+        ):
+            if change.data["status"] == "proposed":
+                change.data = {**change.data, "status": "needs_review"}
+        for task in db.scalars(
+            select(TaskRow).where(
+                TaskRow.work_order_id == order.id, TaskRow.account_id == account.id
+            )
+        ):
+            if task.generated and task.data["state"] in {"pending", "blocked"}:
+                task.data = {
+                    **task.data,
+                    "state": "completed" if target == "completed" else "cancelled",
+                }
+    db.add(audit_row(account.id, order.id, f"set_status_{target}", request_id))
+    save_result(db, account.id, scope, key, digest, order.data)
+    return order.data

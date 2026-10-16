@@ -2023,6 +2023,33 @@
         }
       ]
     },
+    "SetWorkOrderStatusCommand": {
+      "additionalProperties": false,
+      "description": "Merchant moves an order along its life cycle (see TRANSITIONS in workorders).",
+      "properties": {
+        "expected_version": {
+          "minimum": 1,
+          "title": "Expected Version",
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "in_progress",
+            "waiting_customer",
+            "completed",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "expected_version"
+      ],
+      "title": "SetWorkOrderStatusCommand",
+      "type": "object"
+    },
     "SourceRef": {
       "additionalProperties": false,
       "properties": {

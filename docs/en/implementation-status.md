@@ -1,5 +1,17 @@
 # Implementation status and validation
 
+## Work-order status command (role C) — 2026-10-14
+
+Stacked on the work-order creation PR. Adds `POST /work-orders/{id}/status` (`SetWorkOrderStatusCommand`: `status`, `expected_version`; `Idempotency-Key` required).
+
+- **Transitions:** confirmed → in_progress / waiting_customer / completed / cancelled; in_progress ↔ waiting_customer, either → completed / cancelled; pending_confirmation or unclassified → cancelled only (an order becomes confirmed only through confirmation); completed and cancelled are final. Others return 409 `INVALID_TRANSITION` with the current status and allowed targets; a stale version returns 409 `VERSION_CONFLICT`. Each change bumps the version and writes an audit record.
+- **Closing (completed or cancelled):** the calendar slot no longer blocks; unsent drafts are cancelled (`order_completed` / `order_cancelled`, contract section 4); open generated tasks become completed or cancelled; pending proposals return to `needs_review`. Nothing is deleted or sent.
+- **New messages:** the worker now offers only open orders of a conversation to extraction, so a cancelled order no longer takes changes and the conversation's remaining open order receives them.
+
+Evidence: `test_order_status.py` **5 passed**; role C tests (status, creation, approvals, workflow) 75 passed on local PostgreSQL 16 after syncing the #26 calendar fix; full SQLite suite 678 passed, 12 skipped; Ruff/format, contract export, frontend API check and typecheck passed. No real WhatsApp, send, model or deployment.
+
+Review follow-up (2026-10-16): merged the fixed creation branch (outgoing-source, date-only and blank-address fixes) and main `53991dc`; `INVALID_TRANSITION` added to the 409 row of the error-code table. Fresh SQLite full suite **676 passed, 12 skipped**; single Alembic head `0016_d03_sending_heads`; Ruff/format, contract export, baseline, frontend API check and typecheck passed. PostgreSQL not rerun for this head.
+
 ## PR #25 Ready and compatible with merged sending — 2026-10-14
 
 Peer review had already opened #25 as Ready. Main subsequently advanced through #24/#23 to **4177d1a**, creating migration-test and paired progress conflicts. Merge that main, retain both test/evidence branches and all published migrations, and add no-op **0016_d03_sending_heads** joining **0015_d03_approval_heads** and **0014_merge_approval_send**. Test upgrades from both latest heads while retaining approval records, sending permission/cancellation fences and replay data; Alembic checks no drift and one head. Inherit main's sending adapter environment binding and include both approval/send modules in App DOM tests. Backend production/contracts match main; no C/A execution bridge or real send is added.
