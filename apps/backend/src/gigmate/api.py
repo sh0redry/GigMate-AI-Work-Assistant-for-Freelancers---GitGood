@@ -29,6 +29,7 @@ from gigmate.contracts import (
     Conversation,
     ConversationMessage,
     CreateWorkOrderCommand,
+    DeferItemCommand,
     Detail,
     Model,
     Page,
@@ -88,6 +89,7 @@ from gigmate.workorders import (
     command_cache,
     confirm,
     create,
+    defer_item,
     owned,
     reject_change,
     save_result,
@@ -451,6 +453,21 @@ def assign_review_item(
         assign_message(
             db, account, str(job_id), command, idempotency_key, request.state.request_id
         ),
+    )
+
+
+@app.post("/api/v1/work-orders/{order_id}/defer", response_model=Detail[WorkOrder])
+def defer_order_item(
+    order_id: UUID,
+    command: DeferItemCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    return detail(
+        request,
+        defer_item(db, account, str(order_id), command, idempotency_key, request.state.request_id),
     )
 
 

@@ -76,6 +76,7 @@ def domain_schema():
         c.SetWorkOrderStatusCommand,
         c.SendApprovedActionCommand,
         c.AssignMessageCommand,
+        c.DeferItemCommand,
     ]
     for model in models:
         schema = model.model_json_schema()

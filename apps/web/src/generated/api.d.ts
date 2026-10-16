@@ -1114,6 +1114,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/work-orders/{order_id}/defer": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Defer Order Item */
+    post: operations["defer_order_item_api_v1_work_orders__order_id__defer_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/work-orders/{order_id}/status": {
     parameters: {
       query?: never;
@@ -1662,6 +1679,41 @@ export interface components {
       kind: "date_only";
       /** Timezone */
       timezone: string;
+    };
+    /**
+     * DeferItemCommand
+     * @description The customer will confirm a key item later; ``until`` defaults to 3 days.
+     */
+    DeferItemCommand: {
+      /** Expected Version */
+      expected_version: number;
+      /**
+       * Field
+       * @enum {string}
+       */
+      field: "schedule" | "address";
+      /** Sources */
+      sources: components["schemas"]["SourceRef"][];
+      /** Until */
+      until?: string | null;
+    };
+    /**
+     * DeferredItem
+     * @description A key item the customer said they will confirm later (契约 §3 Customer defers).
+     */
+    DeferredItem: {
+      /**
+       * Follow Up Task Id
+       * Format: uuid
+       */
+      follow_up_task_id: string;
+      /** Sources */
+      sources: components["schemas"]["SourceRef"][];
+      /**
+       * Until
+       * Format: date-time
+       */
+      until: string;
     };
     /** Detail[ActionView] */
     Detail_ActionView_: {
@@ -3229,6 +3281,13 @@ export interface components {
       account_id: string;
       /** Conversation Ids */
       conversation_ids: string[];
+      /**
+       * Deferred
+       * @default {}
+       */
+      deferred: {
+        [key: string]: components["schemas"]["DeferredItem"];
+      };
       fields: components["schemas"]["WorkOrderFields"];
       /**
        * Id
@@ -5624,6 +5683,43 @@ export interface operations {
     requestBody: {
       content: {
         "application/json": components["schemas"]["RejectCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkOrder_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  defer_order_item_api_v1_work_orders__order_id__defer_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        order_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DeferItemCommand"];
       };
     };
     responses: {

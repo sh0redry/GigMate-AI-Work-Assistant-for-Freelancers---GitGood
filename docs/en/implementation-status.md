@@ -1,5 +1,9 @@
 # Implementation status and validation
 
+## Customer deferral and follow-up task (role C) — 2026-10-16
+
+契约 §3 "Customer defers". Role B does not yet recognize 还未确定，之后再确认, so the merchant records it: `POST /work-orders/{id}/defer` (`DeferItemCommand`: `field`, optional `until`, customer `sources`, `expected_version`). The order stays `pending_confirmation`; `WorkOrder.deferred[field]` keeps the date, sources and follow-up task; the item is not asked again (if nothing else is open, the pending question is withdrawn with reason `deferred`); a generated task `MM/DD HH:MM 跟进 {summary}：确认地址` is due at the customer's date or 3 days later at 10:00 Hong Kong time. Only an open item of a pending order, a future date and current incoming customer messages are accepted. Confirming that item with customer confirmation clears the deferral and completes the task. Evidence: `test_deferral.py` **3 passed**, creation suite 30 passed.
+
 ## Filing unassigned messages (role C) — 2026-10-16
 
 方案 §4.2 ("无法确定时放入待归类队列，由商户选择或拆分") and 契约 §1. D's review list (#30) reads the queue; this adds the merchant's decision: `POST /review-items/{job_id}/assign` (`AssignMessageCommand`: `action` assign/dismiss, `work_order_id`, `expected_context_version`). Assign records the choice in the new `job_assignments` table (additive migration **0017_job_assignments** after 0016; if #31's 0017 lands first, an additive merge revision is needed) and re-queues the message; the worker then offers only that order to extraction, so the outcome is an ordinary proposal. Dismiss closes the item as `DISMISSED_BY_MERCHANT`. Only the conversation's newest message, an open order of the same conversation and an allowlisted conversation are accepted. Evidence: `test_message_assignment.py` **3 passed**; migration suite 18 passed.

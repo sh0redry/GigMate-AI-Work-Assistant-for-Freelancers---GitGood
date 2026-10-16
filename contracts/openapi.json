@@ -1279,6 +1279,85 @@
         "title": "DateOnly",
         "type": "object"
       },
+      "DeferItemCommand": {
+        "additionalProperties": false,
+        "description": "The customer will confirm a key item later; ``until`` defaults to 3 days.",
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "field": {
+            "enum": [
+              "schedule",
+              "address"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            },
+            "minItems": 1,
+            "title": "Sources",
+            "type": "array"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "pattern": "Z$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          }
+        },
+        "required": [
+          "field",
+          "sources",
+          "expected_version"
+        ],
+        "title": "DeferItemCommand",
+        "type": "object"
+      },
+      "DeferredItem": {
+        "additionalProperties": false,
+        "description": "A key item the customer said they will confirm later (契约 §3 Customer defers).",
+        "properties": {
+          "follow_up_task_id": {
+            "format": "uuid",
+            "title": "Follow Up Task Id",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            },
+            "minItems": 1,
+            "title": "Sources",
+            "type": "array"
+          },
+          "until": {
+            "format": "date-time",
+            "pattern": "Z$",
+            "title": "Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "until",
+          "follow_up_task_id",
+          "sources"
+        ],
+        "title": "DeferredItem",
+        "type": "object"
+      },
       "Detail_ActionView_": {
         "additionalProperties": false,
         "properties": {
@@ -5358,6 +5437,20 @@
             "title": "Conversation Ids",
             "type": "array"
           },
+          "deferred": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DeferredItem"
+            },
+            "default": {},
+            "propertyNames": {
+              "enum": [
+                "schedule",
+                "address"
+              ]
+            },
+            "title": "Deferred",
+            "type": "object"
+          },
           "fields": {
             "$ref": "#/components/schemas/WorkOrderFields"
           },
@@ -9326,6 +9419,65 @@
           }
         },
         "summary": "Reject Order Change"
+      }
+    },
+    "/api/v1/work-orders/{order_id}/defer": {
+      "post": {
+        "operationId": "defer_order_item_api_v1_work_orders__order_id__defer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeferItemCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WorkOrder_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Defer Order Item"
       }
     },
     "/api/v1/work-orders/{order_id}/status": {

@@ -189,6 +189,13 @@ def open_items(order_data):
     elif schedule["status"] == "proposed":
         items.append("verify_schedule")
         questions.append(f"时间是 {local_label(value)} 对吗？")
+    deferred = order_data.get("deferred") or {}
+    if "schedule" in deferred:
+        # The customer will answer later: keep the item open, but do not ask now.
+        items = [item for item in items if not item.endswith(("_schedule", "_time"))]
+        questions = []
+    if "address" in deferred:
+        return items, questions
     if not address["value"] or address["status"] in {"missing", "needs_review"}:
         items.append("missing_address")
         questions.append("见面地址是？")
@@ -256,6 +263,8 @@ def ask_open_items(db, account_id, order, conversation, round_of=None):
         return None
     items, questions = open_items(order.data)
     if not items:
+        # Nothing to ask now (e.g. every open item is deferred): no stale question stays.
+        cancel_pending(db, account_id, work_order_id=order.id, reason="deferred")
         return None
     trigger = open_items_trigger(order, conversation, items, round_of)
     if db.scalar(select(ActionRow.id).where(ActionRow.trigger == trigger)):

@@ -1,5 +1,9 @@
 # 已完成工作与验证记录
 
+## 客户延期与跟进待办（C）— 2026-10-16
+
+契约 §3 "Customer defers"。B 目前还识别不了"还未确定，之后再确认"，所以先由商户记录：`POST /work-orders/{id}/defer`（`DeferItemCommand`：`field`、可选 `until`、客户消息 `sources`、`expected_version`）。工单保持 `pending_confirmation`；`WorkOrder.deferred[field]` 记录日期、来源和跟进待办；这一项不再被追问（若没有其他未完成项，待批准的问题以 `deferred` 原因撤回）；自动生成待办 `MM/DD HH:MM 跟进 {summary}：确认地址`，到期时间取客户给的日期，否则为 3 天后香港时间 10:00。只接受待确认工单里未完成的项、未来的日期和当前的客户来信。之后该项经客户确认，延期解除、待办标为完成。证据：`test_deferral.py` **3 项通过**，新建工单测试 30 项通过。
+
 ## 人工归单（C）— 2026-10-16
 
 方案 §4.2（"无法确定时放入待归类队列，由商户选择或拆分"）和契约 §1。D 的待复核列表（#30）负责读取队列；这里补上商户的决定：`POST /review-items/{job_id}/assign`（`AssignMessageCommand`：`action` 为 assign/dismiss、`work_order_id`、`expected_context_version`）。归单会把选择存进新表 `job_assignments`（新增迁移 **0017_job_assignments**，接在 0016 之后；如果 #31 的 0017 先合并，需要补一个合并迁移），并把消息重新排队；worker 只把这张单交给提取，结果是普通的提议。忽略则把该项标为 `DISMISSED_BY_MERCHANT`。只接受会话中最新的一条消息、同一会话里未关闭的工单，以及已授权的会话。证据：`test_message_assignment.py` **3 项通过**；迁移测试 18 项通过。

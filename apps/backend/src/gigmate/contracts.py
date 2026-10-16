@@ -372,6 +372,14 @@ class WorkOrderFields(Model):
     address: ProvenancedField
 
 
+class DeferredItem(Model):
+    """A key item the customer said they will confirm later (契约 §3 Customer defers)."""
+
+    until: UtcTimestamp
+    follow_up_task_id: Id
+    sources: Annotated[list[SourceRef], Field(min_length=1)]
+
+
 class WorkOrder(Model):
     id: Id
     account_id: Id
@@ -382,6 +390,7 @@ class WorkOrder(Model):
     fields: WorkOrderFields
     pending_change_ids: list[Id]
     updated_at: UtcTimestamp
+    deferred: dict[Literal["schedule", "address"], DeferredItem] = {}
 
 
 class AccountConsent(Model):
@@ -909,6 +918,15 @@ class AssignmentResult(Model):
     action: Literal["assign", "dismiss"]
     work_order_id: Id | None
     state: str
+
+
+class DeferItemCommand(Model):
+    """The customer will confirm a key item later; ``until`` defaults to 3 days."""
+
+    field: Literal["schedule", "address"]
+    until: UtcTimestamp | None = None
+    sources: Annotated[list[SourceRef], Field(min_length=1)]
+    expected_version: Positive
 
 
 class SetWorkOrderStatusCommand(Model):

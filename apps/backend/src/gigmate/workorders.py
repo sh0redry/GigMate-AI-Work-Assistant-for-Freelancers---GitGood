@@ -139,6 +139,8 @@ def confirm(db, account, work_order_id, change_id, command, key, request_id):
             else f"Merchant accepted this {field}; waiting for the customer to confirm it"
         ),
     }
+    if customer_confirmed:
+        value = settle_deferral(db, value, field)
     was_pending = value["status"] == "pending_confirmation"
     demoted = False
     # An order is confirmed only when both key items — a timed schedule and an
@@ -656,3 +658,131 @@ def assign_message(db, account, job_id, command, key, request_id):
     }
     save_result(db, account.id, scope, key, digest, result)
     return result
+
+
+DEFAULT_DEFERRAL = timedelta(days=3)
+ITEM_LABEL = {"schedule": "时间", "address": "地址"}
+
+
+def follow_up_task(account_id, order_data, field, until, timezone, sources):
+    """Memo-style follow-up, e.g. '10/12 10:00 跟进 陈小姐证件照拍摄：确认时间'."""
+    task_id = str(uuid4())
+    local = until.astimezone(ZoneInfo(timezone))
+    task = validate(
+        Task,
+        {
+            "id": task_id,
+            "account_id": account_id,
+            "work_order_id": order_data["id"],
+            "work_order_version": order_data["version"],
+            "title": f"{local:%m/%d %H:%M} 跟进 {order_data['summary']}：确认{ITEM_LABEL[field]}",
+            "owner_id": account_id,
+            "due": {
+                "kind": "instant",
+                "at": until.astimezone(UTC).isoformat().replace("+00:00", "Z"),
+                "timezone": timezone,
+            },
+            "depends_on": [],
+            "state": "pending",
+            "sources": sources,
+        },
+    )
+    return TaskRow(
+        id=task_id, account_id=account_id, work_order_id=order_data["id"], generated=True, data=task
+    )
+
+
+def defer_item(db, account, work_order_id, command, key, request_id):
+    """The customer said they will confirm a key item later (契约 §3 Customer defers).
+
+    The item stays open and the order stays pending, but the follow-up
+    question stops asking it; a follow-up task is created for the date the
+    customer gave, or 3 days later at 10:00 (Asia/Hong_Kong). Confirming the
+    item later closes the deferral and completes the follow-up task.
+    """
+    from gigmate.approvals import ask_open_items, open_items
+
+    scope = f"defer:{work_order_id}"
+    digest, cached = command_cache(db, account.id, scope, key, command.model_dump())
+    if cached:
+        return cached.data
+    order = db.scalar(
+        select(WorkOrderRow)
+        .where(WorkOrderRow.id == work_order_id, WorkOrderRow.account_id == account.id)
+        .with_for_update()
+    )
+    if order is None:
+        raise BusinessError(404, "NOT_FOUND", "Work order not found")
+    if order.data["version"] != command.expected_version:
+        raise BusinessError(409, "VERSION_CONFLICT", "Refresh the work order first")
+    if order.data["status"] != "pending_confirmation":
+        raise BusinessError(409, "VERSION_CONFLICT", "Only an order still being confirmed")
+    items, _ = open_items({**order.data, "deferred": {}})
+    prefix = {"schedule": ("_schedule", "_time"), "address": ("_address",)}[command.field]
+    if not any(item.endswith(prefix) for item in items):
+        raise BusinessError(409, "VERSION_CONFLICT", f"The {command.field} is not open")
+    conversation_id = order.data["conversation_ids"][0]
+    conversation = owned(db, ConversationRow, conversation_id, account.id)
+    sources = [source.model_dump() for source in command.sources]
+    for ref in sources:
+        latest = db.scalar(
+            select(MessageRow)
+            .where(
+                MessageRow.id == ref["message_id"],
+                MessageRow.account_id == account.id,
+                MessageRow.conversation_id == conversation.id,
+            )
+            .order_by(MessageRow.revision.desc())
+        )
+        if latest is None:
+            raise BusinessError(404, "NOT_FOUND", "Source message not found")
+        if latest.revision != ref["message_revision"] or latest.data["revoked"]:
+            raise BusinessError(409, "APPROVAL_STALE", "Source message changed")
+        if latest.data.get("direction") != "incoming":
+            raise BusinessError(
+                422, "VALIDATION_FAILED", "The deferral must come from what the customer said"
+            )
+    timezone = "Asia/Hong_Kong"
+    if command.until:
+        until = datetime.fromisoformat(command.until.replace("Z", "+00:00"))
+    else:
+        local = (datetime.now(UTC) + DEFAULT_DEFERRAL).astimezone(ZoneInfo(timezone))
+        until = local.replace(hour=10, minute=0, second=0, microsecond=0)
+    if until <= datetime.now(UTC):
+        raise BusinessError(422, "VALIDATION_FAILED", "The follow-up date must be in the future")
+    value = json.loads(json.dumps(order.data))
+    previous = (value.get("deferred") or {}).get(command.field)
+    if previous:
+        old_task = db.get(TaskRow, previous["follow_up_task_id"])
+        if old_task and old_task.data["state"] in {"pending", "blocked"}:
+            old_task.data = {**old_task.data, "state": "cancelled"}
+    value["version"] += 1
+    value["updated_at"] = now_text()
+    task = follow_up_task(account.id, value, command.field, until, timezone, sources)
+    value["deferred"] = {
+        **(value.get("deferred") or {}),
+        command.field: {
+            "until": until.astimezone(UTC).isoformat().replace("+00:00", "Z"),
+            "follow_up_task_id": task.id,
+            "sources": sources,
+        },
+    }
+    order.data = validate(WorkOrder, value)
+    db.add(task)
+    db.flush()
+    ask_open_items(db, account.id, order, conversation)
+    db.add(audit_row(account.id, order.id, f"defer_{command.field}", request_id))
+    save_result(db, account.id, scope, key, digest, order.data)
+    return order.data
+
+
+def settle_deferral(db, value, field):
+    """A deferred item was confirmed: close its follow-up task (契约 §3)."""
+    deferred = dict(value.get("deferred") or {})
+    item = deferred.pop(field, None)
+    if item is None:
+        return value
+    task = db.get(TaskRow, item["follow_up_task_id"])
+    if task and task.data["state"] in {"pending", "blocked"}:
+        task.data = {**task.data, "state": "completed"}
+    return {**value, "deferred": deferred}

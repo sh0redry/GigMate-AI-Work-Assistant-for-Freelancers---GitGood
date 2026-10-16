@@ -1282,6 +1282,86 @@
         }
       ]
     },
+    "DeferItemCommand": {
+      "additionalProperties": false,
+      "description": "The customer will confirm a key item later; ``until`` defaults to 3 days.",
+      "properties": {
+        "expected_version": {
+          "minimum": 1,
+          "title": "Expected Version",
+          "type": "integer"
+        },
+        "field": {
+          "enum": [
+            "schedule",
+            "address"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
+        },
+        "until": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Until"
+        }
+      },
+      "required": [
+        "field",
+        "sources",
+        "expected_version"
+      ],
+      "title": "DeferItemCommand",
+      "type": "object"
+    },
+    "DeferredItem": {
+      "additionalProperties": false,
+      "description": "A key item the customer said they will confirm later (契约 §3 Customer defers).",
+      "properties": {
+        "follow_up_task_id": {
+          "format": "uuid",
+          "title": "Follow Up Task Id",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
+        },
+        "until": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Until",
+          "type": "string"
+        }
+      },
+      "required": [
+        "until",
+        "follow_up_task_id",
+        "sources"
+      ],
+      "title": "DeferredItem",
+      "type": "object"
+    },
     "EvaluationCase": {
       "additionalProperties": false,
       "properties": {
@@ -4794,6 +4874,20 @@
           "minItems": 1,
           "title": "Conversation Ids",
           "type": "array"
+        },
+        "deferred": {
+          "additionalProperties": {
+            "$ref": "#/$defs/DeferredItem"
+          },
+          "default": {},
+          "propertyNames": {
+            "enum": [
+              "schedule",
+              "address"
+            ]
+          },
+          "title": "Deferred",
+          "type": "object"
         },
         "fields": {
           "$ref": "#/$defs/WorkOrderFields"
