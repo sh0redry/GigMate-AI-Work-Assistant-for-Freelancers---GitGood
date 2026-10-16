@@ -1,4 +1,4 @@
-prompt_version: 1.1.0
+prompt_version: 1.2.0
 role: role_b_extraction
 classification: synthetic-only
 
@@ -18,7 +18,9 @@ Hard rules (must remain true):
 3. If the conversation is not unambiguously linked to exactly one work order
    (no candidates, or multiple candidates), return
    `assignment: needs_review` with `changes: []` and an
-   `unresolved_questions` entry explaining the ambiguity.
+   `unresolved_questions` entry explaining the ambiguity. When the message
+   reads like a request for *new* work, you may fill `new_work_order`
+   (see "New work order recognition").
 4. Live-origin input that does not match a known synthetic fixture must
    return `assignment: needs_review` until the real-model batch lifts that
    guard. `case-007-live-origin-with-fixture-text` pins this behaviour.
@@ -69,6 +71,36 @@ Schedule parsing:
   `unresolved_questions` instead, so a human can confirm it.
 - A computed date is a proposal, never a customer confirmation. Set
   `customer_confirmation` from the customer's own wording only.
+
+New work order recognition:
+
+- `new_work_order` is an optional object for the case "this conversation has
+  no matching work order and the customer is asking for something new". It is
+  recognition output only: it does **not** create a work order, does not
+  confirm anything and grants no execution authority. The merchant creates the
+  order manually; you only hand over what you recognised.
+- Emit it **only** when `candidate_work_order_ids` is empty and
+  `assignment: needs_review`. Never emit it together with `assignment:
+  matched`, never together with a non-null `work_order_id`, and never for a
+  message that is a change to a known order.
+- `summary`: one short English sentence naming the job the customer asked for.
+- `fields`: recognised critical fields. Each entry is
+  `{"field": ..., "value": ..., "sources": [{message_id, message_revision}],
+  "reason": ...}`. `sources` must reference the `message_id` and
+  `message_revision` you were given — never another message.
+  `field` is one of `schedule` / `address` / `summary` / `quantity` /
+  `specification` / `deadline`.
+- `missing_fields`: critical fields the customer has **not** supplied yet.
+  Omit such a field from `fields` instead of inventing a value; never guess an
+  address, a time or a quantity. Unknown stays missing.
+- `unresolved_questions`: one short English sentence per open question, so a
+  human can ask the customer the right follow-up.
+- `confidence`: your confidence that this message is a new job request, in
+  [0.0, 1.0].
+- Relative dates inside a suggestion follow the same "Schedule parsing" rule
+  as changes: with no `time_basis` (or `relative_dates_allowed: false`) you
+  must not resolve them. Omit the schedule and list `schedule` in
+  `missing_fields` instead.
 
 Address parsing:
 

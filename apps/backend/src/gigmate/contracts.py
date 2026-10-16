@@ -758,6 +758,48 @@ class ProposalChange(Model):
     )
 
 
+class NewWorkOrderSuggestedField(Model):
+    """One critical field of a new-work-order suggestion.
+
+    ``value`` may be ``None`` when the customer has not supplied the field
+    yet; the field name should then also appear in
+    :attr:`NewWorkOrderSuggestion.missing_fields`. Suggested values are
+    drafts bound to their source message revisions. They deliberately carry
+    no ``field_status`` and no ``customer_confirmation``: a suggestion is
+    neither a proposal against an existing work order nor any form of
+    confirmation, so those concepts do not apply.
+    """
+
+    field: Literal["schedule", "address", "summary", "quantity", "specification", "deadline"]
+    value: FieldValue
+    sources: Annotated[list[SourceRef], Field(min_length=1)]
+    reason: Text
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+
+class NewWorkOrderSuggestion(Model):
+    """Structured draft for creating a NEW work order from a conversation.
+
+    Recognition output only: the suggestion never creates a work order,
+    never marks anything confirmed and grants no execution authority. It
+    records what the model recognised (critical fields, each bound to its
+    source message revision), what is still missing, and the questions a
+    human must resolve before the merchant creates the order manually.
+    Customer proposal, customer confirmation and merchant approval remain
+    separate facts, as everywhere else in the contract.
+    """
+
+    summary: Text
+    fields: Annotated[list[NewWorkOrderSuggestedField], Field(min_length=0)]
+    missing_fields: Annotated[
+        list[Literal["schedule", "address", "summary", "quantity", "specification", "deadline"]],
+        Field(min_length=0),
+    ]
+    unresolved_questions: Annotated[list[Text], Field(min_length=0)]
+    confidence: Annotated[float, Field(ge=0, le=1)]
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+
 class ChangeProposal(Model):
     schema_version: Literal["0.1.0"]
     proposal_id: Id
@@ -769,6 +811,7 @@ class ChangeProposal(Model):
     candidates: Annotated[list[ProposalCandidate], Field(min_length=0)]
     changes: Annotated[list[ProposalChange], Field(min_length=0)]
     unresolved_questions: Annotated[list[Text], Field(min_length=0)]
+    new_work_order: NewWorkOrderSuggestion | None = None
     draft_text: Text | None
     model_version: Text
     prompt_version: Text
@@ -783,6 +826,7 @@ class ChangeProposal(Model):
                         "properties": {
                             "work_order_id": {"type": "string", "format": "uuid"},
                             "base_work_order_version": {"type": "integer", "minimum": 1},
+                            "new_work_order": {"type": "null"},
                         }
                     },
                 },
@@ -805,6 +849,15 @@ class ChangeProposal(Model):
         for change in self.changes:
             if change.field_status == "confirmed":
                 raise ValueError("AI proposals must not mark a field as confirmed")
+        # A new-work-order suggestion is recognition for the *absence* of a
+        # matching work order: it may only ride a needs_review proposal that
+        # targets no existing order, and can never smuggle a second fact
+        # alongside a matched change proposal.
+        if self.new_work_order is not None:
+            if self.assignment.value == "matched":
+                raise ValueError("A new-work-order suggestion requires needs_review")
+            if self.work_order_id is not None:
+                raise ValueError("A new-work-order suggestion cannot target an existing work order")
         return self
 
 
@@ -818,6 +871,10 @@ class EvaluationCase(Model):
     expected_change_fields: list[
         Literal["schedule", "address", "summary", "quantity", "specification", "deadline"]
     ] = Field(default_factory=list)
+    # Batch 3: when set, the case also asserts whether the provider emitted a
+    # ``new_work_order`` suggestion. ``None`` (the default) leaves the
+    # suggestion surface unchecked for older manifests.
+    expected_new_work_order: bool | None = None
     note: Text | None = None
     provider: Text | None = None
 

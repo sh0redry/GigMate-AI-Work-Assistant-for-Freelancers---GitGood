@@ -481,6 +481,9 @@
                 "minimum": 1,
                 "type": "integer"
               },
+              "new_work_order": {
+                "type": "null"
+              },
               "work_order_id": {
                 "format": "uuid",
                 "type": "string"
@@ -566,6 +569,17 @@
           "minLength": 1,
           "title": "Model Version",
           "type": "string"
+        },
+        "new_work_order": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NewWorkOrderSuggestion"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "prompt_version": {
           "minLength": 1,
@@ -1205,6 +1219,18 @@
           "default": null,
           "title": "Expected Min Confidence"
         },
+        "expected_new_work_order": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected New Work Order"
+        },
         "input_event": {
           "additionalProperties": true,
           "title": "Input Event",
@@ -1394,6 +1420,133 @@
         "timezone"
       ],
       "title": "InstantDeadline",
+      "type": "object"
+    },
+    "NewWorkOrderSuggestedField": {
+      "additionalProperties": false,
+      "description": "One critical field of a new-work-order suggestion.\n\n``value`` may be ``None`` when the customer has not supplied the field\nyet; the field name should then also appear in\n:attr:`NewWorkOrderSuggestion.missing_fields`. Suggested values are\ndrafts bound to their source message revisions. They deliberately carry\nno ``field_status`` and no ``customer_confirmation``: a suggestion is\nneither a proposal against an existing work order nor any form of\nconfirmation, so those concepts do not apply.",
+      "properties": {
+        "field": {
+          "enum": [
+            "schedule",
+            "address",
+            "summary",
+            "quantity",
+            "specification",
+            "deadline"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/TimedSchedule"
+            },
+            {
+              "$ref": "#/$defs/DateOnly"
+            },
+            {
+              "$ref": "#/$defs/InstantDeadline"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "field",
+        "value",
+        "sources",
+        "reason"
+      ],
+      "title": "NewWorkOrderSuggestedField",
+      "type": "object"
+    },
+    "NewWorkOrderSuggestion": {
+      "additionalProperties": false,
+      "description": "Structured draft for creating a NEW work order from a conversation.\n\nRecognition output only: the suggestion never creates a work order,\nnever marks anything confirmed and grants no execution authority. It\nrecords what the model recognised (critical fields, each bound to its\nsource message revision), what is still missing, and the questions a\nhuman must resolve before the merchant creates the order manually.\nCustomer proposal, customer confirmation and merchant approval remain\nseparate facts, as everywhere else in the contract.",
+      "properties": {
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/NewWorkOrderSuggestedField"
+          },
+          "minItems": 0,
+          "title": "Fields",
+          "type": "array"
+        },
+        "missing_fields": {
+          "items": {
+            "enum": [
+              "schedule",
+              "address",
+              "summary",
+              "quantity",
+              "specification",
+              "deadline"
+            ],
+            "type": "string"
+          },
+          "minItems": 0,
+          "title": "Missing Fields",
+          "type": "array"
+        },
+        "summary": {
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "unresolved_questions": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 0,
+          "title": "Unresolved Questions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "summary",
+        "fields",
+        "missing_fields",
+        "unresolved_questions",
+        "confidence"
+      ],
+      "title": "NewWorkOrderSuggestion",
       "type": "object"
     },
     "ProposalCandidate": {
