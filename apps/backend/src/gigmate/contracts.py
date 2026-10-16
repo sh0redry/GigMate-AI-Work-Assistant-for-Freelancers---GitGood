@@ -971,6 +971,13 @@ class WahaMediaResult(Model):
     unresolved_questions: Annotated[
         list[Annotated[str, Field(max_length=1000)]], Field(max_length=30)
     ] = Field(default_factory=list)
+    # Stable ``media:instruction-text-detected:<field>`` markers written by
+    # gigmate.media.injection when attachment content (or the vendor answer)
+    # carries instruction-shaped text. Review signal only: it never grants,
+    # removes or infers authority, and an empty list is the untainted case.
+    injection_markers: Annotated[
+        list[Annotated[str, Field(max_length=80)]], Field(max_length=20)
+    ] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def bounded_sources(self):

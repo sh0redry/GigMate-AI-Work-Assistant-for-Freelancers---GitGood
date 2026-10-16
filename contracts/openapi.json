@@ -3289,6 +3289,15 @@
             "title": "Coverage",
             "type": "string"
           },
+          "injection_markers": {
+            "items": {
+              "maxLength": 80,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Injection Markers",
+            "type": "array"
+          },
           "model_version": {
             "maxLength": 100,
             "minLength": 1,

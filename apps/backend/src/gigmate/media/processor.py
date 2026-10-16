@@ -230,7 +230,11 @@ class MediaProcessorImpl:
             caption=request.caption,
         )
         return coerce_chat_response(
-            payload, prompt_version=prompt_version, vendor=self.name, model_version=model_version
+            payload,
+            prompt_version=prompt_version,
+            vendor=self.name,
+            model_version=model_version,
+            caption=request.caption,
         )
 
     def _process_pdf(
@@ -312,7 +316,11 @@ class MediaProcessorImpl:
             caption=request.caption,
         )
         return coerce_transcription_response(
-            payload, prompt_version=prompt_version, vendor=self.name, model_version=model_version
+            payload,
+            prompt_version=prompt_version,
+            vendor=self.name,
+            model_version=model_version,
+            caption=request.caption,
         )
 
     def _default_chat_model(self, vendor: str) -> str:
