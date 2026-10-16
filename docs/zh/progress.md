@@ -1,5 +1,49 @@
 # 已完成工作与验证记录
 
+## 交付前检查清单、归档与审批分页（C）— 2026-10-16
+
+方案 §4.6（按已确认要求生成检查清单，提醒未完成事项，商户确认后关闭业务并归档）和 Issue #28。`GET /work-orders/{id}/checklist` 列出要核对的已确认项和未完成项；有未完成项时完成工单返回 409 `CHECKLIST_OPEN`，除非商户设置 `acknowledge_open_items`。`POST /work-orders/{id}/archive` 把已关闭的工单从默认列表隐藏（`include_archived=true` 可显示）。`GET /actions` 改为在数据库端按 id 分批读取分页，不再一次加载整份历史；按计算状态筛选、`reissuable` 和只读过期判断保持不变。证据：`test_checklist.py` **3 项通过**；新增分页回归（121 条合成审批记录，不重不漏，过期只显示不写库）；审批与发送测试 30 项通过。
+
+## 每日摘要与规则建议（C）— 2026-10-16
+
+方案 §4.6 每日摘要，以及业务建议中可以用规则算出的部分（资料不齐、任务依赖、工作量可能超出时间安排；建议依据必须可见）。`GET /daily-summary` 把现有记录汇总为今天要做的、等待客户确认的、即将到期的、需要商户决定的，并附上建议；每一项都带对应记录的 ID。这个接口只读，不推送任何东西；静默时段和提醒频率属于推送与发送（A 的范围），不在此接口内。自然语言提问仍属 B。证据：`test_daily_summary.py` **3 项通过**。
+
+## 草稿编辑与客户未回复跟进（C）— 2026-10-16
+
+方案 §4.5（编辑后发送）和契约 §3 "No reply"。`POST /actions/{id}/edit` 编辑待批准草稿，生成新的 revision、snapshot hash 和有效期；旧快照不能再被批准。worker 每小时的维护会运行 `follow_up_unanswered`：发送网关已接受的待确认项问题，若 24 小时内没有收到客户来信，就为剩余项目生成跟进待办和新草稿（最多两次，记在 `task_links.no_reply_N`），之后给工单加上 `attention: ["customer_not_replying"]`。客户一回复就停止。证据：`test_business_send.py` 9 项通过（新增 2 项），`test_approvals.py` 20 项通过（新增 1 项）。
+
+## 业务细节字段、需求条目与承诺待办（C）— 2026-10-16
+
+方案 §4.3（服务内容、数量与规格、约定日期、所需资料、双方承诺、未决问题）和 §4.4（从承诺生成待办，具有负责人、到期时间和原文依据）。`WorkOrderFields` 新增 `specification`、`quantity`、`deadline`（默认缺失）；确认接口支持这几项和 `summary`，不影响关键项规则；确认后的交付期限生成一条交付待办（`WorkOrder.task_links.delivery`），期限改动时替换。`WorkOrder.requirements` 支持新增和关闭；资料和承诺生成备忘录式待办。重新确认关键项时只取消与时间挂钩的准备待办，不再误取消交付、需求或跟进待办。证据：`test_requirements.py` **4 项通过**；C 的测试 109 项通过。
+
+## 工作时间设置、候选时间与排期风险（C）— 2026-10-16
+
+方案 §4.4（工作时间、休息时间、任务时长和缓冲；检查时间重叠、缺少准备时间；提出可用时间）、§5.1 和附录 A（候选时间必须来自已核对的可用时间）。新增 `scheduling.py` 和表 `schedule_settings`（迁移 **0018_schedule_settings**）。`GET/PUT /settings/schedule`（默认：周一至周六 09:00–19:00，休息 12:30–13:30，时长 60 分钟，缓冲 30 分钟，准备 60 分钟）；`GET /work-orders/{id}/schedule-check` 返回风险和按规则算出的空闲时段；撞期草稿会给出第一个同样长度的空闲时段；准备待办按商户设置的提前量生成。证据：`test_scheduling.py` **5 项通过**；C 的测试 93 项通过。
+
+## 契约接口清单里的列表过滤（C）— 2026-10-16
+
+`GET /work-orders?status=`、`GET /tasks?work_order_id=`、`GET /calendar-events?start=&end=`（带时区的 ISO 时间；返回与时间窗重叠的事件，只有日期的条目覆盖当地整天；格式错误或起止颠倒返回 422）。证据：`test_list_filters.py` **3 项通过**。`.ics` 下载由 D 的 #30 交付，这里不重复。
+
+## 客户延期与跟进待办（C）— 2026-10-16
+
+契约 §3 "Customer defers"。B 目前还识别不了"还未确定，之后再确认"，所以先由商户记录：`POST /work-orders/{id}/defer`（`DeferItemCommand`：`field`、可选 `until`、客户消息 `sources`、`expected_version`）。工单保持 `pending_confirmation`；`WorkOrder.deferred[field]` 记录日期、来源和跟进待办；这一项不再被追问（若没有其他未完成项，待批准的问题以 `deferred` 原因撤回）；自动生成待办 `MM/DD HH:MM 跟进 {summary}：确认地址`，到期时间取客户给的日期，否则为 3 天后香港时间 10:00。只接受待确认工单里未完成的项、未来的日期和当前的客户来信。之后该项经客户确认，延期解除、待办标为完成。证据：`test_deferral.py` **3 项通过**，新建工单测试 30 项通过。
+
+## 人工归单（C）— 2026-10-16
+
+方案 §4.2（"无法确定时放入待归类队列，由商户选择或拆分"）和契约 §1。D 的待复核列表（#30）负责读取队列；这里补上商户的决定：`POST /review-items/{job_id}/assign`（`AssignMessageCommand`：`action` 为 assign/dismiss、`work_order_id`、`expected_context_version`）。归单会把选择存进新表 `job_assignments`（新增迁移 **0017_job_assignments**，接在 0016 之后；如果 #31 的 0017 先合并，需要补一个合并迁移），并把消息重新排队；worker 只把这张单交给提取，结果是普通的提议。忽略则把该项标为 `DISMISSED_BY_MERCHANT`。只接受会话中最新的一条消息、同一会话里未关闭的工单，以及已授权的会话。证据：`test_message_assignment.py` **3 项通过**；迁移测试 18 项通过。
+
+## 业务审批接通发送网关，以及拒绝提议（C）— 2026-10-16
+
+叠在状态命令 PR 之上。设计依据：方案 §4.5（批准后发送、取消计划、查看结果）、§6.2（服务端审批校验后 `sendText`、幂等记录、未知状态先核对）、§7（批准绑定具体内容和版本，旧批准失效）；Issue #29 第 1 节。
+
+- **`POST /actions/{id}/send`**（`SendApprovedActionCommand`：`connection_id`、`expected_control_version`、`expected_permission_version`、`expected_action_revision`、`snapshot_hash`）。只接受已批准的业务回复，并重新核对批准时绑定的一切；在服务端按该连接解析会话对应的 WhatsApp 聊天（没有则 404 `SEND_CHAT_NOT_LINKED`）。用批准的原文创建并排队唯一一个手动发送任务，绑定批准时的工单和上下文版本，沿用 A 的发送授权、控制版本和有效期检查（未授权 403 `SEND_NOT_AUTHORIZED`）。请求键 `c-action:<id>` 保证一一对应：重复调用返回同一发送任务，不会发两次。
+- **结果回写到业务行动：** 排队/派发中为 `executing`，之后为 `succeeded`（附 `delivery_status`）、`failed`、`cancelled` 或 `result_unknown`（送达状态 `unknown`，绝不重发）。`send_action_id`、`send_state`、`send_error` 关联发送记录。读取不写库。
+- **撤回：** 对 `executing` 的行动调用 `POST /actions/{id}/cancel`，发送任务还在草稿/排队/准备时可撤回；一旦开始派发返回 409 `SEND_ALREADY_DISPATCHED`。
+- **失效：** 新消息（上下文变化）、工单任何改动（确认、拒绝、状态，版本加一）或撤销发送授权，都会在 A 的派发前复核中拦下未派发的任务。
+- **`POST /work-orders/{id}/changes/{change_id}/reject`**（`RejectCommand`）：提议变为 `rejected` 并记录 `rejection_reason`；工单值不变、版本加一；撤回为它生成的撞期问题（`proposal_rejected`）；刷新待确认项问题。`RequirementChange.status` 改用 `ChangeStatus`（字段状态加 `rejected`）。
+
+证据：`test_business_send.py` **7 项通过**（合成聊天与发送方），`test_change_reject.py` **3 项通过**；审批与发送测试 82 通过、3 跳过；前端 119 通过，另有 3 项与改动前相同的环境相关失败；契约导出和基线通过。未进行任何真实 WhatsApp 发送。
+
 ## Role B 真实启用前评审修正第二轮（PR #31） — 2026-10-17
 
 [PR #31](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/pull/31) 的五个评审线程在分支 `william/role-b-preactivation-gates` 上用假传输与假时钟重新复现，证明第一批修正对其中四项并不充分；五项全部重新修正，**仍不翻接缝**（`_SKELETON_SEAM = True`、媒体 `_ENABLED = False`）：(1) 剩余时限预算改为分摊到 `httpx` 各操作 —— 标量超时是按操作分别套用的，单次尝试可以先花 30 秒连接再花 30 秒读取，假时钟实测由 **60.0 秒**降到 **45.0 秒**；(2) 非正费用预算在任何计价算术**之前**即拒绝，堵住「单价为 0 时 `0 > 0` 为假、零预算仍发请求」的角落；(3) 模型回显的 `base_context_version` 必须是与请求相等的 `int`（且非 `bool`），因为 `7.0 == 7`；(4) `candidates` / `unresolved_questions` 及建议块的 `missing_fields` / `unresolved_questions` 与已有的 `changes` / `sources` 一样，在 Pydantic 之前先做形状检查；(5) 时间依据守卫改为按**字段**判定，`schedule` / `deadline` 上以自由文本或裸数字写出的日期在无依据时不再被晋升为 `matched`。完整理由与新的稳定码见 [role-b-extraction.md](role-b-extraction.md)。无迁移、契约或 API 表面变更。
@@ -798,6 +842,16 @@ PR #18（`llm:live-gate-off` + malformed-prompt/证据修复）以 `cc2ac8e` 合
 - 前端：`npm run check:api`、`format:check`、`build` 全部通过（本环境用 `npm ci` 安装依赖）。
 - `run_evaluation.py`（一次性 SQLite）：deterministic 9/9 退出 0；`--provider llm` 7 通过、2 预期失败（用例 1-2 需真实模型）。
 
+## PR32 独立修复与主线组合 — 2026-10-17
+
+作者提到的 e6ba13f 未出现在远端 PR；按 Kyrie 授权直接修复可见的 d696735 分支。新增 0019_action_send_link：业务审批到准确发送任务的可空、唯一外键。读取/取消核对连接账号、聊天/会话、工单/上下文版本和完整正文；已有占键任务不能被接管。旧记录缺少可信关联时显示结果未知，不猜测回填；旧缓存发送 ID 也重新检查归属。延期、需求新增/关闭、草稿编辑在写入前拒绝暂停或未关联的会话。摘要日期由真实日期类型校验，非法日期 422；最新审批 ID 在 SQL 中计算，无筛选 limit=1 最多实例化 2 条记录。保留 main 的 ICS 来源校验与非时段提案列表修复。
+
+实际 SQLite 验证：新增 20 个边界用例通过；迁移/业务/审批/来源综合回归 91 项通过。保留旧数据库升级，不重置；未宣称真实提供方、发送或 PostgreSQL 行锁验收。随后组合 B 的迁移分支。
+
 ## PR31 独立合同修复 — 2026-10-17
 
 最新 d9e1fe7 已通过适配流式假传输的原来源/集合类型/零预算/instant 时间依据探针。额外跨合同检查仍发现：规范 ChangeProposal 的输出（即使 new_work_order=null）都会被公共 AI schema 拒绝。现为独立维护的 AI schema 0.1.1 增加可选、可空的新工单建议，wire schema_version 保持 0.1.0，旧样例兼容。matched 提议不能携带新建建议，禁止执行字段。真实模型开关仍关闭；不表示已经启用或通过供应商验收。
+
+## B/C 组合修复验证 — 2026-10-17
+
+保留两条 0018 迁移历史，在 0019_action_send_link 后新增空操作 merge revision 0020_business_model_heads。worker 同时保留 C 每条消息的归单与 B 调用后的来源/版本校验。补旧缓存/正文关联回归，边界用例共 22 项。最后隔离 Linux/PostgreSQL 全套 **957 通过 / 1 跳过**，覆盖费用、排期、关联三条父版本升级。新 PostgreSQL Alembic upgrade/check：唯一 head、无结构漂移。前端 **143 通过**、TypeScript/Vite、生成合同、后端全量 Ruff/格式（121 文件）通过。跨账号/占键测试没有联系提供方。本 PR 模型开关仍关闭，不宣称真实手机或模型验收。

@@ -72,6 +72,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/actions/{action_id}/edit": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Edit Action */
+    post: operations["edit_action_api_v1_actions__action_id__edit_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/actions/{action_id}/reissue": {
     parameters: {
       query?: never;
@@ -100,6 +117,23 @@ export interface paths {
     put?: never;
     /** Reject Action */
     post: operations["reject_action_api_v1_actions__action_id__reject_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/actions/{action_id}/send": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Send Action */
+    post: operations["send_action_api_v1_actions__action_id__send_post"];
     delete?: never;
     options?: never;
     head?: never;
@@ -147,7 +181,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Calendar */
+    /**
+     * Calendar
+     * @description Events overlapping [start, end) when given; tentative entries included and marked.
+     */
     get: operations["calendar_api_v1_calendar_events_get"];
     put?: never;
     post?: never;
@@ -977,6 +1014,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/daily-summary": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Daily Summary
+     * @description Today's work, waiting items, due soon, decisions and rule-based suggestions (read-only).
+     */
+    get: operations["daily_summary_api_v1_daily_summary_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/replay": {
     parameters: {
       query?: never;
@@ -1021,6 +1078,41 @@ export interface paths {
     /** Review Items */
     get: operations["review_items_api_v1_review_items_get"];
     put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/review-items/{job_id}/assign": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Assign Review Item */
+    post: operations["assign_review_item_api_v1_review_items__job_id__assign_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/settings/schedule": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Schedule Settings */
+    get: operations["schedule_settings_api_v1_settings_schedule_get"];
+    /** Update Schedule Settings */
+    put: operations["update_schedule_settings_api_v1_settings_schedule_put"];
     post?: never;
     delete?: never;
     options?: never;
@@ -1097,6 +1189,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/work-orders/{order_id}/archive": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Archive Order */
+    post: operations["archive_order_api_v1_work_orders__order_id__archive_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/work-orders/{order_id}/changes": {
     parameters: {
       query?: never;
@@ -1125,6 +1234,111 @@ export interface paths {
     put?: never;
     /** Confirm Change */
     post: operations["confirm_change_api_v1_work_orders__order_id__changes__change_id__confirm_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/work-orders/{order_id}/changes/{change_id}/reject": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Reject Order Change */
+    post: operations["reject_order_change_api_v1_work_orders__order_id__changes__change_id__reject_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/work-orders/{order_id}/checklist": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Order Checklist */
+    get: operations["order_checklist_api_v1_work_orders__order_id__checklist_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/work-orders/{order_id}/defer": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Defer Order Item */
+    post: operations["defer_order_item_api_v1_work_orders__order_id__defer_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/work-orders/{order_id}/requirements": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Add Order Requirement */
+    post: operations["add_order_requirement_api_v1_work_orders__order_id__requirements_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/work-orders/{order_id}/requirements/{item_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Update Order Requirement */
+    post: operations["update_order_requirement_api_v1_work_orders__order_id__requirements__item_id__post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/work-orders/{order_id}/schedule-check": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Schedule Check
+     * @description Risks for this order's time and free slots the merchant may offer (read-only).
+     */
+    get: operations["schedule_check_api_v1_work_orders__order_id__schedule_check_get"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -1270,6 +1484,12 @@ export interface components {
       reissuable: boolean;
       /** Revision */
       revision: number;
+      /** Send Action Id */
+      send_action_id: string | null;
+      /** Send Error */
+      send_error: string | null;
+      /** Send State */
+      send_state: string | null;
       /** Snapshot Hash */
       snapshot_hash: string;
       /** Sources */
@@ -1286,6 +1506,30 @@ export interface components {
        */
       work_order_id: string;
     } & (unknown & unknown);
+    /** AddRequirementCommand */
+    AddRequirementCommand: {
+      /** Due */
+      due?:
+        | components["schemas"]["InstantDeadline"]
+        | components["schemas"]["DateOnly"]
+        | null;
+      /** Expected Version */
+      expected_version: number;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "material" | "commitment" | "question";
+      /**
+       * Owner
+       * @enum {string}
+       */
+      owner: "merchant" | "customer";
+      /** Sources */
+      sources: components["schemas"]["SourceRef"][];
+      /** Text */
+      text: string;
+    };
     /** ApproveActionCommand */
     ApproveActionCommand: {
       /** Expected Action Revision */
@@ -1296,6 +1540,48 @@ export interface components {
       expected_version: number;
       /** Snapshot Hash */
       snapshot_hash: string;
+    };
+    /** ArchiveCommand */
+    ArchiveCommand: {
+      /** Expected Version */
+      expected_version: number;
+    };
+    /**
+     * AssignMessageCommand
+     * @description Merchant decides an unassigned message: which open order it belongs to, or none.
+     */
+    AssignMessageCommand: {
+      /**
+       * Action
+       * @enum {string}
+       */
+      action: "assign" | "dismiss";
+      /** Expected Context Version */
+      expected_context_version: number;
+      /** Work Order Id */
+      work_order_id?: string | null;
+    };
+    /** AssignmentResult */
+    AssignmentResult: {
+      /**
+       * Action
+       * @enum {string}
+       */
+      action: "assign" | "dismiss";
+      /**
+       * Conversation Id
+       * Format: uuid
+       */
+      conversation_id: string;
+      /**
+       * Job Id
+       * Format: uuid
+       */
+      job_id: string;
+      /** State */
+      state: string;
+      /** Work Order Id */
+      work_order_id: string | null;
     };
     /** CalendarEvent */
     CalendarEvent: {
@@ -1327,6 +1613,17 @@ export interface components {
       /** Work Order Version */
       work_order_version: number;
     };
+    /**
+     * ChangeStatus
+     * @description A requirement change: like a field status, plus the merchant's rejection.
+     * @enum {string}
+     */
+    ChangeStatus:
+      | "missing"
+      | "proposed"
+      | "confirmed"
+      | "needs_review"
+      | "rejected";
     /** ChangeView */
     ChangeView: {
       /**
@@ -1380,14 +1677,34 @@ export interface components {
        * @enum {string}
        */
       proposer: "customer" | "merchant";
+      /** Rejection Reason */
+      rejection_reason?: string | null;
       /** Sources */
       sources: components["schemas"]["SourceRef"][];
-      status: components["schemas"]["FieldStatus"];
+      status: components["schemas"]["ChangeStatus"];
       /**
        * Work Order Id
        * Format: uuid
        */
       work_order_id: string;
+    };
+    /** ChecklistItem */
+    ChecklistItem: {
+      /** Action Id */
+      action_id?: string | null;
+      /** Change Id */
+      change_id?: string | null;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "confirmed" | "unfinished";
+      /** Requirement Id */
+      requirement_id?: string | null;
+      /** Task Id */
+      task_id?: string | null;
+      /** Title */
+      title: string;
     };
     /** ComponentHealth */
     ComponentHealth: {
@@ -1626,6 +1943,26 @@ export interface components {
       | "pending"
       | "confirmed"
       | "ambiguous";
+    /**
+     * DailySummary
+     * @description 方案 §4.6 每日摘要: each entry points at the record it comes from.
+     */
+    DailySummary: {
+      /** Date */
+      date: string;
+      /** Due Soon */
+      due_soon: components["schemas"]["SummaryEntry"][];
+      /** Needs Decision */
+      needs_decision: components["schemas"]["SummaryEntry"][];
+      /** Suggestions */
+      suggestions: components["schemas"]["Suggestion"][];
+      /** Timezone */
+      timezone: string;
+      /** Today */
+      today: components["schemas"]["SummaryEntry"][];
+      /** Waiting For Customer */
+      waiting_for_customer: components["schemas"]["SummaryEntry"][];
+    };
     /** DateOnly */
     DateOnly: {
       /**
@@ -1641,9 +1978,68 @@ export interface components {
       /** Timezone */
       timezone: string;
     };
+    /**
+     * DeferItemCommand
+     * @description The customer will confirm a key item later; ``until`` defaults to 3 days.
+     */
+    DeferItemCommand: {
+      /** Expected Version */
+      expected_version: number;
+      /**
+       * Field
+       * @enum {string}
+       */
+      field: "schedule" | "address";
+      /** Sources */
+      sources: components["schemas"]["SourceRef"][];
+      /** Until */
+      until?: string | null;
+    };
+    /**
+     * DeferredItem
+     * @description A key item the customer said they will confirm later (契约 §3 Customer defers).
+     */
+    DeferredItem: {
+      /**
+       * Follow Up Task Id
+       * Format: uuid
+       */
+      follow_up_task_id: string;
+      /** Sources */
+      sources: components["schemas"]["SourceRef"][];
+      /**
+       * Until
+       * Format: date-time
+       */
+      until: string;
+    };
+    /**
+     * DeliveryChecklist
+     * @description 方案 §4.6 交付前检查: confirmed requirements to check and what is still unfinished.
+     */
+    DeliveryChecklist: {
+      /** Items */
+      items: components["schemas"]["ChecklistItem"][];
+      /** Ready */
+      ready: boolean;
+      /**
+       * Work Order Id
+       * Format: uuid
+       */
+      work_order_id: string;
+    };
     /** Detail[ActionView] */
     Detail_ActionView_: {
       data: components["schemas"]["ActionView"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[AssignmentResult] */
+    Detail_AssignmentResult_: {
+      data: components["schemas"]["AssignmentResult"];
       /**
        * Request Id
        * Format: uuid
@@ -1677,6 +2073,24 @@ export interface components {
        */
       request_id: string;
     };
+    /** Detail[DailySummary] */
+    Detail_DailySummary_: {
+      data: components["schemas"]["DailySummary"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[DeliveryChecklist] */
+    Detail_DeliveryChecklist_: {
+      data: components["schemas"]["DeliveryChecklist"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
     /** Detail[LoginResult] */
     Detail_LoginResult_: {
       data: components["schemas"]["LoginResult"];
@@ -1689,6 +2103,24 @@ export interface components {
     /** Detail[ReplayResult] */
     Detail_ReplayResult_: {
       data: components["schemas"]["ReplayResult"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[ScheduleCheck] */
+    Detail_ScheduleCheck_: {
+      data: components["schemas"]["ScheduleCheck"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[ScheduleSettings] */
+    Detail_ScheduleSettings_: {
+      data: components["schemas"]["ScheduleSettings"];
       /**
        * Request Id
        * Format: uuid
@@ -1860,6 +2292,18 @@ export interface components {
        * Format: uuid
        */
       request_id: string;
+    };
+    /**
+     * EditActionCommand
+     * @description Merchant edits a draft before approving it (new revision and snapshot hash).
+     */
+    EditActionCommand: {
+      /** Body */
+      body: string;
+      /** Expected Action Revision */
+      expected_action_revision: number;
+      /** Snapshot Hash */
+      snapshot_hash: string;
     };
     /**
      * FieldStatus
@@ -2187,6 +2631,13 @@ export interface components {
       /** Snapshot Hash */
       snapshot_hash: string;
     };
+    /** RejectCommand */
+    RejectCommand: {
+      /** Expected Version */
+      expected_version: number;
+      /** Reason */
+      reason: string;
+    };
     /** ReplayCommand */
     ReplayCommand: {
       /**
@@ -2203,6 +2654,43 @@ export interface components {
       duplicate: boolean;
       /** Event Id */
       event_id: string;
+    };
+    /**
+     * RequirementItem
+     * @description Required material, a promise either side made, or an open question (方案 §4.3).
+     */
+    RequirementItem: {
+      /** Due */
+      due?:
+        | components["schemas"]["InstantDeadline"]
+        | components["schemas"]["DateOnly"]
+        | null;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "material" | "commitment" | "question";
+      /**
+       * Owner
+       * @enum {string}
+       */
+      owner: "merchant" | "customer";
+      /** Sources */
+      sources: components["schemas"]["SourceRef"][];
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "open" | "done" | "cancelled";
+      /** Task Id */
+      task_id?: string | null;
+      /** Text */
+      text: string;
     };
     /** ReviewItem */
     ReviewItem: {
@@ -2233,10 +2721,134 @@ export interface components {
       state: string;
     };
     /**
+     * ScheduleCheck
+     * @description Deterministic checks for one order's time, plus free slots the merchant may offer.
+     */
+    ScheduleCheck: {
+      /** Risks */
+      risks: components["schemas"]["ScheduleRisk"][];
+      /** Suggestions */
+      suggestions: components["schemas"]["Slot"][];
+      /**
+       * Work Order Id
+       * Format: uuid
+       */
+      work_order_id: string;
+    };
+    /** ScheduleRisk */
+    ScheduleRisk: {
+      /**
+       * Code
+       * @enum {string}
+       */
+      code:
+        | "schedule_conflict"
+        | "outside_working_hours"
+        | "during_break"
+        | "buffer_too_short"
+        | "preparation_time_short"
+        | "in_the_past";
+      /** Detail */
+      detail: string;
+      /**
+       * Related Work Order Ids
+       * @default []
+       */
+      related_work_order_ids: string[];
+    };
+    /**
+     * ScheduleSettings
+     * @description User-set working time (方案 §4.4). Buffers are the user's own numbers, not travel time.
+     */
+    ScheduleSettings: {
+      /**
+       * Breaks
+       * @default [
+       *       {
+       *         "end": "13:30",
+       *         "start": "12:30"
+       *       }
+       *     ]
+       */
+      breaks: components["schemas"]["TimeRange"][];
+      /**
+       * Buffer Minutes
+       * @default 30
+       */
+      buffer_minutes: number;
+      /**
+       * Default Duration Minutes
+       * @default 60
+       */
+      default_duration_minutes: number;
+      /**
+       * Preparation Minutes
+       * @default 60
+       */
+      preparation_minutes: number;
+      /**
+       * Timezone
+       * @default Asia/Hong_Kong
+       */
+      timezone: string;
+      /**
+       * Version
+       * @default 0
+       */
+      version: number;
+      /**
+       * Work Days
+       * @default [
+       *       1,
+       *       2,
+       *       3,
+       *       4,
+       *       5,
+       *       6
+       *     ]
+       */
+      work_days: number[];
+      /**
+       * @default {
+       *       "end": "19:00",
+       *       "start": "09:00"
+       *     }
+       */
+      work_hours: components["schemas"]["TimeRange"];
+    };
+    /**
+     * SendApprovedActionCommand
+     * @description Merchant hands an approved business reply to the WhatsApp sending gateway.
+     *
+     *     The connection, control and send-permission versions are the ones the
+     *     merchant sees on the sending page; the action revision and snapshot hash
+     *     are the exact approved reply.
+     */
+    SendApprovedActionCommand: {
+      /**
+       * Connection Id
+       * Format: uuid
+       */
+      connection_id: string;
+      /** Expected Action Revision */
+      expected_action_revision: number;
+      /** Expected Control Version */
+      expected_control_version: number;
+      /** Expected Permission Version */
+      expected_permission_version: number;
+      /** Snapshot Hash */
+      snapshot_hash: string;
+    };
+    /**
      * SetWorkOrderStatusCommand
      * @description Merchant moves an order along its life cycle (see TRANSITIONS in workorders).
      */
     SetWorkOrderStatusCommand: {
+      /**
+       * Acknowledge Open Items
+       * @default false
+       */
+      acknowledge_open_items: boolean;
       /** Expected Version */
       expected_version: number;
       /**
@@ -2244,6 +2856,21 @@ export interface components {
        * @enum {string}
        */
       status: "in_progress" | "waiting_customer" | "completed" | "cancelled";
+    };
+    /** Slot */
+    Slot: {
+      /**
+       * End At
+       * Format: date-time
+       */
+      end_at: string;
+      /** Label */
+      label: string;
+      /**
+       * Start At
+       * Format: date-time
+       */
+      start_at: string;
     };
     /** SourceRef */
     SourceRef: {
@@ -2254,6 +2881,50 @@ export interface components {
       message_id: string;
       /** Message Revision */
       message_revision: number;
+    };
+    /** Suggestion */
+    Suggestion: {
+      /**
+       * Code
+       * @enum {string}
+       */
+      code:
+        | "task_overdue"
+        | "material_missing"
+        | "dependency_at_risk"
+        | "day_overbooked";
+      /** Detail */
+      detail: string;
+      /** Task Id */
+      task_id?: string | null;
+      /** Work Order Id */
+      work_order_id?: string | null;
+    };
+    /** SummaryEntry */
+    SummaryEntry: {
+      /** Action Id */
+      action_id?: string | null;
+      /** At */
+      at?: string | null;
+      /** Calendar Event Id */
+      calendar_event_id?: string | null;
+      /** Change Id */
+      change_id?: string | null;
+      /** Job Id */
+      job_id?: string | null;
+      /** Kind */
+      kind?: string | null;
+      /**
+       * Open Items
+       * @default []
+       */
+      open_items: string[];
+      /** Task Id */
+      task_id?: string | null;
+      /** Title */
+      title: string;
+      /** Work Order Id */
+      work_order_id?: string | null;
     };
     /** Task */
     Task: {
@@ -2296,6 +2967,13 @@ export interface components {
       /** Work Order Version */
       work_order_version: number;
     };
+    /** TimeRange */
+    TimeRange: {
+      /** End */
+      end: string;
+      /** Start */
+      start: string;
+    };
     /** TimedSchedule */
     TimedSchedule: {
       /**
@@ -2315,6 +2993,22 @@ export interface components {
       start_at: string;
       /** Timezone */
       timezone: string;
+    };
+    /** UpdateRequirementCommand */
+    UpdateRequirementCommand: {
+      /** Expected Version */
+      expected_version: number;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "done" | "cancelled";
+    };
+    /** UpdateScheduleSettingsCommand */
+    UpdateScheduleSettingsCommand: {
+      /** Expected Version */
+      expected_version: number;
+      settings: components["schemas"]["ScheduleSettings"];
     };
     /** ValidationError */
     ValidationError: {
@@ -3249,8 +3943,22 @@ export interface components {
        * Format: uuid
        */
       account_id: string;
+      /** Archived At */
+      archived_at?: string | null;
+      /**
+       * Attention
+       * @default []
+       */
+      attention: "customer_not_replying"[];
       /** Conversation Ids */
       conversation_ids: string[];
+      /**
+       * Deferred
+       * @default {}
+       */
+      deferred: {
+        [key: string]: components["schemas"]["DeferredItem"];
+      };
       fields: components["schemas"]["WorkOrderFields"];
       /**
        * Id
@@ -3259,9 +3967,21 @@ export interface components {
       id: string;
       /** Pending Change Ids */
       pending_change_ids: string[];
+      /**
+       * Requirements
+       * @default []
+       */
+      requirements: components["schemas"]["RequirementItem"][];
       status: components["schemas"]["WorkOrderStatus"];
       /** Summary */
       summary: string;
+      /**
+       * Task Links
+       * @default {}
+       */
+      task_links: {
+        [key: string]: string;
+      };
       /**
        * Updated At
        * Format: date-time
@@ -3270,10 +3990,16 @@ export interface components {
       /** Version */
       version: number;
     };
-    /** WorkOrderFields */
+    /**
+     * WorkOrderFields
+     * @description Key items (schedule, address) decide confirmation; the others are business detail.
+     */
     WorkOrderFields: {
       address: components["schemas"]["ProvenancedField"];
+      deadline?: components["schemas"]["ProvenancedField"];
+      quantity?: components["schemas"]["ProvenancedField"];
       schedule: components["schemas"]["ProvenancedField"];
+      specification?: components["schemas"]["ProvenancedField"];
     };
     /**
      * WorkOrderStatus
@@ -3476,6 +4202,43 @@ export interface operations {
       };
     };
   };
+  edit_action_api_v1_actions__action_id__edit_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        action_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["EditActionCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_ActionView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   reissue_action_api_v1_actions__action_id__reissue_post: {
     parameters: {
       query?: never;
@@ -3532,6 +4295,43 @@ export interface operations {
     responses: {
       /** @description Successful Response */
       200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_ActionView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  send_action_api_v1_actions__action_id__send_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        action_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SendApprovedActionCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
         headers: {
           [name: string]: unknown;
         };
@@ -3608,6 +4408,8 @@ export interface operations {
       query?: {
         cursor?: string | null;
         limit?: number;
+        start?: string | null;
+        end?: string | null;
       };
       header?: never;
       path?: never;
@@ -5387,6 +6189,37 @@ export interface operations {
       };
     };
   };
+  daily_summary_api_v1_daily_summary_get: {
+    parameters: {
+      query?: {
+        date?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_DailySummary_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   replay_api_v1_replay_post: {
     parameters: {
       query?: never;
@@ -5491,11 +6324,102 @@ export interface operations {
       };
     };
   };
+  assign_review_item_api_v1_review_items__job_id__assign_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        job_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AssignMessageCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_AssignmentResult_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  schedule_settings_api_v1_settings_schedule_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_ScheduleSettings_"];
+        };
+      };
+    };
+  };
+  update_schedule_settings_api_v1_settings_schedule_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateScheduleSettingsCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_ScheduleSettings_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   tasks_api_v1_tasks_get: {
     parameters: {
       query?: {
         cursor?: string | null;
         limit?: number;
+        work_order_id?: string | null;
       };
       header?: never;
       path?: never;
@@ -5563,6 +6487,8 @@ export interface operations {
       query?: {
         cursor?: string | null;
         limit?: number;
+        status?: components["schemas"]["WorkOrderStatus"] | null;
+        include_archived?: boolean;
       };
       header?: never;
       path?: never;
@@ -5656,6 +6582,43 @@ export interface operations {
       };
     };
   };
+  archive_order_api_v1_work_orders__order_id__archive_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        order_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ArchiveCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkOrder_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   changes_api_v1_work_orders__order_id__changes_get: {
     parameters: {
       query?: {
@@ -5715,6 +6678,218 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Detail_WorkOrder_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  reject_order_change_api_v1_work_orders__order_id__changes__change_id__reject_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        order_id: string;
+        change_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RejectCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkOrder_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  order_checklist_api_v1_work_orders__order_id__checklist_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        order_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_DeliveryChecklist_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  defer_order_item_api_v1_work_orders__order_id__defer_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        order_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DeferItemCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkOrder_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  add_order_requirement_api_v1_work_orders__order_id__requirements_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        order_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AddRequirementCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkOrder_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  update_order_requirement_api_v1_work_orders__order_id__requirements__item_id__post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        order_id: string;
+        item_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateRequirementCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkOrder_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  schedule_check_api_v1_work_orders__order_id__schedule_check_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        order_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_ScheduleCheck_"];
         };
       };
       /** @description Validation Error */

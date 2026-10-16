@@ -50,6 +50,9 @@ def migration_database(tmp_path):
         "0014_media_approvals",
         "0014_merge_approval_send",
         "0015_d03_approval_heads",
+        "0018_model_call_cost",
+        "0018_schedule_settings",
+        "0019_action_send_link",
     ],
 )
 def test_versioned_migration_preserves_replay_rows(migration_database, existing_revision):

@@ -1,6 +1,8 @@
 import base64
 import json
 import os
+from datetime import date as date_cls
+from datetime import datetime, timedelta
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
@@ -18,8 +20,12 @@ from gigmate.approvals import approve, reissue, reject, views
 from gigmate.config import COOKIE_SECURE, TRUSTED_ORIGINS
 from gigmate.contracts import (
     ActionState,
+    AddRequirementCommand,
     ApprovalAction,
     ApproveActionCommand,
+    ArchiveCommand,
+    AssignmentResult,
+    AssignMessageCommand,
     CalendarEvent,
     ConfirmChangeCommand,
     ConnectorReceipt,
@@ -27,16 +33,26 @@ from gigmate.contracts import (
     Conversation,
     ConversationMessage,
     CreateWorkOrderCommand,
+    DailySummary,
+    DeferItemCommand,
+    DeliveryChecklist,
     Detail,
+    EditActionCommand,
     Model,
     Page,
     RecoveryIssue,
     ReissueActionCommand,
     RejectActionCommand,
+    RejectCommand,
     RequirementChange,
+    ScheduleCheck,
+    ScheduleSettings,
+    SendApprovedActionCommand,
     SetWorkOrderStatusCommand,
     Task,
     Text,
+    UpdateRequirementCommand,
+    UpdateScheduleSettingsCommand,
     WahaAttachmentView,
     WahaChoice,
     WahaControlCommand,
@@ -56,6 +72,7 @@ from gigmate.contracts import (
     WahaTimelineMessage,
     WahaVersionCommand,
     WorkOrder,
+    WorkOrderStatus,
 )
 from gigmate.db import (
     ActionRow,
@@ -79,7 +96,22 @@ from gigmate.waha_ingress import binding_for, configured_binding, receive, statu
 from gigmate.waha_probe import MAX_BODY, _non_json_constant, _pairs, verify_hmac
 from gigmate.waha_recovery import issue_view, record_rejection
 from gigmate.waha_send_api import install as install_sending
-from gigmate.workorders import command_cache, confirm, create, owned, save_result, set_status
+from gigmate.workorders import (
+    add_requirement,
+    archive,
+    assign_message,
+    audit_row,
+    checklist,
+    command_cache,
+    confirm,
+    create,
+    defer_item,
+    owned,
+    reject_change,
+    save_result,
+    set_status,
+    update_requirement,
+)
 from gigmate.workspace_api import install as install_workspace
 
 app = FastAPI(title="GigMate replay skeleton", version="0.2.0")
@@ -126,6 +158,9 @@ class ActionView(ApprovalAction):
     closed_reason: str | None
     closed_note: str | None
     reissuable: bool
+    send_action_id: str | None
+    send_state: str | None
+    send_error: str | None
 
 
 class ConnectionInfo(Model):
@@ -315,15 +350,16 @@ def orders(
     request: Request,
     cursor: str | None = None,
     limit: int = Query(20, ge=1, le=100),
+    status: WorkOrderStatus | None = None,
+    include_archived: bool = False,
     account=Depends(actor),
     db=Depends(database),
 ):
-    return page(
-        request,
-        db.scalars(select(WorkOrderRow).where(WorkOrderRow.account_id == account.id)),
-        cursor,
-        limit,
-    )
+    rows = db.scalars(select(WorkOrderRow).where(WorkOrderRow.account_id == account.id))
+    rows = [row for row in rows if include_archived or not row.data.get("archived_at")]
+    if status:
+        rows = [row for row in rows if row.data["status"] == status]
+    return page(request, rows, cursor, limit)
 
 
 @app.post("/api/v1/work-orders", status_code=201, response_model=Detail[WorkOrder])
@@ -402,6 +438,173 @@ def confirm_change(
     )
 
 
+@app.post(
+    "/api/v1/work-orders/{order_id}/changes/{change_id}/reject", response_model=Detail[WorkOrder]
+)
+def reject_order_change(
+    order_id: UUID,
+    change_id: UUID,
+    command: RejectCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    return detail(
+        request,
+        reject_change(
+            db,
+            account,
+            str(order_id),
+            str(change_id),
+            command,
+            idempotency_key,
+            request.state.request_id,
+        ),
+    )
+
+
+@app.post("/api/v1/review-items/{job_id}/assign", response_model=Detail[AssignmentResult])
+def assign_review_item(
+    job_id: UUID,
+    command: AssignMessageCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    return detail(
+        request,
+        assign_message(
+            db, account, str(job_id), command, idempotency_key, request.state.request_id
+        ),
+    )
+
+
+@app.post("/api/v1/work-orders/{order_id}/defer", response_model=Detail[WorkOrder])
+def defer_order_item(
+    order_id: UUID,
+    command: DeferItemCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    return detail(
+        request,
+        defer_item(db, account, str(order_id), command, idempotency_key, request.state.request_id),
+    )
+
+
+@app.get("/api/v1/daily-summary", response_model=Detail[DailySummary])
+def daily_summary(
+    request: Request,
+    day: date_cls | None = Query(None, alias="date"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    """Today's work, waiting items, due soon, decisions and rule-based suggestions (read-only)."""
+
+    from gigmate import summary
+
+    chosen = day
+    return detail(request, summary.build(db, account.id, chosen))
+
+
+@app.get("/api/v1/settings/schedule", response_model=Detail[ScheduleSettings])
+def schedule_settings(request: Request, account=Depends(actor), db=Depends(database)):
+    from gigmate import scheduling
+
+    return detail(request, scheduling.settings(db, account.id).model_dump(mode="json"))
+
+
+@app.put("/api/v1/settings/schedule", response_model=Detail[ScheduleSettings])
+def update_schedule_settings(
+    command: UpdateScheduleSettingsCommand,
+    request: Request,
+    account=Depends(actor),
+    db=Depends(database),
+):
+    from gigmate import scheduling
+
+    data = scheduling.update(db, account.id, command)
+    entry = audit_row(account.id, account.id, "update_schedule_settings", request.state.request_id)
+    entry.data = {**entry.data, "entity_type": "schedule_settings"}
+    db.add(entry)
+    return detail(request, data)
+
+
+@app.get("/api/v1/work-orders/{order_id}/schedule-check", response_model=Detail[ScheduleCheck])
+def schedule_check(order_id: UUID, request: Request, account=Depends(actor), db=Depends(database)):
+    """Risks for this order's time and free slots the merchant may offer (read-only)."""
+    from gigmate import scheduling
+
+    order = owned(db, WorkOrderRow, str(order_id), account.id)
+    return detail(request, scheduling.check(db, account.id, order))
+
+
+@app.post("/api/v1/work-orders/{order_id}/requirements", response_model=Detail[WorkOrder])
+def add_order_requirement(
+    order_id: UUID,
+    command: AddRequirementCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    return detail(
+        request,
+        add_requirement(
+            db, account, str(order_id), command, idempotency_key, request.state.request_id
+        ),
+    )
+
+
+@app.post("/api/v1/work-orders/{order_id}/requirements/{item_id}", response_model=Detail[WorkOrder])
+def update_order_requirement(
+    order_id: UUID,
+    item_id: UUID,
+    command: UpdateRequirementCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    return detail(
+        request,
+        update_requirement(
+            db,
+            account,
+            str(order_id),
+            str(item_id),
+            command,
+            idempotency_key,
+            request.state.request_id,
+        ),
+    )
+
+
+@app.get("/api/v1/work-orders/{order_id}/checklist", response_model=Detail[DeliveryChecklist])
+def order_checklist(order_id: UUID, request: Request, account=Depends(actor), db=Depends(database)):
+    order = owned(db, WorkOrderRow, str(order_id), account.id)
+    return detail(request, checklist(db, account.id, order))
+
+
+@app.post("/api/v1/work-orders/{order_id}/archive", response_model=Detail[WorkOrder])
+def archive_order(
+    order_id: UUID,
+    command: ArchiveCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    return detail(
+        request,
+        archive(db, account, str(order_id), command, idempotency_key, request.state.request_id),
+    )
+
+
 @app.post("/api/v1/work-orders/{order_id}/status", response_model=Detail[WorkOrder])
 def set_order_status(
     order_id: UUID,
@@ -427,14 +630,37 @@ def actions(
     account=Depends(actor),
     db=Depends(database),
 ):
-    query = select(ActionRow).where(ActionRow.account_id == account.id)
+    # Issue #28: keyset pages read from the database in id order and in bounded
+    # batches; expiry and send outcome stay computed on read (never written by GET).
+    try:
+        last_id = base64.urlsafe_b64decode(cursor.encode()).decode() if cursor else ""
+        if last_id:
+            UUID(last_id)
+    except (ValueError, UnicodeDecodeError):
+        raise BusinessError(422, "VALIDATION_FAILED", "Invalid cursor") from None
+    query = select(ActionRow).where(ActionRow.account_id == account.id, ActionRow.id > last_id)
     if work_order_id:
         query = query.where(ActionRow.work_order_id == str(work_order_id))
-    rows = list(db.scalars(query))
-    shown = {item["id"]: item for item in views(db, rows)}
-    if state:
-        rows = [row for row in rows if shown[row.id]["state"] == state]
-    return page(request, rows, cursor, limit, lambda row: shown[row.id])
+    query = query.order_by(ActionRow.id)
+    batch, offset, chosen = (max(limit * 2, 50) if state else limit + 1), 0, []
+    while len(chosen) <= limit:
+        rows = list(db.scalars(query.offset(offset).limit(batch)))
+        if not rows:
+            break
+        for row, item in zip(rows, views(db, rows), strict=True):
+            if not state or item["state"] == state:
+                chosen.append((row, item))
+        offset += batch
+    current = chosen[:limit]
+    return {
+        "items": [item for _, item in current],
+        "next_cursor": (
+            base64.urlsafe_b64encode(current[-1][0].id.encode()).decode()
+            if len(chosen) > limit
+            else None
+        ),
+        "request_id": request.state.request_id,
+    }
 
 
 @app.get("/api/v1/actions/{action_id}", response_model=Detail[ActionView])
@@ -469,6 +695,40 @@ def reissue_action(
     return detail(
         request,
         reissue(db, account, str(action_id), command, idempotency_key, request.state.request_id),
+    )
+
+
+@app.post("/api/v1/actions/{action_id}/send", status_code=202, response_model=Detail[ActionView])
+def send_action(
+    action_id: UUID,
+    command: SendApprovedActionCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    from gigmate.approvals import send
+
+    return detail(
+        request,
+        send(db, account, str(action_id), command, idempotency_key, request.state.request_id),
+    )
+
+
+@app.post("/api/v1/actions/{action_id}/edit", response_model=Detail[ActionView])
+def edit_action(
+    action_id: UUID,
+    command: EditActionCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    from gigmate.approvals import edit
+
+    return detail(
+        request,
+        edit(db, account, str(action_id), command, idempotency_key, request.state.request_id),
     )
 
 
@@ -578,12 +838,37 @@ def tasks(
     request: Request,
     cursor: str | None = None,
     limit: int = Query(20, ge=1, le=100),
+    work_order_id: UUID | None = None,
     account=Depends(actor),
     db=Depends(database),
 ):
-    return page(
-        request, db.scalars(select(TaskRow).where(TaskRow.account_id == account.id)), cursor, limit
-    )
+    query = select(TaskRow).where(TaskRow.account_id == account.id)
+    if work_order_id:
+        query = query.where(TaskRow.work_order_id == str(work_order_id))
+    return page(request, db.scalars(query), cursor, limit)
+
+
+def event_window(schedule):
+    """The absolute interval an event occupies; a date-only entry is its whole local day."""
+    from zoneinfo import ZoneInfo
+
+    if schedule["kind"] == "timed":
+        return (
+            datetime.fromisoformat(schedule["start_at"].replace("Z", "+00:00")),
+            datetime.fromisoformat(schedule["end_at"].replace("Z", "+00:00")),
+        )
+    day = datetime.fromisoformat(schedule["date"]).replace(tzinfo=ZoneInfo(schedule["timezone"]))
+    return day, day + timedelta(days=1)
+
+
+def utc_query(value, name):
+    try:
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise BusinessError(422, "VALIDATION_FAILED", f"{name} must be an ISO time") from error
+    if moment.tzinfo is None:
+        raise BusinessError(422, "VALIDATION_FAILED", f"{name} needs a time zone")
+    return moment
 
 
 @app.get("/api/v1/calendar-events", response_model=Page[CalendarEvent])
@@ -591,17 +876,27 @@ def calendar(
     request: Request,
     cursor: str | None = None,
     limit: int = Query(20, ge=1, le=100),
+    start: str | None = None,
+    end: str | None = None,
     account=Depends(actor),
     db=Depends(database),
 ):
+    """Events overlapping [start, end) when given; tentative entries included and marked."""
     from gigmate.db import CalendarRow
 
-    return page(
-        request,
-        db.scalars(select(CalendarRow).where(CalendarRow.account_id == account.id)),
-        cursor,
-        limit,
-    )
+    rows = db.scalars(select(CalendarRow).where(CalendarRow.account_id == account.id))
+    if start or end:
+        lower = utc_query(start, "start") if start else None
+        upper = utc_query(end, "end") if end else None
+        if lower and upper and lower >= upper:
+            raise BusinessError(422, "VALIDATION_FAILED", "start must be before end")
+        chosen = []
+        for row in rows:
+            begins, finishes = event_window(row.data["schedule"])
+            if (upper is None or begins < upper) and (lower is None or lower < finishes):
+                chosen.append(row)
+        rows = chosen
+    return page(request, rows, cursor, limit)
 
 
 @app.get("/api/v1/connection-status", response_model=Detail[ConnectionInfo])

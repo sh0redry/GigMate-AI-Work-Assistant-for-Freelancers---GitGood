@@ -208,6 +208,39 @@
             "title": "Revision",
             "type": "integer"
           },
+          "send_action_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send Action Id"
+          },
+          "send_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send Error"
+          },
+          "send_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send State"
+          },
           "snapshot_hash": {
             "pattern": "^sha256:[a-f0-9]{64}$",
             "title": "Snapshot Hash",
@@ -262,9 +295,76 @@
           "open_items",
           "closed_reason",
           "closed_note",
-          "reissuable"
+          "reissuable",
+          "send_action_id",
+          "send_state",
+          "send_error"
         ],
         "title": "ActionView",
+        "type": "object"
+      },
+      "AddRequirementCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "due": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InstantDeadline"
+              },
+              {
+                "$ref": "#/components/schemas/DateOnly"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "material",
+              "commitment",
+              "question"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "owner": {
+            "enum": [
+              "merchant",
+              "customer"
+            ],
+            "title": "Owner",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            },
+            "minItems": 1,
+            "title": "Sources",
+            "type": "array"
+          },
+          "text": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "text",
+          "owner",
+          "sources",
+          "expected_version"
+        ],
+        "title": "AddRequirementCommand",
         "type": "object"
       },
       "ApproveActionCommand": {
@@ -298,6 +398,106 @@
           "snapshot_hash"
         ],
         "title": "ApproveActionCommand",
+        "type": "object"
+      },
+      "ArchiveCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "ArchiveCommand",
+        "type": "object"
+      },
+      "AssignMessageCommand": {
+        "additionalProperties": false,
+        "description": "Merchant decides an unassigned message: which open order it belongs to, or none.",
+        "properties": {
+          "action": {
+            "enum": [
+              "assign",
+              "dismiss"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "expected_context_version": {
+            "minimum": 1.0,
+            "title": "Expected Context Version",
+            "type": "integer"
+          },
+          "work_order_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Order Id"
+          }
+        },
+        "required": [
+          "action",
+          "expected_context_version"
+        ],
+        "title": "AssignMessageCommand",
+        "type": "object"
+      },
+      "AssignmentResult": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "assign",
+              "dismiss"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "work_order_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Order Id"
+          }
+        },
+        "required": [
+          "job_id",
+          "conversation_id",
+          "action",
+          "work_order_id",
+          "state"
+        ],
+        "title": "AssignmentResult",
         "type": "object"
       },
       "CalendarEvent": {
@@ -364,6 +564,18 @@
         ],
         "title": "CalendarEvent",
         "type": "object"
+      },
+      "ChangeStatus": {
+        "description": "A requirement change: like a field status, plus the merchant's rejection.",
+        "enum": [
+          "missing",
+          "proposed",
+          "confirmed",
+          "needs_review",
+          "rejected"
+        ],
+        "title": "ChangeStatus",
+        "type": "string"
       },
       "ChangeView": {
         "additionalProperties": false,
@@ -475,6 +687,17 @@
             "title": "Proposer",
             "type": "string"
           },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason"
+          },
           "sources": {
             "items": {
               "$ref": "#/components/schemas/SourceRef"
@@ -484,7 +707,7 @@
             "type": "array"
           },
           "status": {
-            "$ref": "#/components/schemas/FieldStatus"
+            "$ref": "#/components/schemas/ChangeStatus"
           },
           "work_order_id": {
             "format": "uuid",
@@ -508,6 +731,78 @@
           "conflict_ids"
         ],
         "title": "ChangeView",
+        "type": "object"
+      },
+      "ChecklistItem": {
+        "additionalProperties": false,
+        "properties": {
+          "action_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Id"
+          },
+          "change_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Id"
+          },
+          "kind": {
+            "enum": [
+              "confirmed",
+              "unfinished"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "requirement_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requirement Id"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "title"
+        ],
+        "title": "ChecklistItem",
         "type": "object"
       },
       "ComponentHealth": {
@@ -1108,6 +1403,68 @@
         "title": "CustomerConfirmation",
         "type": "string"
       },
+      "DailySummary": {
+        "additionalProperties": false,
+        "description": "方案 §4.6 每日摘要: each entry points at the record it comes from.",
+        "properties": {
+          "date": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "title": "Date",
+            "type": "string"
+          },
+          "due_soon": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryEntry"
+            },
+            "title": "Due Soon",
+            "type": "array"
+          },
+          "needs_decision": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryEntry"
+            },
+            "title": "Needs Decision",
+            "type": "array"
+          },
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/Suggestion"
+            },
+            "title": "Suggestions",
+            "type": "array"
+          },
+          "timezone": {
+            "minLength": 1,
+            "title": "Timezone",
+            "type": "string"
+          },
+          "today": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryEntry"
+            },
+            "title": "Today",
+            "type": "array"
+          },
+          "waiting_for_customer": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryEntry"
+            },
+            "title": "Waiting For Customer",
+            "type": "array"
+          }
+        },
+        "required": [
+          "date",
+          "timezone",
+          "today",
+          "waiting_for_customer",
+          "due_soon",
+          "needs_decision",
+          "suggestions"
+        ],
+        "title": "DailySummary",
+        "type": "object"
+      },
       "DateOnly": {
         "additionalProperties": false,
         "properties": {
@@ -1135,6 +1492,114 @@
         "title": "DateOnly",
         "type": "object"
       },
+      "DeferItemCommand": {
+        "additionalProperties": false,
+        "description": "The customer will confirm a key item later; ``until`` defaults to 3 days.",
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "field": {
+            "enum": [
+              "schedule",
+              "address"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            },
+            "minItems": 1,
+            "title": "Sources",
+            "type": "array"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "pattern": "Z$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          }
+        },
+        "required": [
+          "field",
+          "sources",
+          "expected_version"
+        ],
+        "title": "DeferItemCommand",
+        "type": "object"
+      },
+      "DeferredItem": {
+        "additionalProperties": false,
+        "description": "A key item the customer said they will confirm later (契约 §3 Customer defers).",
+        "properties": {
+          "follow_up_task_id": {
+            "format": "uuid",
+            "title": "Follow Up Task Id",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            },
+            "minItems": 1,
+            "title": "Sources",
+            "type": "array"
+          },
+          "until": {
+            "format": "date-time",
+            "pattern": "Z$",
+            "title": "Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "until",
+          "follow_up_task_id",
+          "sources"
+        ],
+        "title": "DeferredItem",
+        "type": "object"
+      },
+      "DeliveryChecklist": {
+        "additionalProperties": false,
+        "description": "方案 §4.6 交付前检查: confirmed requirements to check and what is still unfinished.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ChecklistItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "work_order_id": {
+            "format": "uuid",
+            "title": "Work Order Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "work_order_id",
+          "ready",
+          "items"
+        ],
+        "title": "DeliveryChecklist",
+        "type": "object"
+      },
       "Detail_ActionView_": {
         "additionalProperties": false,
         "properties": {
@@ -1152,6 +1617,25 @@
           "request_id"
         ],
         "title": "Detail[ActionView]",
+        "type": "object"
+      },
+      "Detail_AssignmentResult_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AssignmentResult"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[AssignmentResult]",
         "type": "object"
       },
       "Detail_ConnectionInfo_": {
@@ -1211,6 +1695,44 @@
         "title": "Detail[Conversation]",
         "type": "object"
       },
+      "Detail_DailySummary_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DailySummary"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[DailySummary]",
+        "type": "object"
+      },
+      "Detail_DeliveryChecklist_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DeliveryChecklist"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[DeliveryChecklist]",
+        "type": "object"
+      },
       "Detail_LoginResult_": {
         "additionalProperties": false,
         "properties": {
@@ -1247,6 +1769,44 @@
           "request_id"
         ],
         "title": "Detail[ReplayResult]",
+        "type": "object"
+      },
+      "Detail_ScheduleCheck_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ScheduleCheck"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[ScheduleCheck]",
+        "type": "object"
+      },
+      "Detail_ScheduleSettings_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ScheduleSettings"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[ScheduleSettings]",
         "type": "object"
       },
       "Detail_WahaAttachmentView_": {
@@ -1597,6 +2157,35 @@
           "request_id"
         ],
         "title": "Detail[list[WahaChoice]]",
+        "type": "object"
+      },
+      "EditActionCommand": {
+        "additionalProperties": false,
+        "description": "Merchant edits a draft before approving it (new revision and snapshot hash).",
+        "properties": {
+          "body": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "expected_action_revision": {
+            "minimum": 1.0,
+            "title": "Expected Action Revision",
+            "type": "integer"
+          },
+          "snapshot_hash": {
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "title": "Snapshot Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body",
+          "expected_action_revision",
+          "snapshot_hash"
+        ],
+        "title": "EditActionCommand",
         "type": "object"
       },
       "FieldStatus": {
@@ -2568,6 +3157,27 @@
         "title": "RejectActionCommand",
         "type": "object"
       },
+      "RejectCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_version",
+          "reason"
+        ],
+        "title": "RejectCommand",
+        "type": "object"
+      },
       "ReplayCommand": {
         "additionalProperties": false,
         "properties": {
@@ -2608,6 +3218,93 @@
           "context_version"
         ],
         "title": "ReplayResult",
+        "type": "object"
+      },
+      "RequirementItem": {
+        "additionalProperties": false,
+        "description": "Required material, a promise either side made, or an open question (方案 §4.3).",
+        "properties": {
+          "due": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InstantDeadline"
+              },
+              {
+                "$ref": "#/components/schemas/DateOnly"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "material",
+              "commitment",
+              "question"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "owner": {
+            "enum": [
+              "merchant",
+              "customer"
+            ],
+            "title": "Owner",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            },
+            "minItems": 1,
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "done",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "text": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "text",
+          "owner",
+          "status",
+          "sources"
+        ],
+        "title": "RequirementItem",
         "type": "object"
       },
       "ReviewItem": {
@@ -2673,10 +3370,203 @@
         "title": "ReviewItem",
         "type": "object"
       },
+      "ScheduleCheck": {
+        "additionalProperties": false,
+        "description": "Deterministic checks for one order's time, plus free slots the merchant may offer.",
+        "properties": {
+          "risks": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduleRisk"
+            },
+            "title": "Risks",
+            "type": "array"
+          },
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/Slot"
+            },
+            "title": "Suggestions",
+            "type": "array"
+          },
+          "work_order_id": {
+            "format": "uuid",
+            "title": "Work Order Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "work_order_id",
+          "risks",
+          "suggestions"
+        ],
+        "title": "ScheduleCheck",
+        "type": "object"
+      },
+      "ScheduleRisk": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "enum": [
+              "schedule_conflict",
+              "outside_working_hours",
+              "during_break",
+              "buffer_too_short",
+              "preparation_time_short",
+              "in_the_past"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "minLength": 1,
+            "title": "Detail",
+            "type": "string"
+          },
+          "related_work_order_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Related Work Order Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "detail"
+        ],
+        "title": "ScheduleRisk",
+        "type": "object"
+      },
+      "ScheduleSettings": {
+        "additionalProperties": false,
+        "description": "User-set working time (方案 §4.4). Buffers are the user's own numbers, not travel time.",
+        "properties": {
+          "breaks": {
+            "default": [
+              {
+                "end": "13:30",
+                "start": "12:30"
+              }
+            ],
+            "items": {
+              "$ref": "#/components/schemas/TimeRange"
+            },
+            "title": "Breaks",
+            "type": "array"
+          },
+          "buffer_minutes": {
+            "default": 30,
+            "maximum": 240.0,
+            "minimum": 0.0,
+            "title": "Buffer Minutes",
+            "type": "integer"
+          },
+          "default_duration_minutes": {
+            "default": 60,
+            "maximum": 720.0,
+            "minimum": 15.0,
+            "title": "Default Duration Minutes",
+            "type": "integer"
+          },
+          "preparation_minutes": {
+            "default": 60,
+            "maximum": 1440.0,
+            "minimum": 0.0,
+            "title": "Preparation Minutes",
+            "type": "integer"
+          },
+          "timezone": {
+            "default": "Asia/Hong_Kong",
+            "minLength": 1,
+            "title": "Timezone",
+            "type": "string"
+          },
+          "version": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          },
+          "work_days": {
+            "default": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "items": {
+              "maximum": 7.0,
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            "minItems": 1,
+            "title": "Work Days",
+            "type": "array"
+          },
+          "work_hours": {
+            "$ref": "#/components/schemas/TimeRange",
+            "default": {
+              "end": "19:00",
+              "start": "09:00"
+            }
+          }
+        },
+        "title": "ScheduleSettings",
+        "type": "object"
+      },
+      "SendApprovedActionCommand": {
+        "additionalProperties": false,
+        "description": "Merchant hands an approved business reply to the WhatsApp sending gateway.\n\nThe connection, control and send-permission versions are the ones the\nmerchant sees on the sending page; the action revision and snapshot hash\nare the exact approved reply.",
+        "properties": {
+          "connection_id": {
+            "format": "uuid",
+            "title": "Connection Id",
+            "type": "string"
+          },
+          "expected_action_revision": {
+            "minimum": 1.0,
+            "title": "Expected Action Revision",
+            "type": "integer"
+          },
+          "expected_control_version": {
+            "minimum": 0.0,
+            "title": "Expected Control Version",
+            "type": "integer"
+          },
+          "expected_permission_version": {
+            "minimum": 1.0,
+            "title": "Expected Permission Version",
+            "type": "integer"
+          },
+          "snapshot_hash": {
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "title": "Snapshot Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "connection_id",
+          "expected_control_version",
+          "expected_permission_version",
+          "expected_action_revision",
+          "snapshot_hash"
+        ],
+        "title": "SendApprovedActionCommand",
+        "type": "object"
+      },
       "SetWorkOrderStatusCommand": {
         "additionalProperties": false,
         "description": "Merchant moves an order along its life cycle (see TRANSITIONS in workorders).",
         "properties": {
+          "acknowledge_open_items": {
+            "default": false,
+            "title": "Acknowledge Open Items",
+            "type": "boolean"
+          },
           "expected_version": {
             "minimum": 1.0,
             "title": "Expected Version",
@@ -2700,6 +3590,35 @@
         "title": "SetWorkOrderStatusCommand",
         "type": "object"
       },
+      "Slot": {
+        "additionalProperties": false,
+        "properties": {
+          "end_at": {
+            "format": "date-time",
+            "pattern": "Z$",
+            "title": "End At",
+            "type": "string"
+          },
+          "label": {
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "start_at": {
+            "format": "date-time",
+            "pattern": "Z$",
+            "title": "Start At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start_at",
+          "end_at",
+          "label"
+        ],
+        "title": "Slot",
+        "type": "object"
+      },
       "SourceRef": {
         "additionalProperties": false,
         "properties": {
@@ -2719,6 +3638,175 @@
           "message_revision"
         ],
         "title": "SourceRef",
+        "type": "object"
+      },
+      "Suggestion": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "enum": [
+              "task_overdue",
+              "material_missing",
+              "dependency_at_risk",
+              "day_overbooked"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "minLength": 1,
+            "title": "Detail",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "work_order_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Order Id"
+          }
+        },
+        "required": [
+          "code",
+          "detail"
+        ],
+        "title": "Suggestion",
+        "type": "object"
+      },
+      "SummaryEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "action_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Id"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "pattern": "Z$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "calendar_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calendar Event Id"
+          },
+          "change_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Id"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "open_items": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Open Items",
+            "type": "array"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "work_order_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Order Id"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "SummaryEntry",
         "type": "object"
       },
       "Task": {
@@ -2810,6 +3898,27 @@
         "title": "Task",
         "type": "object"
       },
+      "TimeRange": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "TimeRange",
+        "type": "object"
+      },
       "TimedSchedule": {
         "additionalProperties": false,
         "properties": {
@@ -2843,6 +3952,49 @@
           "timezone"
         ],
         "title": "TimedSchedule",
+        "type": "object"
+      },
+      "UpdateRequirementCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "done",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "expected_version"
+        ],
+        "title": "UpdateRequirementCommand",
+        "type": "object"
+      },
+      "UpdateScheduleSettingsCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 0.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ScheduleSettings"
+          }
+        },
+        "required": [
+          "expected_version",
+          "settings"
+        ],
+        "title": "UpdateScheduleSettingsCommand",
         "type": "object"
       },
       "ValidationError": {
@@ -5345,6 +6497,28 @@
             "title": "Account Id",
             "type": "string"
           },
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "pattern": "Z$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "attention": {
+            "default": [],
+            "items": {
+              "const": "customer_not_replying",
+              "type": "string"
+            },
+            "title": "Attention",
+            "type": "array"
+          },
           "conversation_ids": {
             "items": {
               "format": "uuid",
@@ -5353,6 +6527,20 @@
             "minItems": 1,
             "title": "Conversation Ids",
             "type": "array"
+          },
+          "deferred": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DeferredItem"
+            },
+            "default": {},
+            "propertyNames": {
+              "enum": [
+                "schedule",
+                "address"
+              ]
+            },
+            "title": "Deferred",
+            "type": "object"
           },
           "fields": {
             "$ref": "#/components/schemas/WorkOrderFields"
@@ -5370,6 +6558,14 @@
             "title": "Pending Change Ids",
             "type": "array"
           },
+          "requirements": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RequirementItem"
+            },
+            "title": "Requirements",
+            "type": "array"
+          },
           "status": {
             "$ref": "#/components/schemas/WorkOrderStatus"
           },
@@ -5377,6 +6573,15 @@
             "minLength": 1,
             "title": "Summary",
             "type": "string"
+          },
+          "task_links": {
+            "additionalProperties": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "default": {},
+            "title": "Task Links",
+            "type": "object"
           },
           "updated_at": {
             "format": "date-time",
@@ -5406,11 +6611,21 @@
       },
       "WorkOrderFields": {
         "additionalProperties": false,
+        "description": "Key items (schedule, address) decide confirmation; the others are business detail.",
         "properties": {
           "address": {
             "$ref": "#/components/schemas/ProvenancedField"
           },
+          "deadline": {
+            "$ref": "#/components/schemas/ProvenancedField"
+          },
+          "quantity": {
+            "$ref": "#/components/schemas/ProvenancedField"
+          },
           "schedule": {
+            "$ref": "#/components/schemas/ProvenancedField"
+          },
+          "specification": {
             "$ref": "#/components/schemas/ProvenancedField"
           }
         },
@@ -5734,6 +6949,65 @@
         "summary": "Cancel Action"
       }
     },
+    "/api/v1/actions/{action_id}/edit": {
+      "post": {
+        "operationId": "edit_action_api_v1_actions__action_id__edit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Action Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditActionCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_ActionView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit Action"
+      }
+    },
     "/api/v1/actions/{action_id}/reissue": {
       "post": {
         "operationId": "reissue_action_api_v1_actions__action_id__reissue_post",
@@ -5852,6 +7126,65 @@
         "summary": "Reject Action"
       }
     },
+    "/api/v1/actions/{action_id}/send": {
+      "post": {
+        "operationId": "send_action_api_v1_actions__action_id__send_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Action Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendApprovedActionCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_ActionView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Send Action"
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "operationId": "login_api_v1_auth_login_post",
@@ -5908,6 +7241,7 @@
     },
     "/api/v1/calendar-events": {
       "get": {
+        "description": "Events overlapping [start, end) when given; tentative entries included and marked.",
         "operationId": "calendar_api_v1_calendar_events_get",
         "parameters": [
           {
@@ -5936,6 +7270,38 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
             }
           }
         ],
@@ -8838,6 +10204,54 @@
         "summary": "Messages"
       }
     },
+    "/api/v1/daily-summary": {
+      "get": {
+        "description": "Today's work, waiting items, due soon, decisions and rule-based suggestions (read-only).",
+        "operationId": "daily_summary_api_v1_daily_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_DailySummary_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Daily Summary"
+      }
+    },
     "/api/v1/replay": {
       "post": {
         "operationId": "replay_api_v1_replay_post",
@@ -8996,6 +10410,119 @@
         "summary": "Review Items"
       }
     },
+    "/api/v1/review-items/{job_id}/assign": {
+      "post": {
+        "operationId": "assign_review_item_api_v1_review_items__job_id__assign_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignMessageCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_AssignmentResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Assign Review Item"
+      }
+    },
+    "/api/v1/settings/schedule": {
+      "get": {
+        "operationId": "schedule_settings_api_v1_settings_schedule_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_ScheduleSettings_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Schedule Settings"
+      },
+      "put": {
+        "operationId": "update_schedule_settings_api_v1_settings_schedule_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateScheduleSettingsCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_ScheduleSettings_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Schedule Settings"
+      }
+    },
     "/api/v1/tasks": {
       "get": {
         "operationId": "tasks_api_v1_tasks_get",
@@ -9026,6 +10553,23 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "work_order_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Order Id"
             }
           }
         ],
@@ -9134,6 +10678,32 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkOrderStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Archived",
+              "type": "boolean"
             }
           }
         ],
@@ -9247,6 +10817,65 @@
           }
         },
         "summary": "Order Detail"
+      }
+    },
+    "/api/v1/work-orders/{order_id}/archive": {
+      "post": {
+        "operationId": "archive_order_api_v1_work_orders__order_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WorkOrder_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Order"
       }
     },
     "/api/v1/work-orders/{order_id}/changes": {
@@ -9384,6 +11013,343 @@
           }
         },
         "summary": "Confirm Change"
+      }
+    },
+    "/api/v1/work-orders/{order_id}/changes/{change_id}/reject": {
+      "post": {
+        "operationId": "reject_order_change_api_v1_work_orders__order_id__changes__change_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "change_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Change Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WorkOrder_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Order Change"
+      }
+    },
+    "/api/v1/work-orders/{order_id}/checklist": {
+      "get": {
+        "operationId": "order_checklist_api_v1_work_orders__order_id__checklist_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_DeliveryChecklist_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Order Checklist"
+      }
+    },
+    "/api/v1/work-orders/{order_id}/defer": {
+      "post": {
+        "operationId": "defer_order_item_api_v1_work_orders__order_id__defer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeferItemCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WorkOrder_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Defer Order Item"
+      }
+    },
+    "/api/v1/work-orders/{order_id}/requirements": {
+      "post": {
+        "operationId": "add_order_requirement_api_v1_work_orders__order_id__requirements_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddRequirementCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WorkOrder_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Order Requirement"
+      }
+    },
+    "/api/v1/work-orders/{order_id}/requirements/{item_id}": {
+      "post": {
+        "operationId": "update_order_requirement_api_v1_work_orders__order_id__requirements__item_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRequirementCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WorkOrder_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Order Requirement"
+      }
+    },
+    "/api/v1/work-orders/{order_id}/schedule-check": {
+      "get": {
+        "description": "Risks for this order's time and free slots the merchant may offer (read-only).",
+        "operationId": "schedule_check_api_v1_work_orders__order_id__schedule_check_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_ScheduleCheck_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Schedule Check"
       }
     },
     "/api/v1/work-orders/{order_id}/status": {

@@ -421,3 +421,80 @@ def test_approved_but_unsent_reply_needs_new_approval_after_new_message(signed_i
     old = detail(client, action)
     assert (old["state"], old["closed_reason"]) == ("cancelled", "superseded")
     assert pending(client) == []
+
+
+def test_editing_a_draft_needs_a_fresh_approval(signed_in):
+    client, factory, _, headers = signed_in
+    action = conflict_draft(client, factory, headers)
+    edited = client.post(
+        f"/api/v1/actions/{action['id']}/edit",
+        json={
+            "body": "收到！这个时间我有安排，星期四四点半可以吗？",
+            "expected_action_revision": action["revision"],
+            "snapshot_hash": action["snapshot_hash"],
+        },
+        headers={**headers, "Idempotency-Key": str(uuid4())},
+    )
+    assert edited.status_code == 200, edited.text
+    new = edited.json()["data"]
+    assert new["revision"] == action["revision"] + 1
+    assert new["body"] == "收到！这个时间我有安排，星期四四点半可以吗？"
+    assert new["snapshot_hash"] != action["snapshot_hash"]
+    # The old approval no longer matches the edited text.
+    assert post(client, headers, action, "approve").status_code == 409
+    assert post(client, headers, new, "approve").status_code == 202
+    late = client.post(
+        f"/api/v1/actions/{action['id']}/edit",
+        json={
+            "body": "x",
+            "expected_action_revision": new["revision"],
+            "snapshot_hash": new["snapshot_hash"],
+        },
+        headers={**headers, "Idempotency-Key": str(uuid4())},
+    )
+    assert late.status_code == 409
+
+
+def test_action_pages_are_read_in_batches_without_gaps_or_writes(signed_in):
+    client, factory, _, headers = signed_in
+    action = conflict_draft(client, factory, headers)
+    # Many synthetic historical drafts for the same order (closed), plus the live one.
+    with factory.begin() as db:
+        row = db.get(ActionRow, action["id"])
+        for number in range(120):
+            data = {**row.data, "id": str(uuid4()), "state": "cancelled"}
+            db.add(
+                ActionRow(
+                    id=data["id"],
+                    account_id=row.account_id,
+                    work_order_id=row.work_order_id,
+                    conversation_id=row.conversation_id,
+                    trigger=f"schedule_conflict:history-{number}",
+                    active_key=None,
+                    reason="superseded",
+                    created_at=row.created_at,
+                    data=data,
+                )
+            )
+    seen, cursor = [], None
+    while True:
+        params = {"limit": 25, **({"cursor": cursor} if cursor else {})}
+        body = client.get("/api/v1/actions", params=params).json()
+        seen += [item["id"] for item in body["items"]]
+        cursor = body["next_cursor"]
+        if not cursor:
+            break
+    assert len(seen) == len(set(seen)) == 121
+    assert seen == sorted(seen)
+    pending = client.get("/api/v1/actions", params={"state": "pending_approval", "limit": 5}).json()
+    assert [item["id"] for item in pending["items"]] == [action["id"]]
+    assert pending["next_cursor"] is None
+    expire(factory, action)
+    expired = client.get("/api/v1/actions", params={"state": "expired"}).json()["items"]
+    assert [item["id"] for item in expired] == [action["id"]]
+    with factory() as db:
+        assert db.get(ActionRow, action["id"]).data["state"] == "pending_approval"
+    import base64
+
+    bad = base64.urlsafe_b64encode(b"not-an-id").decode()
+    assert client.get("/api/v1/actions", params={"cursor": bad}).status_code == 422

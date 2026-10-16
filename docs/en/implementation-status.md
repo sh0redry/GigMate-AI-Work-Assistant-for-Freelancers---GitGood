@@ -1,5 +1,49 @@
 # Implementation status and validation
 
+## Delivery checklist, archiving and action paging (role C) — 2026-10-16
+
+方案 §4.6 (按已确认要求生成检查清单，提醒未完成事项，商户确认后关闭业务并归档) and Issue #28. `GET /work-orders/{id}/checklist` lists confirmed items to check and unfinished ones; completing with unfinished items returns 409 `CHECKLIST_OPEN` unless the merchant sets `acknowledge_open_items`. `POST /work-orders/{id}/archive` hides a closed order from the default list (`include_archived=true` shows it). `GET /actions` now reads keyset pages from the database in bounded batches instead of loading the whole history; filtering by computed state, `reissuable` and read-only expiry are unchanged. Evidence: `test_checklist.py` **3 passed**; new paging regression with 121 synthetic actions (no gaps or duplicates, expired shown without a write); approvals and sending suites 30 passed.
+
+## Daily summary and rule-based suggestions (role C) — 2026-10-16
+
+方案 §4.6 每日摘要 and the deterministic part of 业务建议 (资料不齐、任务依赖、工作量可能超出时间安排; 建议依据必须可见). `GET /daily-summary` aggregates existing records into today / waiting for the customer / due soon / needs decision, plus suggestions; each entry carries the record IDs. It is read-only and pushes nothing; quiet hours and reminder frequency concern push/sending (role A) and are not part of this endpoint. Natural-language questions remain role B. Evidence: `test_daily_summary.py` **3 passed**.
+
+## Draft editing and no-reply follow-up (role C) — 2026-10-16
+
+方案 §4.5 (编辑后发送) and 契约 §3 "No reply". `POST /actions/{id}/edit` edits a pending draft with a new revision, snapshot hash and expiry; the old snapshot cannot be approved. The worker's hourly maintenance runs `follow_up_unanswered`: an open-item question accepted by the gateway with no incoming customer message for 24 hours gets a follow-up task and a new draft for the remaining items (at most twice, `task_links.no_reply_N`), then the order is flagged `attention: ["customer_not_replying"]`. A customer reply stops it. Evidence: `test_business_send.py` 9 passed (2 new), `test_approvals.py` 20 passed (1 new).
+
+## Business detail fields, requirements and commitment tasks (role C) — 2026-10-16
+
+方案 §4.3 (服务内容、数量与规格、约定日期、所需资料、双方承诺、未决问题) and §4.4 (从承诺生成待办，具有负责人、到期时间和原文依据). `WorkOrderFields` gains `specification`, `quantity`, `deadline` (default missing); confirm handles them and `summary` without touching the key-item rule; a confirmed deadline creates one delivery task (`WorkOrder.task_links.delivery`), replaced on change. `WorkOrder.requirements` with add/close commands; materials and promises create memo tasks. Re-confirming a key item now only cancels the time-bound preparation task, never delivery, requirement or follow-up tasks. Evidence: `test_requirements.py` **4 passed**; role C suites 109 passed.
+
+## Working-time settings, free slots and schedule risks (role C) — 2026-10-16
+
+方案 §4.4 (工作时间、休息时间、任务时长和缓冲; 检查时间重叠、缺少准备时间; 提出可用时间), §5.1 and 附录 A (候选时间必须来自已核对的可用时间). New `scheduling.py`, table `schedule_settings` (migration **0018_schedule_settings**). `GET/PUT /settings/schedule` (defaults: Mon–Sat 09:00–19:00, break 12:30–13:30, 60-minute duration, 30-minute buffer, 60-minute preparation); `GET /work-orders/{id}/schedule-check` returns risks and deterministic free slots; conflict drafts offer the first free slot of the same length; the preparation task uses the merchant's lead time. Evidence: `test_scheduling.py` **5 passed**; role C suites 93 passed.
+
+## List filters from the contract inventory (role C) — 2026-10-16
+
+`GET /work-orders?status=`, `GET /tasks?work_order_id=`, `GET /calendar-events?start=&end=` (ISO times with zone; events overlapping the window, date-only entries cover their whole local day; 422 for invalid or reversed windows). Evidence: `test_list_filters.py` **3 passed**. The `.ics` download is delivered by D's #30 and not duplicated here.
+
+## Customer deferral and follow-up task (role C) — 2026-10-16
+
+契约 §3 "Customer defers". Role B does not yet recognize 还未确定，之后再确认, so the merchant records it: `POST /work-orders/{id}/defer` (`DeferItemCommand`: `field`, optional `until`, customer `sources`, `expected_version`). The order stays `pending_confirmation`; `WorkOrder.deferred[field]` keeps the date, sources and follow-up task; the item is not asked again (if nothing else is open, the pending question is withdrawn with reason `deferred`); a generated task `MM/DD HH:MM 跟进 {summary}：确认地址` is due at the customer's date or 3 days later at 10:00 Hong Kong time. Only an open item of a pending order, a future date and current incoming customer messages are accepted. Confirming that item with customer confirmation clears the deferral and completes the task. Evidence: `test_deferral.py` **3 passed**, creation suite 30 passed.
+
+## Filing unassigned messages (role C) — 2026-10-16
+
+方案 §4.2 ("无法确定时放入待归类队列，由商户选择或拆分") and 契约 §1. D's review list (#30) reads the queue; this adds the merchant's decision: `POST /review-items/{job_id}/assign` (`AssignMessageCommand`: `action` assign/dismiss, `work_order_id`, `expected_context_version`). Assign records the choice in the new `job_assignments` table (additive migration **0017_job_assignments** after 0016; if #31's 0017 lands first, an additive merge revision is needed) and re-queues the message; the worker then offers only that order to extraction, so the outcome is an ordinary proposal. Dismiss closes the item as `DISMISSED_BY_MERCHANT`. Only the conversation's newest message, an open order of the same conversation and an allowlisted conversation are accepted. Evidence: `test_message_assignment.py` **3 passed**; migration suite 18 passed.
+
+## Business approval → sending gateway, and proposal rejection (role C) — 2026-10-16
+
+Stacked on the status-command PR. Design: 方案 §4.5 (send after approval, cancel plans, view results), §6.2 (`sendText` after server-side approval check, idempotent record, unknown outcomes checked), §7 (approval binds exact content and versions; outdated approvals cancelled); Issue #29 §1.
+
+- **`POST /actions/{id}/send`** (`SendApprovedActionCommand`: `connection_id`, `expected_control_version`, `expected_permission_version`, `expected_action_revision`, `snapshot_hash`). Only an `approved` business reply; every approval binding is re-checked; the conversation's WhatsApp chat is resolved server-side on that connection (404 `SEND_CHAT_NOT_LINKED` otherwise). Creates and queues exactly one manual gateway action with the approved text, bound to the approval's work-order and context versions, using A's existing permission/control/expiry checks (403 `SEND_NOT_AUTHORIZED` when sending is not authorized). Request key `c-action:<id>` makes the mapping one-to-one: a repeat returns the same gateway action and never sends twice.
+- **Outcome on the business action:** state `executing` while queued/dispatching, then `succeeded` (with `delivery_status`), `failed`, `cancelled` or `result_unknown` (delivery `unknown`, never resent). `send_action_id`, `send_state`, `send_error` link to the gateway record. Reading never writes.
+- **Withdraw:** `POST /actions/{id}/cancel` on an `executing` action cancels the gateway action while it is still draft/queued/preparing; after dispatch starts it returns 409 `SEND_ALREADY_DISPATCHED`.
+- **Invalidation:** a new message (context change), any order change (version bump: confirm, reject, status) or permission revocation stops an undispatched gateway action through A's dispatch revalidation.
+- **`POST /work-orders/{id}/changes/{change_id}/reject`** (`RejectCommand`): the proposal becomes `rejected` with `rejection_reason`; order values kept, version bumped; its conflict question withdrawn (`proposal_rejected`); open-item question refreshed. `RequirementChange.status` now uses `ChangeStatus` (field statuses plus `rejected`).
+
+Evidence: `test_business_send.py` **7 passed** (synthetic chat and provider), `test_change_reject.py` **3 passed**; approvals + sending suites 82 passed, 3 skipped; frontend 119 passed with the same 3 environment-dependent failures as before the change; contract export and baseline passed. No real WhatsApp send was performed.
+
 ## Role B pre-activation review fixes, round 2 (PR #31) — 2026-10-17
 
 The five [PR #31](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/pull/31) review threads were re-reproduced on branch `william/role-b-preactivation-gates` with a fake transport and a fake clock, and the first fix batch was shown to be insufficient for four of them; all five are re-fixed, still **without** flipping the seam (`_SKELETON_SEAM = True`, media `_ENABLED = False`): (1) the remaining deadline budget is now split across the `httpx` operations, because a scalar timeout is applied per operation and one attempt could spend 30 s connecting plus 30 s reading — the fake-clock measurement is **45.0 s** where it was 60.0 s; (2) a non-positive cost budget is refused before any pricing arithmetic, closing the zero-priced-vendor case where `0 > 0` was false and the call was still issued; (3) an echoed `base_context_version` must be an `int` (not `bool`) equal to the request's, since `7.0 == 7`; (4) `candidates` / `unresolved_questions` / suggestion `missing_fields` / suggestion `unresolved_questions` are shape-checked before Pydantic, like `changes` / `sources` already were; (5) the time-basis guard is field-keyed, so a date written as free text or a bare number on `schedule` / `deadline` is refused without a basis instead of being promoted as `matched`. Full rationale and the new stable codes are in [role-b-extraction.md](role-b-extraction.md). No migration, contract or API surface changed.
@@ -793,6 +837,16 @@ Verification (repo `.venv`, SQLite — conditional compatibility, not locking pr
 - Frontend: `npm run check:api`, `format:check`, `build` all pass (dependencies installed with `npm ci` in this environment).
 - `run_evaluation.py` (disposable SQLite): deterministic 9/9 exit 0; `--provider llm` 7 pass, 2 expected fail (cases 1-2 need a real model).
 
+## Independent PR32 repair and main integration — 2026-10-17
+
+Author-mentioned e6ba13f was not present on the remote PR; repaired the actual d696735 branch under Kyrie's authorization. Added migration 0019_action_send_link: nullable unique foreign-key association from business approval to exact gateway action. Reads/cancellation verify connection owner, conversation/chat, order/version/context and full text; unrelated occupied request keys cannot be adopted. Legacy missing/unverified links become result_unknown without guessed backfill, and old cached send IDs are reprojected through ownership checks. Defer, requirement creation/closure and draft edit reject paused/unlinked source conversations before writing; summary query dates are real date values with 422 validation. Latest action IDs are computed in SQL; an unfiltered limit=1 page materializes at most 2 actions. Preserved main's ICS/source review and non-timed change-list guards.
+
+Actual SQLite validation: 20 new boundary cases passed; 91 combined migration/business/approval/source-review regressions passed. Migrations upgrade old branch databases without reset. No live provider, external send or PostgreSQL row-lock acceptance claimed. B migration branch joining is the next integration step.
+
 ## Independent PR31 contract repair — 2026-10-17
 
 Latest d9e1fe7 passes the original provenance, collection-type, zero-budget and instant-date probes using a streaming fake transport. An independent cross-contract check still found that every canonical ChangeProposal dump (including new_work_order=null) was rejected by the public AI schema. Added optional nullable NewWorkOrderSuggestion to independently maintained AI schema revision 0.1.1, keeping wire schema_version=0.1.0 and old fixtures valid. Matched proposals cannot carry new-order suggestions; no execution fields are accepted. Live seams remain closed. No runtime enablement or vendor acceptance is implied.
+
+## Combined B/C repair validation — 2026-10-17
+
+Preserved both 0018 migration branches and added no-op merge revision 0020_business_model_heads after 0019_action_send_link. Worker keeps C per-job assignment and B post-call source/version checks. Added old-cache and immutable-body link regressions (22 boundary cases). Final isolated Linux/PostgreSQL complete suite: **957 passed / 1 skipped**; includes upgrades from model-cost, schedule-settings and send-link parents. Fresh PostgreSQL Alembic upgrade/check: one head, no schema drift. Frontend **143 passed**, TypeScript/Vite build passed, generated exports and full backend Ruff/format (121 files) passed. Foreign-account and occupied-key cases never contact a provider. No real WhatsApp/model acceptance claimed; model seams remain closed in this PR.

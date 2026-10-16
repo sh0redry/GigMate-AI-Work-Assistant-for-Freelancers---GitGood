@@ -42,8 +42,15 @@ EXTRACTION_NEEDS_REVIEW = "EXTRACTION_NEEDS_REVIEW"
 OWN_SEND_ECHO = "OWN_SEND_ECHO"
 
 
-def open_orders(db, conversation_id):
-    """Orders this conversation can still change: cancelled/completed ones are history."""
+def open_orders(db, conversation_id, job_id=None):
+    """Orders this conversation can still change: cancelled/completed ones are history.
+
+    When the merchant has filed this message to one order, only that order is
+    offered (if it is still open).
+    """
+    from gigmate.db import JobAssignment
+
+    chosen = db.get(JobAssignment, job_id) if job_id else None
     return [
         order.id
         for order in db.scalars(
@@ -53,6 +60,7 @@ def open_orders(db, conversation_id):
             .order_by(WorkOrderRow.id)
         )
         if order.data["status"] not in CLOSED
+        and (chosen is None or order.id == chosen.work_order_id)
     ]
 
 
@@ -133,7 +141,7 @@ def run_once(factory=Session):
                 # never trigger extraction, another question or another send.
                 job.state, job.error_code = "completed", OWN_SEND_ECHO
             elif event["connector"] == "waha":
-                linked = open_orders(db, conversation.id)
+                linked = open_orders(db, conversation.id, job.id)
                 matched = _route_through_provider(
                     db,
                     account=account,
@@ -146,7 +154,7 @@ def run_once(factory=Session):
                 job.state = "completed"
                 job.error_code = None if matched else EXTRACTION_NEEDS_REVIEW
             else:
-                linked = open_orders(db, conversation.id)
+                linked = open_orders(db, conversation.id, job.id)
                 if len(linked) != 1:
                     job.state, job.error_code = "completed", "ASSIGNMENT_NEEDS_REVIEW"
                 else:
@@ -462,6 +470,10 @@ def maintain(factory=Session):
         for identifier in identifiers:
             with factory.begin() as db:
                 purge_expired(db, identifier)
+        from gigmate.approvals import follow_up_unanswered
+
+        with factory.begin() as db:
+            follow_up_unanswered(db)
         from gigmate.waha_media import purge as purge_media
 
         purge_media(factory)
