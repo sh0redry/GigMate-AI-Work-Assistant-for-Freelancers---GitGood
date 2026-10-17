@@ -1,5 +1,16 @@
 # Implementation status and validation
 
+## PR34 independent-review follow-up — 2026-10-17
+
+Fix date-render crashes, preserve exact formatted review/recovery text without reverse translation, clear old success notices on subsequent work/errors, and translate queue/action/receipt states. Add a transaction-safe 409 fence for duplicate suggestion consumption and retain account serialization. Tighten bounded suggestion SQL to exclude missing suggestion blocks and consumed events. Recovery/final retry-limit paths now record completion metrics. Read all linked conversations and reject stale, revoked, mixed or superseded source revisions in business management.
+
+Evidence: Linux/locked dependencies with isolated PostgreSQL **998 passed / 1 skipped**; product suite **37 passed**, including barrier-synchronised concurrent HTTP creation and signed ingress with real control routes. SQLite product suite **35 passed / 2 PostgreSQL-only skips**. Frontend **175 passed**; TypeScript, formatting, contracts and bundle pass. Before/after probes reproduce the old date, review-text, notice, unique-fence and metrics failures. Normal HTTP creation was already serialized by account locks (201/409 for different keys, same receipt for the same key); do not describe that as a reproduced 500. See [scope, authorisation and evidence](bcd-product-delivery.md). No real paid-model or WhatsApp acceptance is implied; configuration remains local/private.
+
+## Current BCD text-product candidate — 2026-10-17
+
+PR31/32/33 are merged; base main `14aa34e`. The API/cache/glass commits are followed by merchant-reviewed new-order suggestion consumption, task decisions, optional isolated text runtime, canonical business-loop clients and Chinese/English/Cantonese UI. Linux + isolated PostgreSQL: **987 passed, 1 skipped**; new product checks: **26 passed**, including a real child process against a loopback fake HTTP vendor. Alembic 0021 upgrade/check and closed Compose text overlay validation pass. No real vendor, phone or deployment acceptance was performed. See [current scope, evidence and limits](bcd-product-delivery.md); older dated statuses below are history.
+
+
 ## Delivery checklist, archiving and action paging (role C) — 2026-10-16
 
 方案 §4.6 (按已确认要求生成检查清单，提醒未完成事项，商户确认后关闭业务并归档) and Issue #28. `GET /work-orders/{id}/checklist` lists confirmed items to check and unfinished ones; completing with unfinished items returns 409 `CHECKLIST_OPEN` unless the merchant sets `acknowledge_open_items`. `POST /work-orders/{id}/archive` hides a closed order from the default list (`include_archived=true` shows it). `GET /actions` now reads keyset pages from the database in bounded batches instead of loading the whole history; filtering by computed state, `reissuable` and read-only expiry are unchanged. Evidence: `test_checklist.py` **3 passed**; new paging regression with 121 synthetic actions (no gaps or duplicates, expired shown without a write); approvals and sending suites 30 passed.
@@ -837,6 +848,23 @@ Verification (repo `.venv`, SQLite — conditional compatibility, not locking pr
 - Frontend: `npm run check:api`, `format:check`, `build` all pass (dependencies installed with `npm ci` in this environment).
 - `run_evaluation.py` (disposable SQLite): deterministic 9/9 exit 0; `--provider llm` 7 pass, 2 expected fail (cases 1-2 need a real model).
 
+## D API integration preparation (2026-10-17)
+
+Main route audit and PR32 preparation: [inventory and activation requirements](role-d-api-audit.md). Added default-off reviewed capability, independently generated pinned pending types, reviewed business-management forms and account-scoped uncertain-request recovery. Main delivery remains usable without PR32. Backend workspace delivery tests: 12 passed locally; browser/unit and generation checks are recorded below after completion. No provider send or real-model acceptance claimed.
+
+API preparation validation: frontend **149/149 passed**, TypeScript/Vite build, both generated-type checks, Ruff/format for the two changed backend files, canonical export check and baseline (86 Markdown, 992 local links) passed. Backend workspace tests **12/12 passed**. Pending C32 mutations tested against pinned contract/client doubles only, not a running unsafe branch.
+
+## D session caching (2026-10-17)
+
+Added bounded session-memory conditional JSON reads across workspace/connection/sync/media/send adapters. Main weak ETags are calculated after authenticated route execution; matching 304 bodies are empty, errors never use cached success. Cache clears on logout/scope change, permission failures and mutations including uncertain outcomes. No browser disk cache, service worker, QR/blob/ICS cache or offline write authority. Structural sharing retains equal state; business polling is 5s/visible with no repeated loading or timestamp changes. Approval review survives unchanged reads and invalidates on real binding changes. Network failures retain stale content; private-access failures clear it.
+
+Cache validation: frontend **157/157 passed**, including unchanged-refresh consent/focus and same-reference store tests; TypeScript/Vite passed. Conditional/ownership/workspace/media-evidence backend subset **33/33 passed**. Full macOS attempt: **687 passed, 13 failed, 22 skipped**; one failure was an exact no-store header expectation corrected and verified in the 33-test subset, the other 12 report `MEDIA_PDF_LIMIT_UNAVAILABLE` on unsupported native macOS. No PostgreSQL locking or real-provider proof.
+
+## D glass visual language (2026-10-17)
+
+Pearl/grey/mist-blue design tokens replace green across the shell, connector pages, icon and manifest. Added consistent line icons, desktop glass navigation and a four-page mobile dock with an additional-page menu, solid material fallbacks, contrast/motion support and touch/keyboard focus. Browser acceptance used a newly created synthetic SQLite database with provider/worker disabled; desktop 1440px and phone 390px layouts inspected with no horizontal overflow. No private screenshots tracked. Validation counts follow after the final run.
+
+Visual validation: frontend **157 passed**, format check, TypeScript/Vite and baseline passed. Browser checked 1440px business/calendar and 390px business/calendar/create, main headings clear the sticky header, no horizontal overflow or visible alerts; mobile More navigation returns to page top. Native/optical iOS equivalence and private/live-provider content are not claimed.
 ## Independent PR32 repair and main integration — 2026-10-17
 
 Author-mentioned e6ba13f was not present on the remote PR; repaired the actual d696735 branch under Kyrie's authorization. Added migration 0019_action_send_link: nullable unique foreign-key association from business approval to exact gateway action. Reads/cancellation verify connection owner, conversation/chat, order/version/context and full text; unrelated occupied request keys cannot be adopted. Legacy missing/unverified links become result_unknown without guessed backfill, and old cached send IDs are reprojected through ownership checks. Defer, requirement creation/closure and draft edit reject paused/unlinked source conversations before writing; summary query dates are real date values with 422 validation. Latest action IDs are computed in SQL; an unfiltered limit=1 page materializes at most 2 actions. Preserved main's ICS/source review and non-timed change-list guards.

@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 import { apiBase } from "./environment.ts";
 import { WorkspaceError } from "./workspace-api.ts";
 export async function calendarFile(
@@ -18,7 +19,10 @@ export async function calendarFile(
       },
     );
   } catch {
-    throw new WorkspaceError("UNAVAILABLE", "无法下载日历，请恢复连接后重试。");
+    throw new WorkspaceError(
+      "UNAVAILABLE",
+      t("无法下载日历，请恢复连接后重试。"),
+    );
   }
   if (!response.ok) {
     const error = await response.json().catch(() => null);
@@ -27,10 +31,12 @@ export async function calendarFile(
         ? "UNAUTHENTICATED"
         : (error?.error?.code ?? "UNAVAILABLE"),
       response.status === 401
-        ? "登录已过期，请重新登录。"
+        ? t("登录已过期，请重新登录。")
         : error?.error?.code === "APPROVAL_STALE"
-          ? "预约的来源消息已变化、撤回或无法核对，暂不能导出；请先核对原文。原预约仍保留。"
-          : "预约已变化、未确认或不可导出，请刷新核对。",
+          ? t(
+              "预约的来源消息已变化、撤回或无法核对，暂不能导出；请先核对原文。原预约仍保留。",
+            )
+          : t("预约已变化、未确认或不可导出，请刷新核对。"),
     );
   }
   if (
@@ -38,7 +44,7 @@ export async function calendarFile(
   )
     throw new WorkspaceError(
       "INVALID_RESPONSE",
-      "服务没有返回日历文件，请联系维护者。",
+      t("服务没有返回日历文件，请联系维护者。"),
     );
   const blob = await response.blob();
   const text = await blob.text();
@@ -47,7 +53,10 @@ export async function calendarFile(
     !text.startsWith("BEGIN:VCALENDAR\r\n") ||
     !text.endsWith("END:VCALENDAR\r\n")
   )
-    throw new WorkspaceError("INVALID_RESPONSE", "日历文件无效，未进行下载。");
+    throw new WorkspaceError(
+      "INVALID_RESPONSE",
+      t("日历文件无效，未进行下载。"),
+    );
   return blob;
 }
 export function saveCalendar(blob: Blob, id: string) {

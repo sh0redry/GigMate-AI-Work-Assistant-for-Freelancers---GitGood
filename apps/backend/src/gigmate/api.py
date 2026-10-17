@@ -17,6 +17,7 @@ from starlette.concurrency import run_in_threadpool
 from gigmate import identity
 from gigmate import waha_controls as controls
 from gigmate.approvals import approve, reissue, reject, views
+from gigmate.conditional_reads import conditional_read
 from gigmate.config import COOKIE_SECURE, TRUSTED_ORIGINS
 from gigmate.contracts import (
     ActionState,
@@ -24,7 +25,6 @@ from gigmate.contracts import (
     ApprovalAction,
     ApproveActionCommand,
     ArchiveCommand,
-    AssignmentResult,
     AssignMessageCommand,
     CalendarEvent,
     ConfirmChangeCommand,
@@ -38,6 +38,7 @@ from gigmate.contracts import (
     DeliveryChecklist,
     Detail,
     EditActionCommand,
+    MessageAssignmentResult,
     Model,
     Page,
     RecoveryIssue,
@@ -175,7 +176,7 @@ async def request_context(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Request-ID"] = request.state.request_id
     response.headers["Cache-Control"] = "no-store"
-    return response
+    return await conditional_read(request, response)
 
 
 @app.exception_handler(BusinessError)
@@ -464,7 +465,7 @@ def reject_order_change(
     )
 
 
-@app.post("/api/v1/review-items/{job_id}/assign", response_model=Detail[AssignmentResult])
+@app.post("/api/v1/review-items/{job_id}/assign", response_model=Detail[MessageAssignmentResult])
 def assign_review_item(
     job_id: UUID,
     command: AssignMessageCommand,
@@ -1620,3 +1621,8 @@ def replay_custom(
 
 install_sending(app, database, setup_actor, detail, page, sending_io_actor)
 install_workspace(app, database, actor, detail, page, conversation_info)
+
+
+from gigmate.product_commands import install as install_product  # noqa: E402
+
+install_product(app, database, actor, detail, page)

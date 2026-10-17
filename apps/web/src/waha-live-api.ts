@@ -1,3 +1,5 @@
+import { t } from "./i18n.ts";
+import { sessionFetch } from "./read-cache.ts";
 import { apiBase, attemptNamespace } from "./environment.ts";
 import {
   ConnectionError,
@@ -106,7 +108,7 @@ export function liveConnectionApi(csrf: string): ConnectionApi {
   ) {
     let value: Response;
     try {
-      value = await fetch(`${api}${path}`, {
+      value = await sessionFetch(`${api}${path}`, {
         method,
         credentials: "same-origin",
         cache: "no-store",
@@ -123,7 +125,7 @@ export function liveConnectionApi(csrf: string): ConnectionApi {
     } catch {
       throw new ConnectionError(
         method === "GET" ? "NETWORK_ERROR" : "OPERATION_RESULT_UNKNOWN",
-        "请求结果待确认，请刷新状态；不要另建请求重试。",
+        t("请求结果待确认，请刷新状态；不要另建请求重试。"),
       );
     }
     if (!value.ok) {
@@ -134,7 +136,7 @@ export function liveConnectionApi(csrf: string): ConnectionApi {
           : method !== "GET" && value.status >= 500
             ? "OPERATION_RESULT_UNKNOWN"
             : (error.error?.code ?? "HTTP_ERROR"),
-        error.error?.message ?? "请求失败",
+        error.error?.message ?? t("请求失败"),
         error.request_id,
       );
     }
@@ -152,7 +154,7 @@ export function liveConnectionApi(csrf: string): ConnectionApi {
     } catch {
       throw new ConnectionError(
         method === "GET" ? "INVALID_RESPONSE" : "OPERATION_RESULT_UNKNOWN",
-        "响应未能完整读取，请重新核对状态；不要另建请求重试。",
+        t("响应未能完整读取，请重新核对状态；不要另建请求重试。"),
       );
     }
   }
@@ -181,7 +183,7 @@ export function liveConnectionApi(csrf: string): ConnectionApi {
                 : op.state === "failed"
                   ? "WAHA_OPERATION_FAILED"
                   : "OPERATION_PENDING")),
-        "操作尚未完成，请刷新状态或明确核对；不要重复提交。",
+        t("操作尚未完成，请刷新状态或明确核对；不要重复提交。"),
       );
     }
     return op;
@@ -201,7 +203,7 @@ export function liveConnectionApi(csrf: string): ConnectionApi {
     ) {
       throw new ConnectionError(
         "OPERATION_RESULT_UNKNOWN",
-        "上次请求结果待确认，请使用原请求核对。",
+        t("上次请求结果待确认，请使用原请求核对。"),
       );
     }
     if (!value) {
@@ -238,7 +240,7 @@ export function liveConnectionApi(csrf: string): ConnectionApi {
       )
         throw new ConnectionError(
           "OPERATION_RESULT_UNKNOWN",
-          "未能读取操作编号，请使用原请求核对。",
+          t("未能读取操作编号，请使用原请求核对。"),
         );
       remember(id, null); // The server operation UUID now permits read-only polling.
     } catch (error) {
@@ -347,14 +349,14 @@ export function liveConnectionApi(csrf: string): ConnectionApi {
       )
         throw new ConnectionError(
           "INVALID_RESPONSE",
-          "列表数据无效，请刷新后重试。",
+          t("列表数据无效，请刷新后重试。"),
         );
       result.push(...page.items);
       cursor = page.next_cursor;
       if (cursor && seen.has(cursor))
         throw new ConnectionError(
           "INVALID_RESPONSE",
-          "列表分页异常，请刷新后重试。",
+          t("列表分页异常，请刷新后重试。"),
         );
       if (cursor) seen.add(cursor);
     } while (cursor);
@@ -381,7 +383,7 @@ export function liveConnectionApi(csrf: string): ConnectionApi {
       if (!value)
         throw new ConnectionError(
           "WAHA_RECONCILIATION_NOT_REQUIRED",
-          "没有待核对的原请求。",
+          t("没有待核对的原请求。"),
         );
       const op = await operate(
         id,
@@ -400,7 +402,7 @@ export function liveConnectionApi(csrf: string): ConnectionApi {
       if (!value.active_operation_id)
         throw new ConnectionError(
           "WAHA_RECONCILIATION_NOT_REQUIRED",
-          "没有待核对操作。",
+          t("没有待核对操作。"),
         );
       const op = (
         await request<Detail<Operation>>(
@@ -428,7 +430,7 @@ export function liveConnectionApi(csrf: string): ConnectionApi {
         !image.size ||
         image.size > 2 * 1024 * 1024
       )
-        throw new ConnectionError("WAHA_INVALID_QR", "二维码图片无效。");
+        throw new ConnectionError("WAHA_INVALID_QR", t("二维码图片无效。"));
       return image;
     },
     selection,

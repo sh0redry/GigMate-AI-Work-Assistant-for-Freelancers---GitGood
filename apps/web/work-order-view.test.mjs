@@ -8,7 +8,37 @@ import {
   onDay,
   fieldValue,
   reviewBinding,
+  hongKongDateTime,
 } from "./src/work-order-view.ts";
+test("follow-up datetime accepts seconds and milliseconds, rejects impossible dates without throwing", () => {
+  assert.equal(
+    hongKongDateTime("2026-11-01T08:30"),
+    "2026-11-01T00:30:00.000Z",
+  );
+  assert.equal(
+    hongKongDateTime("2026-11-01T08:30:15"),
+    "2026-11-01T00:30:15.000Z",
+  );
+  assert.equal(
+    hongKongDateTime("2026-11-01T08:30:15.123"),
+    "2026-11-01T00:30:15.123Z",
+  );
+  assert.equal(
+    hongKongDateTime("2028-02-29T00:00"),
+    "2028-02-28T16:00:00.000Z",
+  );
+  for (const raw of [
+    "",
+    "bad",
+    "2026-02-29T10:00",
+    "2026-02-31T10:00",
+    "2026-11-01T24:30",
+    "2026-11-01T08:60",
+    "2026-11-01T08:30:61",
+    "2026-11-01T08:30Z",
+  ])
+    assert.equal(hongKongDateTime(raw), null, raw);
+});
 const change = {
   id: "change",
   field: "schedule",

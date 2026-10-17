@@ -23,7 +23,11 @@ for (const name of [
   "features",
   "business-store",
   "environment",
+  "read-cache",
+  "useStableState",
   "workspace-api",
+  "i18n",
+  "locales",
   "work-order-view",
 ]) {
   const source = await readFile(

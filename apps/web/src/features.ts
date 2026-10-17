@@ -1,3 +1,4 @@
+import { localized } from "./i18n.ts";
 import type { components } from "./generated/api";
 export type Features = {
   [K in keyof components["schemas"]["WorkspaceCapabilities"]]: boolean;
@@ -10,11 +11,17 @@ export const unavailableFeatures: Features = {
   manual_assignment: false,
   business_sending: false,
   automatic_understanding: false,
+  business_loop_reviewed: false,
 };
 export const featureDescriptions: Record<
   keyof Features,
   { title: string; reason: string; issue: string }
-> = {
+> = localized({
+  business_loop_reviewed: {
+    title: "业务扩展与安全验收",
+    reason: "本版已接通归单、延期、需求、工作时间、摘要、交付检查和归档。",
+    issue: "29",
+  },
   calendar_export: {
     title: "导出手机日历",
     reason: "需要本版后端提供只读日历下载接口。",
@@ -37,21 +44,27 @@ export const featureDescriptions: Record<
   },
   manual_assignment: {
     title: "人工归单与延期跟进",
-    reason: "可查看原文和已有工单；归单、延期与跟进保存接口尚未交付。",
+    reason: "已接通当前消息归单、忽略及延期跟进；更改会重新核对来源和版本。",
     issue: "29",
   },
   business_sending: {
     title: "业务审批后发送及关联回执",
-    reason: "审批记录已可保存；C 业务审批与 A 的 WhatsApp 发送尚未接通。",
+    reason:
+      "已接通准确的审批与发送记录；需单独授权对应聊天，未知结果先核查，不自动重发。",
     issue: "29",
   },
   automatic_understanding: {
-    title: "AI 自动理解、建单和真实 OCR／语音识别",
-    reason: "B 的真实文字和媒体模型仍未启用；不能把没有提议当成已经理解。",
+    title: "AI 文字理解",
+    reason:
+      "文字模型须由维护者在服务端配置、授权并核对费用。模型只提建议；媒体识别与独立现场验收另列，不代表自动建单。",
     issue: "29",
   },
-};
+});
 export function featureLink(key: keyof Features) {
   const item = featureDescriptions[key];
   return `https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/${["26", "27"].includes(item.issue) ? "pull" : "issues"}/${item.issue}`;
+}
+
+export function loopReady(features: Features) {
+  return features.business_loop_reviewed === true;
 }

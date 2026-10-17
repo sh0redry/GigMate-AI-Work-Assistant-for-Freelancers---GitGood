@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { t } from "./i18n.ts";
+import { useStableState as useState } from "./useStableState";
+import { privateReadDenied } from "./read-cache.ts";
+import { useCallback, useEffect, useRef } from "react";
 import { workspaceApi, type RequestApi } from "./workspace-api.ts";
 export function useWorkspaceData<T>(
   csrf: string,
@@ -8,20 +11,28 @@ export function useWorkspaceData<T>(
   const [data, setData] = useState<T | null>(null),
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true);
+  const hasData = useRef(false);
   const controller = useRef<AbortController | null>(null);
   const refresh = useCallback(async () => {
     controller.current?.abort();
     const next = new AbortController();
     controller.current = next;
-    setLoading(true);
+    setLoading(!hasData.current);
     setError("");
     try {
       const value = await load(workspaceApi(csrf), next.signal);
-      if (!next.signal.aborted) setData(value);
+      if (!next.signal.aborted) {
+        setData(value);
+        hasData.current = true;
+        setError("");
+      }
     } catch (e) {
       if (!next.signal.aborted) {
-        setData(null);
-        setError(e instanceof Error ? e.message : "暂时无法读取，请刷新。");
+        if (privateReadDenied(e)) {
+          setData(null);
+          hasData.current = false;
+        }
+        setError(e instanceof Error ? e.message : t("暂时无法读取，请刷新。"));
         if ((e as { code?: string })?.code === "UNAUTHENTICATED") expired();
       }
     } finally {

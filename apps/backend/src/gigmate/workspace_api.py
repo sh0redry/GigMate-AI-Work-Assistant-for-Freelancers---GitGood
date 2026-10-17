@@ -97,7 +97,9 @@ def install(app, database, actor, detail, page, conversation_info):
 
     @app.get("/api/v1/workspace-capabilities", response_model=Detail[WorkspaceCapabilities])
     def capabilities(request: Request, account=Depends(actor)):
-        return detail(request, WorkspaceCapabilities())
+        from gigmate.extraction.reviewed import configured_for_live
+
+        return detail(request, WorkspaceCapabilities(automatic_understanding=configured_for_live()))
 
     @app.get("/api/v1/conversations", response_model=Page[Conversation])
     def conversations(
@@ -138,6 +140,7 @@ def install(app, database, actor, detail, page, conversation_info):
         codes = {
             "LIVE_EXTRACTION_PENDING",
             "EXTRACTION_NEEDS_REVIEW",
+            "MODEL_OUTCOME_UNKNOWN",
             "ASSIGNMENT_NEEDS_REVIEW",
             "PROCESSING_FAILED",
             "RETRY_EXHAUSTED",
@@ -158,6 +161,7 @@ def install(app, database, actor, detail, page, conversation_info):
             rows.append(job)
             shown[job.id] = {
                 "id": job.id,
+                "model_request_id": job.model_request_id,
                 "conversation_id": conversation_id,
                 "message_id": inbox.payload.get("payload", {}).get("message_id"),
                 "context_version": inbox.context_version,

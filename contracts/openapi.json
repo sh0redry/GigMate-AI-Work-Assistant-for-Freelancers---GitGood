@@ -452,54 +452,6 @@
         "title": "AssignMessageCommand",
         "type": "object"
       },
-      "AssignmentResult": {
-        "additionalProperties": false,
-        "properties": {
-          "action": {
-            "enum": [
-              "assign",
-              "dismiss"
-            ],
-            "title": "Action",
-            "type": "string"
-          },
-          "conversation_id": {
-            "format": "uuid",
-            "title": "Conversation Id",
-            "type": "string"
-          },
-          "job_id": {
-            "format": "uuid",
-            "title": "Job Id",
-            "type": "string"
-          },
-          "state": {
-            "title": "State",
-            "type": "string"
-          },
-          "work_order_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Work Order Id"
-          }
-        },
-        "required": [
-          "job_id",
-          "conversation_id",
-          "action",
-          "work_order_id",
-          "state"
-        ],
-        "title": "AssignmentResult",
-        "type": "object"
-      },
       "CalendarEvent": {
         "additionalProperties": false,
         "properties": {
@@ -1357,6 +1309,30 @@
             "title": "Conversation Id",
             "type": "string"
           },
+          "expected_context_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Context Version"
+          },
+          "from_proposal_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Proposal Id"
+          },
           "schedule": {
             "anyOf": [
               {
@@ -1619,25 +1595,6 @@
         "title": "Detail[ActionView]",
         "type": "object"
       },
-      "Detail_AssignmentResult_": {
-        "additionalProperties": false,
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/AssignmentResult"
-          },
-          "request_id": {
-            "format": "uuid",
-            "title": "Request Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "data",
-          "request_id"
-        ],
-        "title": "Detail[AssignmentResult]",
-        "type": "object"
-      },
       "Detail_ConnectionInfo_": {
         "additionalProperties": false,
         "properties": {
@@ -1752,6 +1709,25 @@
         "title": "Detail[LoginResult]",
         "type": "object"
       },
+      "Detail_MessageAssignmentResult_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MessageAssignmentResult"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[MessageAssignmentResult]",
+        "type": "object"
+      },
       "Detail_ReplayResult_": {
         "additionalProperties": false,
         "properties": {
@@ -1807,6 +1783,25 @@
           "request_id"
         ],
         "title": "Detail[ScheduleSettings]",
+        "type": "object"
+      },
+      "Detail_Task_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Task"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[Task]",
         "type": "object"
       },
       "Detail_WahaAttachmentView_": {
@@ -2113,6 +2108,25 @@
         "title": "Detail[WorkspaceCapabilities]",
         "type": "object"
       },
+      "Detail_WorkspaceQueryResult_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/WorkspaceQueryResult"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[WorkspaceQueryResult]",
+        "type": "object"
+      },
       "Detail_dict_str__int__": {
         "additionalProperties": false,
         "properties": {
@@ -2350,6 +2364,228 @@
         "title": "LoginResult",
         "type": "object"
       },
+      "MessageAssignmentResult": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "assign",
+              "dismiss"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "work_order_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Order Id"
+          }
+        },
+        "required": [
+          "job_id",
+          "conversation_id",
+          "action",
+          "work_order_id",
+          "state"
+        ],
+        "title": "MessageAssignmentResult",
+        "type": "object"
+      },
+      "NewOrderSuggestionView": {
+        "additionalProperties": false,
+        "properties": {
+          "context_version": {
+            "minimum": 1.0,
+            "title": "Context Version",
+            "type": "integer"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "pattern": "Z$",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            },
+            "minItems": 1,
+            "title": "Sources",
+            "type": "array"
+          },
+          "suggestion": {
+            "$ref": "#/components/schemas/NewWorkOrderSuggestion"
+          }
+        },
+        "required": [
+          "id",
+          "conversation_id",
+          "context_version",
+          "suggestion",
+          "sources",
+          "created_at"
+        ],
+        "title": "NewOrderSuggestionView",
+        "type": "object"
+      },
+      "NewWorkOrderSuggestedField": {
+        "additionalProperties": false,
+        "description": "One critical field of a new-work-order suggestion.\n\n``value`` may be ``None`` when the customer has not supplied the field\nyet; the field name should then also appear in\n:attr:`NewWorkOrderSuggestion.missing_fields`. Suggested values are\ndrafts bound to their source message revisions. They deliberately carry\nno ``field_status`` and no ``customer_confirmation``: a suggestion is\nneither a proposal against an existing work order nor any form of\nconfirmation, so those concepts do not apply.",
+        "properties": {
+          "field": {
+            "enum": [
+              "schedule",
+              "address",
+              "summary",
+              "quantity",
+              "specification",
+              "deadline"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            },
+            "minItems": 1,
+            "title": "Sources",
+            "type": "array"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "$ref": "#/components/schemas/TimedSchedule"
+              },
+              {
+                "$ref": "#/components/schemas/DateOnly"
+              },
+              {
+                "$ref": "#/components/schemas/InstantDeadline"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "field",
+          "value",
+          "sources",
+          "reason"
+        ],
+        "title": "NewWorkOrderSuggestedField",
+        "type": "object"
+      },
+      "NewWorkOrderSuggestion": {
+        "additionalProperties": false,
+        "description": "Structured draft for creating a NEW work order from a conversation.\n\nRecognition output only: the suggestion never creates a work order,\nnever marks anything confirmed and grants no execution authority. It\nrecords what the model recognised (critical fields, each bound to its\nsource message revision), what is still missing, and the questions a\nhuman must resolve before the merchant creates the order manually.\nCustomer proposal, customer confirmation and merchant approval remain\nseparate facts, as everywhere else in the contract.",
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/NewWorkOrderSuggestedField"
+            },
+            "minItems": 0,
+            "title": "Fields",
+            "type": "array"
+          },
+          "missing_fields": {
+            "items": {
+              "enum": [
+                "schedule",
+                "address",
+                "summary",
+                "quantity",
+                "specification",
+                "deadline"
+              ],
+              "type": "string"
+            },
+            "minItems": 0,
+            "title": "Missing Fields",
+            "type": "array"
+          },
+          "summary": {
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          },
+          "unresolved_questions": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "minItems": 0,
+            "title": "Unresolved Questions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "summary",
+          "fields",
+          "missing_fields",
+          "unresolved_questions",
+          "confidence"
+        ],
+        "title": "NewWorkOrderSuggestion",
+        "type": "object"
+      },
       "Page_ActionView_": {
         "additionalProperties": false,
         "properties": {
@@ -2558,6 +2794,41 @@
           "request_id"
         ],
         "title": "Page[Conversation]",
+        "type": "object"
+      },
+      "Page_NewOrderSuggestionView_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/NewOrderSuggestionView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor",
+          "request_id"
+        ],
+        "title": "Page[NewOrderSuggestionView]",
         "type": "object"
       },
       "Page_RecoveryIssue_": {
@@ -3342,6 +3613,17 @@
             ],
             "title": "Message Id"
           },
+          "model_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Request Id"
+          },
           "observed_at": {
             "format": "date-time",
             "pattern": "Z$",
@@ -3556,6 +3838,39 @@
           "snapshot_hash"
         ],
         "title": "SendApprovedActionCommand",
+        "type": "object"
+      },
+      "SetTaskStatusCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state": {
+            "enum": [
+              "pending",
+              "blocked"
+            ],
+            "title": "Expected State",
+            "type": "string"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "completed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_version",
+          "expected_state",
+          "state"
+        ],
+        "title": "SetTaskStatusCommand",
         "type": "object"
       },
       "SetWorkOrderStatusCommand": {
@@ -4211,6 +4526,18 @@
       "WahaChoice": {
         "additionalProperties": false,
         "properties": {
+          "conversation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
           "expires_at": {
             "anyOf": [
               {
@@ -6663,8 +6990,13 @@
             "title": "Automatic Understanding",
             "type": "boolean"
           },
+          "business_loop_reviewed": {
+            "default": true,
+            "title": "Business Loop Reviewed",
+            "type": "boolean"
+          },
           "business_sending": {
-            "default": false,
+            "default": true,
             "title": "Business Sending",
             "type": "boolean"
           },
@@ -6679,7 +7011,7 @@
             "type": "boolean"
           },
           "manual_assignment": {
-            "default": false,
+            "default": true,
             "title": "Manual Assignment",
             "type": "boolean"
           },
@@ -6690,6 +7022,62 @@
           }
         },
         "title": "WorkspaceCapabilities",
+        "type": "object"
+      },
+      "WorkspaceQuery": {
+        "additionalProperties": false,
+        "properties": {
+          "question": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "WorkspaceQuery",
+        "type": "object"
+      },
+      "WorkspaceQueryResult": {
+        "additionalProperties": false,
+        "properties": {
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "intent": {
+            "enum": [
+              "today",
+              "tomorrow",
+              "waiting",
+              "open_items",
+              "unsupported"
+            ],
+            "title": "Intent",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryEntry"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "supported": {
+            "title": "Supported",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "supported",
+          "intent",
+          "day",
+          "items"
+        ],
+        "title": "WorkspaceQueryResult",
         "type": "object"
       }
     }
@@ -10252,6 +10640,64 @@
         "summary": "Daily Summary"
       }
     },
+    "/api/v1/new-order-suggestions": {
+      "get": {
+        "operationId": "suggestions_api_v1_new_order_suggestions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_NewOrderSuggestionView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Suggestions"
+      }
+    },
     "/api/v1/replay": {
       "post": {
         "operationId": "replay_api_v1_replay_post",
@@ -10449,7 +10895,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Detail_AssignmentResult_"
+                  "$ref": "#/components/schemas/Detail_MessageAssignmentResult_"
                 }
               }
             },
@@ -10596,6 +11042,65 @@
           }
         },
         "summary": "Tasks"
+      }
+    },
+    "/api/v1/tasks/{task_id}/status": {
+      "post": {
+        "operationId": "update_task_api_v1_tasks__task_id__status_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetTaskStatusCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_Task_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Task"
       }
     },
     "/api/v1/work-order-command-results/{key}/inspect": {
@@ -11427,6 +11932,44 @@
           }
         },
         "summary": "Capabilities"
+      }
+    },
+    "/api/v1/workspace-query": {
+      "post": {
+        "operationId": "query_api_v1_workspace_query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WorkspaceQueryResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query"
       }
     },
     "/health": {

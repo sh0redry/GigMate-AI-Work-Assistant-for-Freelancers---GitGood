@@ -1,3 +1,5 @@
+import { t } from "./i18n.ts";
+import { sessionFetch } from "./read-cache.ts";
 import { apiBase } from "./environment.ts";
 import { ConnectionError } from "./connection-api";
 import type { components } from "./generated/api";
@@ -13,7 +15,7 @@ export function mediaApi(connection: string, csrf: string) {
   async function response(path: string, body?: object, key?: string) {
     let value: Response;
     try {
-      value = await fetch(base + path, {
+      value = await sessionFetch(base + path, {
         method: body ? "POST" : "GET",
         credentials: "same-origin",
         cache: "no-store",
@@ -30,7 +32,7 @@ export function mediaApi(connection: string, csrf: string) {
     } catch {
       throw new ConnectionError(
         body ? "MEDIA_REQUEST_UNKNOWN" : "NETWORK_ERROR",
-        "请求未能确认，请刷新核对；不要另建模型请求。 ",
+        t("请求未能确认，请刷新核对；不要另建模型请求。 "),
       );
     }
     if (!value.ok) {
@@ -43,7 +45,7 @@ export function mediaApi(connection: string, csrf: string) {
             : value.status === 401
               ? "UNAUTHENTICATED"
               : (data.error?.code ?? "MEDIA_UNAVAILABLE"),
-        "附件暂不可用，请核对授权、来源和处理状态。",
+        t("附件暂不可用，请核对授权、来源和处理状态。"),
       );
     }
     return value;
@@ -59,7 +61,7 @@ export function mediaApi(connection: string, csrf: string) {
       if (error instanceof ConnectionError) throw error;
       throw new ConnectionError(
         body ? "MEDIA_REQUEST_UNKNOWN" : "INVALID_RESPONSE",
-        "响应未能完整读取，请核对已有任务。",
+        t("响应未能完整读取，请核对已有任务。"),
       );
     }
   }
@@ -74,7 +76,12 @@ export function mediaApi(connection: string, csrf: string) {
           `/media/attachments?snapshot_id=${encodeURIComponent(snapshot)}`,
         )
       ).json();
-      return page.items[0] ?? null;
+      const item = page.items[0];
+      return item
+        ? detail<Attachment>(
+            `/media/attachments/${encodeURIComponent(item.id)}`,
+          )
+        : null;
     },
     attachment: (id: string) =>
       detail<Attachment>(`/media/attachments/${encodeURIComponent(id)}`),
@@ -94,7 +101,7 @@ export function mediaApi(connection: string, csrf: string) {
       ) {
         throw new ConnectionError(
           "IDEMPOTENCY_CONFLICT",
-          "请保留原读取范围与同意选项核对原请求。",
+          t("请保留原读取范围与同意选项核对原请求。"),
         );
       }
       const job = await detail<MediaJob>("/media/jobs", command, key);
@@ -114,7 +121,7 @@ export function mediaApi(connection: string, csrf: string) {
       )
         throw new ConnectionError(
           "MEDIA_REQUEST_UNKNOWN",
-          "任务响应无效，请保留原请求核对。",
+          t("任务响应无效，请保留原请求核对。"),
         );
       return job;
     },
@@ -138,7 +145,7 @@ export function mediaApi(connection: string, csrf: string) {
       if (!asset.result_job_id || !asset.reviewed_at)
         throw new ConnectionError(
           "MEDIA_REVIEW_REQUIRED",
-          "请先核对当前结果来源。",
+          t("请先核对当前结果来源。"),
         );
       const query = new URLSearchParams({
         expected_attachment_version: String(asset.version),

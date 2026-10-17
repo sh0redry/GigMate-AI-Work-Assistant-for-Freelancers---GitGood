@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 import type { Calendar, Order } from "./workspace-api.ts";
 import { onDay } from "./work-order-view.ts";
 export function todayInHongKong(now = new Date()) {
@@ -27,23 +28,23 @@ export function shiftMonth(month: string, amount: number) {
   return date.toISOString().slice(0, 7);
 }
 export function exportProblem(event: Calendar, order?: Order) {
-  if (!order) return "无法核对关联工单。";
+  if (!order) return t("无法核对关联工单。");
   if (["completed", "cancelled"].includes(order.status))
-    return "已结束工单仅保留历史，不能导出。";
+    return t("已结束工单仅保留历史，不能导出。");
   if (
     event.work_order_version > order.version ||
     !sameSchedule(event.schedule, order.fields.schedule.value) ||
     JSON.stringify(event.sources) !==
       JSON.stringify(order.fields.schedule.sources)
   )
-    return "预约与工单版本不一致，请刷新核对。";
+    return t("预约与工单版本不一致，请刷新核对。");
   if (
     event.tentative ||
     event.schedule.kind !== "timed" ||
     order.fields.schedule.status !== "confirmed" ||
     !["confirmed", "in_progress", "waiting_customer"].includes(order.status)
   )
-    return "暂定或未确认预约不能导出。";
+    return t("暂定或未确认预约不能导出。");
   return "";
 }
 export function eventsForDay(events: Calendar[], day: string) {

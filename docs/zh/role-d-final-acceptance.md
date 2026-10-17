@@ -1,5 +1,10 @@
 # D-04 到最终网页交付：本批验收
 
+## 当前候选 — 2026-10-17
+
+本节取代下方旧日期的待接通结论。[BCD 交付说明](bcd-product-delivery.md)记录 PR32 正式接入、人工核对建单、待办决定、可选隔离文字入口、语言和真实服务验收边界。基线 main `14aa34e`。浏览器使用全新虚构数据库，无连接器 worker；最终前端证据在检查后补记。
+
+
 2026-10-16 · Kyrie。[English](../en/role-d-final-acceptance.md)。基于已合并 #26／#27 的 main `71de8d9`；对应 [Andy 的 #29 指导](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/issues/29)、[建单 #7](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/issues/7)、[日历 #12](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/issues/12)，保留[历史分页 #28](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/issues/28) 的非阻塞限制。
 
 ## Andy 评审跟进 — 2026-10-16
@@ -49,3 +54,9 @@ ICS 返回前已核对时间和导出地点的实际最新消息，要求账号�
 | E／设备／发布 | 当前候选验证与限制 | 同一最终提交的真实正常／异常闭环、实体手机日历、原生浏览器／安装及无障碍验收 |
 
 “能力状态”不是授权，读取缺失／无效时保守关闭。打开开关前，必须有接纳后的实现和前端接口／整体验收。前端候选完成不等于团队真实 P0 闭环完成。#12 保留实体日历导入待验收，#29 保留跨角色闭环待验收；独立 exe／macOS 打包和外部日历自动同步仍另行交付。
+
+## 最终实测记录 — 2026-10-17
+
+前端 **165 通过**，无失败／跳过；类型生成、Prettier、TypeScript 与 Vite 成品构建通过。浏览器使用虚构数据，桌面 1440×960、手机 390×844：检查中／英／粤切换、输入／登录／原文保留、工作台／管理读取、有限问题查询、真正完成待办和按原编号恢复回执。手机英文导航独立换行，工作台与管理没有横向溢出；浏览器错误日志为空。桌面玻璃与手机清晰页头后备效果已检查；未声称真实手机、辅助技术或供应商验收。JS 约 634 kB／gzip 199 kB，Vite 有非阻塞体积提示，没有隐藏警告阈值。后端和迁移证据见 [BCD 交付](bcd-product-delivery.md)。
+
+最终视觉补验：把桌面 WebKit 玻璃采样限制在圆角页头／侧栏内，避免遮到相邻文字；手机更多菜单保留。修复后重新检查中文桌面截图。锁定依赖的前端 Docker 成品构建也通过。

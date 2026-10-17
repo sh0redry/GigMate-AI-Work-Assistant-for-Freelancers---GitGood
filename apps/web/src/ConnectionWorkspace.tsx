@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { t, localized } from "./i18n.ts";
+import { useStableState as useState } from "./useStableState";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { ChatChoices } from "./ChatChoices";
 import { WahaMessages } from "./WahaMessages";
 import {
@@ -17,7 +19,7 @@ import {
   pendingIssues,
 } from "./connection-state";
 
-const states: Record<string, string> = {
+const states: Record<string, string> = localized({
   unknown: "状态未知",
   connected: "已连接",
   connecting: "正在连接",
@@ -30,8 +32,8 @@ const states: Record<string, string> = {
   FAILED: "连接失败",
   PASSKEY_REQUIRED: "需要在手机确认",
   PASSKEY_CONFIRMATION_REQUIRED: "需要在手机确认",
-};
-const errors: Record<string, string> = {
+});
+const errors: Record<string, string> = localized({
   WAHA_SETUP_VERSION_CONFLICT: "授权或连接已在其他窗口更新，请重新载入后核对。",
   CHAT_CHOICE_EXPIRED_OR_UNAVAILABLE:
     "聊天选项已过期，请重新发现会话后核对选择。",
@@ -81,18 +83,18 @@ const errors: Record<string, string> = {
   REVIEW_CONFIRMATION_REQUIRED: "请先核对故障时段，并确认无需导入历史消息。",
   REVIEW_ALREADY_RECORDED:
     "此故障已有其他核对结论，请刷新后检查，不能覆盖原结论。",
-};
+});
 const mergeChoices = (a: Choice[], b: Choice[]) => [
   ...new Map([...a, ...b].map((c) => [c.id, c])).values(),
 ];
 const sameSelection = (a: string[], b: Choice[]) =>
   a.length === b.length && b.every((c) => a.includes(c.id));
-const issueLabels: Record<string, string> = {
+const issueLabels: Record<string, string> = localized({
   MONITOR_GAP: "监测中断时段",
   PROVIDER_UNAVAILABLE: "WhatsApp 服务不可用",
   API_UNAVAILABLE: "接入服务不可用",
   WORKER_UNAVAILABLE: "消息处理服务不可用",
-};
+});
 
 export function ConnectionWorkspace({
   csrf = "",
@@ -180,19 +182,19 @@ export function ConnectionWorkspace({
       choiceExpired(choice, clock),
   );
   const operationLabels = {
-    connect: "连接",
-    recover: "重连",
-    inspect: "状态核对",
-    discover: "会话发现",
+    connect: t("连接"),
+    recover: t("重连"),
+    inspect: t("状态核对"),
+    discover: t("会话发现"),
   };
   const operationStates = {
-    pending: "已排队",
-    running: "正在处理",
-    checking: "正在核对",
-    succeeded: "已完成",
-    failed: "失败",
-    result_unknown: "结果未知",
-    cancelled: "已取消",
+    pending: t("已排队"),
+    running: t("正在处理"),
+    checking: t("正在核对"),
+    succeeded: t("已完成"),
+    failed: t("失败"),
+    result_unknown: t("结果未知"),
+    cancelled: t("已取消"),
   };
   const clearQr = useCallback(() => {
     qrRequest.current++;
@@ -208,7 +210,7 @@ export function ConnectionWorkspace({
           ? error
           : new ConnectionError(
               "NETWORK_ERROR",
-              "无法连接后端，请检查本机服务后重试。",
+              t("无法连接后端，请检查本机服务后重试。"),
             );
       setNotice(errors[e.code] ?? e.message);
       setFailure(true);
@@ -240,7 +242,7 @@ export function ConnectionWorkspace({
       }
       if (!currentRequest()) return;
       if (statusFailure.current) {
-        setNotice("连接状态查询已恢复。");
+        setNotice(t("连接状态查询已恢复。"));
         setFailure(false);
       }
       statusFailure.current = false;
@@ -324,7 +326,7 @@ export function ConnectionWorkspace({
         ) {
           setPairing(await api.pairing(id, true));
           await refreshStatus();
-          setNotice("扫码状态已变化，已重新核对连接。");
+          setNotice(t("扫码状态已变化，已重新核对连接。"));
           return;
         }
         throw error;
@@ -440,14 +442,17 @@ export function ConnectionWorkspace({
       throw error;
     }
     await refreshStatus();
-    setNotice("已请求重连。二维码准备好后会自动显示，请稍候。");
+    setNotice(t("已请求重连。二维码准备好后会自动显示，请稍候。"));
   }
   async function clearRecovered() {
     const count = await api.reviewIssues(id, reviewSnapshot);
     setReviewSnapshot([]);
     await refreshStatus();
     setNotice(
-      `已清除 ${count} 项已恢复故障的待核对标记；历史记录保留，未恢复故障仍需处理。`,
+      t(
+        "已清除 {0} 项已恢复故障的待核对标记；历史记录保留，未恢复故障仍需处理。",
+        count,
+      ),
     );
   }
   async function loadSelection() {
@@ -467,7 +472,7 @@ export function ConnectionWorkspace({
     setNextOffset(null);
     setLoaded(false);
     await refreshStatus();
-    setNotice("已载入已保存的授权；取消勾选后保存即可撤销。");
+    setNotice(t("已载入已保存的授权；取消勾选后保存即可撤销。"));
   }
   async function discover() {
     const stamp = epoch.current;
@@ -482,7 +487,9 @@ export function ConnectionWorkspace({
       setNextOffset(discovery.next_offset);
       setLoaded(true);
       setNotice(
-        "已发现最近会话，请勾选并保存处理授权。每批最多读取 100 个会话，可载入更多；列表可能不完整。新选项按服务端原到期时间失效。",
+        t(
+          "已发现最近会话，请勾选并保存处理授权。每批最多读取 100 个会话，可载入更多；列表可能不完整。新选项按服务端原到期时间失效。",
+        ),
       );
     } finally {
       await refreshStatus();
@@ -509,35 +516,38 @@ export function ConnectionWorkspace({
     await refreshStatus();
     setNotice(
       next.length
-        ? `已保存 ${value.selected.length} 个会话授权，自动回复未开启。`
-        : "已撤销全部会话授权，后端将拒绝这些会话的后续消息。",
+        ? t("已保存 {0} 个会话授权，自动回复未开启。", value.selected.length)
+        : t("已撤销全部会话授权，后端将拒绝这些会话的后续消息。"),
     );
   }
 
   return (
     <section
       className="connection-workspace"
-      aria-label="WhatsApp 连接与会话授权"
+      aria-label={t("WhatsApp 连接与会话授权")}
     >
       <div className="connect-heading">
         <div>
-          <p className="eyebrow">WhatsApp · 连接与授权</p>
-          <h1>让工作消息，进入你的工作台。</h1>
+          <p className="eyebrow">{t("WhatsApp · 连接与授权")}</p>
+          <h1>{t("让工作消息，进入你的工作台。")}</h1>
           <p className="subtle">
-            先连接 WhatsApp，再选择允许处理的会话。选择权始终在你手里。
+            {t("先连接 WhatsApp，再选择允许处理的会话。选择权始终在你手里。")}
           </p>
         </div>
-        <span className="connection-label">你的 WhatsApp 连接</span>
+        <span className="connection-label">{t("你的 WhatsApp 连接")}</span>
       </div>
       <ol className="connection-steps">
         <li className="active">
-          <span>01</span>连接 WhatsApp
+          <span>01</span>
+          {t("连接 WhatsApp")}
         </li>
         <li className={connected ? "active" : ""}>
-          <span>02</span>选择工作会话
+          <span>02</span>
+          {t("选择工作会话")}
         </li>
         <li className={selection?.selected.length ? "active" : ""}>
-          <span>03</span>保存处理授权
+          <span>03</span>
+          {t("保存处理授权")}
         </li>
       </ol>
       <div
@@ -547,12 +557,12 @@ export function ConnectionWorkspace({
       >
         {notice ||
           (api.capabilities.pairing
-            ? "连接后载入聊天并明确保存处理授权；自动回复不会开启。"
-            : "当前可查看连接状态；扫码和会话授权功能待接入。")}
+            ? t("连接后载入聊天并明确保存处理授权；自动回复不会开启。")
+            : t("当前可查看连接状态；扫码和会话授权功能待接入。"))}
       </div>
       {connectors.length > 1 && (
         <label>
-          选择连接
+          {t("选择连接")}
           <select
             value={id}
             disabled={busy || dirty}
@@ -575,7 +585,8 @@ export function ConnectionWorkspace({
           >
             {connectors.map((c, i) => (
               <option key={c.id} value={c.id}>
-                WhatsApp 连接 {i + 1}
+                {t("WhatsApp 连接")}
+                {i + 1}
               </option>
             ))}
           </select>
@@ -585,20 +596,22 @@ export function ConnectionWorkspace({
         <div className="panel connection-empty">
           <h2>
             {statusFetchFailed
-              ? "连接状态读取失败"
+              ? t("连接状态读取失败")
               : !statusLoaded
                 ? failure
-                  ? "连接状态读取失败"
-                  : "正在读取连接状态"
-                : "还没有本机连接"}
+                  ? t("连接状态读取失败")
+                  : t("正在读取连接状态")
+                : t("还没有本机连接")}
           </h2>
           <p>
             {statusLoaded
-              ? "当前账号暂无连接记录。接入负责人配置完成后，刷新即可查看状态。请联系接入负责人检查当前账号的配置。"
-              : "正在向本地服务查询。连接失败时可刷新重试。"}
+              ? t(
+                  "当前账号暂无连接记录。接入负责人配置完成后，刷新即可查看状态。请联系接入负责人检查当前账号的配置。",
+                )
+              : t("正在向本地服务查询。连接失败时可刷新重试。")}
           </p>
           <button disabled={busy} onClick={() => void act(refreshStatus)}>
-            刷新连接
+            {t("刷新连接")}
           </button>
         </div>
       ) : (
@@ -611,39 +624,50 @@ export function ConnectionWorkspace({
                 <h2 aria-live="polite">{presentation.title}</h2>
                 <span className={`status-dot ${connected ? "online" : ""}`}>
                   {!connector.enabled
-                    ? "接收已暂停"
+                    ? t("接收已暂停")
                     : uncertain
-                      ? "状态待确认"
+                      ? t("状态待确认")
                       : pairing
-                        ? (states[pairing.state] ?? "状态未知")
+                        ? (states[pairing.state] ?? t("状态未知"))
                         : states[connector.state]}
                 </span>
               </div>
               <p className="connection-guidance">{presentation.help}</p>
               {pairing && !pairing.available && (
                 <p className="connection-notice error">
-                  本机接入配置不可用，请联系接入负责人检查。仍可载入已有授权并撤销。
+                  {t(
+                    "本机接入配置不可用，请联系接入负责人检查。仍可载入已有授权并撤销。",
+                  )}
                 </p>
               )}
               {pairing?.operation_state && (
                 <p role="status">
-                  最近
+                  {t("最近")}
                   {pairing.operation_action
                     ? operationLabels[pairing.operation_action]
-                    : "连接"}
-                  操作：
+                    : t("连接")}
+                  {t("操作：")}
                   {operationStates[pairing.operation_state] ??
                     pairing.operation_state}
                   {pairing.operation_error &&
-                    ` · ${errors[pairing.operation_error] ?? "请核对服务后刷新。"}`}
+                    t(
+                      " · {0}",
+                      errors[pairing.operation_error] ??
+                        t("请核对服务后刷新。"),
+                    )}
                   {pairing.operation_error && (
-                    <small>错误编号：{pairing.operation_error}</small>
+                    <small>
+                      {t("错误编号：")}
+                      {pairing.operation_error}
+                    </small>
                   )}
                 </p>
               )}
               {pairing?.retry_available && (
                 <p className="connection-notice error">
-                  上次请求响应丢失，暂不创建新的连接操作。使用原请求核对会保留原版本和请求键。
+                  {t(
+                    "上次请求响应丢失，暂不创建新的连接操作。使用原请求核对会保留原版本和请求键。",
+                  )}
                 </p>
               )}
               <div className={`qr-stage ${connected ? "qr-connected" : ""}`}>
@@ -652,37 +676,42 @@ export function ConnectionWorkspace({
                     <div className="scan-mark" aria-hidden="true">
                       ⌗
                     </div>
-                    <strong>扫码登录待接入</strong>
-                    <p>可查看已有连接状态。启动连接及获取二维码暂不可用。</p>
+                    <strong>{t("扫码登录待接入")}</strong>
+                    <p>
+                      {t("可查看已有连接状态。启动连接及获取二维码暂不可用。")}
+                    </p>
                   </>
                 ) : connected ? (
                   <>
                     <div className="connected-mark" aria-hidden="true">
                       ✓
                     </div>
-                    <strong>WhatsApp 已连接</strong>
+                    <strong>{t("WhatsApp 已连接")}</strong>
                     <p>
                       {api.capabilities.selection
-                        ? "无需再次扫码，可选择工作会话。"
-                        : "无需再次扫码，可载入并选择工作会话。"}
+                        ? t("无需再次扫码，可选择工作会话。")
+                        : t("无需再次扫码，可载入并选择工作会话。")}
                     </p>
                   </>
                 ) : qr && !uncertain && connector.enabled ? (
                   <>
                     <img
                       src={qr}
-                      alt="使用手机 WhatsApp 关联设备扫描此二维码"
+                      alt={t("使用手机 WhatsApp 关联设备扫描此二维码")}
                       onError={() => {
                         clearQr();
                         report(
                           new ConnectionError(
                             "WAHA_INVALID_QR",
-                            "二维码显示失败，请刷新重试。",
+                            t("二维码显示失败，请刷新重试。"),
                           ),
                         );
                       }}
                     />
-                    <small>获取于 {qrAge} 秒前 · 自动更新中</small>
+                    <small>
+                      {t("获取于")}
+                      {qrAge} {t("秒前 · 自动更新中")}
+                    </small>
                   </>
                 ) : (
                   <>
@@ -691,31 +720,35 @@ export function ConnectionWorkspace({
                     </div>
                     <strong>
                       {!connector.enabled
-                        ? "消息接收已暂停"
+                        ? t("消息接收已暂停")
                         : uncertain
-                          ? "请先确认连接状态"
+                          ? t("请先确认连接状态")
                           : presentation.action === "restart"
-                            ? "连接已断开，需要重新连接"
-                            : "等待获取二维码"}
+                            ? t("连接已断开，需要重新连接")
+                            : t("等待获取二维码")}
                     </strong>
                     <p>
                       {!connector.enabled
-                        ? "恢复消息接收后再检查连接；暂停期间不显示二维码。"
+                        ? t("恢复消息接收后再检查连接；暂停期间不显示二维码。")
                         : uncertain
-                          ? "刷新状态后再获取二维码，避免使用旧的扫码信息。"
+                          ? t("刷新状态后再获取二维码，避免使用旧的扫码信息。")
                           : presentation.action === "restart"
-                            ? "点击下方「重新连接并获取二维码」，无需运行命令。"
+                            ? t(
+                                "点击下方「重新连接并获取二维码」，无需运行命令。",
+                              )
                             : pairing?.qr_available
-                              ? "正在加载本机二维码，也可点击「获取二维码」重试"
-                              : "等待本机服务准备扫码，请刷新状态"}
+                              ? t(
+                                  "正在加载本机二维码，也可点击「获取二维码」重试",
+                                )
+                              : t("等待本机服务准备扫码，请刷新状态")}
                     </p>
                   </>
                 )}
               </div>
               {api.capabilities.pairing && presentation.action === "qr" && (
                 <ol className="scan-guide">
-                  <li>手机打开 WhatsApp → 关联设备</li>
-                  <li>选择「关联设备」，扫描这里的二维码</li>
+                  <li>{t("手机打开 WhatsApp → 关联设备")}</li>
+                  <li>{t("选择「关联设备」，扫描这里的二维码")}</li>
                 </ol>
               )}
               <div className="connection-actions">
@@ -740,7 +773,7 @@ export function ConnectionWorkspace({
                         })
                       }
                     >
-                      开始连接
+                      {t("开始连接")}
                     </button>
                   )}
                 {pairing?.operation_state === "result_unknown" && (
@@ -753,7 +786,7 @@ export function ConnectionWorkspace({
                       })
                     }
                   >
-                    核对未知操作（不重发）
+                    {t("核对未知操作（不重发）")}
                   </button>
                 )}
                 {pairing?.retry_available && (
@@ -782,7 +815,7 @@ export function ConnectionWorkspace({
                       })
                     }
                   >
-                    使用原请求核对
+                    {t("使用原请求核对")}
                   </button>
                 )}
                 <button
@@ -797,7 +830,7 @@ export function ConnectionWorkspace({
                     })
                   }
                 >
-                  {connector.enabled ? "暂停消息接收" : "恢复消息接收"}
+                  {connector.enabled ? t("暂停消息接收") : t("恢复消息接收")}
                 </button>
                 {presentation.action === "restart" && (
                   <button
@@ -810,7 +843,7 @@ export function ConnectionWorkspace({
                     }
                     onClick={() => void act(reconnect)}
                   >
-                    {busy ? "正在重连…" : "重新连接并获取二维码"}
+                    {busy ? t("正在重连…") : t("重新连接并获取二维码")}
                   </button>
                 )}
                 {presentation.action === "qr" && (
@@ -818,7 +851,7 @@ export function ConnectionWorkspace({
                     disabled={busy || !api.capabilities.pairing}
                     onClick={() => void act(loadQr)}
                   >
-                    {qr ? "刷新二维码" : "获取二维码"}
+                    {qr ? t("刷新二维码") : t("获取二维码")}
                   </button>
                 )}
                 <button
@@ -828,47 +861,47 @@ export function ConnectionWorkspace({
                   disabled={busy}
                   onClick={() => void act(() => refreshStatus(true))}
                 >
-                  刷新状态
+                  {t("刷新状态")}
                 </button>
               </div>
               {presentation.action === "restart" &&
                 !api.capabilities.recovery && (
                   <p className="subtle">
-                    一键重连需要有效登录和已配置的接入后端。
+                    {t("一键重连需要有效登录和已配置的接入后端。")}
                   </p>
                 )}
             </section>
             <section className="panel health-panel">
-              <h2>连接与处理状态</h2>
+              <h2>{t("连接与处理状态")}</h2>
               <dl>
                 <div>
-                  <dt>WhatsApp 会话</dt>
-                  <dd>{connected ? "已连接" : "未连接或待确认"}</dd>
+                  <dt>{t("WhatsApp 会话")}</dt>
+                  <dd>{connected ? t("已连接") : t("未连接或待确认")}</dd>
                 </div>
                 <div>
-                  <dt>处理链路</dt>
+                  <dt>{t("处理链路")}</dt>
                   <dd>
                     {uncertain
-                      ? "待重新确认"
+                      ? t("待重新确认")
                       : connector.pipeline_ready
-                        ? "采样就绪"
-                        : "尚未就绪"}
+                        ? t("采样就绪")
+                        : t("尚未就绪")}
                   </dd>
                 </div>
                 <div>
-                  <dt>状态新鲜度</dt>
+                  <dt>{t("状态新鲜度")}</dt>
                   <dd>
                     {statusFetchFailed
-                      ? "刷新失败，显示上次采样"
+                      ? t("刷新失败，显示上次采样")
                       : connector.stale
-                        ? "已过期，需重新检查"
+                        ? t("已过期，需重新检查")
                         : connector.observed_at
-                          ? "当前采样有效"
-                          : "尚无采样"}
+                          ? t("当前采样有效")
+                          : t("尚无采样")}
                   </dd>
                 </div>
                 <div>
-                  <dt>最近采样</dt>
+                  <dt>{t("最近采样")}</dt>
                   <dd>
                     {connector.observed_at
                       ? new Date(connector.observed_at).toLocaleString(
@@ -878,21 +911,21 @@ export function ConnectionWorkspace({
                             hour12: false,
                           },
                         )
-                      : "暂无"}
+                      : t("暂无")}
                   </dd>
                 </div>
                 <div>
-                  <dt>接收授权</dt>
-                  <dd>{connector.enabled ? "已启用" : "已暂停"}</dd>
+                  <dt>{t("接收授权")}</dt>
+                  <dd>{connector.enabled ? t("已启用") : t("已暂停")}</dd>
                 </div>
                 <div>
-                  <dt>故障核对</dt>
+                  <dt>{t("故障核对")}</dt>
                   <dd>
                     {issuesFetchFailed
-                      ? "查询失败，需刷新"
+                      ? t("查询失败，需刷新")
                       : !issuesLoaded
-                        ? "正在查询"
-                        : `${pending.length} 项待核对`}
+                        ? t("正在查询")
+                        : t("{0} 项待核对", pending.length)}
                   </dd>
                 </div>
               </dl>
@@ -904,8 +937,10 @@ export function ConnectionWorkspace({
                   group.length > 0 && (
                     <details className="issue-note" key={String(restored)}>
                       <summary>
-                        {restored ? "已恢复，等待核对" : "尚未恢复，暂不能清除"}{" "}
-                        · {group.length} 项
+                        {restored
+                          ? t("已恢复，等待核对")
+                          : t("尚未恢复，暂不能清除")}{" "}
+                        · {group.length} {t("项")}
                       </summary>
                       {group.map((issue) => (
                         <div className="issue-entry" key={issue.id}>
@@ -913,7 +948,7 @@ export function ConnectionWorkspace({
                             {issueLabels[issue.code] ?? issue.code}
                           </strong>
                           <small>
-                            开始：
+                            {t("开始：")}
                             {new Date(issue.started_at).toLocaleString(
                               "zh-CN",
                               { timeZone: "Asia/Hong_Kong", hour12: false },
@@ -921,7 +956,7 @@ export function ConnectionWorkspace({
                           </small>
                           {issue.recovered_at && (
                             <small>
-                              恢复：
+                              {t("恢复：")}
                               {new Date(issue.recovered_at).toLocaleString(
                                 "zh-CN",
                                 { timeZone: "Asia/Hong_Kong", hour12: false },
@@ -949,7 +984,9 @@ export function ConnectionWorkspace({
                       setReviewSnapshot(event.target.checked ? reviewIds : [])
                     }
                   />
-                  <span>我已核对上述已恢复时段，确认无需导入历史消息。</span>
+                  <span>
+                    {t("我已核对上述已恢复时段，确认无需导入历史消息。")}
+                  </span>
                 </label>
                 <button
                   className="secondary"
@@ -961,14 +998,19 @@ export function ConnectionWorkspace({
                   }
                   onClick={() => void act(clearRecovered)}
                 >
-                  清除已恢复故障（{reviewIds.length}）
+                  {t("清除已恢复故障（")}
+                  {reviewIds.length}）
                 </button>
                 <p className="subtle">
-                  仅清除已核对项的待处理标记，保留历史记录。未恢复故障不能清除；不会补拉或删除消息。
-                  {recovered.length > 100 ? "每次最多核对 100 项。" : ""}
+                  {t(
+                    "仅清除已核对项的待处理标记，保留历史记录。未恢复故障不能清除；不会补拉或删除消息。",
+                  )}
+                  {recovered.length > 100 ? t("每次最多核对 100 项。") : ""}
                 </p>
                 {!api.capabilities.recovery && (
-                  <p className="subtle">故障核对需要有效登录及明确确认。</p>
+                  <p className="subtle">
+                    {t("故障核对需要有效登录及明确确认。")}
+                  </p>
                 )}
               </div>
             </section>
@@ -976,13 +1018,15 @@ export function ConnectionWorkspace({
           <section className="panel conversation-panel">
             <div className="section-heading">
               <div>
-                <h2>选择工作会话</h2>
-                <p className="subtle">勾选后保存，才会授权后端处理消息。</p>
+                <h2>{t("选择工作会话")}</h2>
+                <p className="subtle">
+                  {t("勾选后保存，才会授权后端处理消息。")}
+                </p>
               </div>
               <span className="selection-count">
                 {api.capabilities.selection
-                  ? `${picked.length} 已勾选`
-                  : "授权待查询"}
+                  ? t("{0} 已勾选", picked.length)
+                  : t("授权待查询")}
               </span>
             </div>
             <div className="conversation-toolbar">
@@ -993,9 +1037,9 @@ export function ConnectionWorkspace({
               >
                 {selection
                   ? dirty
-                    ? "放弃勾选并重新载入"
-                    : "重新载入会话"
-                  : "载入会话与授权"}
+                    ? t("放弃勾选并重新载入")
+                    : t("重新载入会话")
+                  : t("载入会话与授权")}
               </button>
               <button
                 className="secondary"
@@ -1004,27 +1048,31 @@ export function ConnectionWorkspace({
                 }
                 onClick={() => void act(discover)}
               >
-                发现最近会话
+                {t("发现最近会话")}
               </button>
               {selection && (
                 <small>
-                  授权版本 {selection.control_version} ·{" "}
-                  {selection.selected.length} 个已授权
+                  {t("授权版本")}
+                  {selection.control_version} · {selection.selected.length}{" "}
+                  {t("个已授权")}
                 </small>
               )}
             </div>
             <p className="subtle">
-              已有授权可在断线、暂停或接入配置不可用时读取及撤销。发现新会话需要有效连接，每批最多读取
-              100 个会话，可载入更多。下方分页用于浏览已载入会话。
+              {t(
+                "已有授权可在断线、暂停或接入配置不可用时读取及撤销。发现新会话需要有效连接，每批最多读取 100 个会话，可载入更多。下方分页用于浏览已载入会话。",
+              )}
             </p>
             {selectionStale && (
               <p className="connection-notice error" role="alert">
-                授权版本已变化、读取失败或保存结果待确认。请重新载入并核对后再保存；不会自动重试。
+                {t(
+                  "授权版本已变化、读取失败或保存结果待确认。请重新载入并核对后再保存；不会自动重试。",
+                )}
               </p>
             )}
             {expiredPicked && (
               <p className="connection-notice error" role="alert">
-                勾选的新会话已过期。请放弃勾选并重新发现，再核对后保存。
+                {t("勾选的新会话已过期。请放弃勾选并重新发现，再核对后保存。")}
               </p>
             )}
             {!selection ? (
@@ -1032,19 +1080,23 @@ export function ConnectionWorkspace({
                 <span aria-hidden="true">☷</span>
                 <h3>
                   {api.capabilities.selection
-                    ? "你的会话由你选择"
-                    : "会话选择待接入"}
+                    ? t("你的会话由你选择")
+                    : t("会话选择待接入")}
                 </h3>
                 <p>
                   {api.capabilities.selection
-                    ? "先载入已有授权。连接后点击「发现最近会话」，勾选后明确保存。"
-                    : "目前无法查询或更改会话授权。请重新登录并检查接入服务。"}
+                    ? t(
+                        "先载入已有授权。连接后点击「发现最近会话」，勾选后明确保存。",
+                      )
+                    : t(
+                        "目前无法查询或更改会话授权。请重新登录并检查接入服务。",
+                      )}
                 </p>
                 {!api.capabilities.selection && (
                   <div className="connection-actions">
-                    <button disabled>保存会话授权</button>
+                    <button disabled>{t("保存会话授权")}</button>
                     <button className="secondary" disabled>
-                      撤销全部授权
+                      {t("撤销全部授权")}
                     </button>
                   </div>
                 )}
@@ -1053,15 +1105,17 @@ export function ConnectionWorkspace({
               <>
                 {!choices.length && (
                   <div className="conversation-empty">
-                    <h3>暂无会话</h3>
+                    <h3>{t("暂无会话")}</h3>
                     <p>
                       {loaded
-                        ? "可在手机创建测试聊天后重新发现最近会话。"
+                        ? t("可在手机创建测试聊天后重新发现最近会话。")
                         : !pairing?.available
-                          ? "当前没有已授权会话。接入配置恢复后可发现新会话。"
+                          ? t(
+                              "当前没有已授权会话。接入配置恢复后可发现新会话。",
+                            )
                           : connected
-                            ? "尚未发现会话，请点击「发现最近会话」。"
-                            : "尚未连接；当前没有已授权会话。"}
+                            ? t("尚未发现会话，请点击「发现最近会话」。")
+                            : t("尚未连接；当前没有已授权会话。")}
                     </p>
                   </div>
                 )}
@@ -1093,13 +1147,17 @@ export function ConnectionWorkspace({
                       })
                     }
                   >
-                    载入更多会话（每批最多 100 个）
+                    {t("载入更多会话（每批最多 100 个）")}
                   </button>
                 )}
                 <div className="authorization-summary">
-                  <strong>{dirty ? "有尚未保存的更改" : "授权已保存"}</strong>
+                  <strong>
+                    {dirty ? t("有尚未保存的更改") : t("授权已保存")}
+                  </strong>
                   <p>
-                    授权仅用于读取和处理选中会话。不授权自动回复，不改变正式工单。
+                    {t(
+                      "授权仅用于读取和处理选中会话。不授权自动回复，不改变正式工单。",
+                    )}
                   </p>
                 </div>
                 <div className="connection-actions">
@@ -1113,7 +1171,7 @@ export function ConnectionWorkspace({
                     }
                     onClick={() => void act(() => save(picked))}
                   >
-                    {busy ? "处理中…" : "保存会话授权"}
+                    {busy ? t("处理中…") : t("保存会话授权")}
                   </button>
                   <button
                     className="secondary"
@@ -1122,17 +1180,17 @@ export function ConnectionWorkspace({
                     }
                     onClick={() => void act(() => save([]))}
                   >
-                    撤销全部授权
+                    {t("撤销全部授权")}
                   </button>
                   <button
                     className="secondary"
                     disabled={busy || !dirty}
                     onClick={() => {
                       setPicked(selection.selected.map((c) => c.id));
-                      setNotice("已放弃未保存的更改。");
+                      setNotice(t("已放弃未保存的更改。"));
                     }}
                   >
-                    放弃更改
+                    {t("放弃更改")}
                   </button>
                 </div>
               </>

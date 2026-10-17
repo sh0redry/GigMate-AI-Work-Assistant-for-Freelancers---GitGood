@@ -1034,6 +1034,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/new-order-suggestions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Suggestions */
+    get: operations["suggestions_api_v1_new_order_suggestions_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/replay": {
     parameters: {
       query?: never;
@@ -1131,6 +1148,23 @@ export interface paths {
     get: operations["tasks_api_v1_tasks_get"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/tasks/{task_id}/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Update Task */
+    post: operations["update_task_api_v1_tasks__task_id__status_post"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1379,6 +1413,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/workspace-query": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Query */
+    post: operations["query_api_v1_workspace_query_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/health": {
     parameters: {
       query?: never;
@@ -1560,28 +1611,6 @@ export interface components {
       expected_context_version: number;
       /** Work Order Id */
       work_order_id?: string | null;
-    };
-    /** AssignmentResult */
-    AssignmentResult: {
-      /**
-       * Action
-       * @enum {string}
-       */
-      action: "assign" | "dismiss";
-      /**
-       * Conversation Id
-       * Format: uuid
-       */
-      conversation_id: string;
-      /**
-       * Job Id
-       * Format: uuid
-       */
-      job_id: string;
-      /** State */
-      state: string;
-      /** Work Order Id */
-      work_order_id: string | null;
     };
     /** CalendarEvent */
     CalendarEvent: {
@@ -1921,6 +1950,10 @@ export interface components {
        * Format: uuid
        */
       conversation_id: string;
+      /** Expected Context Version */
+      expected_context_version?: number | null;
+      /** From Proposal Id */
+      from_proposal_id?: string | null;
       /** Schedule */
       schedule?:
         | components["schemas"]["TimedSchedule"]
@@ -2037,15 +2070,6 @@ export interface components {
        */
       request_id: string;
     };
-    /** Detail[AssignmentResult] */
-    Detail_AssignmentResult_: {
-      data: components["schemas"]["AssignmentResult"];
-      /**
-       * Request Id
-       * Format: uuid
-       */
-      request_id: string;
-    };
     /** Detail[ConnectionInfo] */
     Detail_ConnectionInfo_: {
       data: components["schemas"]["ConnectionInfo"];
@@ -2100,6 +2124,15 @@ export interface components {
        */
       request_id: string;
     };
+    /** Detail[MessageAssignmentResult] */
+    Detail_MessageAssignmentResult_: {
+      data: components["schemas"]["MessageAssignmentResult"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
     /** Detail[ReplayResult] */
     Detail_ReplayResult_: {
       data: components["schemas"]["ReplayResult"];
@@ -2121,6 +2154,15 @@ export interface components {
     /** Detail[ScheduleSettings] */
     Detail_ScheduleSettings_: {
       data: components["schemas"]["ScheduleSettings"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[Task] */
+    Detail_Task_: {
+      data: components["schemas"]["Task"];
       /**
        * Request Id
        * Format: uuid
@@ -2271,6 +2313,15 @@ export interface components {
        */
       request_id: string;
     };
+    /** Detail[WorkspaceQueryResult] */
+    Detail_WorkspaceQueryResult_: {
+      data: components["schemas"]["WorkspaceQueryResult"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
     /** Detail[dict[str, int]] */
     Detail_dict_str__int__: {
       /** Data */
@@ -2371,6 +2422,120 @@ export interface components {
       /** Username */
       username: string;
     };
+    /** MessageAssignmentResult */
+    MessageAssignmentResult: {
+      /**
+       * Action
+       * @enum {string}
+       */
+      action: "assign" | "dismiss";
+      /**
+       * Conversation Id
+       * Format: uuid
+       */
+      conversation_id: string;
+      /**
+       * Job Id
+       * Format: uuid
+       */
+      job_id: string;
+      /** State */
+      state: string;
+      /** Work Order Id */
+      work_order_id: string | null;
+    };
+    /** NewOrderSuggestionView */
+    NewOrderSuggestionView: {
+      /** Context Version */
+      context_version: number;
+      /**
+       * Conversation Id
+       * Format: uuid
+       */
+      conversation_id: string;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Sources */
+      sources: components["schemas"]["SourceRef"][];
+      suggestion: components["schemas"]["NewWorkOrderSuggestion"];
+    };
+    /**
+     * NewWorkOrderSuggestedField
+     * @description One critical field of a new-work-order suggestion.
+     *
+     *     ``value`` may be ``None`` when the customer has not supplied the field
+     *     yet; the field name should then also appear in
+     *     :attr:`NewWorkOrderSuggestion.missing_fields`. Suggested values are
+     *     drafts bound to their source message revisions. They deliberately carry
+     *     no ``field_status`` and no ``customer_confirmation``: a suggestion is
+     *     neither a proposal against an existing work order nor any form of
+     *     confirmation, so those concepts do not apply.
+     */
+    NewWorkOrderSuggestedField: {
+      /**
+       * Field
+       * @enum {string}
+       */
+      field:
+        | "schedule"
+        | "address"
+        | "summary"
+        | "quantity"
+        | "specification"
+        | "deadline";
+      /** Reason */
+      reason: string;
+      /** Sources */
+      sources: components["schemas"]["SourceRef"][];
+      /** Value */
+      value:
+        | string
+        | number
+        | boolean
+        | components["schemas"]["TimedSchedule"]
+        | components["schemas"]["DateOnly"]
+        | components["schemas"]["InstantDeadline"]
+        | null;
+    };
+    /**
+     * NewWorkOrderSuggestion
+     * @description Structured draft for creating a NEW work order from a conversation.
+     *
+     *     Recognition output only: the suggestion never creates a work order,
+     *     never marks anything confirmed and grants no execution authority. It
+     *     records what the model recognised (critical fields, each bound to its
+     *     source message revision), what is still missing, and the questions a
+     *     human must resolve before the merchant creates the order manually.
+     *     Customer proposal, customer confirmation and merchant approval remain
+     *     separate facts, as everywhere else in the contract.
+     */
+    NewWorkOrderSuggestion: {
+      /** Confidence */
+      confidence: number;
+      /** Fields */
+      fields: components["schemas"]["NewWorkOrderSuggestedField"][];
+      /** Missing Fields */
+      missing_fields: (
+        | "schedule"
+        | "address"
+        | "summary"
+        | "quantity"
+        | "specification"
+        | "deadline"
+      )[];
+      /** Summary */
+      summary: string;
+      /** Unresolved Questions */
+      unresolved_questions: string[];
+    };
     /** Page[ActionView] */
     Page_ActionView_: {
       /** Items */
@@ -2435,6 +2600,18 @@ export interface components {
     Page_Conversation_: {
       /** Items */
       items: components["schemas"]["Conversation"][];
+      /** Next Cursor */
+      next_cursor: string | null;
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Page[NewOrderSuggestionView] */
+    Page_NewOrderSuggestionView_: {
+      /** Items */
+      items: components["schemas"]["NewOrderSuggestionView"][];
       /** Next Cursor */
       next_cursor: string | null;
       /**
@@ -2710,6 +2887,8 @@ export interface components {
       id: string;
       /** Message Id */
       message_id: string | null;
+      /** Model Request Id */
+      model_request_id?: string | null;
       /**
        * Observed At
        * Format: date-time
@@ -2838,6 +3017,21 @@ export interface components {
       expected_permission_version: number;
       /** Snapshot Hash */
       snapshot_hash: string;
+    };
+    /** SetTaskStatusCommand */
+    SetTaskStatusCommand: {
+      /**
+       * Expected State
+       * @enum {string}
+       */
+      expected_state: "pending" | "blocked";
+      /** Expected Version */
+      expected_version: number;
+      /**
+       * State
+       * @enum {string}
+       */
+      state: "completed" | "cancelled";
     };
     /**
      * SetWorkOrderStatusCommand
@@ -3072,6 +3266,8 @@ export interface components {
     };
     /** WahaChoice */
     WahaChoice: {
+      /** Conversation Id */
+      conversation_id?: string | null;
       /** Expires At */
       expires_at: string | null;
       /**
@@ -4029,8 +4225,13 @@ export interface components {
        */
       automatic_understanding: boolean;
       /**
+       * Business Loop Reviewed
+       * @default true
+       */
+      business_loop_reviewed: boolean;
+      /**
        * Business Sending
-       * @default false
+       * @default true
        */
       business_sending: boolean;
       /**
@@ -4045,7 +4246,7 @@ export interface components {
       create_order: boolean;
       /**
        * Manual Assignment
-       * @default false
+       * @default true
        */
       manual_assignment: boolean;
       /**
@@ -4053,6 +4254,28 @@ export interface components {
        * @default true
        */
       order_status: boolean;
+    };
+    /** WorkspaceQuery */
+    WorkspaceQuery: {
+      /** Question */
+      question: string;
+    };
+    /** WorkspaceQueryResult */
+    WorkspaceQueryResult: {
+      /**
+       * Day
+       * Format: date
+       */
+      day: string;
+      /**
+       * Intent
+       * @enum {string}
+       */
+      intent: "today" | "tomorrow" | "waiting" | "open_items" | "unsupported";
+      /** Items */
+      items: components["schemas"]["SummaryEntry"][];
+      /** Supported */
+      supported: boolean;
     };
   };
   responses: never;
@@ -6220,6 +6443,38 @@ export interface operations {
       };
     };
   };
+  suggestions_api_v1_new_order_suggestions_get: {
+    parameters: {
+      query?: {
+        cursor?: string | null;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Page_NewOrderSuggestionView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   replay_api_v1_replay_post: {
     parameters: {
       query?: never;
@@ -6347,7 +6602,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["Detail_AssignmentResult_"];
+          "application/json": components["schemas"]["Detail_MessageAssignmentResult_"];
         };
       };
       /** @description Validation Error */
@@ -6434,6 +6689,43 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Page_Task_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  update_task_api_v1_tasks__task_id__status_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        task_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetTaskStatusCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_Task_"];
         };
       };
       /** @description Validation Error */
@@ -6956,6 +7248,39 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Detail_WorkspaceCapabilities_"];
+        };
+      };
+    };
+  };
+  query_api_v1_workspace_query_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WorkspaceQuery"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkspaceQueryResult_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
         };
       };
     };

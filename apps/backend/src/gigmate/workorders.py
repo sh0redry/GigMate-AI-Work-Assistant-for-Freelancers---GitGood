@@ -41,6 +41,12 @@ def command_cache(db, account_id, scope, key, payload):
         raise BusinessError(
             422, "VALIDATION_FAILED", "Provide an Idempotency-Key of 1–128 characters"
         )
+    if scope == "create_work_order":
+        payload = {
+            k: v
+            for k, v in payload.items()
+            if k not in {"from_proposal_id", "expected_context_version"} or v is not None
+        }
     digest = hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
@@ -338,14 +344,25 @@ def audit_row(account_id, entity_id, operation, request_id):
 def create(db, account, command, key, request_id):
     """Merchant creates an order from a conversation. Missing values stay missing."""
     scope = "create_work_order"
+    # Lock before reading the command receipt as well as the suggestion. A
+    # concurrent same-key request must see the first committed receipt.
+    db.scalar(select(Account).where(Account.id == account.id).with_for_update())
     digest, cached = command_cache(db, account.id, scope, key, command.model_dump(mode="json"))
     if cached:
         return cached.data
-    # Serialize creation per account so two clicks cannot both pass the checks below.
-    db.scalar(select(Account).where(Account.id == account.id).with_for_update())
     conversation = owned(db, ConversationRow, command.conversation_id, account.id)
     if not conversation.allowlisted:
         raise BusinessError(403, "CONSENT_REVOKED", "Conversation processing is paused")
+    from gigmate.product_commands import bind_suggestion
+
+    suggestion = bind_suggestion(db, account.id, command)
+    if (
+        command.expected_context_version is not None
+        and command.expected_context_version != conversation.context_version
+    ):
+        raise BusinessError(
+            409, "VERSION_CONFLICT", "Conversation changed; review current messages"
+        )
     linked = [
         order
         for order in db.scalars(
@@ -470,6 +487,9 @@ def create(db, account, command, key, request_id):
         db.add(
             preparation_task(account.id, value, schedule, schedule_sources, lead(db, account.id))
         )
+    from gigmate.product_commands import consume_suggestion
+
+    consume_suggestion(db, account.id, suggestion, order_id)
     db.add(audit_row(account.id, order_id, "create_work_order", request_id))
     from gigmate.approvals import ask_open_items
 
@@ -649,7 +669,11 @@ def assign_message(db, account, job_id, command, key, request_id):
     )
     if job is None:
         raise BusinessError(404, "NOT_FOUND", "Review item not found")
-    if job.state != "completed" or job.error_code not in REVIEWABLE:
+    if job.error_code == "MODEL_OUTCOME_UNKNOWN" and command.action == "assign":
+        raise BusinessError(
+            409, "MODEL_OUTCOME_UNKNOWN", "Check the original model request; do not submit it again"
+        )
+    if job.state != "completed" or job.error_code not in REVIEWABLE | {"MODEL_OUTCOME_UNKNOWN"}:
         raise BusinessError(409, "VERSION_CONFLICT", "This message no longer needs a decision")
     inbox = db.get(Inbox, job.event_id)
     conversation = owned(db, ConversationRow, inbox.payload.get("conversation_id"), account.id)

@@ -122,7 +122,7 @@ def test_evidence_requires_current_review_and_returns_no_execution_authority(set
     assert checked(setup, identifier, query).status_code == 200
     response = setup[0].get(url, params=query)
     assert response.status_code == 200
-    assert response.headers["cache-control"] == "no-store"
+    assert "no-store" in response.headers["cache-control"]
     evidence = response.json()["data"]
     assert (
         evidence["schema_version"] == "0.1.0" and evidence["business_confirmation_required"] is True

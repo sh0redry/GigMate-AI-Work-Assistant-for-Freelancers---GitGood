@@ -1,5 +1,10 @@
 # Role D frontend development roadmap
 
+## Current modules — 2026-10-17
+
+D-01: connection/permission and owned messaging. D-02: sourced order workspace and stable authenticated refresh. D-03: exact reply approval, explicit business sending and truthful receipts. D-04: manual and merchant-reviewed AI-assisted creation, assignment, deferral, requirements, tasks, lifecycle/checklist/archive. D-05: internal calendar/ICS, responsive glass UI and three-language controls. Final: unified text-product candidate, no demo/environment picker; real services and broader extensions remain separate acceptance. [Current scope](bcd-product-delivery.md). Previous module statuses below are historical.
+
+
 ## Current delivery plan — 2026-10-16
 
 The current candidate follows merged #26/#27/main **71de8d9** and implements the remaining web delivery as one batch. [Final acceptance and handoff](role-d-final-acceptance.md) is the current state; the dated notes below are historical.
