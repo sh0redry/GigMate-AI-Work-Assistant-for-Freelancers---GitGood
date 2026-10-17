@@ -137,9 +137,7 @@ def create(db, account, order_id: str, command: AgentDraftCommand) -> dict:
 
     now = datetime.now(UTC)
     order = _owned_order(db, account, order_id)
-    link = db.scalar(
-        select(ConversationOrder).where(ConversationOrder.work_order_id == order_id)
-    )
+    link = db.scalar(select(ConversationOrder).where(ConversationOrder.work_order_id == order_id))
     if link is None:
         raise BusinessError(
             409,

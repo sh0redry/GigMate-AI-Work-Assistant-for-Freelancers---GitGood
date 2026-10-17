@@ -46,9 +46,7 @@ def proposal(signed_in):
             db.flush()
         conversation = db.get(ConversationRow, uid(2))
         if conversation is None:
-            conversation = ConversationRow(
-                id=uid(2), account_id=uid(1), context_version=5
-            )
+            conversation = ConversationRow(id=uid(2), account_id=uid(1), context_version=5)
             db.add(conversation)
             db.flush()
         link = db.get(ConversationOrder, (uid(2), ORDER))

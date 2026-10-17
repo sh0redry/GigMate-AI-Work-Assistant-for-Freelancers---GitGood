@@ -34,7 +34,10 @@ sys.path.insert(0, str(_REPO_ROOT / "apps" / "backend" / "src"))
 from gigmate.extraction.llm import LLMProvider  # noqa: E402
 from gigmate.extraction.types import ExtractionRequest  # noqa: E402
 
-_REQUIRED = ("GIGMATE_LLM_PROVIDER", "GIGMATE_LLM_MODEL", "GIGMATE_LLM_API_KEY")
+_REQUIRED = ("GIGMATE_LLM_PROVIDER", "GIGMATE_LLM_MODEL")
+# The credential itself is resolved through gigmate.secrets, so a file
+# (GIGMATE_LLM_API_KEY_FILE) satisfies this check too.
+_CREDENTIAL = "GIGMATE_LLM_API_KEY"
 
 # ``notes`` values that mean "the model was never successfully invoked".
 # Treat these as smoke-script failures (non-zero exit) so the script can
@@ -86,7 +89,11 @@ _INFRA_FAILURE_NOTES = frozenset(
 
 
 def _check_env() -> None:
+    from gigmate import secrets  # noqa: E402
+
     missing = [name for name in _REQUIRED if not os.environ.get(name)]
+    if not secrets.configured(_CREDENTIAL):
+        missing.append(_CREDENTIAL)
     if missing:
         sys.stderr.write(
             "Missing required environment variables: "

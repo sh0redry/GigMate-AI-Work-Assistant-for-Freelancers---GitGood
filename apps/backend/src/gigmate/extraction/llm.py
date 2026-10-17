@@ -70,6 +70,7 @@ from zoneinfo import ZoneInfo
 import httpx
 from pydantic import ValidationError
 
+from gigmate import secrets
 from gigmate.contracts import ChangeProposal
 
 from .types import ExtractionOutcome, ExtractionRequest
@@ -618,7 +619,7 @@ def validate_provider_config(
     )
     if cost_problem is not None:
         issues.append(cost_problem)
-    if get(_LIVE_GATE) == "1" and not get(_API_KEY_ENV):
+    if get(_LIVE_GATE) == "1" and not secrets.configured(_API_KEY_ENV):
         issues.append("llm:api-key-missing")
     return issues
 
@@ -842,7 +843,7 @@ class LLMProvider:
             return False
         if self._configured_provider not in _KNOWN_VENDORS:
             return False
-        if not os.environ.get(_API_KEY_ENV):
+        if not secrets.configured(_API_KEY_ENV):
             return False
         return True
 
@@ -1147,7 +1148,7 @@ class LLMProvider:
         ``usage`` is recorded with ``llm:cost-usage-missing`` rather than
         pretending a cost of zero.
         """
-        api_key = os.environ.get(_API_KEY_ENV)
+        api_key = secrets.secret(_API_KEY_ENV)
         try:
             prompt_body = self._load_prompt_body()
         except OSError:

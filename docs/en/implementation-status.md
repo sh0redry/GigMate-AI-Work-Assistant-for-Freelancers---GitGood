@@ -965,3 +965,46 @@ vendor (the local parser refuses on native macOS by design); real OCR accuracy
 on customer scans, prompt-injection resilience under real photos, vendor rate
 limiting, long-run cost and PostgreSQL row locking remain unverified, and the
 live quality suite is 8 synthetic cases, not a production accuracy claim.
+
+
+## Private configuration and the remaining media seams — 2026-10-17 (issue #29 items 2 and 4)
+
+**Credentials can now be configured as files.** `gigmate.secrets` resolves
+`GIGMATE_LLM_API_KEY_FILE` / `GIGMATE_MEDIA_API_KEY_FILE` (or an equivalent
+secret mount) in preference to the value variables, because a value leaks into
+`docker inspect`, process listings and shell history on a server. A file that is
+named but unreadable raises `SecretUnreadable` instead of degrading to
+"unconfigured", so an operator never sees a working-looking deployment that
+silently refuses every call. Values still work for local runs.
+`scripts/check_model_config.py` and `scripts/smoke_deepseek.py` resolve the
+credential through the same loader (presence only, never printed).
+
+**Evidence that the file form really works:** the live quality suite was run
+again with `GIGMATE_LLM_API_KEY_FILE` pointing at a 600-mode file and with the
+value variable emptied — **7 passed / 1 failed** against the real vendor, so
+the private-configuration path reaches the vendor and the one failure is vendor
+variance, not configuration.
+
+**Vendor selection is now a recorded decision.** ADR 0008
+(`docs/en/adr/0008-vendor-selection-and-private-configuration.md`, Chinese
+mirror in `docs/zh/`) records: DeepSeek `deepseek-chat` for text and vision
+(vision still needs `GIGMATE_MEDIA_VISION_VENDORS=deepseek`, since the image
+probe was an account-routing observation); **no audio vendor** — ASR needs its
+own OpenAI-compatible endpoint and DeepSeek is refused explicitly for audio, so
+the chat key is never posted to a default ASR endpoint; and a nine-step
+enabling checklist ending in `scripts/check_model_config.py`.
+
+**PDF against the real vendor.** `scripts/media_pdf_live_check.py` builds a
+one-page synthetic PDF and pushes it through parser plus vendor in one run. The
+parser sandbox is Linux-only (`media/pdf_child.py` uses resource limits macOS
+cannot provide), which is why the 12 native-macOS
+`MEDIA_PDF_LIMIT_UNAVAILABLE` cases fail locally by design; the script prints
+that platform limit instead of pretending. Inside a Linux container the PDF
+parsed and the request reached the live-origin gate — see the result recorded at
+the end of this section.
+
+**Still operator actions, not code:** no production credential has been
+deployed, and real prices / budgets / token caps must be entered and re-checked
+by the maintainer against the vendor's published price list (the checklist says
+so). No audio vendor has been procured, so no real transcription was attempted.
+Issue #29 items 2 and 4 therefore remain unchecked in the issue itself.

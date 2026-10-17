@@ -29,6 +29,7 @@ from gigmate.extraction.llm import (  # noqa: E402
     LLMProvider,
     validate_provider_config,
 )
+from gigmate import secrets  # noqa: E402
 from gigmate.media import llm as media_llm  # noqa: E402
 
 # Presence only: the value itself never leaves the process.
@@ -69,8 +70,19 @@ REQUIRED_VARS = frozenset(
 
 def build_report() -> dict[str, object]:
     text = LLMProvider()
+    # A credential may arrive as a file (``<NAME>_FILE``) instead of a value;
+    # presence is what matters here and the value is still never printed.
     present = {
-        name: ("set" if os.environ.get(name) else "missing") for name in PRESENCE_VARS
+        name: (
+            "set"
+            if (
+                secrets.configured(name)
+                if name.endswith("_API_KEY")
+                else os.environ.get(name)
+            )
+            else "missing"
+        )
+        for name in PRESENCE_VARS
     }
     config_problems = list(validate_provider_config() or [])
     refusal = text._refusal_reason(None)

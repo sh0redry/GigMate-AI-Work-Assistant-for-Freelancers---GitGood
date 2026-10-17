@@ -898,3 +898,16 @@ PR #18（`llm:live-gate-off` + malformed-prompt/证据修复）以 `cc2ac8e` 合
 **本批实际证据：** 后端全套（SQLite）**998 通过 / 25 跳过 / 12 失败**，12 项失败是原生 macOS 既有的 `MEDIA_PDF_LIMIT_UNAVAILABLE`（PDF 隔离路径仅 Linux）；Ruff 检查/格式通过；`export_contracts.py` 一致；临时 SQLite 上 Alembic 到 head `0022_agent_drafts` 无漂移。真实调用使用运营方自己的 key，密钥只放在被 Git 忽略的本地 `.env`，从未提交。
 
 **如实记录未做之事：** 未配置语音/ASR 供应商，因此没有真实转写；没有对真实供应商端到端处理 PDF（原生 macOS 上本地解析器按设计拒绝）；真实客户扫描件的 OCR 准确率、真实图片下的注入防护、供应商限流、长期成本与 PostgreSQL 行锁仍未验证；真实质量套件是 8 条合成用例，不构成生产准确率结论。
+
+
+## 私密配置与剩余媒体接缝 — 2026-10-17（issue #29 第 2、4 项）
+
+**凭据现在可以用文件配置。** `gigmate.secrets` 优先解析 `GIGMATE_LLM_API_KEY_FILE` / `GIGMATE_MEDIA_API_KEY_FILE`（或等价的 secret 挂载），因为值会泄漏到服务器上的 `docker inspect`、进程列表与 shell 历史。文件被指定但不可读时抛 `SecretUnreadable`，而不是退化成"未配置"，运维因此不会看到一个看似正常、实则每次调用都被拒的部署。本地开发仍可用值。`scripts/check_model_config.py` 与 `scripts/smoke_deepseek.py` 走同一个加载器（只报存在性，绝不打印）。
+
+**文件形式确实可用的证据：** 以 `GIGMATE_LLM_API_KEY_FILE` 指向 600 权限文件、值变量清空后重跑真实质量套件 —— **7 通过 / 1 失败**（真实供应商），说明私密配置链路能到达供应商，唯一失败是供应商波动而非配置问题。
+
+**供应商选择已作为决策记录。** ADR 0008（`docs/en/adr/0008-vendor-selection-and-private-configuration.md`，中文版在 `docs/zh/`）记录：文字与视觉用 DeepSeek `deepseek-chat`（视觉仍需 `GIGMATE_MEDIA_VISION_VENDORS=deepseek`，因为图像探测只是账号路由层面的观察）；**音频没有供应商** —— ASR 需要自己的 OpenAI 兼容端点，DeepSeek 用于音频被明确拒绝，对话密钥因此不会发到默认 ASR 端点；并给出九步启用清单，最后一步是 `scripts/check_model_config.py`。
+
+**对真实供应商的 PDF。** `scripts/media_pdf_live_check.py` 生成一页合成 PDF，一次跑完解析器与供应商。解析器沙箱仅 Linux（`media/pdf_child.py` 使用 macOS 无法提供的资源限制），这也是本地 12 项 `MEDIA_PDF_LIMIT_UNAVAILABLE` 按设计失败的原因；脚本会打印该平台限制而不是假装成功。在 Linux 容器（`python:3.12-slim` + `scripts/media_pdf_live_check.py`）中，真实运行返回 `parser_pages: ["Deliver the parcel by TUE 3PM."]`、`segments: ["Deliver the parcel by TUE 3PM."]`、`coverage: partial`、`model_version: deepseek:deepseek-chat`、`prompt_version: 1.0.0`：真实 PDF 确实经过解析器与供应商，并按页返回可追溯的片段。
+
+**仍属运营动作而非代码：** 生产凭据尚未部署；真实价格／预算／token 上限须由维护者按供应商公布价格填写并复查（清单已写明）。未采购音频供应商，因此没有真实转写。issue #29 第 2、4 项在 issue 本体中因此仍保持未勾选。

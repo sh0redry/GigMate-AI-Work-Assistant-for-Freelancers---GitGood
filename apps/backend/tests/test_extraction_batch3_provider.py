@@ -141,9 +141,7 @@ def test_suggestion_without_any_source_is_refused(monkeypatch):
     provider = _gate_open_provider(_scripted_client(payload))
     outcome = provider.propose(_request())
     assert outcome.proposal.assignment.value == "needs_review"
-    assert outcome.refused_reason == (
-        "llm:response-provenance-failed:suggested-source-missing"
-    )
+    assert outcome.refused_reason == ("llm:response-provenance-failed:suggested-source-missing")
 
 
 def test_inj010_fabricated_suggestion_source_is_refused(monkeypatch):

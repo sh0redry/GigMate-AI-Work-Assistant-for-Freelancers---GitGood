@@ -27,6 +27,8 @@ from typing import Any, Mapping, Protocol
 
 import httpx
 
+from gigmate import secrets
+
 from .routing import route
 
 log = logging.getLogger(__name__)
@@ -87,7 +89,7 @@ def default_client_factory(*, timeout: float) -> httpx.Client:
     a rotated key on the next call.
     """
 
-    api_key = os.environ.get(_API_KEY_ENV, "")
+    api_key = secrets.secret(_API_KEY_ENV)
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     return httpx.Client(timeout=timeout, headers=headers)
 
@@ -383,7 +385,7 @@ def env_summary() -> dict[str, str]:
         "endpoint": os.environ.get(_ENDPOINT_ENV, ""),
         "modalities": ",".join(sorted(authorized_modalities())),
         "vision_vendors": ",".join(sorted(vision_vendors())),
-        "api_key": "***" if os.environ.get(_API_KEY_ENV, "") else "",
+        "api_key": "***" if secrets.configured(_API_KEY_ENV) else "",
     }
 
 
