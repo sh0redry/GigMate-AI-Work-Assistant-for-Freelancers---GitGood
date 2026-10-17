@@ -20,7 +20,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from gigmate import waha_media
 from gigmate.contracts import WorkOrderEvidenceCommand
@@ -105,6 +105,11 @@ def attach(db, account, order_id: str, command: WorkOrderEvidenceCommand) -> dic
     returns the existing row instead of duplicating it (or inheriting a newer
     result).
     """
+    if db.bind.dialect.name == "postgresql":
+        # Bounded waits so a cross-transaction key wait fails loudly instead of
+        # blocking an HTTP worker (or a CI job) indefinitely.
+        db.execute(text("SET LOCAL lock_timeout = '3s'"))
+        db.execute(text("SET LOCAL statement_timeout = '5s'"))
     _owned_order(db, account, order_id)
     asset = db.get(WahaAttachment, command.attachment_id)
     if not asset or asset.account_id != account.id:

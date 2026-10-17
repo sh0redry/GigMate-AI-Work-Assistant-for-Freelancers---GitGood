@@ -16,7 +16,14 @@ from test_waha_sync import setup as setup_fixture
 from gigmate import media_processing
 from gigmate import waha_media as media
 from gigmate.contracts import WahaMediaResult
-from gigmate.db import ConversationRow, Job, WahaAttachment, WahaMediaJob, WahaSnapshot
+from gigmate.db import (
+    ConversationRow,
+    Job,
+    WahaAttachment,
+    WahaMediaJob,
+    WahaSnapshot,
+    WorkOrderEvidenceRow,
+)
 from gigmate.waha_adapter import AdapterError
 from gigmate.waha_client import LocalWahaClient, LocalWahaConfig
 
@@ -402,6 +409,10 @@ def test_media_bookkeeping_does_not_require_new_tables_for_existing_pause(
     monkeypatch.setenv("WAHA_MEDIA_ENABLED", "true" if enabled else "false")
     with setup[1]() as db:
         engine = db.bind
+    # Later batches add foreign keys to `waha_attachments`; PostgreSQL refuses a
+    # plain DROP while a dependent table exists, so drop them in dependency
+    # order to keep pretending this is the older schema without evidence rows.
+    WorkOrderEvidenceRow.__table__.drop(engine, checkfirst=True)
     WahaMediaJob.__table__.drop(engine)
     WahaAttachment.__table__.drop(engine)
     if not enabled:

@@ -21,6 +21,10 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src", "../.."]
+# A wedged test (row-lock wait, thread that never joins) dumps every thread's
+# stack and exits instead of hanging the CI job until the platform timeout.
+# No single case is anywhere near this bound; raise it only with evidence.
+faulthandler_timeout = 300
 
 [tool.ruff]
 target-version = "py312"

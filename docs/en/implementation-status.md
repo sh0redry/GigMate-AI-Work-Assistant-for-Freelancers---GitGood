@@ -1,5 +1,22 @@
 # Implementation status and validation
 
+## PostgreSQL-only defects behind the PR #35 CI hang — 2026-10-17
+
+**Symptom.** On PR #35 every check except one finished: the `backend` job stopped inside its last step, `pytest apps/backend/tests -q` (started `2026-10-17T05:03:50Z`, never completed). The same job finished in about five minutes on `main`.
+
+**Root cause (evidence, not a guess).** `POST /api/v1/work-orders/{id}/evidence` declared `db=Depends(database, scope="function")` while the `actor` dependency uses the request-scoped `Depends(database)`. FastAPI's dependency cache key is `(call, scopes, computed_scope)`, so one request received **two** sessions and therefore **two PostgreSQL connections**. `identity.authenticate` locks the merchant row with `SELECT ... FOR UPDATE` on mutation requests (`identity.py:47`); the second transaction's `INSERT INTO work_order_evidence` has to take a `KEY SHARE` lock on that same row because of its `accounts` foreign key. The lock is released only when the identity transaction commits, which happens after the endpoint returns — a self-deadlock, and PostgreSQL had no `lock_timeout`, so the request waited forever. Reproduced locally in a `postgres:17.9` container: `pg_stat_activity` showed the INSERT waiting on a `transactionid` ShareLock blocked by the `idle in transaction` authentication session, and the Python stack sat in `work_evidence.py:160 db.flush()`. SQLite never showed it because pysqlite keeps one connection per thread, so both sessions share a single transaction.
+
+**Changes.**
+
+- `api.py`: the evidence endpoint uses the request-scoped dependency again, so the identity lock and the write live in one transaction (the sibling `GET` evidence route already did this).
+- `work_evidence.attach`: bounded waits on PostgreSQL (`SET LOCAL lock_timeout = '3s'`, `SET LOCAL statement_timeout = '5s'`), the same guard already used by `waha_ingress`, `waha_sync`, `waha_recovery` and `waha_media`, so any future cross-transaction wait fails loudly instead of blocking an HTTP worker or a CI job indefinitely.
+- `tests/test_waha_media.py::test_media_bookkeeping_does_not_require_new_tables_for_existing_pause`: drop `work_order_evidence` before `waha_attachments`. The new table's foreign key made this "older schema without evidence" case fail on PostgreSQL only; SQLite does not enforce drop dependencies, so it stayed green locally.
+- Guard rails: every workflow job now declares an explicit `timeout-minutes` (`backend` 20, `pdf-isolation` 15, `frontend_platforms` 25, `frontend` 5, `documentation-and-contracts` 10) and `apps/backend/pyproject.toml` sets `faulthandler_timeout = 300`, so a wedged test dumps every thread's stack and exits instead of hanging until the platform timeout.
+
+**Evidence.** Reproduced with `TEST_DATABASE_URL` against a local `postgres:17.9` container: before the change the promotion case never returns and `-o faulthandler_timeout=60` dumps the two waits described above; after it `pytest apps/backend/tests/test_work_evidence.py` **8 passed in 5.24s**. Full backend suite on PostgreSQL **945 passed, 14 skipped, 12 failed**, and on SQLite **1006 passed, 25 skipped, 12 failed**, where in both cases all 12 failures are the documented macOS PDF resource-isolation cases (`pdf_child` refuses off Linux). `ruff check` / `ruff format --check apps/backend`: clean. `export_contracts.py --check`: synchronized. `check_baseline.py`: PASS (91 Markdown, 1037 local links).
+
+**Still to be confirmed.** Linux CI has to run the PostgreSQL job end to end; both local suites ran on macOS and inherit its known PDF failures. Nothing here changes the SQLite path, the contracts, or any API shape.
+
 ## Media authorization and work-order evidence (roles B/C) — 2026-10-17
 
 Rebased onto main after PR #31 landed. The text-model gates this batch originally carried (source provenance re-binding, time basis, token/cost accounting, retry classification, `SOURCE_SUPERSEDED`) already exist on main in a stricter form, so the duplicate provider implementation was **dropped** and main's `extraction/llm.py` is used unchanged; `0014_llm_usage` was deleted because `0017_model_call_request_id` / `0018_model_call_cost` already add the request id, token and cost columns. What remains is the part main did not have.
@@ -12,7 +29,7 @@ Rebased onto main after PR #31 landed. The text-model gates this batch originall
 
 **Work-order evidence (merchant decision)**
 
-- Migration `0021_work_order_evidence` (unique `(work_order_id, attachment_id, attachment_version)`), `gigmate/work_evidence.py`, and `POST/GET /api/v1/work-orders/{id}/evidence`.
+- Migration `0022_work_order_evidence` (unique `(work_order_id, attachment_id, attachment_version)`), `gigmate/work_evidence.py`, and `POST/GET /api/v1/work-orders/{id}/evidence`.
 - Attach re-validates account ownership, active connection/source, consent, expiry, review, original bytes (`waha_media.evidence`) and that the attachment's conversation is linked to the order (`MEDIA_ORDER_LINK_REQUIRED`). A newer result is `MEDIA_RESULT_CHANGED`; a changed version/context is `MEDIA_SOURCE_CHANGED`. Re-submitting the same binding is idempotent and returns the stored row, never a refreshed one.
 - The row snapshots attachment version, context version, result job id, SHA-256 and source fingerprint. Reads compute `stale`/`stale_reason`, so history is never rewritten. No `RequirementChange` is written, no field is confirmed, and no approval or send authority is granted.
 
@@ -22,7 +39,7 @@ Rebased onto main after PR #31 landed. The text-model gates this batch originall
 
 **Not done, recorded honestly:** no real audio/ASR call and no end-to-end real attachment; real OCR/ASR accuracy, prompt-injection resilience, vendor rate limiting and long-run cost remain unverified. The 12 macOS PDF resource-isolation cases still fail here (`pdf_child` refuses on non-Linux) and are expected to pass on CI; SQLite does not prove PostgreSQL locking.
 
-Evidence: `pytest apps/backend/tests` **981 passed, 25 skipped, 12 failed** (all 12 are the documented macOS PDF cases). `ruff check` / `ruff format --check apps/backend`: clean. `export_contracts.py --check`: synchronized. `check_baseline.py`: PASS (89 Markdown, 1037 local links). Throwaway SQLite `alembic upgrade head` + `check`: head `0021_work_order_evidence`, no new operations. `apps/web` `generate:api` regenerated the types.
+Evidence: `pytest apps/backend/tests` **981 passed, 25 skipped, 12 failed** (all 12 are the documented macOS PDF cases). `ruff check` / `ruff format --check apps/backend`: clean. `export_contracts.py --check`: synchronized. `check_baseline.py`: PASS (89 Markdown, 1037 local links). Throwaway SQLite `alembic upgrade head` + `check`: head `0022_work_order_evidence`, no new operations. `apps/web` `generate:api` regenerated the types.
 
 ## Delivery checklist, archiving and action paging (role C) — 2026-10-16
 
@@ -937,7 +954,7 @@ refuses a disabled connection (`CONSENT_REVOKED`), expired bytes
 consent change already ended (10 evidence cases pass).
 
 **Bounded agent drafts (issue #29, B item 6).** `gigmate.agent_drafts` plus
-migration `0022_agent_drafts` add follow-up/polish drafts that are text only:
+migration `0023_agent_drafts` add follow-up/polish drafts that are text only:
 created either from a proposal the extraction seam already produced under its
 own gates or from the merchant's own input — there is no free-form question
 path — and bounded by a daily ceiling, a TTL that reads as `expired`,
@@ -955,7 +972,7 @@ vendor, price or real-run acceptance.
 skipped / 12 failed**, where the 12 are the pre-existing native-macOS
 `MEDIA_PDF_LIMIT_UNAVAILABLE` cases (the PDF isolation path is Linux-only);
 Ruff check/format clean; `export_contracts.py` synchronized; Alembic on a
-throwaway SQLite file reaches head `0022_agent_drafts` with no drift. Real
+throwaway SQLite file reaches head `0023_agent_drafts` with no drift. Real
 vendor calls used the operator's own key, which stayed in a git-ignored local
 `.env` and was never committed.
 

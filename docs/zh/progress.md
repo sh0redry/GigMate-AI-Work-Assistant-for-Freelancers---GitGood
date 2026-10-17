@@ -1,5 +1,22 @@
 # 已完成工作与验证记录
 
+## PR #35 CI 卡死的 PostgreSQL 专属缺陷修复 — 2026-10-17
+
+**现象。** PR #35 上除一项外所有检查都已完成：`backend` job 停在最后一步 `pytest apps/backend/tests -q`（`2026-10-17T05:03:50Z` 开始，始终没有结束）；同一个 job 在 `main` 上约五分钟就跑完了。
+
+**根因（有证据，不是猜测）。** `POST /api/v1/work-orders/{id}/evidence` 声明的是 `db=Depends(database, scope="function")`，而 `actor` 依赖用的是请求级 `Depends(database)`。FastAPI 的依赖缓存键是 `(call, scopes, computed_scope)`，因此一次请求拿到了**两个** Session，也就是**两条 PostgreSQL 连接**。`identity.authenticate` 在变更请求里对商户行加 `SELECT ... FOR UPDATE`（`identity.py:47`）；第二个事务的 `INSERT INTO work_order_evidence` 因为指向 `accounts` 的外键，必须拿到同一行的 `KEY SHARE` 锁，而这把锁只有身份事务提交后才释放，身份事务又要等 endpoint 返回 —— 自死锁；PostgreSQL 没有设置 `lock_timeout`，于是请求永远等待。本地用 `postgres:17.9` 容器复现：`pg_stat_activity` 显示 INSERT 正在等待 `transactionid` ShareLock，阻塞者是处于 `idle in transaction` 的身份认证会话，Python 栈停在 `work_evidence.py:160 db.flush()`。SQLite 完全看不到，因为 pysqlite 每线程复用一条连接，两个 Session 共用同一个事务。
+
+**改动。**
+
+- `api.py`：evidence endpoint 改回请求级依赖，身份锁与写入落在同一个事务里（同资源的 `GET` 路由本来就是这样）。
+- `work_evidence.attach`：在 PostgreSQL 上设置有界等待（`SET LOCAL lock_timeout = '3s'`、`SET LOCAL statement_timeout = '5s'`），与 `waha_ingress`、`waha_sync`、`waha_recovery`、`waha_media` 已有的做法一致，使将来任何跨事务等待都明确失败，而不是无限占用 HTTP worker 或 CI job。
+- `tests/test_waha_media.py::test_media_bookkeeping_does_not_require_new_tables_for_existing_pause`：先丢弃 `work_order_evidence` 再丢弃 `waha_attachments`。新表的外键让这个"旧 schema（没有依据表）"用例只在 PostgreSQL 上失败；SQLite 不检查 DROP 依赖，所以本地一直是绿的。
+- 护栏：每个 workflow job 都显式声明 `timeout-minutes`（`backend` 20、`pdf-isolation` 15、`frontend_platforms` 25、`frontend` 5、`documentation-and-contracts` 10），并且 `apps/backend/pyproject.toml` 增加 `faulthandler_timeout = 300`；将来若有卡死的用例，会先 dump 全部线程栈再退出，而不是挂到平台超时。
+
+**证据。** 本地 `postgres:17.9` 容器 + `TEST_DATABASE_URL` 复现：修复前该用例永不返回，`-o faulthandler_timeout=60` 会 dump 出上面两个等待；修复后 `pytest apps/backend/tests/test_work_evidence.py` **8 项通过，5.24s**。后端全量：PostgreSQL **945 通过、14 跳过、12 失败**，SQLite **1006 通过、25 跳过、12 失败**，两边的 12 个失败都是已记录的 macOS PDF 资源隔离用例（`pdf_child` 在非 Linux 平台拒绝）。`ruff check` / `ruff format --check apps/backend`：干净。`export_contracts.py --check`：同步。`check_baseline.py`：PASS（91 个 Markdown、1037 个本地链接）。
+
+**仍待确认。** Linux CI 需要端到端跑一遍 PostgreSQL job；本地两套都是 macOS 环境，带有已知的 PDF 失败。本次没有改动 SQLite 路径、契约或任何 API 形状。
+
 ## 媒体分模态授权与已核对附件转工单依据（B/C）— 2026-10-17
 
 本批在 PR #31 合入后重建于 main 之上。它原先携带的文字模型门槛（来源重绑定、时间基准、token/成本记账、重试分类、`SOURCE_SUPERSEDED`）在 main 上已有更严格的实现，因此**丢弃了重复的 provider 实现**，`extraction/llm.py` 原样采用 main 版本；`0014_llm_usage` 已删除，因为 `0017_model_call_request_id` / `0018_model_call_cost` 已经加上请求 id、token 与成本列。保留的是 main 真正没有的部分。
@@ -12,7 +29,7 @@
 
 **工单依据（商户决定）**
 
-- 迁移 `0021_work_order_evidence`（`(work_order_id, attachment_id, attachment_version)` 唯一）、`gigmate/work_evidence.py`、`POST/GET /api/v1/work-orders/{id}/evidence`。
+- 迁移 `0022_work_order_evidence`（`(work_order_id, attachment_id, attachment_version)` 唯一）、`gigmate/work_evidence.py`、`POST/GET /api/v1/work-orders/{id}/evidence`。
 - attach 重新校验账户归属、连接/来源有效、授权、到期、核对记录、原始字节（`waha_media.evidence`），以及附件会话已关联该工单（否则 `MEDIA_ORDER_LINK_REQUIRED`）；结果更新为 `MEDIA_RESULT_CHANGED`，版本/上下文变化为 `MEDIA_SOURCE_CHANGED`。重复提交同一绑定幂等，返回已存行，绝不会被刷新成更新的结果。
 - 行内快照附件版本、上下文版本、结果任务、SHA-256 与来源指纹；读取时计算 `stale`/`stale_reason`，历史不被改写。不写 `RequirementChange`、不确认字段、不授予批准或发送权限。
 
@@ -22,7 +39,7 @@
 
 **如实记录未做之事：** 未发出真实音频/ASR 请求，也没有端到端处理真实附件；真实 OCR/ASR 准确率、prompt 注入防护、供应商限流与长期成本仍未验证。12 个 macOS PDF 资源隔离用例仍在本机失败（`pdf_child` 在非 Linux 平台拒绝），预期在 CI 通过；SQLite 不证明 PostgreSQL 锁。
 
-证据：`pytest apps/backend/tests` **981 通过、25 跳过、12 失败**（12 个均为已记录的 macOS PDF 用例）。`ruff check` / `ruff format --check apps/backend`：干净。`export_contracts.py --check`：同步。`check_baseline.py`：PASS（89 个 Markdown、1037 个本地链接）。临时 SQLite 上 `alembic upgrade head` + `check`：head `0021_work_order_evidence`，无新操作。`apps/web` 已重新生成 API 类型。
+证据：`pytest apps/backend/tests` **981 通过、25 跳过、12 失败**（12 个均为已记录的 macOS PDF 用例）。`ruff check` / `ruff format --check apps/backend`：干净。`export_contracts.py --check`：同步。`check_baseline.py`：PASS（89 个 Markdown、1037 个本地链接）。临时 SQLite 上 `alembic upgrade head` + `check`：head `0022_work_order_evidence`，无新操作。`apps/web` 已重新生成 API 类型。
 
 ## 交付前检查清单、归档与审批分页（C）— 2026-10-16
 
@@ -891,11 +908,11 @@ PR #18（`llm:live-gate-off` + malformed-prompt/证据修复）以 `cc2ac8e` 合
 
 **依据人工核对（B/C）。** `work_evidence.attach` 现在还拒绝已禁用连接（`CONSENT_REVOKED`）、已过期字节（`MEDIA_SOURCE_EXPIRED`）与已取消/失败的媒体作业（`MEDIA_RESULT_STOPPED`），迟到结果因此无法复活已被停止或撤权终结的内容（10 条依据用例通过）。
 
-**受限 Agent 草稿（B 第 6 项）。** `gigmate.agent_drafts` 与迁移 `0022_agent_drafts` 提供追问/润色草稿，只有文本：正文来自提取接缝已在自身闸门下产出的提案，或来自商户自己的输入 —— 没有自由问答通道 —— 并受每日上限、TTL（读取时显示 `expired`）、撤销、可选安静时段与一次消费约束。消费只返回文本并标记已用；不发送、不确认字段、不授予执行权（载荷里 `execution_authority: false`）。7 条用例通过。
+**受限 Agent 草稿（B 第 6 项）。** `gigmate.agent_drafts` 与迁移 `0023_agent_drafts` 提供追问/润色草稿，只有文本：正文来自提取接缝已在自身闸门下产出的提案，或来自商户自己的输入 —— 没有自由问答通道 —— 并受每日上限、TTL（读取时显示 `expired`）、撤销、可选安静时段与一次消费约束。消费只返回文本并标记已用；不发送、不确认字段、不授予执行权（载荷里 `execution_authority: false`）。7 条用例通过。
 
 **运维配置自检。** `scripts/check_model_config.py` 报告本机私密配置是否完整（供应商、模型、live 开关、价格、预算、token 上限、时间依据、媒体闸门），只打印存在性、绝不回显密钥，并声明"配置完整"不等同于供应商、价格或真实验收。
 
-**本批实际证据：** 后端全套（SQLite）**998 通过 / 25 跳过 / 12 失败**，12 项失败是原生 macOS 既有的 `MEDIA_PDF_LIMIT_UNAVAILABLE`（PDF 隔离路径仅 Linux）；Ruff 检查/格式通过；`export_contracts.py` 一致；临时 SQLite 上 Alembic 到 head `0022_agent_drafts` 无漂移。真实调用使用运营方自己的 key，密钥只放在被 Git 忽略的本地 `.env`，从未提交。
+**本批实际证据：** 后端全套（SQLite）**998 通过 / 25 跳过 / 12 失败**，12 项失败是原生 macOS 既有的 `MEDIA_PDF_LIMIT_UNAVAILABLE`（PDF 隔离路径仅 Linux）；Ruff 检查/格式通过；`export_contracts.py` 一致；临时 SQLite 上 Alembic 到 head `0023_agent_drafts` 无漂移。真实调用使用运营方自己的 key，密钥只放在被 Git 忽略的本地 `.env`，从未提交。
 
 **如实记录未做之事：** 未配置语音/ASR 供应商，因此没有真实转写；没有对真实供应商端到端处理 PDF（原生 macOS 上本地解析器按设计拒绝）；真实客户扫描件的 OCR 准确率、真实图片下的注入防护、供应商限流、长期成本与 PostgreSQL 行锁仍未验证；真实质量套件是 8 条合成用例，不构成生产准确率结论。
 

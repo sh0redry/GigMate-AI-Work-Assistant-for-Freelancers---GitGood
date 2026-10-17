@@ -11,6 +11,7 @@ permissions:
 jobs:
   pdf-isolation:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -26,6 +27,7 @@ jobs:
       - run: pytest apps/backend/tests/test_pdf_isolation.py -q
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:17.9
@@ -57,6 +59,7 @@ jobs:
   frontend_platforms:
     name: frontend (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -84,6 +87,7 @@ jobs:
         working-directory: apps/web
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: frontend_platforms
     if: ${{ always() }}
     steps:

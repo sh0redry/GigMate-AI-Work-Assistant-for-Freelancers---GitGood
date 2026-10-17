@@ -634,7 +634,12 @@ def attach_work_order_evidence(
     command: WorkOrderEvidenceCommand,
     request: Request,
     account=Depends(actor),
-    db=Depends(database, scope="function"),
+    # The request-scoped dependency keeps the merchant identity lock and this
+    # write in one transaction. A second "function"-scoped session would open a
+    # second PostgreSQL connection whose INSERT to `accounts` (foreign key)
+    # waits for the identity transaction to commit, which cannot happen before
+    # this call returns: a self-deadlock with no lock timeout.
+    db=Depends(database),
 ):
     """Keep one reviewed attachment as evidence for this work order.
 

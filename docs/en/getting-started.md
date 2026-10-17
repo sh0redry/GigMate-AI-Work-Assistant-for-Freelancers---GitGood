@@ -78,6 +78,8 @@ New-Item -ItemType Directory -Path local-data -Force | Out-Null
 
 --basetemp is a disposable test-only directory whose contents pytest replaces. Without TEST_DATABASE_URL, tests use SQLite files and skip the PostgreSQL concurrent-claim test; this does not prove row-lock semantics.
 
+PostgreSQL and SQLite do not exercise the same code: SQLite keeps one connection per thread so two sessions share one transaction, while PostgreSQL gives each session its own connection, which is what makes cross-session lock ordering visible. Always run this PostgreSQL suite before opening a pull request — a row-lock self-deadlock that only exists there hangs the CI job otherwise. `faulthandler_timeout = 300` in `apps/backend/pyproject.toml` prints every thread's stack and exits if a case ever wedges; `pytest -o faulthandler_timeout=60` does the same locally without touching the file.
+
 Pytest explicitly adds backend `src` and the repository root from its backend configuration. Both `pytest` and `python -m pytest` can therefore import application modules and the shared `scripts` tooling; test collection does not depend on an incidental current-directory entry from one launcher.
 
 Frontend tests/build automatically select this checkout’s `.venv/bin/python` (macOS/Linux) or `.venv/Scripts/python.exe` (Windows). Create the project virtual environment first; activating it or installing a global `python` alias is unnecessary. For an existing interpreter elsewhere (e.g. a worktree), set `GIGMATE_TEST_PYTHON` to its executable path. Missing/unusable paths fail with setup guidance. See the paired [frontend guide](role-d-frontend-user-guide.md) for shell examples. CI provisions Python 3.12.10 and tests the frontend on Linux/Windows/macOS.
