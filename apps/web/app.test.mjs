@@ -26,6 +26,7 @@ const components = [
   "LoopCommand",
   "OrderLifecycle",
   "InspectOrderAttempt",
+  "ReplyPanel",
   "OrderCreation",
   "CalendarWorkspace",
   "ReviewWorkspace",
@@ -217,8 +218,8 @@ test("authenticated product lands in honest empty business workspace, connects t
   await mount();
   await login();
   assert.equal(button("业务工作台").getAttribute("aria-pressed"), "true");
-  assert.match(document.body.textContent, /当前还没有工单/);
-  assert.match(document.body.textContent, /自动建单尚未开放/);
+  assert.match(document.body.textContent, /还没有工单/);
+  assert.match(document.body.textContent, /再点「新建工单」/);
   assert.deepEqual(JSON.parse(calls[0].options.body), {
     username: "learner",
     password: "synthetic-password",
@@ -687,10 +688,10 @@ test("business sending resolves a different chat UUID from the owned conversatio
   await act(async () => root.render(createElement(BusinessLoopReview, props)));
   await select("业务草稿", actionId);
   await select("发送连接", connection);
-  assert.ok(button("核对并提交业务发送"));
-  await act(async () => button("核对并提交业务发送").click());
+  assert.ok(button("发送给客人"));
+  await act(async () => button("发送给客人").click());
   await tick("我已核对内容、来源及当前版本");
-  await act(async () => button("确认保存").click());
+  await act(async () => button("确认发送").click());
   assert.equal(submitted.length, 1);
   assert.equal(submitted[0].body.connection_id, connection);
   assert.equal(submitted[0].body.expected_permission_version, 5);
@@ -1037,7 +1038,7 @@ test("business replies load paginated connections and prepare exact authorised s
     );
   });
   assert.ok(reads.some((path) => path.includes("cursor=synthetic-next")));
-  assert.equal(button("核对并提交业务发送").disabled, false);
+  assert.equal(button("发送给客人").disabled, false);
   assert.deepEqual(errors, []);
   assert.deepEqual(writes, []);
 });

@@ -5,6 +5,7 @@ export function LoopCommand({
   api,
   intent,
   label,
+  confirmLabel,
   onDone,
   onError,
   onBusy,
@@ -14,6 +15,7 @@ export function LoopCommand({
   api: LoopApi;
   intent: LoopIntent;
   label: string;
+  confirmLabel?: string;
   onDone: () => void;
   onError: (e: unknown) => void;
   onBusy?: (v: boolean) => void;
@@ -79,7 +81,7 @@ export function LoopCommand({
             disabled={disabled || !consent || busy}
             onClick={() => void submit()}
           >
-            {t("确认保存")}
+            {confirmLabel ?? t("确认保存")}
           </button>
           <button
             className="secondary"
