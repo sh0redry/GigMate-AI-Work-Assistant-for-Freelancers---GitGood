@@ -22,7 +22,9 @@
 
 **测试：** `tests/test_extraction.py` 新增 12 个 provider/worker 用例（来源重绑定、候选外工单、过期基础版本、缺时间基准、缺/耗尽调用与 token 预算、账户白名单、读超时只试一次、畸形响应体只试一次、401 原因脱敏、按账户的预算窗口、worker 未知结果不产生变更）；`tests/test_media_processor.py` 新增 4 个模态/视觉用例；新文件 `tests/test_work_evidence.py` 8 个用例（未核对拒绝、幂等提升、未关联会话、更新结果、他人账户、上下文变化后 stale、CSRF、仅可下载附件）。`tests/test_waha_migration.py` 钉住 head `0015_work_order_evidence` 并断言新列。
 
-**如实记录未做之事：** 没有可用的供应商 key，因此未发出任何真实 DeepSeek/图片/音频请求；供应商质量、真实 token 数、真实 OCR/ASR 准确率、图片 prompt 注入防护仍未验证。媒体调用仍不记录 token 用量，也没有自己的重试/退避。调用期间 `SOURCE_SUPERSEDED` 竞态已实现并审阅，但没有确定性的自动化测试（需要在模型调用期间发生第二次写入）。证据提升目前只有 API，前端尚无入口，也没有撤销接口（变化在读取时计算 stale）。
+**真实供应商证据（运营方自备 key，本批之后补跑）：** `scripts/smoke_deepseek.py` 以与 worker 相同的真实来源请求形态（附时间基准、工作区时区、预算计数）发出一次真实 `deepseek-chat` 调用，返回 `assignment=matched` 与两条 `proposed` 变更，`latency_ms=1729`，`usage` 为 1368 prompt / 339 completion / 1707 total tokens——证明确实发生了一次计费调用，预算与时间基准闸门在真实路径上通过。模型把"下周四下午三点"按 `GIGMATE_WORKSPACE_TIMEZONE=Asia/Hong_Kong` 解析为 `2026-10-22T07:00:00Z`（当地时间 15:00，星期正确），相对日期处理已对真实供应商验证。另做了两次裸探测：以 `data:` `image_url` 发送 64x64 纯色 PNG（先绿后红），回答分别是 “Green” / “Red”，每次 202 prompt tokens，响应 `model` 字段为 `deepseek-flash`（非配置的 `deepseek-chat`）。这说明该端点确实处理图像并按图像 token 计费，但这是账号路由层面的观察，因此 OCR 仍需显式设置 `GIGMATE_MEDIA_VISION_VENDORS=deepseek` 才启用，不能默认假设。密钥只存放在被 Git 忽略的本地 `.env`，从未提交。
+
+**如实记录未做之事：** 未发出任何真实音频/ASR 请求，也没有端到端处理真实附件；真实 OCR/ASR 准确率、图片 prompt 注入防护、供应商限流与长期成本仍未验证。媒体调用仍不记录 token 用量，也没有自己的重试/退避。调用期间 `SOURCE_SUPERSEDED` 竞态已实现并审阅，但没有确定性的自动化测试（需要在模型调用期间发生第二次写入）。证据提升目前只有 API，前端尚无入口，也没有撤销接口（变化在读取时计算 stale）。
 
 证据：`pytest apps/backend/tests`（SQLite）**630 通过、19 跳过（PostgreSQL）、12 失败**——仍是已记录文档的 12 个 macOS PDF 资源隔离用例，未改变。`ruff check apps/backend`：干净；`ruff format --check apps/backend`：85 文件已格式化。`export_contracts.py --check`：同步。`check_baseline.py`：PASS（71 个 Markdown、434 个本地链接、3 个 schema、11 个合法样例、6 个拒绝样例、12 个合成场景）。临时 SQLite 文件上 `alembic upgrade head` + `alembic check`：head `0015_work_order_evidence`，无新操作。`apps/web`：`check:api` 通过。未涉及真实模型、媒体供应商、账号、发送或部署。
 
