@@ -21,6 +21,7 @@ export function OrderCreation({
   onSessionExpired,
   onBusyChange,
   onOpenOrder,
+  initialConversation = "",
 }: {
   csrf: string;
   accountId: string;
@@ -28,6 +29,7 @@ export function OrderCreation({
   onSessionExpired: () => void;
   onBusyChange: (b: boolean) => void;
   onOpenOrder: (id: string) => void;
+  initialConversation?: string;
 }) {
   const active = useRef(true);
   useEffect(() => {
@@ -43,7 +45,7 @@ export function OrderCreation({
     >([]),
     [proposalId, setProposalId] = useState("");
   const [conversations, setConversations] = useState<Conversation[]>([]),
-    [conversation, setConversation] = useState(""),
+    [conversation, setConversation] = useState(initialConversation),
     [messages, setMessages] = useState<Message[]>([]),
     [orders, setOrders] = useState<Order[]>([]),
     [context, setContext] = useState(0),

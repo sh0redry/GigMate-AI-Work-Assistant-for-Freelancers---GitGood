@@ -2,6 +2,9 @@ import { t } from "./i18n.ts";
 import { privateReadDenied } from "./read-cache";
 import { useStableState as useState } from "./useStableState";
 import { useEffect, useMemo } from "react";
+import { businessLoopApi } from "./business-loop-api";
+import { LoopCommand, LoopRecovery } from "./LoopCommand";
+import { loopReady, type Features } from "./features";
 import {
   allPages,
   workspaceApi,
@@ -17,13 +20,27 @@ export function ReviewWorkspace({
   onSessionExpired,
   onOpenOrder,
   onConnect,
+  accountId,
+  features,
+  onBusyChange,
+  onCreate,
 }: {
   csrf: string;
   onSessionExpired: () => void;
   onOpenOrder: (id: string) => void;
   onConnect: () => void;
+  accountId: string;
+  features: Features;
+  onBusyChange: (busy: boolean) => void;
+  onCreate: (conversationId: string) => void;
 }) {
   const api = useMemo(() => workspaceApi(csrf), [csrf]);
+  const commands = useMemo(
+    () => businessLoopApi(csrf, accountId, features),
+    [csrf, accountId, features],
+  );
+  const [target, setTarget] = useState("");
+  const [context, setContext] = useState(0);
   const [items, setItems] = useState<ReviewItem[]>([]),
     [orders, setOrders] = useState<Order[]>([]),
     [changes, setChanges] = useState<Change[]>([]),
@@ -85,19 +102,32 @@ export function ReviewWorkspace({
   useEffect(() => {
     const abort = new AbortController();
     setContextError("");
+    setContext(0);
+    setMessages([]);
+    setTarget("");
     if (selected)
-      void allPages<Message>(
-        api,
-        `/conversations/${selected.conversation_id}/messages`,
-        abort.signal,
-      )
-        .then((values) => {
+      void Promise.all([
+        allPages<Message>(
+          api,
+          `/conversations/${selected.conversation_id}/messages`,
+          abort.signal,
+        ),
+        api<{ data: components["schemas"]["Conversation"] }>(
+          `/conversations/${selected.conversation_id}`,
+          undefined,
+          abort.signal,
+        ),
+      ])
+        .then(([values, info]) => {
           if (!abort.signal.aborted) {
             if (
+              info.data.id !== selected.conversation_id ||
+              info.data.account_id !== accountId ||
               values.some((m) => m.conversation_id !== selected.conversation_id)
             )
               throw new Error(t("来源会话无法核对。"));
             setMessages(values);
+            setContext(info.data.context_version);
           }
         })
         .catch((e) => {
@@ -109,11 +139,38 @@ export function ReviewWorkspace({
     return () => abort.abort();
   }, [
     api,
+    accountId,
     selected?.id,
     selected?.current_context_version,
     version,
     onSessionExpired,
   ]);
+  const done = () => setVersion((v) => v + 1);
+  const report = (e: unknown) => {
+    setError(e instanceof Error ? e.message : t("复核数据暂不可用"));
+    if ((e as { code?: string })?.code === "UNAUTHENTICATED")
+      onSessionExpired();
+  };
+  const current =
+    !!selected &&
+    !loading &&
+    !error &&
+    !contextError &&
+    context === selected.context_version &&
+    context === selected.current_context_version &&
+    selected.state === "completed" &&
+    [
+      "ASSIGNMENT_NEEDS_REVIEW",
+      "EXTRACTION_NEEDS_REVIEW",
+      "MODEL_OUTCOME_UNKNOWN",
+    ].includes(selected.reason) &&
+    messages.some((m) => m.id === selected.message_id && !m.revoked);
+  const openOrders = orders.filter(
+    (o) =>
+      selected &&
+      o.conversation_ids.includes(selected.conversation_id) &&
+      !["completed", "cancelled"].includes(o.status),
+  );
   return (
     <section aria-label={t("人工复核")}>
       <div className="page-heading">
@@ -140,6 +197,12 @@ export function ReviewWorkspace({
         </p>
       )}
       {loading && <p role="status">{t("正在读取复核事项…")}</p>}
+      <LoopRecovery
+        api={commands}
+        onDone={done}
+        onError={report}
+        onBusy={onBusyChange}
+      />
       <div className="planning-grid">
         <div className="panel">
           <h2>{t("消息处理待核对")}</h2>
@@ -210,6 +273,9 @@ export function ReviewWorkspace({
                 <p>{t("尚无可读取原文。")}</p>
               )}
               <h3>{t("该会话已有工单")}</h3>
+              {!openOrders.length && (
+                <p>{t("这条会话没有开放工单。新需求可以从这里手动建单。")}</p>
+              )}
               {orders
                 .filter((o) =>
                   o.conversation_ids.includes(selected.conversation_id),
@@ -223,6 +289,100 @@ export function ReviewWorkspace({
                     {o.summary}
                   </button>
                 ))}
+              {features.create_order && !contextError && context > 0 && (
+                <button
+                  className="secondary"
+                  onClick={() => onCreate(selected.conversation_id)}
+                >
+                  {t("为这条会话新建工单")}
+                </button>
+              )}
+              {features.manual_assignment && loopReady(features) && (
+                <div className="review-decisions">
+                  <h3>{t("处理这条消息")}</h3>
+                  <p>
+                    {t(
+                      "归单会重新生成待核对提议；忽略只表示这条消息无需处理。手动建单不会自动清除此复核事项。",
+                    )}
+                  </p>
+                  {!current && (
+                    <p role="status">
+                      {t(
+                        "这条记录不是当前可处理轮次，或原文尚未核实。请刷新并处理最新记录。",
+                      )}
+                    </p>
+                  )}
+                  {selected.reason === "MODEL_OUTCOME_UNKNOWN" && (
+                    <p>
+                      {t(
+                        "模型调用结果未知，只能核查原请求或明确忽略，不能重新归单调用。",
+                      )}
+                    </p>
+                  )}
+                  <label>
+                    {t("归入工单")}
+                    <select
+                      value={target}
+                      onChange={(e) => setTarget(e.target.value)}
+                      disabled={!current}
+                    >
+                      <option value="">{t("选择已有开放工单")}</option>
+                      {openOrders.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.summary}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {target && selected.reason !== "MODEL_OUTCOME_UNKNOWN" && (
+                    <LoopCommand
+                      key={selected.id + target}
+                      api={commands}
+                      disabled={
+                        !current || !openOrders.some((o) => o.id === target)
+                      }
+                      label={t("核对归单")}
+                      onDone={done}
+                      onError={report}
+                      onBusy={onBusyChange}
+                      intent={{
+                        path: `/review-items/${selected.id}/assign`,
+                        body: {
+                          action: "assign",
+                          expected_context_version: context,
+                          work_order_id: target,
+                        },
+                        review: t(
+                          "将当前会话 v{0} 的这条消息归入“{1}”，仅记录归属，不自动确认业务字段。",
+                          context,
+                          openOrders.find((o) => o.id === target)?.summary,
+                        ),
+                      }}
+                    />
+                  )}
+                  <LoopCommand
+                    key={selected.id + ":dismiss"}
+                    api={commands}
+                    disabled={!current}
+                    label={t("标记无需归单")}
+                    onDone={done}
+                    onError={report}
+                    onBusy={onBusyChange}
+                    intent={{
+                      path: `/review-items/${selected.id}/assign`,
+                      body: {
+                        action: "dismiss",
+                        expected_context_version: context,
+                        work_order_id: null,
+                      },
+                      review: t(
+                        "将当前会话 v{0} 的这条消息标记为无需归单，不创建工单，不发送回复。",
+                        context,
+                      ),
+                    }}
+                  />
+                </div>
+              )}
             </section>
           )}
         </div>

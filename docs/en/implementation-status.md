@@ -1199,3 +1199,13 @@ In the local running UI, selecting the existing approved draft and connection
 now displays the enabled send-review button. No send was submitted during this
 verification. No backend behavior changed; backend tests were not rerun for this
 frontend-only correction. This does not establish WhatsApp delivery acceptance.
+
+## 2026-10-18 — local follow-up on PR #41: existing API entry points
+
+Local branch `codex/connect-existing-workflows`, based on PR #41 HEAD `8031eaa`: the feature guide now describes actual capability status and links directly to implemented pages. Manual review connects the existing assignment/dismissal API with source/current-context checks, same-conversation open-order selection, explicit consent, and retained request recovery. It can also open manual creation with the selected conversation. No backend contracts, permissions, provider calls, or live business records were changed for acceptance.
+
+Verification: 186 frontend tests passed (including new feature navigation, reviewed dismissal/assignment, stale/unknown-outcome restrictions, conversation handoff, and invalidated-read error tests). The first full run had one environment-only failure because the new checkout lacked its dependency environment; linking the existing project environment fixed it. A separate ad-hoc TypeScript API invocation failed to resolve Vite types from the parent directory; the production build is the authoritative typecheck. Formatting/typecheck/build and contract/baseline results are recorded after completion below. This follow-up is based on PR #41 and does not review or merge that prerequisite. Model response compatibility/quality and regeneration of stale proposals remain separate work.
+
+Completed checks: production Docker formatting + TypeScript + Vite build passed (existing bundle-size advisory); generated contracts and frontend API types match; baseline passed (92 Markdown files, 1000 links, 3 schemas). Backend implementation unchanged; backend pytest was not rerun. The compiled local frontend was applied at the existing product URL, with no backend restart or account changes.
+
+Local browser acceptance: signed in against the existing product backend, verified all eight capability cards and their shortcuts, opened the latest manual-review item, and observed the conversation-specific create/dismiss controls. No live assignment, dismissal, order creation, or outbound send was submitted.

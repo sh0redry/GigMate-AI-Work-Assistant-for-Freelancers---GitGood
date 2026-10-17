@@ -61,3 +61,11 @@ The visible business page checks about every five seconds. Every read still auth
 The optional text model needs explicit server configuration and consent. Without it, use the manual workflow. Live speech/image recognition, media-to-order promotion, freely generated Agent auto-replies, continuous external calendar sync and standalone exe/app installers are not delivered. Browser installation is a shortcut and still needs a running backend. Local synthetic tests do not replace real-phone/vendor/deployment acceptance.
 
 See [developer setup](getting-started.md), [Kyrie's beginner guide](kyrie-learning-guide.md) and [file atlas](kyrie-file-atlas.md).
+
+## Feature shortcuts and resolving review items
+
+The usage guide now shows **Available now**, **Not enabled on this service**, or **Status unverified**, based on the authenticated capability response. Available cards have an **Open feature** button. An enabled API is not a promise that every conversation is authorised or every proposal is current.
+
+In **Manual review**, select **View this conversation's source** first. The page reads the current conversation version and source messages, then offers assignment to an open order in that same conversation, or an explicit dismissal. Both actions require a review and consent before submitting the existing assignment API. Stale records cannot be submitted; unknown model outcomes cannot be reassigned. Requests with uncertain results retain their original identity and a recovery entry.
+
+**Create an order for this conversation** opens the existing creation flow with that conversation selected. It does not automatically create an order or mark a review item resolved. Fields and customer sources still need review. Manual creation and dismissing a review item are separate decisions. Old address proposals remain blocked after conversation, permission, or order changes; this update does not add a regeneration API.

@@ -1,5 +1,26 @@
 // UI copy only. Customer content and approved payloads are never translated.
 export const english: Record<string, string> = {
+  "读取期间登录、授权或数据发生变化，请刷新并核对会话授权。":
+    "Your session, permissions, or data changed during this read. Refresh and check conversation permissions.",
+  "聊天、授权或工单已变化，这条旧提议不能直接确认。":
+    "The conversation, permissions, or order changed. This old proposal cannot be confirmed directly.",
+
+  功能状态与操作入口: "Feature status and shortcuts",
+  现在可以使用: "Available now",
+  状态未核实: "Status unverified",
+  当前服务未启用: "Not enabled on this service",
+  打开此功能: "Open feature",
+  "这条会话没有开放工单。新需求可以从这里手动建单。":
+    "This conversation has no open orders. You can create an order for a new request here.",
+  为这条会话新建工单: "Create an order for this conversation",
+  处理这条消息: "Resolve this message",
+  "归单会重新生成待核对提议；忽略只表示这条消息无需处理。手动建单不会自动清除此复核事项。":
+    "Assigning queues this message for new proposals to review. Dismissing marks it as requiring no action. Manual order creation does not automatically resolve this review item.",
+  "这条记录不是当前可处理轮次，或原文尚未核实。请刷新并处理最新记录。":
+    "This record is not currently actionable, or its source has not been verified. Refresh and use the latest record.",
+  "模型调用结果未知，只能核查原请求或明确忽略，不能重新归单调用。":
+    "The model result is unknown. Check the original request or explicitly dismiss; do not assign it for another model call.",
+
   "时间尚不完整或格式需核对。请补充结束时间或时长，再生成可确认的日历提议。":
     "The time is incomplete or needs review. Provide an end time or duration before creating a calendar proposal you can confirm.",
   "跟进时间无效，请输入完整有效的香港日期和时间。":
@@ -1764,6 +1785,27 @@ export const english: Record<string, string> = {
   "{0} 开始": "starts {0}",
 };
 export const cantonese: Record<string, string> = {
+  "读取期间登录、授权或数据发生变化，请刷新并核对会话授权。":
+    "讀取期間登入、授權或者資料有變，請重新整理同核對對話授權。",
+  "聊天、授权或工单已变化，这条旧提议不能直接确认。":
+    "對話、授權或者工單有變，呢條舊提議唔可以直接確認。",
+
+  功能状态与操作入口: "功能狀態同操作入口",
+  现在可以使用: "而家可以用",
+  状态未核实: "狀態未核實",
+  当前服务未启用: "目前服務未啟用",
+  打开此功能: "開啟功能",
+  "这条会话没有开放工单。新需求可以从这里手动建单。":
+    "呢段對話冇未結束嘅工單。新需求可以喺呢度手動建單。",
+  为这条会话新建工单: "為呢段對話新建工單",
+  处理这条消息: "處理呢條訊息",
+  "归单会重新生成待核对提议；忽略只表示这条消息无需处理。手动建单不会自动清除此复核事项。":
+    "歸單會重新產生待核對提議；忽略只代表呢條訊息唔使處理。手動建單唔會自動清除呢項覆核。",
+  "这条记录不是当前可处理轮次，或原文尚未核实。请刷新并处理最新记录。":
+    "呢條記錄唔係而家可處理嘅輪次，或者原文未核實。請重新整理並處理最新記錄。",
+  "模型调用结果未知，只能核查原请求或明确忽略，不能重新归单调用。":
+    "模型結果未知，只可以核查原請求或者明確忽略，唔可以重新歸單再叫模型。",
+
   "时间尚不完整或格式需核对。请补充结束时间或时长，再生成可确认的日历提议。":
     "時間未齊或者格式要核對。請補充結束時間或者時長，再產生可以確認嘅日曆提議。",
   "跟进时间无效，请输入完整有效的香港日期和时间。":

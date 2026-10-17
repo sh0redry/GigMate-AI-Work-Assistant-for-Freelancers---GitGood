@@ -8,9 +8,19 @@ import {
 export function DeliveryGuide({
   features,
   error,
+  onOpen,
 }: {
   features: Features;
   error: string;
+  onOpen: (
+    page:
+      | "create"
+      | "business"
+      | "planning"
+      | "review"
+      | "management"
+      | "connect",
+  ) => void;
 }) {
   return (
     <section className="panel" aria-label={t("功能与使用说明")}>
@@ -43,7 +53,7 @@ export function DeliveryGuide({
           "登录、WhatsApp 连接与会话授权、已有工单与来源核对、具体时间变更确认、回复草稿批准／拒绝／取消、日历与待办查看。独立手动发送取决于连接状态和单独发送授权，提供方接受不等于对方收到。",
         )}
       </p>
-      <h2>{t("仍在等待接通的功能")}</h2>
+      <h2>{t("功能状态与操作入口")}</h2>
       <div className="feature-list">
         {Object.entries(featureDescriptions).map(([key, item]) => {
           const enabled =
@@ -53,7 +63,11 @@ export function DeliveryGuide({
           return (
             <article key={key}>
               <span className={`tag ${enabled ? "" : "warning"}`}>
-                {enabled ? t("接口已提供") : t("暂不可用")}
+                {enabled
+                  ? t("现在可以使用")
+                  : error
+                    ? t("状态未核实")
+                    : t("当前服务未启用")}
               </span>
               <h3>{item.title}</h3>
               <p>
@@ -61,6 +75,29 @@ export function DeliveryGuide({
                   ? t("可从对应页面使用，操作仍需核对归属、来源和当前版本。")
                   : item.reason}
               </p>
+              {enabled && (
+                <button
+                  className="secondary"
+                  onClick={() =>
+                    onOpen(
+                      key === "calendar_export"
+                        ? "planning"
+                        : key === "create_order"
+                          ? "create"
+                          : key === "order_status" ||
+                              key === "address_confirmation"
+                            ? "business"
+                            : key === "manual_assignment"
+                              ? "review"
+                              : key === "automatic_understanding"
+                                ? "connect"
+                                : "management",
+                    )
+                  }
+                >
+                  {t("打开此功能")}
+                </button>
+              )}
               <a
                 href={featureLink(key as keyof Features)}
                 target="_blank"

@@ -518,7 +518,9 @@ export function WorkOrderWorkspace({
                       {!ok && !conflict && !incomplete && (
                         <p className="subtle">
                           {!current
-                            ? t("聊天里有新消息，这条提议已过时。")
+                            ? t(
+                                "聊天、授权或工单已变化，这条旧提议不能直接确认。",
+                              )
                             : !openOrder
                               ? t("工单已结束，不能再改。")
                               : change.field === "address" &&
