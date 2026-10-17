@@ -30,10 +30,15 @@ from gigmate.extraction.llm import (  # noqa: E402
     validate_provider_config,
 )
 from gigmate import secrets  # noqa: E402
+from gigmate.extraction.reviewed import (  # noqa: E402
+    ReviewedLLMProvider,
+    configured_for_live,
+)
 from gigmate.media import llm as media_llm  # noqa: E402
 
 # Presence only: the value itself never leaves the process.
 PRESENCE_VARS = {
+    "GIGMATE_EXTRACTION_PROVIDER": "selected extraction runtime",
     "GIGMATE_LLM_PROVIDER": "text vendor",
     "GIGMATE_LLM_MODEL": "text model",
     "GIGMATE_LLM_API_KEY": "text credential (value never printed)",
@@ -44,8 +49,6 @@ PRESENCE_VARS = {
     "GIGMATE_LLM_COST_OUTPUT_USD_PER_1K": "output price",
     "GIGMATE_LLM_MAX_INPUT_TOKENS": "input token cap",
     "GIGMATE_LLM_MAX_OUTPUT_TOKENS": "output token cap",
-    "GIGMATE_LLM_DAILY_CALL_BUDGET": "daily call ceiling",
-    "GIGMATE_LLM_DAILY_TOKEN_BUDGET": "daily token ceiling",
     "GIGMATE_WORKSPACE_TIMEZONE": "time basis for relative dates",
     "GIGMATE_MEDIA_ENABLED": "media seam switch",
     "GIGMATE_MEDIA_LIVE": "media live gate",
@@ -55,21 +58,26 @@ PRESENCE_VARS = {
 }
 
 
-# A live text deployment cannot start without these; everything else has a
-# built-in default (price list, token caps) or belongs to a seam that stays
-# closed unless the operator opens it (media).
+# The reviewed runtime requires explicit gates and operator pricing. Include a
+# timezone for deployment readiness so date-bearing messages have a time basis.
 REQUIRED_VARS = frozenset(
     {
+        "GIGMATE_EXTRACTION_PROVIDER",
         "GIGMATE_LLM_PROVIDER",
         "GIGMATE_LLM_MODEL",
         "GIGMATE_LLM_API_KEY",
         "GIGMATE_LLM_LIVE",
+        "GIGMATE_LLM_ALLOW_LIVE_ORIGIN",
+        "GIGMATE_LLM_COST_INPUT_USD_PER_1K",
+        "GIGMATE_LLM_COST_OUTPUT_USD_PER_1K",
+        "GIGMATE_WORKSPACE_TIMEZONE",
     }
 )
 
 
 def build_report() -> dict[str, object]:
-    text = LLMProvider()
+    selected = os.environ.get("GIGMATE_EXTRACTION_PROVIDER", "deterministic")
+    text = ReviewedLLMProvider() if selected == "reviewed_llm" else LLMProvider()
     # A credential may arrive as a file (``<NAME>_FILE``) instead of a value;
     # presence is what matters here and the value is still never printed.
     present = {
@@ -86,16 +94,30 @@ def build_report() -> dict[str, object]:
     }
     config_problems = list(validate_provider_config() or [])
     refusal = text._refusal_reason(None)
+    refusal_code = refusal[0] if refusal else None
+    if selected not in {"reviewed_llm", "llm"}:
+        refusal_code = "llm:live-provider-required"
+    elif refusal_code is None and not text._allow_live_origin:
+        refusal_code = "llm:live-origin-not-allowed"
+    elif refusal_code is None and any(
+        not os.environ.get(name)
+        for name in (
+            "GIGMATE_LLM_COST_INPUT_USD_PER_1K",
+            "GIGMATE_LLM_COST_OUTPUT_USD_PER_1K",
+        )
+    ):
+        refusal_code = "llm:operator-pricing-required"
     media = media_llm.env_summary()
     report = {
         "text": {
+            "selected_provider": selected,
             "vendor": text._configured_provider,
             "model": text._configured_model,
             "live_gate": bool(text._configured_live),
             "live_origin_allowed": bool(text._allow_live_origin),
-            "configured_for_live": not config_problems and refusal is None,
+            "configured_for_live": configured_for_live(),
             "config_problems": config_problems,
-            "refusal_reason": refusal[0] if refusal else None,
+            "refusal_reason": refusal_code,
         },
         "media": {
             "seam_enabled": media_llm.is_seam_enabled(),
@@ -139,6 +161,7 @@ def main() -> int:
     else:
         text = report["text"]  # type: ignore[assignment]
         media = report["media"]  # type: ignore[assignment]
+        print("text runtime       :", text["selected_provider"])  # type: ignore[index]
         print("text vendor        :", text["vendor"] or "-")  # type: ignore[index]
         print("text model         :", text["model"] or "-")  # type: ignore[index]
         print("live gate          :", text["live_gate"])  # type: ignore[index]

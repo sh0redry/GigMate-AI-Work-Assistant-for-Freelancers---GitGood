@@ -1,5 +1,13 @@
 # Implementation status and validation
 
+## PR35 draft-binding and configuration review fixes — 2026-10-17
+
+Kyrie authorised the follow-up implementation on William's PR35; William will independently review this commit. Draft creation now requires a matched proposal for the exact order, its current version and the proposal's explicitly linked, owned, allowlisted conversation. Multiple conversation links no longer select an arbitrary first chat: proposals choose their own valid link; merchant-written drafts without a proposal reject ambiguity. Reads and consumption share current ownership, context/order version, consent, link and proposal checks. Invalid unconsumed bindings read as `revoked` without a database write; `revoked_at` remains reserved for explicit revocation. Consumed history stays consumed. Valid original-proposal retries recover their draft before new-creation limits and cannot return another order's draft.
+
+The private configuration checker recognises the selected `reviewed_llm` runtime and reuses its availability helper rather than treating the permanently closed legacy `llm` seam as the live entry. It additionally requires operator prices, live-origin opt-in and a timezone for deployment readiness, retains value/file credential presence without exposing keys, and makes no vendor call. Legacy/offline/unknown providers and missing or closed gates still fail clearly. Daily model call/token budgets and a model account allowlist remain unimplemented, and are no longer advertised as enforced by the checker/checklist. Existing per-call cost/token bounds are unchanged.
+
+Evidence: the five previously reproduced failure probes are covered by **37 added regression cases**. SQLite draft/configuration suites **43 passed / 1 PostgreSQL-only skip**. Linux with locked dependencies and a fresh isolated PostgreSQL: full backend **1073 passed / 1 skipped**, including concurrent consumption yielding one 200 and one 409. Alembic upgrade to `0023_agent_drafts` and drift check pass. Frontend **175 passed**; API type check, Prettier, TypeScript/Vite, Ruff check/format, generated contract check and baseline pass. Existing bundle-size warning remains. No schema/migration/frontend change, no live model or WhatsApp calls, no private configuration committed; normal local services/database were not restarted or reset. These are implementation checks, pending William's independent review.
+
 ## PostgreSQL-only defects behind the PR #35 CI hang — 2026-10-17
 
 **Symptom.** On PR #35 every check except one finished: the `backend` job stopped inside its last step, `pytest apps/backend/tests -q` (started `2026-10-17T05:03:50Z`, never completed). The same job finished in about five minutes on `main`.

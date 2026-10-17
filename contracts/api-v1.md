@@ -192,6 +192,36 @@ Calendar export compares the calendar time and exact source revisions with the c
 Proposal-list conflict IDs are computed only for schedule proposals whose value is a timed interval. Address, date-only and other field values remain readable with an empty conflict list; this does not authorize confirmation of unsupported fields. 中文：提案列表仅对具体起止时间计算冲突，地址／仅日期／其他字段正常读取并返回空冲突列表；可读取不表示可以确认尚未支持的字段。
 
 
+## Bounded draft bindings (PR35 review follow-up)
+
+`POST /work-orders/{id}/drafts` accepts a proposal only when it is matched to
+that exact owned, open work order, at its current version, and its owned,
+allowlisted conversation is explicitly linked to the order. The proposal selects
+the conversation when an order has several links; a proposal assigned to another
+order or still awaiting assignment returns 409 `AGENT_DRAFT_PROPOSAL_MISMATCH`.
+Stale order/context versions return 409 `AGENT_DRAFT_STALE`; paused processing
+returns 403 `CONSENT_REVOKED`. Merchant-written text without a proposal requires
+exactly one conversation link; multiple links return 409
+`AGENT_DRAFT_CONVERSATION_AMBIGUOUS` rather than choosing an arbitrary chat.
+
+Draft reads and `POST /drafts/{id}/consume` revalidate ownership, current order
+and context versions, consent, conversation/order link and source-proposal
+bindings. An unconsumed, unexpired draft with invalid bindings reads as `revoked`
+and consumption returns 409 `AGENT_DRAFT_NOT_USABLE`. This status is computed
+without a read-side write; `revoked_at` is populated only by explicit revocation.
+Consumed/explicitly revoked history is retained. A valid duplicate proposal
+request returns its original draft even after the creation quota is reached;
+it never returns a different order's draft. Consumption remains text only and
+grants no sending or confirmation authority.
+
+中文：建议草稿必须明确属于当前工单，并核对工单版本、已关联会话、会话当前版本和授权。
+同一聊天的 A 工单提议不能用到 B 工单；同一工单关联多个聊天时按提议确定会话。
+手写草稿没有提议可指明聊天，因此多会话时返回 409，不能随便选第一条。
+已有草稿读取和取用时再次核对这些绑定；失效但尚未取用／过期的草稿显示 `revoked`，
+取用返回 409。读取不改数据库，`revoked_at` 只记录显式撤销；历史已取用记录保留。
+重复提交有效提议仍可取回原草稿，不新增配额，也不会跨工单返回别人的草稿。
+取用只返回文字，发送仍须走原审批流程。
+
 ## BCD text-product additions — 2026-10-17
 
 Canonical implemented OpenAPI includes owned `GET /new-order-suggestions`, explicit `CreateWorkOrderCommand.from_proposal_id` with current `expected_context_version`, `POST /tasks/{id}/status`, and read-only `POST /workspace-query`. Suggestion consumption never grants AI confirmation/execution authority; the merchant explicitly reviews creation and each critical value retains current customer sources. One source event can be consumed once through a suggestion. Omitted suggestion fields preserve legacy manual-command receipt digests.

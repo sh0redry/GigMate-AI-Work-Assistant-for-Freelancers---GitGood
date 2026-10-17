@@ -25,10 +25,10 @@ issue #29 把供应商选择与私密配置交给维护者，而代码不能替�
 
 1. `umask 077 && printf '%s' "$KEY" > /run/secrets/deepseek`
 2. `GIGMATE_LLM_API_KEY_FILE=/run/secrets/deepseek`
-3. `GIGMATE_LLM_PROVIDER=deepseek`、`GIGMATE_LLM_MODEL=deepseek-chat`
+3. `GIGMATE_EXTRACTION_PROVIDER=reviewed_llm`、`GIGMATE_LLM_PROVIDER=deepseek`、`GIGMATE_LLM_MODEL=deepseek-chat`
 4. 按供应商公布价格填 `GIGMATE_LLM_COST_INPUT_USD_PER_1K` / `GIGMATE_LLM_COST_OUTPUT_USD_PER_1K`（记录核对日期）
-5. `GIGMATE_LLM_COST_BUDGET_USD`、`GIGMATE_LLM_MAX_INPUT_TOKENS`、`GIGMATE_LLM_MAX_OUTPUT_TOKENS`、`GIGMATE_LLM_DAILY_CALL_BUDGET`、`GIGMATE_LLM_DAILY_TOKEN_BUDGET`
+5. `GIGMATE_LLM_COST_BUDGET_USD`、`GIGMATE_LLM_MAX_INPUT_TOKENS`、`GIGMATE_LLM_MAX_OUTPUT_TOKENS`（单次调用的限制；本批没有实现模型每日调用／token 配额或模型账号白名单）
 6. `GIGMATE_WORKSPACE_TIMEZONE`（相对日期按它解析）
 7. `GIGMATE_LLM_LIVE=1` 与 `GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1`
 8. 需要媒体时：`GIGMATE_MEDIA_ENABLED=1`、`GIGMATE_MEDIA_MODALITIES=ocr,pdf,text`、`GIGMATE_MEDIA_VISION_VENDORS=deepseek`
-9. `python scripts/check_model_config.py` —— 只报存在性，绝不打印密钥
+9. `python scripts/check_model_config.py` —— 检查所选 reviewed 入口、开关、人工核对的价格、凭据存在性和时区，不调用供应商，不打印密钥。退出码 0 表示文字模型配置完整；历史 `llm`、固定规则／禁用入口或配置缺失均退出 1。媒体配置单独展示，不会因这项检查通过而获准调用。这只是配置核对，不是供应商实测验收。

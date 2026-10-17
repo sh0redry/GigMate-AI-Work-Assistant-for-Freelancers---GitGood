@@ -56,15 +56,21 @@ covered by a default.
 
 1. `umask 077 && printf '%s' "$KEY" > /run/secrets/deepseek`
 2. `GIGMATE_LLM_API_KEY_FILE=/run/secrets/deepseek`
-3. `GIGMATE_LLM_PROVIDER=deepseek`, `GIGMATE_LLM_MODEL=deepseek-chat`
+3. `GIGMATE_EXTRACTION_PROVIDER=reviewed_llm`,
+   `GIGMATE_LLM_PROVIDER=deepseek`, `GIGMATE_LLM_MODEL=deepseek-chat`
 4. `GIGMATE_LLM_COST_INPUT_USD_PER_1K` / `GIGMATE_LLM_COST_OUTPUT_USD_PER_1K`
    from the vendor's published price list (record the date you checked it)
 5. `GIGMATE_LLM_COST_BUDGET_USD`, `GIGMATE_LLM_MAX_INPUT_TOKENS`,
-   `GIGMATE_LLM_MAX_OUTPUT_TOKENS`, `GIGMATE_LLM_DAILY_CALL_BUDGET`,
-   `GIGMATE_LLM_DAILY_TOKEN_BUDGET`
+   `GIGMATE_LLM_MAX_OUTPUT_TOKENS` (per-call bounds; daily model call/token
+   budgets and a model account allowlist are not implemented by this batch)
 6. `GIGMATE_WORKSPACE_TIMEZONE` (relative dates are resolved against it)
 7. `GIGMATE_LLM_LIVE=1` and `GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1`
 8. Media only if needed: `GIGMATE_MEDIA_ENABLED=1`,
    `GIGMATE_MEDIA_MODALITIES=ocr,pdf,text`,
    `GIGMATE_MEDIA_VISION_VENDORS=deepseek`
-9. `python scripts/check_model_config.py` — presence only, never prints a key
+9. `python scripts/check_model_config.py` — checks the selected reviewed runtime,
+   gates, operator prices, credential presence and timezone, without making a
+   vendor request or printing a key. Exit 0 means text configuration is complete;
+   legacy `llm`, deterministic/disabled providers and incomplete configurations
+   exit 1. Media is reported separately and does not become authorised through
+   this check. This is configuration inspection, not vendor acceptance.

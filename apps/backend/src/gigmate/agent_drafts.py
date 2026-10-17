@@ -37,6 +37,7 @@ from gigmate.db import (
     WorkOrderRow,
 )
 from gigmate.errors import BusinessError
+from gigmate.planning import CLOSED
 
 _DAILY_LIMIT_ENV = "GIGMATE_AGENT_DRAFT_DAILY_LIMIT"
 _TTL_MINUTES_ENV = "GIGMATE_AGENT_DRAFT_TTL_MINUTES"
@@ -101,18 +102,49 @@ def _iso(value: datetime | None) -> str | None:
     return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _effective_status(row: AgentDraftRow, now: datetime) -> str:
+def _bindings_current(db, row: AgentDraftRow) -> bool:
+    order = db.get(WorkOrderRow, row.work_order_id)
+    conversation = db.get(ConversationRow, row.conversation_id)
+    if (
+        order is None
+        or order.account_id != row.account_id
+        or order.data.get("status") in CLOSED
+        or order.data.get("version") != row.base_work_order_version
+        or conversation is None
+        or conversation.account_id != row.account_id
+        or not conversation.allowlisted
+        or conversation.context_version != row.context_version
+        or db.get(ConversationOrder, (row.conversation_id, row.work_order_id)) is None
+    ):
+        return False
+    if row.proposal_id is not None:
+        proposal = db.get(Proposal, row.proposal_id)
+        return (
+            proposal is not None
+            and proposal.account_id == row.account_id
+            and proposal.assignment == "matched"
+            and proposal.work_order_id == row.work_order_id
+            and proposal.conversation_id == row.conversation_id
+            and proposal.context_version == row.context_version
+            and proposal.base_work_order_version == row.base_work_order_version
+        )
+    return True
+
+
+def _effective_status(db, row: AgentDraftRow, now: datetime) -> str:
     if row.status in {"revoked", "consumed"}:
         return row.status
     expires = row.expires_at
     if expires.tzinfo is None:
         expires = expires.replace(tzinfo=UTC)
-    return "expired" if expires <= now else row.status
+    if expires <= now:
+        return "expired"
+    return row.status if _bindings_current(db, row) else "revoked"
 
 
 def view(db, row: AgentDraftRow, now: datetime | None = None) -> dict:
     now = now or datetime.now(UTC)
-    status = _effective_status(row, now)
+    status = _effective_status(db, row, now)
     return {
         "id": row.id,
         "work_order_id": row.work_order_id,
@@ -137,7 +169,33 @@ def create(db, account, order_id: str, command: AgentDraftCommand) -> dict:
 
     now = datetime.now(UTC)
     order = _owned_order(db, account, order_id)
-    link = db.scalar(select(ConversationOrder).where(ConversationOrder.work_order_id == order_id))
+    if order.data.get("status") in CLOSED:
+        raise BusinessError(409, "AGENT_DRAFT_STALE", "The work order is closed")
+    proposal = None
+    if command.base_proposal_id is not None:
+        proposal = db.get(Proposal, command.base_proposal_id)
+        if proposal is None or proposal.account_id != account.id:
+            raise BusinessError(404, "NOT_FOUND", "Proposal not found")
+        if proposal.assignment != "matched" or proposal.work_order_id != order_id:
+            raise BusinessError(
+                409, "AGENT_DRAFT_PROPOSAL_MISMATCH", "The proposal is not assigned to this order"
+            )
+        link = db.get(ConversationOrder, (proposal.conversation_id, order_id))
+    else:
+        links = list(
+            db.scalars(
+                select(ConversationOrder)
+                .where(ConversationOrder.work_order_id == order_id)
+                .limit(2)
+            )
+        )
+        if len(links) > 1:
+            raise BusinessError(
+                409,
+                "AGENT_DRAFT_CONVERSATION_AMBIGUOUS",
+                "Use a proposal to identify which linked conversation this draft belongs to",
+            )
+        link = links[0] if links else None
     if link is None:
         raise BusinessError(
             409,
@@ -145,8 +203,41 @@ def create(db, account, order_id: str, command: AgentDraftCommand) -> dict:
             "This work order is not linked to a conversation",
         )
     conversation = db.get(ConversationRow, link.conversation_id)
-    if conversation is None:
+    if conversation is None or conversation.account_id != account.id:
         raise BusinessError(404, "NOT_FOUND", "Conversation not found")
+    if not conversation.allowlisted:
+        raise BusinessError(403, "CONSENT_REVOKED", "Conversation processing is paused")
+
+    text = command.text
+    proposal_id = None
+    context_version = conversation.context_version
+    base_version = order.data.get("version")
+    if proposal is not None:
+        if (
+            proposal.context_version != context_version
+            or proposal.base_work_order_version is None
+            or proposal.base_work_order_version != base_version
+        ):
+            raise BusinessError(
+                409, "AGENT_DRAFT_STALE", "The source or work order advanced; use a fresh proposal"
+            )
+        if not (proposal.draft_text or "").strip():
+            raise BusinessError(409, "AGENT_DRAFT_NO_TEXT", "This proposal carries no draft text")
+        text, proposal_id = proposal.draft_text, proposal.id
+        existing = db.scalar(
+            select(AgentDraftRow).where(
+                AgentDraftRow.account_id == account.id,
+                AgentDraftRow.proposal_id == proposal.id,
+            )
+        )
+        if existing is not None:
+            if existing.work_order_id != order_id or existing.conversation_id != conversation.id:
+                raise BusinessError(
+                    409,
+                    "AGENT_DRAFT_PROPOSAL_MISMATCH",
+                    "The existing draft has different bindings",
+                )
+            return view(db, existing, now)
 
     if _quiet_now(now):
         raise BusinessError(
@@ -166,47 +257,8 @@ def create(db, account, order_id: str, command: AgentDraftCommand) -> dict:
         raise BusinessError(
             429,
             "AGENT_DRAFT_LIMIT_REACHED",
-            "The daily draft ceiling is reached; revoke an unused draft first.",
+            "The daily draft ceiling is reached; try again after the UTC day ends.",
         )
-
-    text = command.text
-    proposal_id = None
-    context_version = conversation.context_version
-    base_version = order.data.get("version") if order.data else None
-    if command.base_proposal_id is not None:
-        proposal = db.get(Proposal, command.base_proposal_id)
-        if proposal is None or proposal.account_id != account.id:
-            raise BusinessError(404, "NOT_FOUND", "Proposal not found")
-        if proposal.conversation_id != link.conversation_id:
-            raise BusinessError(
-                409,
-                "AGENT_DRAFT_PROPOSAL_MISMATCH",
-                "The proposal belongs to another conversation",
-            )
-        if proposal.context_version != conversation.context_version:
-            raise BusinessError(
-                409,
-                "AGENT_DRAFT_STALE",
-                "The source advanced since this proposal; create a fresh draft.",
-            )
-        if not (proposal.draft_text or "").strip():
-            raise BusinessError(
-                409,
-                "AGENT_DRAFT_NO_TEXT",
-                "This proposal carries no merchant-facing draft text",
-            )
-        text = proposal.draft_text
-        proposal_id = proposal.id
-        context_version = proposal.context_version
-        base_version = proposal.base_work_order_version
-        existing = db.scalar(
-            select(AgentDraftRow).where(
-                AgentDraftRow.account_id == account.id,
-                AgentDraftRow.proposal_id == proposal.id,
-            )
-        )
-        if existing is not None:
-            return view(db, existing, now)
 
     row = AgentDraftRow(
         id=str(uuid4()),
@@ -272,11 +324,12 @@ def consume(db, account, draft_id: str) -> dict:
 
     now = datetime.now(UTC)
     row = _draft(db, account, draft_id)
-    if _effective_status(row, now) != "proposed":
+    status = _effective_status(db, row, now)
+    if status != "proposed":
         raise BusinessError(
             409,
             "AGENT_DRAFT_NOT_USABLE",
-            f"Draft is {_effective_status(row, now)}; it cannot be consumed",
+            f"Draft is {status}; it cannot be consumed",
         )
     row.status = "consumed"
     row.consumed_at = now
