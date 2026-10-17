@@ -29,6 +29,7 @@ const components = [
   "ReplyPanel",
   "ManualFieldEditor",
   "LoopCommand",
+  "HomeWorkspace",
   "OrderCreation",
   "CalendarWorkspace",
   "ReviewWorkspace",
@@ -149,6 +150,7 @@ function fixture({ denied = false } = {}) {
       options.method === "GET" &&
       [
         "/work-orders?",
+        "/actions?",
         "/tasks?",
         "/calendar-events?",
         "/connectors?",
@@ -224,7 +226,10 @@ test("authenticated product lands in honest empty business workspace, connects t
   const calls = fixture();
   await mount();
   await login();
-  assert.equal(button("业务工作台").getAttribute("aria-pressed"), "true");
+  // Home ("今日") is the landing page; an empty account has nothing to act on.
+  assert.equal(button("今日").getAttribute("aria-pressed"), "true");
+  assert.match(document.body.textContent, /都处理完了/);
+  await act(async () => button("业务工作台").click());
   assert.match(document.body.textContent, /还没有工单/);
   assert.match(document.body.textContent, /再点「新建工单」/);
   assert.deepEqual(JSON.parse(calls[0].options.body), {
@@ -594,6 +599,7 @@ test("language switching keeps login input, authenticated page and raw customer 
       ),
   );
   assert.ok(button("Workspace"));
+  await act(async () => button("Workspace").click());
   assert.ok(document.body.textContent.includes("已确认"));
   assert.ok(document.body.textContent.includes("业务工作台"));
   const logins = data.calls.filter((c) => c.url.endsWith("/auth/login")).length;
@@ -1393,4 +1399,126 @@ test("a new job the customer mentioned opens creation with address and time pref
   assert.equal(input("结束（香港时间）").value, "2026-10-20T16:00");
   // Nothing is written until the merchant reviews and confirms.
   assert.equal(data.calls.filter((c) => c.options.method === "POST").length, 1);
+});
+test("home widgets count real orders, replies, appointments and route every action to its work order", async () => {
+  const { HomeWorkspace, hongKongDay } = await import(
+    pathToFileURL(join(directory, "HomeWorkspace.mjs"))
+  );
+  const account = "00000000-0000-4000-8000-000000000001";
+  const today = hongKongDay();
+  const later = new Date(Date.now() + 2 * 3600000).toISOString();
+  const laterEnd = new Date(Date.now() + 3 * 3600000).toISOString();
+  const order = (id, summary, status, extra = {}) => ({
+    id,
+    account_id: account,
+    summary,
+    status,
+    version: 1,
+    conversation_ids: ["c1"],
+    pending_change_ids: [],
+    fields: {},
+    ...extra,
+  });
+  const lists = {
+    "/work-orders": [
+      order("o1", "Synthetic portrait", "confirmed"),
+      order("o2", "Synthetic event", "waiting_customer", {
+        pending_change_ids: ["ch1"],
+      }),
+      order("o3", "Synthetic done", "completed"),
+    ],
+    "/actions": [
+      {
+        id: "a1",
+        account_id: account,
+        work_order_id: "o2",
+        state: "approved",
+        delivery_status: "not_submitted",
+        trigger: "open_items:missing_address",
+        open_items: ["missing_address"],
+      },
+    ],
+    "/calendar-events": [
+      {
+        id: "e1",
+        work_order_id: "o1",
+        tentative: false,
+        schedule: {
+          kind: "timed",
+          start_at: later,
+          end_at: laterEnd,
+          timezone: "Asia/Hong_Kong",
+        },
+      },
+    ],
+    "/tasks": [
+      {
+        id: "t1",
+        work_order_id: "o1",
+        title: "Synthetic charge batteries",
+        state: "pending",
+        due: { kind: "date_only", date: today, timezone: "Asia/Hong_Kong" },
+      },
+    ],
+    "/conversations": [
+      { id: "c1", account_id: account, work_order_ids: ["o2"] },
+    ],
+    "/conversations/c1/messages": [
+      {
+        id: "m1",
+        revision: 1,
+        conversation_id: "c1",
+        direction: "incoming",
+        revoked: false,
+        text: "Synthetic can we start at two?",
+        occurred_at: new Date().toISOString(),
+      },
+    ],
+    "/connectors": [],
+  };
+  const writes = [];
+  globalThis.fetch = async (url, options) => {
+    if (options.method !== "GET") writes.push(url);
+    const path = new URL(url, "http://localhost").pathname.replace(
+      "/api/v1",
+      "",
+    );
+    if (path in lists)
+      return Response.json({ items: lists[path], next_cursor: null });
+    throw new Error(`Unexpected request ${url}`);
+  };
+  const opened = [],
+    sent = [],
+    views = [];
+  root = createRoot(document.getElementById("root"));
+  await act(async () =>
+    root.render(
+      createElement(HomeWorkspace, {
+        csrf: "csrf",
+        accountId: account,
+        onSessionExpired: () => {},
+        onNavigate: (v) => views.push(v),
+        onOpenOrder: (id) => opened.push(id),
+        onOpenSend: (id) => sent.push(id),
+      }),
+    ),
+  );
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const text = document.body.textContent;
+  assert.match(text, /进行中工单2其中 1 张在等客人/);
+  assert.match(text, /待回复11 条已批准、未发送/);
+  assert.match(text, /今日预约1/);
+  assert.match(text, /33%/); // 1 of 3 non-cancelled orders completed
+  assert.match(text, /Synthetic charge batteries/);
+  assert.match(text, /Synthetic can we start at two\?/);
+  assert.match(text, /未设置/);
+  await act(async () => button("发送").click());
+  assert.deepEqual(sent, ["a1"]);
+  await act(async () =>
+    [...document.querySelectorAll("button")]
+      .find((b) => b.textContent.includes("Synthetic charge batteries"))
+      .click(),
+  );
+  assert.deepEqual(opened, ["o1"]);
+  assert.deepEqual(writes, []); // Reading the home page never writes.
 });
