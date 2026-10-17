@@ -43,7 +43,7 @@ def migration_database(tmp_path):
 def test_versioned_migration_preserves_replay_rows(migration_database, existing_revision):
     root = Path(__file__).resolve().parents[3]
     assert ScriptDirectory(str(root / "apps/backend/migrations")).get_heads() == [
-        "0013_merge_approval_media"
+        "0015_work_order_evidence"
     ]
     url = migration_database
     environment = {**os.environ, "DATABASE_URL": url, "PYTHONPATH": str(root / "apps/backend/src")}
@@ -126,10 +126,16 @@ def test_versioned_migration_preserves_replay_rows(migration_database, existing_
     assert {"provider_state", "provider_observed_at"} <= {
         item["name"] for item in inspect(engine).get_columns("waha_connections")
     }
+    assert {"prompt_tokens", "completion_tokens", "total_tokens"} <= {
+        item["name"] for item in inspect(engine).get_columns("model_call_traces")
+    }
+    assert {"attachment_version", "context_version", "result_job_id", "sha256"} <= {
+        item["name"] for item in inspect(engine).get_columns("work_order_evidence")
+    }
     with engine.connect() as db:
         assert (
             db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0013_merge_approval_media"
+            == "0015_work_order_evidence"
         )
         assert db.execute(text("SELECT accepted,duplicates,state FROM waha_connections")).one() == (
             3,
@@ -411,7 +417,7 @@ def test_merge_revision_joins_approval_and_media_branches(migration_database, ex
     with engine.connect() as db:
         assert (
             db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0013_merge_approval_media"
+            == "0015_work_order_evidence"
         )
         assert db.execute(text("SELECT context_version FROM conversations")).scalar_one() == 4
         actions = db.execute(text("SELECT id,trigger,active_key FROM approval_actions")).all()

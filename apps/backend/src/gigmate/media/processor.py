@@ -5,13 +5,14 @@ This module is the production-shaped B-side implementation loaded by
 points at :class:`MediaProcessorImpl`. It mirrors the two-gate safety pattern
 used by :class:`gigmate.extraction.llm.LLMProvider`:
 
-1. Module-level :data:`_ENABLED` flag. While ``False`` (the shipping default)
-   the processor refuses every call with
+1. Module-level :data:`_ENABLED` flag. It is ``True``: the vendor adapters in
+   :mod:`gigmate.media.llm` are implemented, so this gate is open. While it is
+   ``False`` the processor refuses every call with
    :class:`gigmate.media_processing.ProcessingUnavailable` *before* it reads
-   any environment variable. The flag must be flipped by editing this file;
-   the operator switch alone is never enough to enable real calls.
-2. ``GIGMATE_MEDIA_LIVE=1`` operator switch. Even after the class flag is
-   flipped, the processor refuses every call unless this variable is exported.
+   any environment variable, so flipping it back is the safe direction — the
+   operator switch alone is never enough to enable real calls.
+2. ``GIGMATE_MEDIA_LIVE=1`` operator switch. The processor refuses every call
+   unless this variable is exported, together with ``GIGMATE_MEDIA_API_KEY``.
 
 The processor only returns :class:`WahaMediaResult` proposals. Merchant
 confirmation is enforced downstream by
@@ -57,10 +58,11 @@ from .routing import route
 
 log = logging.getLogger(__name__)
 
-# Two-gate safety flag. While False the processor refuses every call before
-# reading any environment variable. The flag must be flipped by editing this
-# module; the operator switch alone is never sufficient.
-_ENABLED = False
+# Two-gate safety flag. True because the vendor adapters in
+# :mod:`gigmate.media.llm` are implemented. Setting it back to False refuses
+# every call before reading any environment variable, which is the safe
+# direction; the operator switch alone is never sufficient to make a call.
+_ENABLED = True
 
 
 class MediaProcessorImpl:
@@ -86,9 +88,8 @@ class MediaProcessorImpl:
     def _gates_open() -> None:
         if not _ENABLED:
             raise ProcessingUnavailable(
-                "gigmate.media.processor._ENABLED is False; flip the seam flag "
-                "in apps/backend/src/gigmate/media/processor.py before exporting "
-                "GIGMATE_MEDIA_LIVE=1."
+                "gigmate.media.processor._ENABLED is False; the media seam is "
+                "disabled in this build, so no vendor call is attempted."
             )
         if not llm.is_live_unlocked():
             raise ProcessingUnavailable(
@@ -137,6 +138,14 @@ class MediaProcessorImpl:
                 f"MIME {request.mimetype!r} is not accepted by the WAHA media "
                 "seam; refused without contacting the vendor."
             )
+        # The live switch opens the transport; each modality still needs its
+        # own explicit authorization so verifying OCR never silently enables
+        # audio transcription or document shipping.
+        if not llm.is_modality_authorized(dispatch):
+            raise ProcessingUnavailable(
+                f"MEDIA_MODALITY_NOT_AUTHORIZED: {dispatch} is not listed in "
+                "GIGMATE_MEDIA_MODALITIES; no vendor request was made."
+            )
 
         try:
             vendor = (
@@ -146,8 +155,14 @@ class MediaProcessorImpl:
         except llm.MediaIntegrationPending as exc:
             raise ProcessingUnavailable(str(exc)) from None
 
-        if dispatch == "ocr" and vendor == "deepseek":
-            raise ProcessingUnavailable("MEDIA_VISION_VENDOR_UNVERIFIED")
+        # A text-completions vendor is not assumed to accept images. Only a
+        # vendor the operator explicitly verified may receive OCR content.
+        if dispatch == "ocr" and not llm.is_vision_vendor_verified(vendor):
+            raise ProcessingUnavailable(
+                "MEDIA_VISION_VENDOR_UNVERIFIED: add the vendor to "
+                "GIGMATE_MEDIA_VISION_VENDORS only after verifying its image "
+                "input; no vendor request was made."
+            )
         if dispatch == "text":
             try:
                 text = request.content.decode("utf-8")

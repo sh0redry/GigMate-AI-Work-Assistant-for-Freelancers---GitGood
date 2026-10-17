@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
+from dataclasses import replace
 from uuid import uuid4
 
+import httpx
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
@@ -92,6 +94,12 @@ def _build_reschedule_request(
         base_work_order_version=3,
         base_work_order_snapshot=load_fixture("work-order"),
         origin=origin,
+        message_received_at="2026-10-17T03:00:00Z",
+        workspace_timezone="Asia/Hong_Kong",
+        budget_call_limit=100 if origin == "live" else None,
+        budget_token_limit=None,
+        budget_calls_used=0,
+        budget_tokens_used=0,
     )
 
 
@@ -118,37 +126,120 @@ def _clear_llm_env(monkeypatch):
         "GIGMATE_LLM_PROMPT_PATH",
         "GIGMATE_LLM_LIVE",
         "GIGMATE_LLM_ALLOW_LIVE_ORIGIN",
+        "GIGMATE_LLM_LIVE_ACCOUNTS",
+        "GIGMATE_LLM_DAILY_CALL_BUDGET",
+        "GIGMATE_LLM_DAILY_TOKEN_BUDGET",
     ):
         monkeypatch.delenv(name, raising=False)
 
 
-def test_llm_provider_returns_needs_review_without_configuration(monkeypatch):
-    """The skeleton never emits a proposal until the real-model batch is wired in.
+def _canned_payload(usage=None):
+    """A minimal OpenAI-compatible chat-completions body."""
+    body = {
+        "choices": [
+            {
+                "message": {
+                    "content": json.dumps(
+                        {
+                            "assignment": "needs_review",
+                            "unresolved_questions": ["fake response"],
+                        }
+                    )
+                }
+            }
+        ]
+    }
+    if usage is not None:
+        body["usage"] = usage
+    return body
 
-    The class flag ``_SKELETON_SEAM`` is the first gate: with no env vars
-    the provider still records the not-yet-live state and refuses before
-    reading configuration. The trace therefore never claims a real call was
-    attempted.
+
+def _fake_client_factory(*, statuses=(), payload=None):
+    """Build a fake ``httpx.Client`` class for ``LLMProvider._client_factory``.
+
+    ``statuses`` is the sequence of HTTP failures to raise before the client
+    starts answering with ``payload``: ``(429,)`` means "fail once with 429,
+    then succeed". Every request is recorded so tests can assert the URL and
+    how many attempts were made.
+    """
+    attempts = {"count": 0}
+
+    class _FakeResponse:
+        def __init__(self, body):
+            self._body = body
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._body
+
+    class _FakeClient:
+        requests: list[dict] = []
+
+        def __init__(self, **kwargs):
+            self.timeout = kwargs.get("timeout")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def post(self, url, json=None, headers=None):
+            type(self).requests.append({"url": url, "json": json, "headers": headers})
+            index = attempts["count"]
+            attempts["count"] += 1
+            if index < len(statuses):
+                status = statuses[index]
+                request = httpx.Request("POST", url)
+                response = httpx.Response(status, request=request)
+                raise httpx.HTTPStatusError(f"HTTP {status}", request=request, response=response)
+            return _FakeResponse(payload if payload is not None else _canned_payload())
+
+    return _FakeClient
+
+
+def _live_llm_env(monkeypatch, *, vendor="deepseek", model="deepseek-chat", **extra):
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("GIGMATE_LLM_PROVIDER", vendor)
+    monkeypatch.setenv("GIGMATE_LLM_MODEL", model)
+    monkeypatch.setenv("GIGMATE_LLM_API_KEY", "sk-fake-test")
+    monkeypatch.setenv("GIGMATE_LLM_LIVE", "1")
+    # Live-origin tests in this helper use origin="live"; the opt-in is
+    # asserted separately by test_llm_provider_live_origin_refused_*.
+    monkeypatch.setenv("GIGMATE_LLM_ALLOW_LIVE_ORIGIN", "1")
+    for key, value in extra.items():
+        monkeypatch.setenv(key, value)
+
+
+def test_llm_provider_returns_needs_review_without_configuration(monkeypatch):
+    """An unconfigured deployment never emits a proposal.
+
+    The seam is implemented, so the first gate an unconfigured deployment
+    hits is the configuration check: with no env vars the provider records
+    ``llm:not-configured`` and refuses before building a client, and the
+    trace never claims a real call was attempted.
     """
     _clear_llm_env(monkeypatch)
     req = _build_reschedule_request(text="今天天气不错")
     outcome = LLMProvider().propose(req)
     assert outcome.proposal.assignment.value == "needs_review"
     assert outcome.proposal.changes == []
-    assert outcome.refused_reason and "_SKELETON_SEAM" in outcome.refused_reason
+    assert outcome.refused_reason and "GIGMATE_LLM_PROVIDER" in outcome.refused_reason
     assert outcome.proposal.model_version == "skeleton:pending"
     # Prompt version is read from the bundled file by default.
-    assert outcome.proposal.prompt_version == "1.0.0"
-    assert outcome.notes == ("llm:seam-pending",)
+    assert outcome.proposal.prompt_version == "1.1.0"
+    assert outcome.notes == ("llm:not-configured",)
 
 
-def test_llm_provider_refuses_live_origin_even_with_configuration(monkeypatch):
-    """Live-origin input must never reach matched under the skeleton.
+def test_llm_provider_refuses_when_operator_gate_is_closed(monkeypatch):
+    """A configured vendor without ``GIGMATE_LLM_LIVE=1`` still refuses.
 
-    The skeleton flag fires before the live-origin guard, so a misconfigured
-    deployment that exports ``GIGMATE_LLM_PROVIDER/GIGMATE_LLM_MODEL`` still
-    refuses every call. Once the seam flag is flipped the live-origin guard
-    kicks in for ``case-009-llm-live-origin-refused``.
+    Configuration is checked before the operator gate, so this deployment
+    reports the missing switch rather than the live-origin guard. Live-origin
+    input is covered separately by
+    ``test_llm_provider_live_origin_refused_once_gates_open``.
     """
     _clear_llm_env(monkeypatch)
     monkeypatch.setenv("GIGMATE_LLM_PROVIDER", "openai")
@@ -160,23 +251,18 @@ def test_llm_provider_refuses_live_origin_even_with_configuration(monkeypatch):
     outcome = LLMProvider().propose(req)
     assert outcome.proposal.assignment.value == "needs_review"
     assert outcome.proposal.changes == []
-    # The skeleton flag is still the first line of defence, so the trace
-    # says "skeleton seam" — not "live-origin" — until the next batch flips
-    # the flag.
-    assert outcome.refused_reason and "_SKELETON_SEAM" in outcome.refused_reason
+    assert outcome.refused_reason and "GIGMATE_LLM_LIVE" in outcome.refused_reason
     assert outcome.proposal.model_version == "openai:gpt-4o-mini"
-    assert outcome.notes == ("llm:seam-pending",)
+    assert outcome.notes == ("llm:live-gate-off",)
 
 
-def test_llm_provider_live_gate_returns_seam_pending_without_calling(monkeypatch):
-    """The live gate must never silently fall back to a real call.
+def test_llm_provider_missing_api_key_refuses_without_calling(monkeypatch):
+    """A live gate with no credential must not fall back to a real call.
 
-    With the seam flag still ``True`` the provider records a
-    ``needs_review`` outcome with a clear ``llm:seam-pending`` note and an
-    explanatory ``refused_reason``; the worker still records the trace row.
-    No HTTP client may even be constructed, and a separate test
-    (``test_llm_provider_live_gate_off_blocks_before_seam``) proves the
-    off-switch also refuses after the seam flag is flipped.
+    The provider records a ``needs_review`` outcome with the
+    ``llm:not-configured`` note and an explanatory ``refused_reason``; the
+    worker still records the trace row. No HTTP client may even be
+    constructed.
     """
     _clear_llm_env(monkeypatch)
     monkeypatch.setenv("GIGMATE_LLM_PROVIDER", "openai")
@@ -185,7 +271,7 @@ def test_llm_provider_live_gate_returns_seam_pending_without_calling(monkeypatch
 
     class _BoomClient:
         def __init__(self, *args, **kwargs):
-            raise AssertionError("client must not be constructed while the skeleton gate is closed")
+            raise AssertionError("client must not be constructed without an API key")
 
     provider = LLMProvider()
     provider._client_factory = _BoomClient
@@ -193,9 +279,9 @@ def test_llm_provider_live_gate_returns_seam_pending_without_calling(monkeypatch
     outcome = provider.propose(req)
     assert outcome.proposal.assignment.value == "needs_review"
     assert outcome.proposal.changes == []
-    assert outcome.refused_reason and "_SKELETON_SEAM" in outcome.refused_reason
+    assert outcome.refused_reason and "GIGMATE_LLM_API_KEY" in outcome.refused_reason
     assert outcome.proposal.model_version == "openai:gpt-4o-mini"
-    assert outcome.notes == ("llm:seam-pending",)
+    assert outcome.notes == ("llm:not-configured",)
 
 
 def test_llm_provider_reads_prompt_version_from_bundled_file():
@@ -206,7 +292,7 @@ def test_llm_provider_reads_prompt_version_from_bundled_file():
 
     importlib.reload(llm_module)
     provider = llm_module.LLMProvider()
-    assert provider._read_prompt_version() == "1.0.0"
+    assert provider._read_prompt_version() == "1.1.0"
     assert provider._prompt_load_error is None
 
 
@@ -320,21 +406,79 @@ def test_llm_provider_worker_evidence_when_prompt_malformed(monkeypatch, tmp_pat
         _reset_provider_for_testing(None)
 
 
+def test_worker_records_unknown_model_outcome_without_retry(memory_account, monkeypatch):
+    """A timed-out live call ends the job as unknown and creates no change.
+
+    The worker must not resubmit (the call may have been billed) and must not
+    materialize a business change from an unknown result.
+    """
+    _live_llm_env(monkeypatch)
+    monkeypatch.setenv("GIGMATE_WORKSPACE_TIMEZONE", "Asia/Hong_Kong")
+    monkeypatch.setenv("GIGMATE_LLM_DAILY_CALL_BUDGET", "10")
+
+    class _TimeoutClient:
+        requests: list[dict] = []
+
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def post(self, url, json=None, headers=None):
+            type(self).requests.append({"url": url})
+            raise httpx.ReadTimeout("read timed out", request=httpx.Request("POST", url))
+
+    instance = LLMProvider()
+    instance._client_factory = _TimeoutClient
+    _reset_provider_for_testing(instance)
+    try:
+        message = deepcopy(replay_event("reschedule"))
+        message["connector"] = "waha"
+        message["source"] = "app"
+        message["provider_message_id"] = "synthetic:waha-llm-timeout"
+        message["message_revision"] = 1
+        with memory_account.begin() as db:
+            account = db.scalar(select(Account).where(Account.username == "merchant"))
+        with memory_account.begin() as db:
+            ingest(db, account, message, trusted_waha=True)
+        assert run_once(memory_account) is True
+        with memory_account.begin() as db:
+            job = db.scalar(select(Job).order_by(Job.id.desc()))
+            inbox = db.get(Inbox, job.event_id)
+            proposal_row = db.scalar(select(Proposal).where(Proposal.event_id == inbox.id))
+            trace_row = db.scalar(
+                select(ModelCallTrace).where(ModelCallTrace.proposal_id == proposal_row.id)
+            )
+            changes = list(db.scalars(select(ChangeRow)))
+        assert len(_TimeoutClient.requests) == 1
+        assert job.state == "completed"
+        assert job.error_code == "EXTRACTION_RESULT_UNKNOWN"
+        assert proposal_row.assignment == "needs_review"
+        assert proposal_row.changes == []
+        assert trace_row.notes == ["llm:result-unknown"]
+        assert trace_row.total_tokens is None
+        assert changes == []
+    finally:
+        _reset_provider_for_testing(None)
+
+
 # ---------------------------------------------------------------------------
 # Gate semantics — the off-switch must block at the provider layer (P2 review fix)
 # ---------------------------------------------------------------------------
 
 
-def test_llm_provider_off_gate_returns_seam_pending_without_calling(monkeypatch):
-    """Skeleton gate on + operator gate off must not reach ``_invoke_model``.
+def test_llm_provider_operator_gate_off_blocks_before_invoke_model(monkeypatch):
+    """Fully wired + operator gate off must not reach ``_invoke_model``.
 
     Regression for the P2 review finding that a configured provider with the
-    live gate off must refuse at the provider layer instead of letting a
-    future ``_invoke_model`` implementation route real content to the
-    network. With the always-closed skeleton gate still in place, the
-    off-switch case refuses with ``llm:seam-pending`` and no HTTP client is
-    constructed. The post-flip behaviour (``llm:live-gate-off``) is covered
-    by ``test_llm_provider_live_gate_off_blocks_before_seam``.
+    live gate off must refuse at the provider layer instead of letting
+    ``_invoke_model`` route real content to the network. The refusal note is
+    now ``llm:live-gate-off``; no HTTP client is constructed and
+    ``_invoke_model`` is never entered.
     """
     _clear_llm_env(monkeypatch)
     monkeypatch.setenv("GIGMATE_LLM_PROVIDER", "openai")
@@ -343,35 +487,33 @@ def test_llm_provider_off_gate_returns_seam_pending_without_calling(monkeypatch)
 
     class _BoomClient:
         def __init__(self, *args, **kwargs):
-            raise AssertionError("client must not be constructed while the skeleton gate is closed")
+            raise AssertionError("client must not be constructed while the operator gate is off")
 
     class _Spy(LLMProvider):
         invocations: list[str] = []
 
         def _invoke_model(self, request, began, prompt_version, model_version):
             type(self).invocations.append(request.message_text or "")
-            raise AssertionError(
-                "_invoke_model must not be reached while the skeleton gate is closed"
-            )
+            raise AssertionError("_invoke_model must not be reached while the operator gate is off")
 
     provider = _Spy()
     provider._client_factory = _BoomClient
     req = _build_reschedule_request(text="改下星期四下午三点，地址我晚些发")
     outcome = provider.propose(req)
     assert outcome.proposal.assignment.value == "needs_review"
-    assert outcome.notes == ("llm:seam-pending",)
-    assert outcome.refused_reason and "_SKELETON_SEAM" in outcome.refused_reason
+    assert outcome.notes == ("llm:live-gate-off",)
+    assert outcome.refused_reason and "GIGMATE_LLM_LIVE" in outcome.refused_reason
     assert _Spy.invocations == []
 
 
-def test_llm_provider_on_gate_blocks_at_provider_layer_when_seam_unimplemented(monkeypatch):
-    """Gate on + configured must NOT enter _invoke_model while the skeleton flag is still True.
+def test_llm_provider_implementation_gate_still_refuses_when_closed(monkeypatch):
+    """``_SKELETON_SEAM=True`` must still block a fully wired deployment.
 
-    Regression for the P2 review finding: the original gate logic returned
-    ``None`` from ``_refusal_reason`` when the live gate was on and the
-    configuration was complete, so a misconfigured deployment could have
-    entered the network call path. The skeleton flag refuses at the
-    provider layer so the next batch must flip BOTH the flag and the seam.
+    Regression for the P2 review finding: the gate logic must refuse at the
+    provider layer even when the operator gate is on and the configuration is
+    complete. The flag now ships ``False`` because ``_invoke_model`` is
+    implemented, so this test re-closes it on an isolated subclass to keep
+    the guarantee: nothing reaches the seam and no client is built.
     """
     _clear_llm_env(monkeypatch)
     monkeypatch.setenv("GIGMATE_LLM_PROVIDER", "openai")
@@ -381,18 +523,17 @@ def test_llm_provider_on_gate_blocks_at_provider_layer_when_seam_unimplemented(m
 
     class _BoomClient:
         def __init__(self, *args, **kwargs):
-            raise AssertionError("client must not be constructed while the skeleton gate is closed")
+            raise AssertionError("client must not be constructed while the seam flag is closed")
 
-    class _Spy(LLMProvider):
+    class _ClosedSeamSpy(LLMProvider):
+        _SKELETON_SEAM = True
         invocations: list[str] = []
 
         def _invoke_model(self, request, began, prompt_version, model_version):
             type(self).invocations.append(request.message_text or "")
-            raise AssertionError(
-                "_invoke_model must not be reached while the seam is unimplemented"
-            )
+            raise AssertionError("_invoke_model must not be reached while the seam flag is closed")
 
-    provider = _Spy()
+    provider = _ClosedSeamSpy()
     provider._client_factory = _BoomClient
     assert provider._SKELETON_SEAM is True
     req = _build_reschedule_request(text="改下星期四下午三点，地址我晚些发")
@@ -400,7 +541,18 @@ def test_llm_provider_on_gate_blocks_at_provider_layer_when_seam_unimplemented(m
     assert outcome.proposal.assignment.value == "needs_review"
     assert outcome.notes == ("llm:seam-pending",)
     assert outcome.refused_reason and "_SKELETON_SEAM" in outcome.refused_reason
-    assert _Spy.invocations == []
+    assert _ClosedSeamSpy.invocations == []
+
+
+def test_llm_provider_skeleton_flag_defaults_to_open():
+    """The shipped default reaches the real implementation.
+
+    Gate 1 is open because :meth:`LLMProvider._invoke_model` performs the
+    real OpenAI-compatible call; ``GIGMATE_LLM_LIVE`` is the gate that
+    decides whether a given deployment may use it.
+    """
+
+    assert LLMProvider._SKELETON_SEAM is False
 
 
 def test_llm_provider_skeleton_flag_is_required_to_reach_invocation(monkeypatch):
@@ -439,7 +591,6 @@ def test_llm_provider_skeleton_flag_is_required_to_reach_invocation(monkeypatch)
         assert outcome.notes == ("llm:spy-invoked",)
         assert _ReachingSpy.invocations == ["any text"]
     finally:
-        _ReachingSpy._SKELETON_SEAM = True
         _ReachingSpy.invocations = []
 
 
@@ -588,6 +739,116 @@ def test_llm_provider_live_gate_on_sends_fake_client_request(monkeypatch):
     assert outcome.refused_reason == "llm:needs-review"
 
 
+@pytest.mark.parametrize(
+    "vendor,expected_host",
+    [("deepseek", "https://api.deepseek.com"), ("openai", "https://api.openai.com")],
+)
+def test_llm_provider_resolves_endpoint_from_vendor(monkeypatch, vendor, expected_host):
+    """Without an override the endpoint follows the vendor.
+
+    Regression: the endpoint used to default to ``api.deepseek.com`` for every
+    vendor, so an ``openai`` deployment would have sent an OpenAI key to
+    DeepSeek. The host is now derived from ``GIGMATE_LLM_PROVIDER``.
+    """
+    _live_llm_env(monkeypatch, vendor=vendor, model="test-model")
+    client_cls = _fake_client_factory()
+    provider = LLMProvider()
+    provider._client_factory = client_cls
+    provider.propose(_build_reschedule_request(text="改下星期四下午三点"))
+    assert len(client_cls.requests) == 1
+    assert client_cls.requests[0]["url"] == f"{expected_host}/v1/chat/completions"
+
+
+def test_llm_provider_custom_vendor_without_endpoint_refuses(monkeypatch):
+    """``custom`` has no default host, so it must refuse instead of guessing."""
+    _live_llm_env(monkeypatch, vendor="custom", model="custom-model")
+
+    class _BoomClient:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("no endpoint resolved: no client may be built")
+
+    provider = LLMProvider()
+    provider._client_factory = _BoomClient
+    outcome = provider.propose(_build_reschedule_request(text="改下星期四下午三点"))
+    assert outcome.notes == ("llm:not-configured",)
+    assert outcome.refused_reason and "GIGMATE_LLM_ENDPOINT" in outcome.refused_reason
+
+
+def test_llm_provider_refuses_model_without_json_output_support(monkeypatch):
+    """DeepSeek's reasoning model rejects ``json_object`` mode.
+
+    Refusing locally keeps the failure auditable (``llm:model-unsupported``)
+    instead of spending a round-trip on a guaranteed vendor 400.
+    """
+    _live_llm_env(monkeypatch, model="deepseek-reasoner")
+
+    class _BoomClient:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("unsupported model: no client may be built")
+
+    provider = LLMProvider()
+    provider._client_factory = _BoomClient
+    outcome = provider.propose(_build_reschedule_request(text="改下星期四下午三点"))
+    assert outcome.notes == ("llm:model-unsupported",)
+    assert outcome.refused_reason and "deepseek-reasoner" in outcome.refused_reason
+
+
+def test_llm_provider_does_not_retry_non_retryable_status(monkeypatch):
+    """Auth and bad-request failures are deterministic: one attempt only."""
+    _live_llm_env(monkeypatch)
+    client_cls = _fake_client_factory(statuses=(401,))
+    provider = LLMProvider()
+    provider._client_factory = client_cls
+    outcome = provider.propose(_build_reschedule_request(text="改下星期四下午三点"))
+    assert len(client_cls.requests) == 1
+    assert outcome.notes == ("llm:http-failed",)
+
+
+def test_llm_provider_retries_retryable_status(monkeypatch):
+    """A rate limit is worth one more attempt; the second one succeeds."""
+    _live_llm_env(monkeypatch)
+    client_cls = _fake_client_factory(statuses=(429,))
+    provider = LLMProvider()
+    provider._client_factory = client_cls
+    outcome = provider.propose(_build_reschedule_request(text="改下星期四下午三点"))
+    assert len(client_cls.requests) == 2
+    assert outcome.notes == ("llm:needs-review",)
+
+
+def test_llm_provider_records_token_usage(monkeypatch):
+    """A real call leaves token accounting behind, normalised across vendors."""
+    _live_llm_env(monkeypatch)
+    client_cls = _fake_client_factory(
+        payload=_canned_payload(
+            usage={
+                "prompt_tokens": 123,
+                "completion_tokens": 45,
+                "total_tokens": 168,
+                # Vendor-specific extras (DeepSeek cache counters) are dropped
+                # so the trace shape stays stable across vendors.
+                "prompt_cache_hit_tokens": 10,
+            }
+        )
+    )
+    provider = LLMProvider()
+    provider._client_factory = client_cls
+    outcome = provider.propose(_build_reschedule_request(text="改下星期四下午三点"))
+    assert outcome.usage == {
+        "prompt_tokens": 123,
+        "completion_tokens": 45,
+        "total_tokens": 168,
+    }
+
+
+def test_llm_provider_refusal_records_no_token_usage(monkeypatch):
+    """A refused call claims no cost: no vendor call means no tokens."""
+    _live_llm_env(monkeypatch)
+    monkeypatch.delenv("GIGMATE_LLM_LIVE", raising=False)
+    outcome = LLMProvider().propose(_build_reschedule_request(text="改下星期四下午三点"))
+    assert outcome.notes == ("llm:live-gate-off",)
+    assert outcome.usage is None
+
+
 def test_llm_provider_live_origin_refused_once_gates_open(monkeypatch):
     """After both gates open, live-origin input is still refused without opt-in.
 
@@ -688,6 +949,295 @@ def test_llm_provider_live_origin_opt_in_reaches_fake_client(monkeypatch):
     )
     assert len(_FakeClient.requests) == 1
     assert outcome.notes == ("llm:needs-review",)
+
+
+def _matched_content(**overrides):
+    """A structurally valid matched proposal, as the model would emit it."""
+    data = {
+        "schema_version": "0.1.0",
+        "proposal_id": str(uuid4()),
+        "conversation_id": str(uuid4()),
+        "work_order_id": "00000000-0000-4000-8000-000000000003",
+        "base_work_order_version": 3,
+        "base_context_version": 5,
+        "assignment": "matched",
+        "candidates": [
+            {"work_order_id": "00000000-0000-4000-8000-000000000003", "confidence": 1.0}
+        ],
+        "changes": [
+            {
+                "field": "address",
+                "old_value": None,
+                "new_value": "Flat 3, 12 Example Road",
+                "field_status": "proposed",
+                "customer_confirmation": "pending",
+                "sources": [
+                    {
+                        "message_id": "00000000-0000-4000-8000-0000000000ff",
+                        "message_revision": 9,
+                    }
+                ],
+                "reason": "Customer supplied a complete address.",
+            }
+        ],
+        "unresolved_questions": [],
+        "draft_text": None,
+        "model_version": "model-supplied",
+        "prompt_version": "model-supplied",
+    }
+    data.update(overrides)
+    return json.dumps(data)
+
+
+def _matched_client(**overrides):
+    return _fake_client_factory(
+        payload={"choices": [{"message": {"content": _matched_content(**overrides)}}]}
+    )
+
+
+def test_llm_provider_rebinds_sources_to_the_request_message(monkeypatch):
+    """The model cannot choose which message a change is attributed to."""
+    _live_llm_env(monkeypatch)
+    client_cls = _matched_client()
+    provider = LLMProvider()
+    provider._client_factory = client_cls
+    req = _build_reschedule_request(text="地址改为 Flat 3, 12 Example Road", origin="live")
+    outcome = provider.propose(req)
+    assert outcome.proposal.assignment.value == "matched"
+    source = outcome.proposal.changes[0].sources[0]
+    assert source.message_id == req.message_id
+    assert source.message_revision == req.message_revision
+    # Server-owned identity fields are never taken from the model.
+    assert outcome.proposal.conversation_id == req.conversation_id
+    assert outcome.proposal.base_context_version == req.context_version
+    assert outcome.proposal.work_order_id == req.candidate_work_order_ids[0]
+    assert outcome.proposal.base_work_order_version == req.base_work_order_version
+
+
+def test_llm_provider_rejects_work_order_outside_candidates(monkeypatch):
+    """A model-named order that was not a candidate is a provenance failure."""
+    _live_llm_env(monkeypatch)
+    provider = LLMProvider()
+    provider._client_factory = _matched_client(work_order_id="00000000-0000-4000-8000-0000000000ff")
+    outcome = provider.propose(_build_reschedule_request(text="地址改了", origin="live"))
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert outcome.proposal.changes == []
+    assert outcome.notes == ("llm:provenance-mismatch",)
+
+
+def test_llm_provider_rejects_stale_base_version(monkeypatch):
+    """A model-echoed work-order version must match the server's snapshot."""
+    _live_llm_env(monkeypatch)
+    provider = LLMProvider()
+    provider._client_factory = _matched_client(base_work_order_version=2)
+    outcome = provider.propose(_build_reschedule_request(text="地址改了", origin="live"))
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert outcome.notes == ("llm:provenance-mismatch",)
+
+
+def test_llm_provider_requires_time_basis_for_live_origin(monkeypatch):
+    """No server timestamp or workspace zone means no relative-date guessing."""
+    _live_llm_env(monkeypatch)
+
+    class _BoomClient:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("time basis missing: no client may be built")
+
+    provider = LLMProvider()
+    provider._client_factory = _BoomClient
+    req = replace(
+        _build_reschedule_request(text="明天下午三点", origin="live"), message_received_at=None
+    )
+    outcome = provider.propose(req)
+    assert outcome.notes == ("llm:time-basis-missing",)
+    assert outcome.usage is None
+
+
+def test_llm_provider_requires_budget_for_live_origin(monkeypatch):
+    """Live traffic without an explicit daily bound is refused, not metered later."""
+    _live_llm_env(monkeypatch)
+
+    class _BoomClient:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("budget missing: no client may be built")
+
+    provider = LLMProvider()
+    provider._client_factory = _BoomClient
+    req = replace(
+        _build_reschedule_request(text="地址改了", origin="live"),
+        budget_call_limit=None,
+        budget_token_limit=None,
+    )
+    outcome = provider.propose(req)
+    assert outcome.notes == ("llm:budget-not-configured",)
+
+
+def test_llm_provider_refuses_exhausted_call_budget(monkeypatch):
+    _live_llm_env(monkeypatch)
+
+    class _BoomClient:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("budget exhausted: no client may be built")
+
+    provider = LLMProvider()
+    provider._client_factory = _BoomClient
+    req = replace(_build_reschedule_request(text="地址改了", origin="live"), budget_calls_used=100)
+    outcome = provider.propose(req)
+    assert outcome.notes == ("llm:budget-exhausted",)
+    assert outcome.usage is None
+    assert outcome.refused_reason and "100/100" in outcome.refused_reason
+
+
+def test_llm_provider_refuses_exhausted_token_budget(monkeypatch):
+    _live_llm_env(monkeypatch)
+
+    class _BoomClient:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("budget exhausted: no client may be built")
+
+    provider = LLMProvider()
+    provider._client_factory = _BoomClient
+    req = replace(
+        _build_reschedule_request(text="地址改了", origin="live"),
+        budget_call_limit=None,
+        budget_token_limit=1000,
+        budget_tokens_used=1000,
+    )
+    outcome = provider.propose(req)
+    assert outcome.notes == ("llm:budget-exhausted",)
+
+
+def test_llm_provider_enforces_per_account_authorization(monkeypatch):
+    """An allowlist narrows the live gate to the named accounts."""
+    _live_llm_env(monkeypatch)
+    monkeypatch.setenv("GIGMATE_LLM_LIVE_ACCOUNTS", "00000000-0000-4000-8000-000000000099")
+
+    class _BoomClient:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("account not authorized: no client may be built")
+
+    provider = LLMProvider()
+    provider._client_factory = _BoomClient
+    outcome = provider.propose(_build_reschedule_request(text="地址改了", origin="live"))
+    assert outcome.notes == ("llm:account-not-authorized",)
+
+
+def test_llm_provider_read_timeout_is_unknown_and_not_retried(monkeypatch):
+    """A timeout may already be charged: one attempt, no blind resubmission."""
+    _live_llm_env(monkeypatch)
+
+    class _TimeoutClient:
+        requests: list[dict] = []
+
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def post(self, url, json=None, headers=None):
+            type(self).requests.append({"url": url})
+            raise httpx.ReadTimeout("read timed out", request=httpx.Request("POST", url))
+
+    provider = LLMProvider()
+    provider._client_factory = _TimeoutClient
+    outcome = provider.propose(_build_reschedule_request(text="地址改了", origin="live"))
+    assert len(_TimeoutClient.requests) == 1
+    assert outcome.notes == ("llm:result-unknown",)
+    assert outcome.usage is None
+    assert outcome.refused_reason and "not retried" in outcome.refused_reason
+
+
+def test_llm_provider_malformed_body_is_not_retried(monkeypatch):
+    """A 2xx body that is not JSON was still billed; one attempt only."""
+    _live_llm_env(monkeypatch)
+
+    class _BadBodyResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            raise ValueError("not json")
+
+    class _BadBodyClient:
+        requests: list[dict] = []
+
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def post(self, url, json=None, headers=None):
+            type(self).requests.append({"url": url})
+            return _BadBodyResponse()
+
+    provider = LLMProvider()
+    provider._client_factory = _BadBodyClient
+    outcome = provider.propose(_build_reschedule_request(text="地址改了", origin="live"))
+    assert len(_BadBodyClient.requests) == 1
+    assert outcome.notes == ("llm:response-malformed",)
+
+
+def test_llm_provider_http_failure_reason_is_sanitised(monkeypatch):
+    """Diagnostics never echo the endpoint, headers or exception text."""
+    _live_llm_env(monkeypatch)
+    client_cls = _fake_client_factory(statuses=(401,))
+    provider = LLMProvider()
+    provider._client_factory = client_cls
+    outcome = provider.propose(_build_reschedule_request(text="地址改了", origin="live"))
+    assert outcome.notes == ("llm:http-failed",)
+    assert "status-401" in (outcome.refused_reason or "")
+    assert "https://" not in (outcome.refused_reason or "")
+    assert "sk-" not in (outcome.refused_reason or "")
+
+
+def test_budget_snapshot_counts_only_this_accounts_today(memory_account, monkeypatch):
+    """The worker-side budget reads committed traces; other accounts do not count."""
+    from datetime import UTC, datetime
+
+    from gigmate.extraction.budget import snapshot
+
+    monkeypatch.setenv("GIGMATE_LLM_DAILY_CALL_BUDGET", "5")
+    monkeypatch.setenv("GIGMATE_LLM_DAILY_TOKEN_BUDGET", "1000")
+    outcome = DeterministicProvider().propose(
+        _build_reschedule_request(text=load_fixture("message-reschedule")["payload"]["text"])
+    )
+    billed = replace(outcome, provider_name="llm", usage={"total_tokens": 42})
+    local = outcome
+    with memory_account.begin() as db:
+        persist_proposal(
+            db,
+            account_id=uid(1),
+            conversation_id=uid(2),
+            event_id="00000000-0000-4000-8000-000000000998",
+            proposal=billed.proposal,
+            outcome=billed,
+        )
+        # A local (free) provider must not consume the paid budget.
+        local_proposal = local.proposal.model_copy(update={"proposal_id": str(uuid4())})
+        persist_proposal(
+            db,
+            account_id=uid(1),
+            conversation_id=uid(2),
+            event_id="00000000-0000-4000-8000-000000000997",
+            proposal=local_proposal,
+            outcome=replace(local, proposal=local_proposal),
+        )
+        used = snapshot(db, uid(1), now=datetime.now(UTC))
+        other = snapshot(db, uid(3), now=datetime.now(UTC))
+    assert (used.call_limit, used.token_limit) == (5, 1000)
+    # Only the billed provider counts; the local proposal adds nothing.
+    assert used.calls_used == 1
+    assert used.tokens_used == 42
+    assert other.calls_used == 0
+    assert used.exhausted is False
 
 
 def test_llm_provider_registry_selects_llm(monkeypatch):
@@ -850,9 +1400,53 @@ def test_provider_call_evidence_records_model_and_prompt_versions(memory_account
             select(ModelCallTrace).where(ModelCallTrace.proposal_id == proposal_row.id)
         )
     assert proposal_row.model_version == "synthetic:fixed-stub-v1"
-    assert proposal_row.prompt_version == "1.0.0"
+    assert proposal_row.prompt_version == "1.1.0"
     assert trace_row.provider_name == "deterministic"
     assert trace_row.notes == ["deterministic:matched-known-fixture"]
+
+
+def test_persisted_trace_records_token_usage_only_for_billed_calls(memory_account):
+    """Token accounting reaches the trace row; a refusal records NULL, not 0.
+
+    ``0`` would claim the call was free, which is a different fact from
+    "no call was made". The distinction is what makes the trace trustworthy
+    as cost evidence once a real DeepSeek key is configured.
+    """
+    req = _build_reschedule_request(text=load_fixture("message-reschedule")["payload"]["text"])
+    refused = DeterministicProvider().propose(req)
+    billed = replace(
+        refused,
+        usage={"prompt_tokens": 120, "completion_tokens": 30, "total_tokens": 150},
+    )
+    event_id = "00000000-0000-4000-8000-000000000999"
+    with memory_account.begin() as db:
+        billed_row = persist_proposal(
+            db,
+            account_id=uid(1),
+            conversation_id=uid(2),
+            event_id=event_id,
+            proposal=billed.proposal,
+            outcome=billed,
+        )
+        refused_row = persist_proposal(
+            db,
+            account_id=uid(1),
+            conversation_id=uid(2),
+            event_id=event_id,
+            proposal=refused.proposal,
+            outcome=refused,
+        )
+        billed_trace = db.scalar(
+            select(ModelCallTrace).where(ModelCallTrace.proposal_id == billed_row.id)
+        )
+        refused_trace = db.scalar(
+            select(ModelCallTrace).where(ModelCallTrace.proposal_id == refused_row.id)
+        )
+    assert (billed_trace.prompt_tokens, billed_trace.completion_tokens) == (120, 30)
+    assert billed_trace.total_tokens == 150
+    assert refused_trace.prompt_tokens is None
+    assert refused_trace.completion_tokens is None
+    assert refused_trace.total_tokens is None
 
 
 # ---------------------------------------------------------------------------
@@ -1167,9 +1761,9 @@ def test_list_provider_metadata_is_json_serialisable():
             f"got {type(row['prompt_version']).__name__}"
         )
     # The deterministic provider reads from the bundled prompt file, so
-    # its prompt_version should follow the file's header (1.0.0 today).
+    # its prompt_version should follow the file's header (1.1.0 today).
     deterministic_row = next(r for r in rows if r["name"] == "deterministic")
-    assert deterministic_row["prompt_version"] == "1.0.0"
+    assert deterministic_row["prompt_version"] == "1.1.0"
     # The LLM provider's class attribute is still the placeholder; the
     # real version is computed per call by ``_read_prompt_version``.
     llm_row = next(r for r in rows if r["name"] == "llm")

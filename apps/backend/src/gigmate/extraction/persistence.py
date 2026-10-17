@@ -35,6 +35,9 @@ def persist_proposal(
     The function never raises; the caller controls transaction boundaries.
     """
     now = datetime.now(UTC)
+    # Token accounting comes from the outcome, not from the proposal: only the
+    # provider knows whether a vendor call actually happened and what it cost.
+    usage = outcome.usage or {}
     serialized = json.loads(proposal.model_dump_json())
     proposal_row = Proposal(
         id=str(uuid4()),
@@ -66,6 +69,9 @@ def persist_proposal(
             latency_ms=outcome.latency_ms,
             refused_reason=outcome.refused_reason,
             notes=list(outcome.notes),
+            prompt_tokens=usage.get("prompt_tokens"),
+            completion_tokens=usage.get("completion_tokens"),
+            total_tokens=usage.get("total_tokens"),
             created_at=now,
         )
     )

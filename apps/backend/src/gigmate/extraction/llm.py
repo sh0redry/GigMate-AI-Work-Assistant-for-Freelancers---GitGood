@@ -1,22 +1,23 @@
-"""Real-model extraction provider (skeleton seam).
+"""Real-model extraction provider (DeepSeek / OpenAI-compatible).
 
-This module is the non-emitting seam for the separately authorized real-model
-integration batch. The default vendor is DeepSeek, but any OpenAI-compatible
-vendor (``deepseek``/``openai``/``custom``) is supported in the call shape
-so the next batch only has to flip :attr:`LLMProvider._SKELETON_SEAM`.
-The provider never makes an outbound network call until both gates are open:
+This module is the live real-model extraction provider. The default vendor is
+DeepSeek, but any OpenAI-compatible vendor (``deepseek``/``openai``/``custom``)
+is supported in the call shape. The provider never makes an outbound network
+call until both gates are open:
 
-1. The class flag :attr:`LLMProvider._SKELETON_SEAM` is ``False`` (the next
-   batch sets it once the seam is no longer a stub).
+1. The class flag :attr:`LLMProvider._SKELETON_SEAM` is ``False`` — the seam
+   is implemented (see :meth:`LLMProvider._invoke_model`), so this gate is
+   open. It exists so a build whose ``_invoke_model`` was replaced by a stub
+   still refuses audibly with ``llm:seam-pending`` instead of crashing or
+   making a silent network call.
 2. ``GIGMATE_LLM_LIVE=1`` is exported (the explicit operator switch).
 
-Both gates must be open. While the skeleton flag is ``True`` every call —
-operator gate on or off, configured or not — is refused with ``needs_review``
-and an ``llm:seam-pending`` note so a misconfigured production deployment
-cannot silently route real customer messages through an LLM. Once the flag
-is lifted, a missing configuration surfaces as ``llm:not-configured`` and a
-closed operator gate as ``llm:live-gate-off``. Live-origin input is
-additionally refused unless ``GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1`` is exported.
+Both gates must be open. Because gate 1 is open, the refusal notes an operator
+actually sees are the configuration ones: a missing configuration surfaces as
+``llm:not-configured`` and a closed operator gate as ``llm:live-gate-off``.
+Live-origin input is additionally refused unless
+``GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1`` is exported, so real customer content can
+never reach the model by accident.
 
 Configuration (environment variables):
 
@@ -27,14 +28,34 @@ Configuration (environment variables):
   call (e.g. ``deepseek-chat``, ``deepseek-reasoner``, ``gpt-4o-mini``).
 - ``GIGMATE_LLM_API_KEY`` - server-side only. Read on each call, never
   stored on the instance, never logged.
-- ``GIGMATE_LLM_ENDPOINT`` - base URL override (defaults to
-  ``https://api.deepseek.com``).
+- ``GIGMATE_LLM_ENDPOINT`` - base URL override. Without it the endpoint
+  follows the vendor: ``deepseek`` -> ``https://api.deepseek.com``,
+  ``openai`` -> ``https://api.openai.com``, ``custom`` -> refused (an
+  explicit endpoint is required).
 - ``GIGMATE_LLM_PROMPT_PATH`` - optional override of the bundled prompt
   file (defaults to the versioned file in this package).
 - ``GIGMATE_LLM_LIVE=1`` - the explicit operator gate. Required to reach
   :meth:`_invoke_model` once the skeleton flag is flipped.
 - ``GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1`` - opt-in switch that lets
   ``request.origin == "live"`` traffic reach the model. Defaults to off.
+- ``GIGMATE_LLM_LIVE_ACCOUNTS`` - optional comma-separated account allowlist.
+  When set, live calls for any other account are refused with
+  ``llm:account-not-authorized``.
+- ``GIGMATE_LLM_DAILY_CALL_BUDGET`` / ``GIGMATE_LLM_DAILY_TOKEN_BUDGET`` -
+  required for live traffic. The worker sums the day's committed
+  ``model_call_traces`` and attaches the counters to the request; the provider
+  refuses with ``llm:budget-not-configured`` or ``llm:budget-exhausted``
+  before any network I/O.
+
+Provenance, not model output, decides identity: ``conversation_id``,
+``base_context_version``, ``work_order_id``, ``base_work_order_version`` and
+every change's ``sources`` are re-bound to the server-issued request before
+validation. A response that names an order or version outside the request is
+refused with ``llm:provenance-mismatch`` instead of being promoted.
+
+A read timeout or dropped connection after submission is treated as an
+unknown outcome (``llm:result-unknown``): it may have been charged, so it is
+never retried automatically and never becomes a business change.
 
 The prompt header is read on every call. A missing file, an OS error, a
 non-UTF-8 file, a missing header line or an empty header value all fall back
@@ -76,6 +97,7 @@ _API_KEY_ENV = "GIGMATE_LLM_API_KEY"
 _ENDPOINT_ENV = "GIGMATE_LLM_ENDPOINT"
 _PROMPT_PATH_ENV = "GIGMATE_LLM_PROMPT_PATH"
 _ALLOW_LIVE_ORIGIN_ENV = "GIGMATE_LLM_ALLOW_LIVE_ORIGIN"
+_LIVE_ACCOUNTS_ENV = "GIGMATE_LLM_LIVE_ACCOUNTS"
 
 _PROMPT_VERSION_PENDING = "0.0.0-skeleton"
 _MODEL_VERSION_PENDING = "skeleton:pending"
@@ -85,17 +107,88 @@ _MODEL_VERSION_PENDING = "skeleton:pending"
 # an OpenAI-compatible API (vLLM, TGI, etc.) without code changes.
 _KNOWN_VENDORS = frozenset({"deepseek", "openai", "custom"})
 
-# Default endpoint. DeepSeek is the default vendor; the endpoint matches the
-# documented DeepSeek API base URL.
+# Default endpoints per vendor. DeepSeek is the default vendor; the endpoint
+# matches the documented DeepSeek API base URL. ``openai`` resolves to the
+# documented OpenAI base URL so an OpenAI key can never be sent to DeepSeek
+# (and vice versa). ``custom`` has no default: it requires
+# ``GIGMATE_LLM_ENDPOINT``.
 _DEEPSEEK_DEFAULT_ENDPOINT = "https://api.deepseek.com"
+_OPENAI_DEFAULT_ENDPOINT = "https://api.openai.com"
 
-# Network hygiene: bound the request time and retry once on HTTP/transport
-# or response-parse errors so a flaky network does not hang the worker
-# thread.
+# Models that reject ``response_format={"type": "json_object"}``. DeepSeek's
+# reasoning model does not implement JSON Output, so sending this shape to it
+# is a guaranteed 400; refusing locally keeps the failure auditable instead of
+# burning a round-trip and an opaque vendor error.
+_JSON_MODE_UNSUPPORTED_MODELS = frozenset({"deepseek-reasoner"})
+
+# Network hygiene: bound the request time and retry only when the vendor
+# definitely did not start work. A 408/429 response and a failed TCP connect
+# are safe to repeat; a read timeout, a dropped connection after the request
+# was written, a 5xx and a malformed body may all have been charged, so they
+# become ``llm:result-unknown`` and are never retried automatically.
 _REQUEST_TIMEOUT_S = 30.0
 _MAX_RETRIES = 1
+_RETRYABLE_STATUS_CODES = frozenset({408, 429})
+_RETRY_BACKOFF_S = 0.5
 
 _log = logging.getLogger(__name__)
+
+
+class LLMResultUnknown(RuntimeError):
+    """The request may have reached the vendor and been charged.
+
+    Raised for read timeouts, dropped connections and truncated bodies. The
+    caller must record ``llm:result-unknown`` and must not resubmit blind.
+    """
+
+    def __init__(self, kind: str) -> None:
+        super().__init__(kind)
+        self.kind = kind
+
+
+def _normalise_usage(raw: object) -> dict | None:
+    """Normalise a vendor ``usage`` object to the three token counters.
+
+    Vendors disagree on the field set (DeepSeek adds cache hit/miss counters,
+    OpenAI adds cached-token detail). Only the three counters every
+    OpenAI-compatible vendor reports are kept, so the trace row stays stable
+    across vendors. Returns ``None`` when the vendor reported nothing usable.
+    """
+
+    if not isinstance(raw, dict):
+        return None
+
+    def _counter(key: str) -> int | None:
+        value = raw.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        return int(value)
+
+    usage = {
+        "prompt_tokens": _counter("prompt_tokens"),
+        "completion_tokens": _counter("completion_tokens"),
+        "total_tokens": _counter("total_tokens"),
+    }
+    if all(value is None for value in usage.values()):
+        return None
+    return usage
+
+
+def _sanitised_http_reason(exc: BaseException) -> str:
+    """Return a stable diagnostic without endpoint, vendor or credential detail.
+
+    The vendor URL, the exception message and any header echo can contain
+    private deployment details, so only the failure *class* is reported.
+    """
+    if isinstance(exc, httpx.HTTPStatusError):
+        kind = f"status-{exc.response.status_code}"
+    elif isinstance(exc, httpx.TimeoutException):
+        kind = "timeout"
+    elif isinstance(exc, httpx.ConnectError):
+        kind = "connect"
+    else:
+        kind = "transport"
+    return f"LLM HTTP call failed ({kind}); endpoint and credential details are redacted."
 
 
 class LLMIntegrationPending(RuntimeError):
@@ -112,22 +205,21 @@ class LLMIntegrationPending(RuntimeError):
 
 
 class LLMProvider:
-    """Real-model extraction provider (DeepSeek / OpenAI-compatible seam).
+    """Real-model extraction provider (DeepSeek / OpenAI-compatible).
 
     Two gates run in front of :meth:`_invoke_model`, in order:
 
-    1. The class flag :attr:`_SKELETON_SEAM` — the always-closed skeleton
-       gate. While it is ``True`` the provider refuses every request with
-       ``assignment: needs_review`` and an ``llm:seam-pending`` note,
-       regardless of which environment variables are exported. This is what
-       keeps this batch from making outbound network calls no matter how the
-       operator configures it, and keeps the next batch from silently
-       flipping into "real call" mode by only filling in
-       :meth:`_invoke_model`.
-    2. ``GIGMATE_LLM_LIVE=1`` — the operator gate. Once the skeleton flag is
-       lifted, a closed operator gate still refuses every call with
-       ``llm:live-gate-off`` and a missing or unsupported configuration with
-       ``llm:not-configured``.
+    1. The class flag :attr:`_SKELETON_SEAM` — the implementation gate. It is
+       ``False`` because :meth:`_invoke_model` performs the real
+       OpenAI-compatible chat-completions call. Keeping the flag means a build
+       whose ``_invoke_model`` regressed to a stub still refuses every request
+       with ``assignment: needs_review`` and an ``llm:seam-pending`` note
+       instead of failing open.
+    2. ``GIGMATE_LLM_LIVE=1`` — the operator gate. A closed operator gate
+       refuses every call with ``llm:live-gate-off`` and a missing or
+       unsupported configuration with ``llm:not-configured``, so deploying
+       this code without exporting the switch and the credentials never
+       reaches the model.
 
     Only when both gates are open and the configuration is complete does
     control reach the origin check and :meth:`_invoke_model`, which performs
@@ -135,12 +227,13 @@ class LLMProvider:
     ``self._client_factory``.
     """
 
-    # Safety gate #1. The next authorized batch flips this to ``False``
-    # together with the real implementation of ``_invoke_model``; until
-    # then it stays ``True`` so the off-switch (``GIGMATE_LLM_LIVE``) and
-    # the on-switch cases both refuse at the provider layer rather than
-    # entering the network call path.
-    _SKELETON_SEAM: bool = True
+    # Safety gate #1 — implementation gate. ``False`` because
+    # :meth:`_invoke_model` is implemented (real OpenAI-compatible
+    # chat-completions call). Flipping it back to ``True`` restores the
+    # blanket ``llm:seam-pending`` refusal, which is the safe direction:
+    # the operator switch (``GIGMATE_LLM_LIVE``) remains the gate that
+    # decides whether this deployment is allowed to reach the vendor.
+    _SKELETON_SEAM: bool = False
 
     name = "llm"
     model_version = _MODEL_VERSION_PENDING
@@ -237,15 +330,16 @@ class LLMProvider:
     def _refusal_reason(self, request: ExtractionRequest) -> tuple[str, str] | None:
         """Return ``(note, reason)`` when the call is refused at the provider layer.
 
-        Gate 1 — the always-closed skeleton seam — runs first: while
-        :attr:`_SKELETON_SEAM` is ``True`` every call (operator gate on or
-        off, configured or not) is refused with ``llm:seam-pending`` so no
-        outbound network request can happen in this batch. Once the flag is
-        lifted, configuration is checked before the operator gate so an
-        unconfigured deployment keeps the descriptive ``llm:not-configured``
-        reason, and the operator gate is a positive opt-in: while
-        ``GIGMATE_LLM_LIVE`` is off the provider refuses every call with
-        ``llm:live-gate-off``, even when the vendor and model are
+        Gate 1 — the implementation gate — runs first. It is open
+        (:attr:`_SKELETON_SEAM` is ``False``) because :meth:`_invoke_model`
+        performs the real call; it only closes again if a build ships with an
+        unimplemented ``_invoke_model``, in which case every call is refused
+        with ``llm:seam-pending`` so no outbound network request can happen.
+        With the gate open, configuration is checked before the operator gate
+        so an unconfigured deployment keeps the descriptive
+        ``llm:not-configured`` reason, and the operator gate is a positive
+        opt-in: while ``GIGMATE_LLM_LIVE`` is off the provider refuses every
+        call with ``llm:live-gate-off``, even when the vendor and model are
         configured. Only when the configuration is complete *and* both
         gates are open does ``propose`` continue to the origin check and
         :meth:`_invoke_model`.
@@ -253,12 +347,11 @@ class LLMProvider:
         if self._SKELETON_SEAM:
             return (
                 "llm:seam-pending",
-                "gigmate.extraction.llm.LLMProvider is still the skeleton "
-                "seam (_SKELETON_SEAM=True). The next authorized batch must "
-                "set _SKELETON_SEAM=False together with the real "
-                "_invoke_model implementation. Until then every call — gate "
-                "on or off, configured or not — returns needs_review with "
-                "llm:seam-pending so no outbound network request is made.",
+                "gigmate.extraction.llm.LLMProvider._SKELETON_SEAM is True, "
+                "meaning _invoke_model is not implemented in this build. "
+                "Every call — gate on or off, configured or not — returns "
+                "needs_review with llm:seam-pending so no outbound network "
+                "request is made.",
             )
         if not self._configured_provider or not self._configured_model:
             return (
@@ -274,8 +367,7 @@ class LLMProvider:
                 "invoked; the provider refuses every call while the live "
                 "gate is off - even when GIGMATE_LLM_PROVIDER/GIGMATE_LLM_MODEL "
                 "are configured - so a misconfigured deployment cannot "
-                "silently fall back to a real model call once _invoke_model "
-                "is implemented.",
+                "silently fall back to a real model call.",
             )
         if not self._is_wired_for_live():
             return (
@@ -285,6 +377,97 @@ class LLMProvider:
                 "vendor GIGMATE_LLM_PROVIDER is not supported by this build). "
                 "Refusing the call instead of silently falling back.",
             )
+        if self._resolve_endpoint() is None:
+            return (
+                "llm:not-configured",
+                f"Vendor {self._configured_provider!r} has no default endpoint "
+                "in this build; set GIGMATE_LLM_ENDPOINT to the "
+                "OpenAI-compatible base URL before live calls are allowed. "
+                "Refusing rather than guessing a vendor URL with a real "
+                "credential.",
+            )
+        if self._configured_model in _JSON_MODE_UNSUPPORTED_MODELS:
+            return (
+                "llm:model-unsupported",
+                f"Model {self._configured_model!r} does not support "
+                "response_format=json_object, which this provider needs in "
+                "order to parse a ChangeProposal. Use a JSON-output-capable "
+                "model (for DeepSeek: deepseek-chat).",
+            )
+        if request.origin == "live":
+            if not request.message_received_at or not request.workspace_timezone:
+                return (
+                    "llm:time-basis-missing",
+                    "Live extraction requires the server-attached message "
+                    "time and the workspace timezone before relative dates "
+                    "can be resolved. Refusing instead of guessing a time "
+                    "basis.",
+                )
+            if not self._account_authorized(request.account_id):
+                return (
+                    "llm:account-not-authorized",
+                    "This account is not in GIGMATE_LLM_LIVE_ACCOUNTS; explicit "
+                    "per-account authorization is required before live "
+                    "content is sent to the model.",
+                )
+            return self._budget_refusal(request)
+        return None
+
+    def _account_authorized(self, account_id: str) -> bool:
+        configured = (os.environ.get(_LIVE_ACCOUNTS_ENV) or "").strip()
+        if not configured:
+            return True
+        allowed = {item.strip() for item in configured.split(",") if item.strip()}
+        return account_id in allowed
+
+    def _budget_refusal(self, request: ExtractionRequest) -> tuple[str, str] | None:
+        """Refuse a live call whose attached daily budget is missing or spent.
+
+        The worker attaches counters read from durable traces; this method
+        only compares numbers, so the provider stays database-free.
+        """
+        if request.budget_call_limit is None and request.budget_token_limit is None:
+            return (
+                "llm:budget-not-configured",
+                "Live extraction requires an explicit daily budget: set "
+                "GIGMATE_LLM_DAILY_CALL_BUDGET and/or "
+                "GIGMATE_LLM_DAILY_TOKEN_BUDGET. Refusing to run unmetered.",
+            )
+        if (
+            request.budget_call_limit is not None
+            and request.budget_calls_used >= request.budget_call_limit
+        ):
+            return (
+                "llm:budget-exhausted",
+                f"Daily call budget reached ({request.budget_calls_used}/"
+                f"{request.budget_call_limit}); no vendor request was made.",
+            )
+        if (
+            request.budget_token_limit is not None
+            and request.budget_tokens_used >= request.budget_token_limit
+        ):
+            return (
+                "llm:budget-exhausted",
+                f"Daily token budget reached ({request.budget_tokens_used}/"
+                f"{request.budget_token_limit}); no vendor request was made.",
+            )
+        return None
+
+    def _resolve_endpoint(self) -> str | None:
+        """Resolve the OpenAI-compatible base URL for the configured vendor.
+
+        An explicit ``GIGMATE_LLM_ENDPOINT`` always wins. Without it the URL
+        follows the vendor so an OpenAI key is never sent to
+        ``api.deepseek.com``; ``custom`` has no default and returns ``None``,
+        which ``_refusal_reason`` turns into ``llm:not-configured``.
+        """
+        override = (self._configured_endpoint or "").strip()
+        if override:
+            return override.rstrip("/")
+        if self._configured_provider == "openai":
+            return _OPENAI_DEFAULT_ENDPOINT
+        if self._configured_provider == "deepseek":
+            return _DEEPSEEK_DEFAULT_ENDPOINT
         return None
 
     def _is_wired_for_live(self) -> bool:
@@ -369,6 +552,7 @@ class LLMProvider:
         prompt_version: str,
         model_version: str,
         notes: tuple[str, ...],
+        usage: dict | None = None,
     ) -> ExtractionOutcome:
         proposal = {
             "schema_version": "0.1.0",
@@ -395,6 +579,7 @@ class LLMProvider:
             latency_ms=latency_ms,
             notes=notes,
             refused_reason=reason,
+            usage=usage,
         )
 
     @staticmethod
@@ -431,34 +616,66 @@ class LLMProvider:
                 model_version=model_version,
                 notes=("llm:prompt-load-failed",),
             )
-        endpoint = self._configured_endpoint or _DEEPSEEK_DEFAULT_ENDPOINT
+        endpoint = self._resolve_endpoint()
+        if endpoint is None:
+            # Unreachable through ``propose`` (``_refusal_reason`` checks the
+            # endpoint first); kept so a direct call can never fall back to a
+            # guessed vendor URL with a real credential attached.
+            return self._needs_review(
+                request,
+                reason=(
+                    f"Vendor {self._configured_provider!r} has no default "
+                    "endpoint; set GIGMATE_LLM_ENDPOINT before live calls."
+                ),
+                latency_ms=self._elapsed(began),
+                prompt_version=prompt_version,
+                model_version=model_version,
+                notes=("llm:not-configured",),
+            )
         try:
-            raw = self._call_chat_completion(
+            raw, usage = self._call_chat_completion(
                 endpoint=endpoint,
                 api_key=api_key or "",
                 model=self._configured_model or "",
                 prompt_body=prompt_body,
                 request=request,
             )
+        except LLMResultUnknown as exc:
+            # The request may have been submitted and charged. Record the
+            # uncertainty, never resubmit behind the operator's back.
+            return self._needs_review(
+                request,
+                reason=(
+                    "LLM call result is unknown "
+                    f"({exc.kind}); it may have been charged and is not "
+                    "retried automatically."
+                ),
+                latency_ms=self._elapsed(began),
+                prompt_version=prompt_version,
+                model_version=model_version,
+                notes=("llm:result-unknown",),
+            )
         except httpx.HTTPError as exc:
             return self._needs_review(
                 request,
-                reason=f"LLM HTTP call failed: {type(exc).__name__}: {exc}",
+                reason=_sanitised_http_reason(exc),
                 latency_ms=self._elapsed(began),
                 prompt_version=prompt_version,
                 model_version=model_version,
                 notes=("llm:http-failed",),
             )
-        except (json.JSONDecodeError, KeyError, IndexError) as exc:
+        except (json.JSONDecodeError, KeyError, IndexError, TypeError):
             return self._needs_review(
                 request,
-                reason=f"LLM response was not valid JSON: {type(exc).__name__}: {exc}",
+                reason=(
+                    "LLM response did not contain a chat-completions result (response-malformed)."
+                ),
                 latency_ms=self._elapsed(began),
                 prompt_version=prompt_version,
                 model_version=model_version,
                 notes=("llm:response-malformed",),
             )
-        return self._parse_response(raw, request, began, prompt_version, model_version)
+        return self._parse_response(raw, request, began, prompt_version, model_version, usage=usage)
 
     def _load_prompt_body(self) -> str:
         """Read the bundled (or override) prompt file as UTF-8 text."""
@@ -472,11 +689,21 @@ class LLMProvider:
         model: str,
         prompt_body: str,
         request: ExtractionRequest,
-    ) -> str:
-        """POST to ``{endpoint}/v1/chat/completions`` and return the raw assistant text.
+    ) -> tuple[str, dict | None]:
+        """POST to ``{endpoint}/v1/chat/completions``; return ``(content, usage)``.
 
-        Retries once on HTTP/transport or response-parse errors so a flaky
-        network does not cause a missed extraction. The
+        ``usage`` is the vendor's token accounting normalised to
+        ``prompt_tokens`` / ``completion_tokens`` / ``total_tokens``, or
+        ``None`` when the vendor omitted it. A real call therefore leaves
+        auditable cost evidence behind instead of discarding it.
+
+        Retries once, and only when the vendor definitely did not start work:
+        a failed TCP connect and the status codes in
+        :data:`_RETRYABLE_STATUS_CODES` (request timeout, rate limit). A read
+        timeout, a dropped connection, a 5xx or a non-JSON body may already
+        have been charged, so they raise :class:`LLMResultUnknown` instead of
+        being repeated; auth and bad-request responses are deterministic and
+        fail on the first response. The
         :class:`httpx.Client` is created through ``self._client_factory`` so
         tests can inject a fake client without monkeypatching ``httpx``
         globally.
@@ -497,33 +724,76 @@ class LLMProvider:
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
-        last_exc: Exception | None = None
+
+        def _retry_after(attempt: int, kind: str) -> bool:
+            if attempt >= _MAX_RETRIES:
+                return False
+            _log.warning(
+                "LLM call attempt %d/%d failed (%s); retrying",
+                attempt + 1,
+                _MAX_RETRIES + 1,
+                kind,
+            )
+            time.sleep(_RETRY_BACKOFF_S * (attempt + 1))
+            return True
+
         for attempt in range(_MAX_RETRIES + 1):
             try:
                 with self._client_factory(timeout=_REQUEST_TIMEOUT_S) as client:
                     response = client.post(url, json=body, headers=headers)
+            except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+                # No connection was established, so the vendor cannot have
+                # processed (or charged) the request: one retry is safe.
+                if _retry_after(attempt, "connect"):
+                    continue
+                raise LLMResultUnknown("connect") from exc
+            except httpx.HTTPStatusError as exc:
+                # Some transports surface a status before ``raise_for_status``.
+                if exc.response.status_code in _RETRYABLE_STATUS_CODES and _retry_after(
+                    attempt, f"status-{exc.response.status_code}"
+                ):
+                    continue
+                raise
+            except httpx.TimeoutException as exc:
+                # The request may have been written before the read timed out.
+                raise LLMResultUnknown("timeout") from exc
+            except httpx.HTTPError as exc:
+                raise LLMResultUnknown("transport") from exc
+            try:
                 response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in _RETRYABLE_STATUS_CODES and _retry_after(
+                    attempt, f"status-{exc.response.status_code}"
+                ):
+                    continue
+                raise
+            try:
                 data = response.json()
-                return data["choices"][0]["message"]["content"]
-            except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
-                last_exc = exc
-                if attempt == _MAX_RETRIES:
-                    raise
-                _log.warning(
-                    "LLM call attempt %d/%d failed (%s); retrying",
-                    attempt + 1,
-                    _MAX_RETRIES + 1,
-                    type(exc).__name__,
-                )
-        # Unreachable: the loop either returns or raises on the last attempt.
-        raise last_exc  # pragma: no cover
+            except ValueError as exc:
+                # A body that is not JSON after a 2xx was still charged and
+                # must not be retried.
+                raise KeyError("response-json") from exc
+            return (
+                data["choices"][0]["message"]["content"],
+                _normalise_usage(data.get("usage")),
+            )
+        # Unreachable: every path above returns, continues, or raises.
+        raise LLMResultUnknown("retry-exhausted")  # pragma: no cover
 
     @staticmethod
     def _render_user_message(request: ExtractionRequest) -> str:
-        """Render the request as the user-role JSON the prompt expects."""
+        """Render the request as the user-role JSON the prompt expects.
+
+        ``message_received_at`` and ``workspace_timezone`` are the server's
+        time basis for relative dates. Message identity is deliberately not
+        sent: the provider re-binds ``sources`` locally, so the model cannot
+        choose which message a change is attributed to.
+        """
         return json.dumps(
             {
                 "message_text": request.message_text,
+                "message_received_at": request.message_received_at,
+                "workspace_timezone": request.workspace_timezone,
                 "context_version": request.context_version,
                 "candidate_work_order_ids": list(request.candidate_work_order_ids),
                 "base_work_order_version": request.base_work_order_version,
@@ -532,6 +802,58 @@ class LLMProvider:
             ensure_ascii=False,
         )
 
+    @staticmethod
+    def _bind_provenance(data: dict, request: ExtractionRequest) -> str | None:
+        """Bind identity fields to the server-issued request.
+
+        The model may echo whatever it likes; the server decides which
+        conversation, work order, version and message a proposal belongs to.
+        Returns the name of the first field that contradicts the request, or
+        ``None`` after the data has been rewritten with trusted values.
+        """
+        data["conversation_id"] = request.conversation_id
+        data["base_context_version"] = request.context_version
+
+        candidates = {str(item) for item in request.candidate_work_order_ids}
+        listed = data.get("candidates")
+        if isinstance(listed, list):
+            for candidate in listed:
+                if not isinstance(candidate, dict):
+                    return "candidates"
+                if str(candidate.get("work_order_id")) not in candidates:
+                    return "candidates"
+
+        matched = data.get("assignment") == "matched"
+        if not matched:
+            data["work_order_id"] = None
+            data["base_work_order_version"] = None
+        else:
+            chosen = data.get("work_order_id")
+            if chosen is not None and str(chosen) not in candidates:
+                return "work_order_id"
+            if len(candidates) == 1:
+                data["work_order_id"] = request.candidate_work_order_ids[0]
+            model_version = data.get("base_work_order_version")
+            if request.base_work_order_version is not None:
+                if model_version is not None and model_version != request.base_work_order_version:
+                    return "base_work_order_version"
+                data["base_work_order_version"] = request.base_work_order_version
+
+        changes = data.get("changes")
+        if isinstance(changes, list):
+            for change in changes:
+                if isinstance(change, dict):
+                    # The server binds every change to the exact message
+                    # revision that produced it; a model-supplied source is
+                    # never trusted.
+                    change["sources"] = [
+                        {
+                            "message_id": request.message_id,
+                            "message_revision": request.message_revision,
+                        }
+                    ]
+        return None
+
     def _parse_response(
         self,
         raw: str | object,
@@ -539,6 +861,8 @@ class LLMProvider:
         began: float,
         prompt_version: str,
         model_version: str,
+        *,
+        usage: dict | None = None,
     ) -> ExtractionOutcome:
         """Parse the LLM's JSON response into a :class:`ChangeProposal`.
 
@@ -548,34 +872,38 @@ class LLMProvider:
         does not match :class:`ChangeProposal`. Any validation error is
         returned as a ``needs_review`` outcome with
         ``llm:response-schema-failed`` so the worker still records evidence.
+
+        ``usage`` carries the token accounting of the call that produced this
+        response. It is propagated even on parse failures: the vendor charged
+        for those tokens, so the trace must show them.
         """
         try:
             data = json.loads(raw) if isinstance(raw, str) else raw  # type: ignore[arg-type]
-        except (TypeError, ValueError) as exc:
+        except (TypeError, ValueError):
             return self._needs_review(
                 request,
-                reason=f"LLM response was not valid JSON: {exc}",
+                reason="LLM response was not valid JSON (response-malformed).",
                 latency_ms=self._elapsed(began),
                 prompt_version=prompt_version,
                 model_version=model_version,
                 notes=("llm:response-malformed",),
+                usage=usage,
             )
         if not isinstance(data, dict):
             return self._needs_review(
                 request,
-                reason=f"LLM response must be a JSON object, got {type(data).__name__}",
+                reason="LLM response must be a JSON object (response-malformed).",
                 latency_ms=self._elapsed(began),
                 prompt_version=prompt_version,
                 model_version=model_version,
                 notes=("llm:response-malformed",),
+                usage=usage,
             )
         # Force provider-set fields so the LLM cannot override them.
         data["model_version"] = model_version
         data["prompt_version"] = prompt_version
         data.setdefault("schema_version", "0.1.0")
         data.setdefault("proposal_id", str(uuid4()))
-        data.setdefault("conversation_id", request.conversation_id)
-        data.setdefault("base_context_version", request.context_version)
         data.setdefault("draft_text", None)
         if data.get("assignment") == "needs_review":
             data.setdefault("changes", [])
@@ -585,29 +913,35 @@ class LLMProvider:
                 data["unresolved_questions"] = [
                     str(reason_text) if reason_text else "LLM requested review"
                 ]
-            data.setdefault("work_order_id", None)
-            data.setdefault("base_work_order_version", None)
-        # When exactly one candidate is known, default work_order_id and
-        # base_work_order_version so the LLM cannot pick a wrong order or
-        # leave the contract's conditional requirement unsatisfied.
-        if data.get("assignment") == "matched" and len(request.candidate_work_order_ids) == 1:
-            if not data.get("work_order_id"):
-                data["work_order_id"] = request.candidate_work_order_ids[0]
-            if (
-                data.get("base_work_order_version") is None
-                and request.base_work_order_version is not None
-            ):
-                data["base_work_order_version"] = request.base_work_order_version
+        mismatch = self._bind_provenance(data, request)
+        if mismatch is not None:
+            return self._needs_review(
+                request,
+                reason=(
+                    "LLM response did not bind to the request's provenance "
+                    f"({mismatch}); it is recorded as evidence and cannot "
+                    "create an actionable change."
+                ),
+                latency_ms=self._elapsed(began),
+                prompt_version=prompt_version,
+                model_version=model_version,
+                notes=("llm:provenance-mismatch",),
+                usage=usage,
+            )
         try:
             proposal = ChangeProposal.model_validate(data)
         except ValidationError as exc:
             return self._needs_review(
                 request,
-                reason=f"LLM response did not match ChangeProposal: {exc.errors()[0]['msg']}",
+                reason=(
+                    "LLM response did not match ChangeProposal "
+                    f"(response-schema-failed at {exc.errors()[0]['loc']})."
+                ),
                 latency_ms=self._elapsed(began),
                 prompt_version=prompt_version,
                 model_version=model_version,
                 notes=("llm:response-schema-failed",),
+                usage=usage,
             )
         if proposal.assignment.value == "matched":
             return ExtractionOutcome(
@@ -616,6 +950,7 @@ class LLMProvider:
                 latency_ms=self._elapsed(began),
                 notes=("llm:matched",),
                 refused_reason=None,
+                usage=usage,
             )
         # LLM explicitly asked for review; pass through with a typed note so
         # the worker records evidence.
@@ -625,7 +960,8 @@ class LLMProvider:
             latency_ms=self._elapsed(began),
             notes=("llm:needs-review",),
             refused_reason="llm:needs-review",
+            usage=usage,
         )
 
 
-__all__ = ["LLMProvider", "LLMIntegrationPending"]
+__all__ = ["LLMProvider", "LLMIntegrationPending", "LLMResultUnknown"]

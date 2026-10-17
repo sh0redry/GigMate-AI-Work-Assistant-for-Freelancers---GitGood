@@ -803,6 +803,42 @@ class WahaMediaCapabilities(Model):
     accepted_types: list[str]
 
 
+class WorkOrderEvidenceCommand(Model):
+    """Merchant decision to keep one reviewed attachment as work-order evidence.
+
+    This is a merchant action, not a customer confirmation and not an AI
+    write: every identity field is echoed from the reviewed evidence the
+    merchant actually saw, so a newer result or file cannot inherit it.
+    """
+
+    attachment_id: Id
+    expected_attachment_version: Annotated[int, Field(ge=1)]
+    expected_context_version: Annotated[int, Field(ge=0)]
+    expected_result_job_id: Id
+    note: Annotated[str, Field(max_length=2000)] | None = None
+
+
+class WorkOrderEvidenceView(Model):
+    id: Id
+    work_order_id: Id
+    conversation_id: Id
+    attachment_id: Id
+    attachment_version: Annotated[int, Field(ge=1)]
+    context_version: Annotated[int, Field(ge=0)]
+    result_job_id: Id
+    sha256: str
+    mimetype: str | None
+    review_note: str | None
+    note: str | None
+    created_at: UtcTimestamp
+    # ``stale`` is computed on read: when the source message, attachment
+    # version, context or reviewed result changes, the link is retained (it is
+    # a historical merchant decision) but flagged so consumers cannot treat it
+    # as current proof.
+    stale: bool
+    stale_reason: str | None
+
+
 T = TypeVar("T")
 
 

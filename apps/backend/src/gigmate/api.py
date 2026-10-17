@@ -54,6 +54,8 @@ from gigmate.contracts import (
     WahaTimelineMessage,
     WahaVersionCommand,
     WorkOrder,
+    WorkOrderEvidenceCommand,
+    WorkOrderEvidenceView,
 )
 from gigmate.db import (
     ActionRow,
@@ -1126,6 +1128,47 @@ def media_evidence(
             str(expected_result_job_id),
         ),
     )
+
+
+@app.post(
+    "/api/v1/work-orders/{order_id}/evidence",
+    response_model=Detail[WorkOrderEvidenceView],
+    status_code=201,
+)
+def attach_work_order_evidence(
+    order_id: UUID,
+    command: WorkOrderEvidenceCommand,
+    request: Request,
+    account=Depends(setup_actor),
+    db=Depends(database, scope="function"),
+):
+    """Keep one reviewed attachment as evidence for this work order.
+
+    The reviewed binding (attachment version, context version, result job and
+    hash) is re-validated before anything is written, and the row snapshots it
+    so a later change shows up as ``stale`` rather than silently refreshing.
+    """
+    from gigmate import work_evidence
+
+    return detail(request, work_evidence.attach(db, account, str(order_id), command))
+
+
+@app.get(
+    "/api/v1/work-orders/{order_id}/evidence",
+    response_model=Page[WorkOrderEvidenceView],
+)
+def list_work_order_evidence(
+    order_id: UUID,
+    request: Request,
+    cursor: str | None = None,
+    limit: int = Query(20, ge=1, le=100),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    from gigmate import work_evidence
+
+    rows = work_evidence.list_for_order(db, account, str(order_id))
+    return page(request, rows, cursor, limit, lambda row: work_evidence.view(db, row))
 
 
 @app.post("/api/v1/connectors/waha/{connection_id}/events", response_model=Detail[ConnectorReceipt])

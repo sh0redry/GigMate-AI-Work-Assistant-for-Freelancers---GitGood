@@ -76,8 +76,15 @@ def saved_env(monkeypatch):
         "GIGMATE_MEDIA_AUDIO_VENDOR",
         "GIGMATE_MEDIA_AUDIO_MODEL",
         "GIGMATE_MEDIA_PROMPT_PATH",
+        "GIGMATE_MEDIA_MODALITIES",
+        "GIGMATE_MEDIA_VISION_VENDORS",
     ):
         monkeypatch.delenv(key, raising=False)
+    # Per-modality authorization and vision-vendor verification are asserted
+    # by their own tests; the remaining cases opt in explicitly so they keep
+    # exercising routing / call shape rather than the authorization gate.
+    monkeypatch.setenv("GIGMATE_MEDIA_MODALITIES", "ocr,asr,pdf,text")
+    monkeypatch.setenv("GIGMATE_MEDIA_VISION_VENDORS", "openai")
     yield monkeypatch
 
 
@@ -105,12 +112,28 @@ def make_input(
 # Two-gate safety
 
 
-def test_default_seam_flag_is_false(saved_env, saved_seam_flag):
-    """The shipping default must be off so a future operator cannot flip live
-    processing by exporting the env var alone."""
+def test_default_seam_flag_is_enabled(saved_env, saved_seam_flag):
+    """The seam is implemented, so the flag ships on.
 
-    assert _ENABLED is False
+    The operator switch is now the only thing standing between configuration
+    and a vendor call: with ``GIGMATE_MEDIA_LIVE`` unset the processor still
+    refuses before building a client, so merely deploying this code cannot
+    start sending attachments anywhere.
+    """
+
+    assert _ENABLED is True
     assert isinstance(build_processor(), MediaProcessorImpl)
+    with pytest.raises(ProcessingUnavailable, match="GIGMATE_MEDIA_LIVE"):
+        MediaProcessorImpl().process(make_input())
+
+
+def test_seam_flag_off_still_refuses(saved_env, saved_seam_flag):
+    """Flipping ``_ENABLED`` back to False keeps refusing before any env read."""
+
+    mp._ENABLED = False
+    saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
+    saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
     with pytest.raises(ProcessingUnavailable, match="_ENABLED"):
         MediaProcessorImpl().process(make_input())
 
@@ -139,6 +162,59 @@ def test_live_origin_refused_by_default(saved_env, saved_seam_flag):
     saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
     with pytest.raises(ProcessingUnavailable, match="Live-origin media is refused"):
         MediaProcessorImpl().process(make_input(origin="live"))
+
+
+def test_modality_must_be_explicitly_authorized(saved_env, saved_seam_flag):
+    """Opening the live switch does not authorize any specific modality."""
+    mp._ENABLED = True
+    saved_env.delenv("GIGMATE_MEDIA_MODALITIES", raising=False)
+    saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
+    saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
+    saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
+    saved_env.setattr(llm, "default_client_factory", lambda **kwargs: pytest.fail("client built"))
+    with pytest.raises(ProcessingUnavailable, match="MEDIA_MODALITY_NOT_AUTHORIZED"):
+        MediaProcessorImpl().process(make_input())
+
+
+def test_ocr_requires_a_verified_vision_vendor(saved_env, saved_seam_flag):
+    """A chat vendor is not assumed to accept images without verification."""
+    mp._ENABLED = True
+    saved_env.setenv("GIGMATE_MEDIA_MODALITIES", "ocr")
+    saved_env.delenv("GIGMATE_MEDIA_VISION_VENDORS", raising=False)
+    saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
+    saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
+    saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
+    saved_env.setattr(llm, "default_client_factory", lambda **kwargs: pytest.fail("client built"))
+    with pytest.raises(ProcessingUnavailable, match="MEDIA_VISION_VENDOR_UNVERIFIED"):
+        MediaProcessorImpl().process(make_input())
+
+
+def test_deepseek_is_never_assumed_to_accept_images(saved_env, saved_seam_flag):
+    """Verifying one vendor must not implicitly verify another."""
+    mp._ENABLED = True
+    saved_env.setenv("GIGMATE_MEDIA_MODALITIES", "ocr")
+    saved_env.setenv("GIGMATE_MEDIA_VISION_VENDORS", "openai")
+    saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
+    saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
+    saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "deepseek")
+    saved_env.setattr(llm, "default_client_factory", lambda **kwargs: pytest.fail("client built"))
+    with pytest.raises(ProcessingUnavailable, match="MEDIA_VISION_VENDOR_UNVERIFIED"):
+        MediaProcessorImpl().process(make_input())
+
+
+def test_pdf_modality_requires_its_own_authorization(saved_env, saved_seam_flag):
+    """Authorizing OCR alone must not enable document shipping."""
+    mp._ENABLED = True
+    saved_env.setenv("GIGMATE_MEDIA_MODALITIES", "ocr")
+    saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
+    saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
+    saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
+    with pytest.raises(ProcessingUnavailable, match="MEDIA_MODALITY_NOT_AUTHORIZED: pdf"):
+        MediaProcessorImpl().process(make_input(mimetype="application/pdf", content=b"%PDF-1"))
 
 
 def test_unknown_origin_passes_origin_check(saved_env, saved_seam_flag):

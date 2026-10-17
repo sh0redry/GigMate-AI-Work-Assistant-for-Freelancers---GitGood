@@ -788,6 +788,31 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/work-orders/{order_id}/evidence": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Work Order Evidence */
+    get: operations["list_work_order_evidence_api_v1_work_orders__order_id__evidence_get"];
+    put?: never;
+    /**
+     * Attach Work Order Evidence
+     * @description Keep one reviewed attachment as evidence for this work order.
+     *
+     *     The reviewed binding (attachment version, context version, result job and
+     *     hash) is re-validated before anything is written, and the row snapshots it
+     *     so a later change shows up as ``stale`` rather than silently refreshing.
+     */
+    post: operations["attach_work_order_evidence_api_v1_work_orders__order_id__evidence_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/health": {
     parameters: {
       query?: never;
@@ -1350,6 +1375,15 @@ export interface components {
        */
       request_id: string;
     };
+    /** Detail[WorkOrderEvidenceView] */
+    Detail_WorkOrderEvidenceView_: {
+      data: components["schemas"]["WorkOrderEvidenceView"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
     /** Detail[WorkOrder] */
     Detail_WorkOrder_: {
       data: components["schemas"]["WorkOrder"];
@@ -1539,6 +1573,18 @@ export interface components {
     Page_WahaTimelineMessage_: {
       /** Items */
       items: components["schemas"]["WahaTimelineMessage"][];
+      /** Next Cursor */
+      next_cursor: string | null;
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Page[WorkOrderEvidenceView] */
+    Page_WorkOrderEvidenceView_: {
+      /** Items */
+      items: components["schemas"]["WorkOrderEvidenceView"][];
       /** Next Cursor */
       next_cursor: string | null;
       /**
@@ -2362,6 +2408,81 @@ export interface components {
       updated_at: string;
       /** Version */
       version: number;
+    };
+    /**
+     * WorkOrderEvidenceCommand
+     * @description Merchant decision to keep one reviewed attachment as work-order evidence.
+     *
+     *     This is a merchant action, not a customer confirmation and not an AI
+     *     write: every identity field is echoed from the reviewed evidence the
+     *     merchant actually saw, so a newer result or file cannot inherit it.
+     */
+    WorkOrderEvidenceCommand: {
+      /**
+       * Attachment Id
+       * Format: uuid
+       */
+      attachment_id: string;
+      /** Expected Attachment Version */
+      expected_attachment_version: number;
+      /** Expected Context Version */
+      expected_context_version: number;
+      /**
+       * Expected Result Job Id
+       * Format: uuid
+       */
+      expected_result_job_id: string;
+      /** Note */
+      note?: string | null;
+    };
+    /** WorkOrderEvidenceView */
+    WorkOrderEvidenceView: {
+      /**
+       * Attachment Id
+       * Format: uuid
+       */
+      attachment_id: string;
+      /** Attachment Version */
+      attachment_version: number;
+      /** Context Version */
+      context_version: number;
+      /**
+       * Conversation Id
+       * Format: uuid
+       */
+      conversation_id: string;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Mimetype */
+      mimetype: string | null;
+      /** Note */
+      note: string | null;
+      /**
+       * Result Job Id
+       * Format: uuid
+       */
+      result_job_id: string;
+      /** Review Note */
+      review_note: string | null;
+      /** Sha256 */
+      sha256: string;
+      /** Stale */
+      stale: boolean;
+      /** Stale Reason */
+      stale_reason: string | null;
+      /**
+       * Work Order Id
+       * Format: uuid
+       */
+      work_order_id: string;
     };
     /** WorkOrderFields */
     WorkOrderFields: {
@@ -3987,6 +4108,75 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Detail_WorkOrder_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  list_work_order_evidence_api_v1_work_orders__order_id__evidence_get: {
+    parameters: {
+      query?: {
+        cursor?: string | null;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        order_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Page_WorkOrderEvidenceView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  attach_work_order_evidence_api_v1_work_orders__order_id__evidence_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        order_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WorkOrderEvidenceCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkOrderEvidenceView_"];
         };
       };
       /** @description Validation Error */

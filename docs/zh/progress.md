@@ -1,5 +1,93 @@
 # 已完成工作与验证记录
 
+## 真实模型验收门槛与已核对媒体转工单依据（B/C）— 2026-10-17
+
+2026-10-17 的第二批，对应里程碑表第 3、4 行。供应商质量一项仍需运营方自己的 key；本地可强制的部分全部落地并有测试。
+
+**文字模型（第 3 行）**
+
+- **预算：** 新增 `gigmate/extraction/budget.py`，汇总账户当天已提交的 `model_call_traces` 并把计数附加到 `ExtractionRequest`。`GIGMATE_LLM_DAILY_CALL_BUDGET` / `GIGMATE_LLM_DAILY_TOKEN_BUDGET` 设置上限；未配置时真实流量以 `llm:budget-not-configured` 拒绝，达到上限以 `llm:budget-exhausted` 拒绝。两者都在创建客户端之前发生且记录零用量。按 trace 行计数（不另设计数器）保证用量与证据一致；供应商不返回 token 数时仍消耗一次调用预算。
+- **按账户授权：** 设置 `GIGMATE_LLM_LIVE_ACCOUNTS` 后，名单外账户得到 `llm:account-not-authorized`。
+- **时间基准：** worker 附加 inbox 接收时间（UTC `Z`）与 `GIGMATE_WORKSPACE_TIMEZONE`；缺失任一以 `llm:time-basis-missing` 拒绝。提示词 v1.1.0 只按该基准解析相对日期，并要求 `Z` 时间戳，契约同样强制（带偏移或只有日期会得到 `llm:response-schema-failed`）。
+- **来源重绑定：** `_bind_provenance` 在校验前用请求覆盖 `conversation_id`、`base_context_version`、`work_order_id`、`base_work_order_version` 与每个变更的 `sources`；指名候选集之外工单或不同基础版本的响应记为 `llm:provenance-mismatch` 且不产生变更。调用返回后 worker 重读会话，若上下文已推进则记 `SOURCE_SUPERSEDED`，不落地变更。
+- **超时/未知：** 只有连接失败、408、429 重试。读超时、连接中断、5xx 与畸形 2xx 记为 `llm:result-unknown` / `llm:response-malformed`，`total_tokens = NULL`，任务错误码 `EXTRACTION_RESULT_UNKNOWN`，绝不自动重发。HTTP 诊断只保留稳定类别与状态码（`_sanitised_http_reason`），URL、请求头、异常文本与密钥不落库。
+- **默认关闭：** 真实调用仍需 `GIGMATE_LLM_LIVE=1` + `GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1` + key + 支持 JSON 的模型，现在还额外要求时间基准与预算。
+
+**媒体（第 4 行）**
+
+- **分模态授权：** `GIGMATE_MEDIA_MODALITIES`（`ocr,asr,pdf,text`）默认为空；为空时即使 live 开关打开也以 `MEDIA_MODALITY_NOT_AUTHORIZED` 拒绝，验收 OCR 不会顺带打开 ASR 或文档外发。
+- **视觉供应商校验：** `GIGMATE_MEDIA_VISION_VENDORS` 取代原先硬编码的 DeepSeek 拒绝。OCR 发给未列出的供应商会在创建客户端前以 `MEDIA_VISION_VENDOR_UNVERIFIED` 拒绝；不假设 DeepSeek chat-completions 支持图片。
+- **已核对附件成为工单依据：** 迁移 `0015_work_order_evidence` 新增 `work_order_evidence`（`(work_order_id, attachment_id, attachment_version)` 唯一），`gigmate/work_evidence.py` 实现 attach/list，`POST/GET /api/v1/work-orders/{id}/evidence` 暴露。attach 重新校验账户归属、连接/来源有效、授权、到期、核对记录、原始字节，以及附件会话已关联该工单（否则 `MEDIA_ORDER_LINK_REQUIRED`）；结果更新以 `MEDIA_RESULT_CHANGED` 拒绝，文件/版本/上下文变化以 `MEDIA_SOURCE_CHANGED` 拒绝。重复提交幂等。读取时计算 `stale`/`stale_reason`，历史不被改写。提升不写 `RequirementChange`、不确认字段、不授予批准或发送权限。
+- 契约：新增 `WorkOrderEvidenceCommand` / `WorkOrderEvidenceView`；`contracts/openapi.json` 与 `apps/web` 生成类型由各自脚本重新生成；`contracts/api-v1.md` 记录本批。领域 schema 未变（这些是 API 命令/视图）。
+
+**测试：** `tests/test_extraction.py` 新增 12 个 provider/worker 用例（来源重绑定、候选外工单、过期基础版本、缺时间基准、缺/耗尽调用与 token 预算、账户白名单、读超时只试一次、畸形响应体只试一次、401 原因脱敏、按账户的预算窗口、worker 未知结果不产生变更）；`tests/test_media_processor.py` 新增 4 个模态/视觉用例；新文件 `tests/test_work_evidence.py` 8 个用例（未核对拒绝、幂等提升、未关联会话、更新结果、他人账户、上下文变化后 stale、CSRF、仅可下载附件）。`tests/test_waha_migration.py` 钉住 head `0015_work_order_evidence` 并断言新列。
+
+**如实记录未做之事：** 没有可用的供应商 key，因此未发出任何真实 DeepSeek/图片/音频请求；供应商质量、真实 token 数、真实 OCR/ASR 准确率、图片 prompt 注入防护仍未验证。媒体调用仍不记录 token 用量，也没有自己的重试/退避。调用期间 `SOURCE_SUPERSEDED` 竞态已实现并审阅，但没有确定性的自动化测试（需要在模型调用期间发生第二次写入）。证据提升目前只有 API，前端尚无入口，也没有撤销接口（变化在读取时计算 stale）。
+
+证据：`pytest apps/backend/tests`（SQLite）**630 通过、19 跳过（PostgreSQL）、12 失败**——仍是已记录文档的 12 个 macOS PDF 资源隔离用例，未改变。`ruff check apps/backend`：干净；`ruff format --check apps/backend`：85 文件已格式化。`export_contracts.py --check`：同步。`check_baseline.py`：PASS（71 个 Markdown、434 个本地链接、3 个 schema、11 个合法样例、6 个拒绝样例、12 个合成场景）。临时 SQLite 文件上 `alembic upgrade head` + `alembic check`：head `0015_work_order_evidence`，无新操作。`apps/web`：`check:api` 通过。未涉及真实模型、媒体供应商、账号、发送或部署。
+
+## DeepSeek 接入加固（B）— 2026-10-17
+
+接缝此前已经打开；本批做的是让调用形态对真实 DeepSeek 部署正确、并让一次真实调用留下可审计证据。仍然没有 key，**本批同样没有发出任何真实供应商请求**。
+
+- **端点按供应商解析：** 新增 `LLMProvider._resolve_endpoint()`——显式 `GIGMATE_LLM_ENDPOINT` 优先，否则取供应商文档端点：`deepseek` -> `https://api.deepseek.com`、`openai` -> `https://api.openai.com`；`custom` 没有默认值，以 `llm:not-configured` 拒绝。此前所有供应商都回落到 DeepSeek 主机，即 `openai` 部署会把 OpenAI 的 key 发到 `api.deepseek.com`。
+- **JSON 模式守卫：** `deepseek-reasoner` 不支持 `response_format=json_object`，而 provider 依赖它解析 `ChangeProposal`，因此本地以 `llm:model-unsupported` 拒绝，不再白跑一次必然 400 的请求。
+- **重试分类：** 只有"供应商确定没开始干活"的失败才重试一次——TCP 连接失败与 408/429，带短退避。读超时、连接中断、5xx、2xx 后的非 JSON 响应体一律抛 `LLMResultUnknown` 并记为 `llm:result-unknown`：可能已计费，绝不自动重投。鉴权与错误请求类响应首次即失败。HTTP 失败信息经 `_sanitised_http_reason` 脱敏，trace 只保留失败类别，不含端点或凭据细节。
+- **token 用量：** 供应商 `usage` 归一化为 `prompt_tokens` / `completion_tokens` / `total_tokens`（丢弃 DeepSeek 缓存计数等厂商专属字段），挂在 `ExtractionOutcome.usage` 上，由 `persist_proposal` 落进 `model_call_traces` 三个新的可空列（迁移 `0014_llm_usage`）。所有拒绝路径保持 `NULL`——"没调用"和"免费调用"是两件事。`scripts/smoke_deepseek.py` 会打印 `usage`，这是"确实打到了真模型"最廉价的证据。
+- **配置校验：** `gigmate.env_check` 在严格模式下校验模型配置，但只在闸门打开时校验——`GIGMATE_LLM_LIVE=1` 要求供应商已知、模型非空、key 非占位符，`custom` 必须配 `GIGMATE_LLM_ENDPOINT`，端点必须 `https`。`GIGMATE_MEDIA_*` 同样校验，并明确 DeepSeek 不能作为 ASR 供应商。从不开启真实调用的部署不需要任何模型凭据。
+- **依赖：** `httpx` 已显式声明进 `apps/backend/pyproject.toml`；此前两个供应商适配层都直接 import 它，却只作为传递依赖存在。
+- **测试：** `tests/test_extraction.py` 新增端点按供应商解析、`custom` 缺端点、`deepseek-reasoner` 拒绝、401 不重试、429 重试、token 用量捕获、拒绝时 `usage is None`、`test_persisted_trace_records_token_usage_only_for_billed_calls`；`tests/test_env_check.py` 新增严格模式用例。`tests/test_waha_migration.py` 把 Alembic head 钉到 `0014_llm_usage` 并断言 `upgrade head` 后用量列存在。
+
+**如实记录未做之事：** 仍无 API key、无真实请求，因此供应商/端点语义、真实延迟、真实 token 数与 prompt 注入防护仍未验证。429/5xx 的重试与退避是对假客户端断言的，不是对 DeepSeek 真实限流的验证。媒体侧（OCR/PDF/ASR）仍没有自己的重试/退避，也不记录 token 用量。合约、生成文件与 `apps/web` 均未改动。
+
+证据：`pytest apps/backend/tests`（SQLite）**630 通过、19 跳过（PostgreSQL）、12 失败**——12 个失败是已记录文档的 macOS PDF 资源隔离用例（`pdf_child.py` 在非 Linux 平台一律拒绝），本批未改变，前文已有记录。`ruff check apps/backend/src apps/backend/tests`：干净；改动文件 `ruff format --check`：干净。`scripts/export_contracts.py --check`：同步。`scripts/check_baseline.py`：PASS（71 个 Markdown、433 个本地链接、3 个 schema、11 个合法样例、6 个拒绝样例、12 个合成场景）。未涉及真实模型、账号、发送或部署。
+
+## 真实模型接入：DeepSeek 接缝打开（B）— 2026-10-17
+
+真实调用路径已打开。默认供应商为 DeepSeek，任何 OpenAI 兼容供应商（`deepseek` / `openai` / `custom`）共用同一套调用形态。
+
+- **抽取：** `apps/backend/src/gigmate/extraction/llm.py` 的 `LLMProvider._SKELETON_SEAM` 翻为 `False`，`_invoke_model` 会发起真实的 OpenAI 兼容 chat-completions POST（30 秒超时、重试 1 次），`_parse_response` 按 `ChangeProposal` 严格校验。一个部署要真正调用必须同时开 `GIGMATE_LLM_LIVE=1` 与非空 `GIGMATE_LLM_API_KEY`；缺任一则以 `llm:live-gate-off` / `llm:not-configured` 拒绝且不构造客户端。`GIGMATE_LLM_ALLOW_LIVE_ORIGIN` 仍默认关闭。
+- **媒体：** `apps/backend/src/gigmate/media/processor.py` 的 `_ENABLED` 翻为 `True`；仍需 `GIGMATE_MEDIA_LIVE=1` + `GIGMATE_MEDIA_API_KEY`，真实来源附件仍需 `GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN=1`。音频（ASR）需要 OpenAI 兼容的 transcription 端点，DeepSeek 不提供，故 `GIGMATE_MEDIA_AUDIO_VENDOR` 保持未设、音频继续拒绝。
+- **配置：** `.env.example` 新增 DeepSeek 配置块（供应商、模型、空 key 占位、活门、注释掉的 live-origin 开关与音频供应商）；`infra/compose.yaml` 把 `GIGMATE_LLM_*` / `GIGMATE_MEDIA_*` 透传给 api/worker 并给出安全默认值。Compose 的 `GIGMATE_EXTRACTION_PROVIDER` 仍默认 `deterministic`，运维显式选择前 Replay demo 行为不变。
+- **测试：** 断言旧默认值的用例改为断言新值——`test_llm_provider_returns_needs_review_without_configuration`（改为 `llm:not-configured`）、`test_llm_provider_refuses_when_operator_gate_is_closed`（原 `...live_origin...`，改为 `llm:live-gate-off`）、`test_llm_provider_missing_api_key_refuses_without_calling`（原 `...live_gate_returns_seam_pending...`）、`test_llm_provider_operator_gate_off_blocks_before_invoke_model`（原 `...off_gate_returns_seam_pending...`）、`test_llm_provider_implementation_gate_still_refuses_when_closed`（原 `...on_gate_blocks_at_provider_layer_when_seam_unimplemented`，关闭态保证改为在隔离子类上固化）、新增 `test_llm_provider_skeleton_flag_defaults_to_open`；`test_media_processor.py` 用 `test_default_seam_flag_is_enabled` + `test_seam_flag_off_still_refuses` 取代 `test_default_seam_flag_is_false`。
+- **文档：** `docs/{en,zh}/role-b-extraction.md` 把 provider 描述为已接通而非未激活；"真实启用前验收门槛"改为"尚未清空"，并写明闸门已翻开而门槛一项未清。
+
+**如实记录未做之事：** 没有可用的真实 API key，**一次真实供应商请求都没有发出**，因此供应商/端点语义、真实编解码行为、prompt 注入防护、重试与租约交互、延迟预算全部仍未验证。`docs/en/role-b-extraction.md` 里的五项验收门槛**均未清空**，且现在已从"理论问题"变成实际风险。`apps/web`、合约、迁移与生成文件均未改动。
+
+证据：`pytest apps/backend/tests`（SQLite）**579 通过、19 跳过（PostgreSQL）、12 失败**——12 个失败是已记录文档的 macOS PDF 资源隔离用例，在 `git stash push` / `git stash pop` 的干净基线上完整复现同样结果。`ruff check apps/backend scripts/export_contracts.py scripts/check_baseline.py`：仅 main 上已有的 `scripts/check_baseline.py` 中 `F401 'sys' imported but unused`。`ruff format --check apps/backend`：80 文件已格式化。`scripts/export_contracts.py --check`：同步。`scripts/check_baseline.py`：PASS（71 个 Markdown、431 个本地链接、3 个 schema、11 个合法样例、6 个拒绝样例、12 个合成场景）。未涉及真实 WhatsApp、模型、发送或部署。
+
+## 2026-10-16 功能冻结：AI 识别新生意并提议建单，记为后续（C）— 2026-10-16
+
+仅文档记录，**冻结后没有新增任何功能**。对照方案 v2 和契约里划给 C 的范围，其余项已完成，只剩这一项，按事实记为后续而非已完成：
+
+- **延期，阻塞在 B：** 识别会话里的新生意、落成「新建工单提议」、再由商户从提议建单（`contracts/api-v1.md` §1–§2，`POST /work-orders` 带 `from_proposal_id`）。B 侧的「新工单」识别结果格式仍未定义——每个 job 一个结果、`new_work_order` 这样的赋值取值、`needs_review` 分支。Will 在 #31 里说下一步提供，冻结前没有交付。C 不替他猜：契约里写明 C 绝不自行判断两条消息是不是同一单，只执行 provider 给出的结果。因此该项等 B 的格式，留在「尚待实现」。
+- **对兜底方案的事实更正：** 手动建单目前也不存在。`apps/backend/src/gigmate/api.py` 只注册了 `GET /work-orders`、`GET /work-orders/{id}`、`GET /work-orders/{id}/changes` 和 `POST /work-orders/{id}/changes/{change_id}/confirm`；`contracts/openapi.json` 一致，没有 `CreateWorkOrderCommand`。`proposals` 表没有「新建提议」类型，前端 `apps/web` 也没有建单界面。所有工单仍来自开发种子（`apps/backend/src/gigmate/seed.py`），与契约状态行的说明一致。**因此 demo 跑的是种子里的既有工单，不是商户新建的。** 做手动建单属于新增功能，冻结后未获授权，不实施。
+- 本条未改动：`apps/` 下任何文件、生成契约、迁移都没动。`AssignmentResult` 仍只有 `matched` / `needs_review`；`extraction/persistence.py` 只对 `matched` 落变更提议，因此当前没有任何代码路径会写出新建提议。既有工单的变更抽取、撞期校验、商户确认与审批闭环仍按既有文档实现（真实模型评测依旧未完成）。
+
+证据：上述路由清单读自 `apps/backend/src/gigmate/api.py`；全仓库搜索 `from_proposal_id` 只命中 `contracts/api-v1.md`；生成的 `contracts/openapi.json` 里 `/api/v1/work-orders` 只有一个 `get`。本批只改两份进度记录和 `contracts/api-v1.md` 里的一句状态说明；`.venv/bin/python scripts/check_baseline.py` PASS（71 个 Markdown、431 个本地链接、3 个 schema、11 个合法样例、6 个拒绝样例、12 个合成场景）。Ruff 与 pytest 不覆盖纯文档改动，未重跑；未涉及真实 WhatsApp、模型、发送或部署。
+
+## Oracle Always-Free 适配批次（[Oracle 部署计划](oracle-deployment-plan.md) 第 4 阶段）— 2026-10-15
+
+分支 `plan/oracle-always-free-deployment`，基于 `origin/main`（`c5c22ef`，含原基线 `d6b298f`）。实施 Oracle 部署计划第 4 阶段交付物。**未申请服务器、未部署、未做云端验收。** WAHA / 真实模型 / 发送仍按计划保持本轮之外。
+
+新增文件：`infra/oracle.compose.yaml`（项目名 `gigmate-oracle-test`；只有 Caddy 发布端口；长驻服务 `unless-stopped`；一次性 `migrate` 门控在 Alembic 与 seed 之前跑 `python -m gigmate.env_check`，失败即阻止 api/worker 启动；json-file 日志 10m×3 轮转；保守内存/CPU 限制）、`infra/oracle.Caddyfile`（外层 HTTPS 反代，Let's Encrypt 自动证书，全站 basic_auth 外层保护，HSTS 等响应头加固，证书状态持久卷）、`infra/oracle.nginx.conf`（内层 Nginx 透传外层 Caddy 的转发头，不再用 `$scheme` 覆盖 `X-Forwarded-Proto`）、`infra/oracle.env.example`（无秘密环境变量模板，全部必填项用 Compose `:?` 缺省即失败；说明 bcrypt 哈希的 `$$` 转义）、`apps/backend/src/gigmate/env_check.py` + `apps/backend/tests/test_env_check.py`（`GIGMATE_STRICT_ENV=oracle` 时启动前校验：`APP_MODE` 必须显式为 `replay`、`COOKIE_SECURE=true`、`DEMO_PASSWORD`/`POSTGRES_PASSWORD` 不得为开发默认值且满足长度（数据库口令限 URL 安全字符）、`DATABASE_URL` 不得指向本地 SQLite 默认值、`TRUSTED_ORIGINS` 必须 https 且包含 `https://<域名>` 且无通配符；错误信息不回显口令）、中英文计划文档 `docs/{en,zh}/oracle-deployment-plan.md` 与备份/恢复运行手册 `docs/{en,zh}/oracle-backup-restore.md`。追踪改动：`infra/web.Dockerfile` 新增 `NGINX_CONF` 构建参数，默认值保持本地 replay 行为不变。`.gitignore` 增加 `/infra/oracle.env`，确保服务器侧 secret 文件永不进入 Git。
+
+证据（本地，无服务器）：
+
+- `pytest apps/backend/tests/test_env_check.py` **30 通过**。
+- `pytest apps/backend/tests`（SQLite 全套）：**577 通过、19 跳过（PostgreSQL）、12 失败**。12 个失败集中在 `test_media_processor.py` / `test_media_review.py` / `test_pdf_limits.py` 的 PDF 资源隔离用例；在临时干净的基线（仅对 `infra/web.Dockerfile` 做 `git stash push` 后运行、`git stash pop` 还原）上完整复现同样 12 个失败，确认是 pre-existing 平台问题。按已记录规则 “Native macOS fails closed; use the Linux Docker backend”，macOS 上这些用例只验证拒绝、不验证原生解析；新提交的 PostgreSQL 与系统矩阵 CI 是独立验收路径。
+- `ruff check apps/backend scripts/export_contracts.py scripts/check_baseline.py`：仅一项 pre-existing `F401 'sys' imported but unused` 位于 `scripts/check_baseline.py`，此前进度记录已注明与本批次无关。
+- `ruff format --check apps/backend`：80 文件已格式化。
+- `scripts/export_contracts.py --check`：同步。
+- `scripts/check_baseline.py`：PASS（71 Markdown、430 本地链接、3 模式、11 有效 fixture、6 拒绝 fixture、12 合成验收场景）。
+- 前端 `apps/web`：`npm run check:api` / `format:check` / `build` 全部通过。
+- `docker compose -f infra/compose.yaml config --quiet`：本地 replay compose 未受 `web.Dockerfile` 改动影响（默认 `NGINX_CONF=infra/nginx.conf`）。
+- `docker compose --env-file <测试 env> -f infra/oracle.compose.yaml config --quiet`：通过。渲染后 `ports:` 仅在 `proxy` 上有 `80/tcp`、`443/tcp` 与 `443/udp`；`5432`、`18000`、`18080`、`18700` 均不在渲染结果中，确认无内部端口泄露。
+- ARM manifest 探针（`docker manifest inspect`）：`postgres:17.9`、`nginx:1.28.2-alpine`、`caddy:2.10.2-alpine`、`python:3.12.10-slim`、`node:24.15.0-alpine` 均含 `arm64`。
+- bcrypt `$$` 转义在 env 文件中已验证：测试 env 文件里的 `$$2a$$14$...` 渲染进 Caddy 容器时变为 `$2a$14$...` 且无插值告警。
+
+阻塞（如实记录、不标通过）：本机 Docker 守护进程未运行，因此未执行 PostgreSQL 子集测试和实际镜像构建。SQLite 结果不能证明 PostgreSQL 锁；服务器到位后由文档化的 PostgreSQL 验收把关。尚无 A1 实例、尚无真实域名、尚无真实密钥、尚无真实模型、尚无真实 WhatsApp/发送、尚无团队身份、尚无监控栈——全部按部署计划留在后续批次。
+
 ## PR #22 第二轮评审：重新生成轮次与 main 兼容（C）— 2026-10-14
 
 - **重复重新生成（P2，Andy 和 Kyrie）：** 过期 → 重新生成 → 没有新消息又过期 → 再次重新生成会返回 503，因为第二轮生成了相同的 `<change>@<context>` trigger，撞上唯一约束。现在每轮重新生成都有持久的独立身份 `<change>@<context>~<被替换的草稿 id>`；一条草稿只能被重新生成一次（之后它就不是最新的），所以轮次不会冲突。同一个幂等键重放返回原结果，同键换内容返回 409 `IDEMPOTENCY_CONFLICT`，旧轮次返回 409，每单仍只有一条活动草稿。回归测试：`test_repeated_expiry_rounds_can_each_be_reissued`（未修复时得到 503）。
@@ -390,6 +478,8 @@ PR #3 的 backend run 37432110763 在 test_waha_team.py 收集阶段报 `ModuleN
 - 对外审批、outbox、代发、发送结果未知核对、API echo 和发送并发测试。
 - 完整工作时间/缓冲规则、生产身份/密钥系统、完整账号及备份删除；WAHA 30 天正文清理已实现。
 - 媒体、外部日历和其他增强模块。
+
+截至 2026-10-16 冻结，「从会话建工单」整条链路都未完成（见首条记录）：没有 `POST /work-orders`，没有手动建单界面，也没有 AI 新建工单提议——后者等 B 侧识别格式（#31）。当前所有工单来自开发种子。
 
 后续先完成持久真实接入与独立统一验收，再规划对外审批执行闭环。真实使用仅限明确授权的本地测试账号/聊天，不用于生产或宣称完整 P0。所有新增工作按协作检查表交付，持续记录完成证据，不能把回放成功写成真实接入成功。
 

@@ -1,5 +1,53 @@
 # Role B extraction subsystem
 
+## Real text model and reviewed-media promotion — 2026-10-17
+
+This batch closes the two activation gates from the roadmap table (rows 3 and 4). The provider seam stays open (2026-10-17 activation record below); everything here is additional refusal logic, never additional authority.
+
+### Private configuration and explicit authorization
+
+Live text extraction needs all of: `GIGMATE_LLM_LIVE=1`, `GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1`, a DeepSeek key, a JSON-capable model, `GIGMATE_WORKSPACE_TIMEZONE`, and at least one daily budget bound. Omitting any of them refuses before the HTTP client is constructed, so no content leaves the process and nothing is billed. `GIGMATE_LLM_LIVE_ACCOUNTS` optionally narrows live traffic to named accounts; an account outside the list gets `llm:account-not-authorized`. Credentials and the endpoint remain in the worker/server environment only; they are never put on the request, the proposal, the trace, the API response or the frontend.
+
+### Budget
+
+`gigmate.extraction.budget` sums today's committed `model_call_traces` for the account (rows, not a separate counter, so usage and evidence cannot disagree; local `deterministic`/`disabled` traces are excluded, any other provider counts) and attaches the counters to `ExtractionRequest`. `GIGMATE_LLM_DAILY_CALL_BUDGET` and/or `GIGMATE_LLM_DAILY_TOKEN_BUDGET` set the bound. With no bound configured, live traffic refuses with `llm:budget-not-configured`; at or above a bound it refuses with `llm:budget-exhausted`. Both refusals happen before I/O and persist zero usage. A vendor that omits token counts still consumes one call of the call budget, so silence cannot make usage look free. The provider never reads the database; it only compares the numbers the worker attached.
+
+### Time basis
+
+The worker attaches the inbox message's received time (UTC, `Z`) and `GIGMATE_WORKSPACE_TIMEZONE` to every live request. They are rendered into the user message and the prompt resolves relative dates against them only. Missing either value refuses with `llm:time-basis-missing`. Output schedules must satisfy the contract's UTC-only timestamp type; an offset or a date-only value fails validation and becomes `llm:response-schema-failed`, never a silently reinterpreted local time.
+
+### Provenance re-binding
+
+The model's `conversation_id`, `base_context_version`, `work_order_id`, `base_work_order_version` and every change's `sources` are overwritten from the server-issued request before validation:
+
+* `conversation_id` and `base_context_version` are always the request's;
+* `work_order_id` must be one of `candidate_work_order_ids`; with exactly one candidate it is forced;
+* `base_work_order_version` must equal the request's snapshot version;
+* each `sources` entry is replaced by the exact message id/revision that produced the request.
+
+A response naming an order outside the candidate set, a different base version, or a candidate list containing unknown orders becomes `llm:provenance-mismatch` with no changes. Message identity is deliberately not sent to the model, so it cannot choose the attribution. After the call returns, the worker re-reads the conversation; if the context advanced during the call, the proposal is kept as cost/evidence but no `RequirementChange` is materialized and the job records `SOURCE_SUPERSEDED`.
+
+### Timeouts, unknown outcomes and retry
+
+Only failures that provably did not start work are retried: TCP connect failures, `408` and `429`. A read timeout, a dropped connection after submission, a `5xx` and a malformed 2xx body are reported as `llm:result-unknown` or `llm:response-malformed`, persisted with `total_tokens = NULL`, surfaced as `EXTRACTION_RESULT_UNKNOWN` on the job, and never resubmitted automatically. A proposal is still a proposal: nothing is confirmed, approved or sent, so an unknown outcome cannot execute a business change.
+
+Diagnostics are stable codes plus the status class (`LLM HTTP call failed (status-401); endpoint and credential details are redacted.`). Vendor URLs, exception messages, headers and keys are not persisted or logged.
+
+### Real media recognition
+
+Media keeps the existing `GIGMATE_MEDIA_LIVE` / `GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN` transport gates and adds two explicit authorizations:
+
+* `GIGMATE_MEDIA_MODALITIES` lists the modalities allowed to send real bytes (`ocr`, `asr`, `pdf`, `text`). Empty refuses everything with `MEDIA_MODALITY_NOT_AUTHORIZED` even when the live switch is on, so verifying OCR never silently enables transcription or document shipping.
+* `GIGMATE_MEDIA_VISION_VENDORS` lists vendors whose image input was actually verified. OCR to any other vendor refuses with `MEDIA_VISION_VENDOR_UNVERIFIED` before client construction; DeepSeek chat-completions is not assumed to accept images.
+
+ASR still requires `GIGMATE_MEDIA_AUDIO_VENDOR` (OpenAI-compatible); PDF/text keep their local parse and bound checks. No new model vendor is introduced and no real vendor call was made in this environment.
+
+### Attachments become work-order evidence
+
+`POST /api/v1/work-orders/{id}/evidence` keeps one already-reviewed attachment as order evidence. The command echoes the reviewed binding (`attachment_id`, `expected_attachment_version`, `expected_context_version`, `expected_result_job_id`) and the server re-validates account ownership, active connection/source, consent, expiry, review presence and the original file bytes. The attachment's conversation must already be linked to the order, otherwise `MEDIA_ORDER_LINK_REQUIRED`. A newer result than the reviewed one refuses with `MEDIA_RESULT_CHANGED`; a changed file/version/context refuses with `MEDIA_SOURCE_CHANGED`.
+
+The mapping row (migration `0015_work_order_evidence`) snapshots attachment version, context version, result-job id and SHA-256, and is unique per `(work_order_id, attachment_id, attachment_version)` so re-submitting the same binding is idempotent. Later changes never rewrite it: `GET /api/v1/work-orders/{id}/evidence` computes `stale` and a stable `stale_reason` on read. Promotion writes no `RequirementChange`, confirms no customer fact and grants no approval or send authority; it records a merchant decision that the reviewed file supports this order. A merchant approval still binds recipient, content, versions, expiry and action revision separately.
+
 ## PDF resource isolation
 
 The vendor preflight now calls a private child process, not pypdf in the business worker. Defaults: 20 seconds wall time, 512 MiB, one parser per worker process, 20 MiB input and 1 MiB serialized output. Trusted server settings `GIGMATE_PDF_TIMEOUT_SECONDS` (1–60) and `GIGMATE_PDF_MEMORY_MIB` (128–1024) are propagated to API/worker by the media Compose overlay; they are not request parameters. Existing page/segment/text bounds and partial coverage checks remain.
@@ -20,7 +68,7 @@ PR #21 includes the PDF branch at `0d91ad1`. Text-layer PDFs are parsed locally 
 
 Cancellation, pause/revocation and derivative expiry retain the attachment/request identity for in-flight processing or unresolved reconciliation. Late model content and reviews are suppressed, including after regrant. The original lease can record a definite return or an explicit pre-submission processing refusal, releasing the gate without restoring content; an uncertain outcome retains result_unknown and blocks another request. Reconciliation cannot start while the original lease is live and performs only read-only lookup. Stopping pending reconciliation retains the original uncertainty. Restoring consent alone never authorizes resubmission; changed/expired sources may prevent automatic lookup and require operator handling. No forced-clear or blind-resend endpoint was added.
 
-The model remains `_ENABLED=False`. Shared DeepSeek deployment, real vision/audio credentials and capability, timestamp grounding, prompt-injection and vendor acceptance are separate work. This does not implement scanned-PDF OCR or WhatsApp sending.
+The model remains `_ENABLED=False` as of that batch; the 2026-10-17 section above supersedes it. Timestamp grounding, budget, provenance binding and per-modality authorization are implemented there. Shared DeepSeek deployment, real vision/audio credentials and capability, and vendor acceptance still require an operator's own verified run. This does not implement scanned-PDF OCR or WhatsApp sending.
 
 ## Real PDF parser and two-layer extraction — 2026-10-12
 
@@ -48,8 +96,8 @@ Before enabling real media, B still needs a real PDF parser, explicit model capa
 
 2026-10-09 integration update: [WAHA/extraction acceptance](role-a-integration-acceptance.md) records the merged control/worker handoff. Current Alembic head is `0007_merge_waha_extraction`, joining the unchanged B evidence migration and A's controls/provider-sample branch. Windows tests use pytest-owned temporary files; the default provider still refuses live extraction and no real-model/network integration was added.
 
-Updated: 2026-10-10 (merge of the #18 gate-off/prompt-malformed fixes with
-the #20 inactive HTTP implementation and always-closed skeleton gate).
+Updated: 2026-10-17 (real-model activation: the DeepSeek / OpenAI-compatible
+seam is wired and its implementation gate is open).
 [Chinese](../zh/role-b-extraction.md). Builds on
 [team local development](role-a-team-local-development.md) and the
 [handoff summary](role-a-waha-handoff.md).
@@ -79,16 +127,22 @@ This batch delivers:
 - An offline evaluation harness driven by `scripts/run_evaluation.py` over
   `contracts/evaluation/manifest.json`.
 
-Real-model integration (Anthropic, OpenAI or other concrete providers) is a
-separately authorized batch. The seam exists so that adding a real provider
-does not touch the worker, the contracts or the existing Replay behaviour.
-This batch ships the `llm` provider with the **inactive call implementation**:
-registry selection, configuration, prompt versioning and the
-OpenAI-compatible HTTP/parse call shape are wired in place behind the
-always-closed `LLMProvider._SKELETON_SEAM` flag, so activating the real
-model only has to clear the pre-activation acceptance gates below and flip
-that flag (plus the operator gate) — no worker, contract or registry
-changes.
+Real-model integration targets DeepSeek as the default vendor, with any
+OpenAI-compatible vendor (`deepseek` / `openai` / `custom`) reachable through
+the same call shape. The seam exists so that adding a real provider does not
+touch the worker, the contracts or the existing Replay behaviour.
+
+The `llm` provider is now **wired for real calls**: `LLMProvider._SKELETON_SEAM`
+is `False`, so `_invoke_model` performs the actual OpenAI-compatible
+chat-completions POST. `GIGMATE_LLM_LIVE=1` plus a non-empty
+`GIGMATE_LLM_API_KEY` are what decide whether a given deployment reaches the
+vendor; without them the provider refuses with `llm:live-gate-off` /
+`llm:not-configured` and no client is constructed. The pre-activation
+acceptance gates below are still **not** all cleared — in particular no real
+vendor request has been made yet, so vendor/endpoint semantics, real codec
+behaviour and prompt-injection resilience remain unverified. See
+[implementation status](implementation-status.md) for what was and was not
+proven in the activation batch.
 
 ## Boundaries
 
@@ -165,72 +219,72 @@ Provider selection goes through `gigmate.extraction.provider()`:
 | --- | --- |
 | `GIGMATE_EXTRACTION_PROVIDER=deterministic` (default) | Default provider; recognizes only the two canonical Replay fixtures. |
 | `GIGMATE_EXTRACTION_PROVIDER=disabled` | All extraction requests return `needs_review` with empty changes. |
-| `GIGMATE_EXTRACTION_PROVIDER=llm` | Real-model seam with the inactive call implementation; returns `needs_review` with `llm:seam-pending` while `_SKELETON_SEAM=True`. |
+| `GIGMATE_EXTRACTION_PROVIDER=llm` | Real-model provider (DeepSeek by default). Reaches the vendor when `GIGMATE_LLM_LIVE=1` and `GIGMATE_LLM_API_KEY` are set; otherwise returns `needs_review` with `llm:live-gate-off` or `llm:not-configured`. |
 | Unknown name | Raise at startup; never silently fall back. |
 
 Tests inject providers through
 `gigmate.extraction.registry._reset_provider_for_testing` to avoid touching
 process-level state.
 
-### `llm` provider skeleton
+### `llm` provider (DeepSeek / OpenAI-compatible)
 
-`gigmate.extraction.llm.LLMProvider` is the non-emitting seam for the
-separately authorized real-model batch. It honours the same
-`ExtractionRequest.origin` trust boundary as the deterministic provider, reads
-a versioned prompt file from `gigmate/extraction/prompts/`, and persists the
-configured model and prompt versions in `ModelCallTrace` so reviewers can see
-why a request was refused.
+`gigmate.extraction.llm.LLMProvider` is the real-model provider. It honours the
+same `ExtractionRequest.origin` trust boundary as the deterministic provider,
+reads a versioned prompt file from `gigmate/extraction/prompts/`, and persists
+the configured model and prompt versions in `ModelCallTrace` so reviewers can
+see why a request was refused.
 
-This batch ships the provider with an **inactive call implementation** on
-purpose: `_invoke_model` performs the real OpenAI-compatible
-chat-completions POST (30 s timeout, one retry) and `_parse_response`
-validates the JSON against `ChangeProposal`, but the always-closed class
-flag `LLMProvider._SKELETON_SEAM` keeps every request away from the
-network until the pre-activation acceptance gates below are cleared on
-their own authorized batch. Until then the module performs no real
-network calls regardless of which environment variables are exported, and
-only `GIGMATE_LLM_API_KEY` is read; `OPENAI_API_KEY` /
-`ANTHROPIC_API_KEY` are deliberately not consulted so model credentials
-stay under the operator's explicit control.
+`_invoke_model` performs the real OpenAI-compatible chat-completions POST
+(30 s timeout, one retry) and `_parse_response` validates the JSON against
+`ChangeProposal`. The implementation gate `LLMProvider._SKELETON_SEAM` is
+`False`, so the call path is reachable; `GIGMATE_LLM_LIVE` and
+`GIGMATE_LLM_API_KEY` are the gates a deployment must actually open. Only
+`GIGMATE_LLM_API_KEY` is read; `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` are
+deliberately not consulted so model credentials stay under the operator's
+explicit control.
 
-Configuration (environment variables, all optional until the seam is filled):
+Every outcome carries `usage` — the vendor's token accounting normalised to
+`prompt_tokens` / `completion_tokens` / `total_tokens`, with vendor-specific
+extras (DeepSeek's cache counters) dropped — and `persist_proposal` writes it
+to `model_call_traces.prompt_tokens` / `completion_tokens` / `total_tokens`
+(migration `0014_llm_usage`). Every refusal path leaves them `NULL`: "no call
+reached the vendor" is a different fact from "the call was free".
+
+Configuration (environment variables):
 
 | Variable | Purpose |
 | --- | --- |
 | `GIGMATE_LLM_PROVIDER` | Vendor name (`deepseek`, `openai`, `custom`). Used in `model_version` and as a sanity check that the operator picked a vendor this build supports. |
 | `GIGMATE_LLM_MODEL` | Model identifier (e.g. `deepseek-chat`, `gpt-4o-mini`). Default marker `skeleton:pending` until configured. |
 | `GIGMATE_LLM_API_KEY` | Server-side only. The provider reads this on every call; it is never stored on the instance or logged. |
-| `GIGMATE_LLM_ENDPOINT` | Optional base URL override (defaults to `https://api.deepseek.com`). |
+| `GIGMATE_LLM_ENDPOINT` | Optional base URL override. Without it the endpoint follows the vendor: `deepseek` -> `https://api.deepseek.com`, `openai` -> `https://api.openai.com`, `custom` -> refused with `llm:not-configured` (an explicit endpoint is required). |
 | `GIGMATE_LLM_PROMPT_PATH` | Optional override of the bundled prompt file. |
-| `GIGMATE_LLM_LIVE=1` | The explicit operator gate. Required to actually invoke the model once `_SKELETON_SEAM` is flipped. Until then the skeleton gate refuses first; after the flip, a closed operator gate still refuses every call at the provider layer with `llm:live-gate-off`, even when the vendor and model are configured. Either way a misconfiguration surfaces immediately in the trace rather than silently falling back to a real model call. |
-| `GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1` | Opt-in switch that lets `request.origin == "live"` traffic reach the model once the skeleton flag is open. Defaults to off. |
+| `GIGMATE_LLM_LIVE=1` | The explicit operator gate. Required to actually invoke the model: while it is off the provider refuses every call at the provider layer with `llm:live-gate-off`, even when the vendor and model are configured. A misconfiguration surfaces immediately in the trace rather than silently falling back to a real model call. |
+| `GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1` | Opt-in switch that lets `request.origin == "live"` traffic reach the model. Defaults to off. |
 
 #### Two-gate safety net
 
 Two gates must be open before `_invoke_model` runs:
 
-1. **Class flag `LLMProvider._SKELETON_SEAM`** — `True` in this batch.
-   While `True` the provider refuses every call with `llm:seam-pending` no
-   matter which environment variables are exported, and no HTTP client is
-   even constructed. This is the safety net that prevents a future
-   implementation of `_invoke_model` from silently flipping into "real
-   call" mode if the next batch only fills in the seam method.
-2. **`GIGMATE_LLM_LIVE=1`** — operator switch. Even after the class flag
-   is flipped to `False`, the provider still refuses every call with
-   `llm:live-gate-off` unless `GIGMATE_LLM_LIVE=1` is exported.
+1. **Class flag `LLMProvider._SKELETON_SEAM`** — `False` (the seam is
+   implemented). While it is `True` the provider refuses every call with
+   `llm:seam-pending` no matter which environment variables are exported,
+   and no HTTP client is even constructed. This is the safety net that
+   prevents a build whose `_invoke_model` regressed to a stub from
+   silently flipping into "real call" mode.
+2. **`GIGMATE_LLM_LIVE=1`** — operator switch. The provider refuses every
+   call with `llm:live-gate-off` unless `GIGMATE_LLM_LIVE=1` is exported.
 
-The checks run in order: malformed-prompt check → skeleton flag →
+The checks run in order: malformed-prompt check → implementation gate
+(`llm:seam-pending` only if `_SKELETON_SEAM` is back to `True`) →
 configuration (missing vendor/model or API key → `llm:not-configured`) →
 live gate (`llm:live-gate-off`) → wire check (vendor known, key set) →
 live-origin guard (`llm:origin-live-refused` unless
-`GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1`) → `_invoke_model`. With the skeleton
-flag `True` every call — operator gate on or off, configured or not — is
-refused with `llm:seam-pending` before any client is constructed, so a
-misconfigured deployment cannot accidentally emit a real network request.
-The post-flip behaviour (`llm:live-gate-off`, `llm:origin-live-refused`
-and the fake-client request shape) is pinned by isolated tests that flip
-`_SKELETON_SEAM=False` on a test-only subclass; the production flag stays
-closed.
+`GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1`) → `_invoke_model`. Tests pin both
+directions: the open path with a fake client
+(`test_llm_provider_live_gate_on_sends_fake_client_request`) and the closed
+implementation gate on a test-only subclass
+(`test_llm_provider_implementation_gate_still_refuses_when_closed`).
 
 #### Prompt loading failure modes
 
@@ -259,11 +313,13 @@ boundary — and is the single seam the next batch edits together with the
 gate flip.
 
 `case-008-llm-skeleton-needs-review` in the evaluation manifest pins the
-skeleton behaviour when the manifest is run with `--provider llm`. Universal
-needs_review cases (3, 4, 5, 6, 7) also pass under `llm` because the skeleton
-refuses everything. The matched cases (1, 2) are expected to fail under `llm`
-because the skeleton has no real model to call yet; they pass under the
-default deterministic provider.
+refusal behaviour when the manifest is run with `--provider llm`. Universal
+needs_review cases (3, 4, 5, 6, 7) also pass under `llm`. The matched cases
+(1, 2) are expected to fail under `llm` while no real key is configured: the
+provider refuses with `llm:not-configured` (or `llm:live-gate-off` when the
+key is present but the switch is off) and never produces a match. They pass
+under the default deterministic provider. Running the manifest with a real
+DeepSeek key is still unverified — see the acceptance gates above.
 
 The switch applies to **both** paths: the worker's WAHA branch and the legacy
 Replay `gigmate.understanding.extract` entry point both resolve the provider
@@ -491,16 +547,19 @@ PostgreSQL tests are the meaningful run; SQLite does not prove row-locking
 and only confirms conditional compatibility. Synthesize real WhatsApp
 traffic is out of scope for this batch.
 
-## Pre-activation acceptance gates
+## Pre-activation acceptance gates (still open)
 
-The current batch ships the **inactive call implementation**: the
-HTTP / parse / schema paths are present, but `_SKELETON_SEAM = True`
-and the live gate default-off keep every request from reaching the
-network. The seam, prompt-versioning chain and live-origin guard are
-in place as testable code; the following acceptance gates are
-**not** in scope for this PR and must be cleared (each on its own
-authorised batch, with their own review) before the seam is flipped
-and live traffic is allowed through the real-model provider:
+**Status 2026-10-17: the implementation gate has been flipped, but these
+gates have not been cleared.** `LLMProvider._SKELETON_SEAM` is now `False`
+and the media seam flag is on, so the real call path is reachable once an
+operator exports `GIGMATE_LLM_LIVE=1` and a real key. That means the items
+below are no longer "pre-activation theory" — they are **live risks in the
+current code** and each one still needs its own authorised batch and review
+before this provider is trusted with real customer traffic. An operator who
+has not configured a key is unaffected: the provider refuses with
+`llm:not-configured` / `llm:live-gate-off` and builds no client.
+
+The following acceptance gates are **not** cleared:
 
 - **Trusted identity and provenance must not be decided by the
   model.** The current `_parse_response` only does structural
@@ -516,20 +575,20 @@ and live traffic is allowed through the real-model provider:
   must surface as `llm:response-schema-failed` with a stable error
   code, never as `matched`. This gate does not require sending any
   more UUIDs to the model; it only needs stricter post-validation.
-- **Vendor / endpoint semantics must be explicit.** Today's code
-  treats `GIGMATE_LLM_PROVIDER=openai` (or any other vendor name) as
-  "use the DeepSeek default endpoint unless the operator overrode
-  `GIGMATE_LLM_ENDPOINT`". Once the seam is open, that is a footgun:
-  a worker configured for one vendor can quietly call another
-  vendor's service. Before activation, the provider must
-  - reject an unknown `GIGMATE_LLM_PROVIDER` value, and
-  - bundle each known vendor with its own documented default
-    endpoint, and
-  - require `GIGMATE_LLM_ENDPOINT` when the vendor is `custom`.
-  If `openai` is meant to denote "any OpenAI-compatible protocol"
-  rather than "OpenAI the vendor", the configuration surface and
-  docs need to say so explicitly so reviewers do not infer the
-  narrower meaning.
+- **Vendor / endpoint semantics must be explicit.** — **cleared
+  2026-10-17.** `LLMProvider._resolve_endpoint()` now bundles each
+  known vendor with its own documented default endpoint (`deepseek`
+  -> `https://api.deepseek.com`, `openai` ->
+  `https://api.openai.com`), refuses `custom` without an explicit
+  `GIGMATE_LLM_ENDPOINT` with `llm:not-configured`, and an unknown
+  `GIGMATE_LLM_PROVIDER` was already rejected by
+  `_is_wired_for_live`. A vendor that does not support
+  `response_format=json_object` (`deepseek-reasoner`) is refused
+  locally with `llm:model-unsupported`. Only the naming question
+  remains: if `openai` is meant to denote "any OpenAI-compatible
+  protocol" rather than "OpenAI the vendor", the configuration
+  surface and docs need to say so explicitly so reviewers do not
+  infer the narrower meaning.
 - **Retry must be designed with the worker lock and lease.** The
   current `_call_chat_completion` retries once on every
   `httpx.HTTPError` plus every `KeyError` / `IndexError` /
@@ -576,22 +635,22 @@ and live traffic is allowed through the real-model provider:
   portion must be redacted of the endpoint, the vendor and the
   API key prefix.
 
-These gates are recorded here so reviewers can confirm that the
-current PR does not silently open the seam. Each one is a separate
-piece of work with its own batch and review.
+These gates are recorded here so reviewers can see exactly what is still
+unproven now that the call path is open. Each one is a separate piece of
+work with its own batch and review.
 
 ## Open follow-ups
 
-- Real-model provider activation: the next authorized batch must
-  (a) clear the pre-activation acceptance gates above (provenance
-  re-binding, vendor/endpoint semantics, retry/lease design, date basis,
-  sanitised diagnostics), (b) flip
-  `LLMProvider._SKELETON_SEAM` to `False`, and (c) gate real
-  authorization + live-origin flow with their own dedicated review
-  (the live-origin guard currently lives in this provider but is
-  unreachable while the seam flag is `True`; its
-  `GIGMATE_LLM_ALLOW_LIVE_ORIGIN` opt-in is pinned by isolated
-  test-only-subclass tests). Adding the
+- Real-model provider activation: the implementation gate flip
+  (`LLMProvider._SKELETON_SEAM = False`) and the media seam flag are done,
+  but the authorized follow-up batch must still (a) clear the acceptance
+  gates above (provenance re-binding, vendor/endpoint semantics,
+  retry/lease design, date basis, sanitised diagnostics), (b) make at least
+  one **real** vendor call with a real key and record the evidence (no such
+  call has been made yet), (c) gate real authorization + live-origin flow
+  with their own dedicated review (the live-origin guard is reachable now;
+  its `GIGMATE_LLM_ALLOW_LIVE_ORIGIN` opt-in is pinned by isolated
+  tests and still defaults to off). Adding the
   prompt-injection regression suite + latency budget is also part of
   that batch. The seam, prompt-versioning fallback chain,
   `llm:prompt-malformed` and `llm:seam-pending` trace notes, the

@@ -10,6 +10,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from gigmate.approvals import draft_for_change
+from gigmate.config import workspace_timezone
 from gigmate.contracts import RequirementChange
 from gigmate.db import (
     Account,
@@ -30,13 +31,16 @@ from gigmate.extraction import (
     persist_proposal,
     provider,
 )
+from gigmate.extraction.budget import snapshot as budget_snapshot
 from gigmate.understanding import extract
 from gigmate.waha_recovery import worker_heartbeat
 
 log = logging.getLogger("gigmate.worker")
 
 EXTRACTION_NEEDS_REVIEW = "EXTRACTION_NEEDS_REVIEW"
+EXTRACTION_RESULT_UNKNOWN = "EXTRACTION_RESULT_UNKNOWN"
 OWN_SEND_ECHO = "OWN_SEND_ECHO"
+_SOURCE_SUPERSEDED = "SOURCE_SUPERSEDED"
 
 
 def run_once(factory=Session):
@@ -122,7 +126,7 @@ def run_once(factory=Session):
                         )
                     )
                 )
-                matched = _route_through_provider(
+                matched, outcome_code = _route_through_provider(
                     db,
                     account=account,
                     inbox=inbox,
@@ -131,7 +135,7 @@ def run_once(factory=Session):
                     linked=linked,
                 )
                 job.state = "completed"
-                job.error_code = None if matched else EXTRACTION_NEEDS_REVIEW
+                job.error_code = None if matched else (outcome_code or EXTRACTION_NEEDS_REVIEW)
             else:
                 linked = list(
                     db.scalars(
@@ -217,12 +221,14 @@ def _route_through_provider(
 ) -> bool:
     """Invoke the registered extraction provider and persist its evidence.
 
-    Returns ``True`` only when the proposal was matched and at least one
-    ``RequirementChange`` row was created. The WAHA branch always marks the
-    request ``origin="live"``; the deterministic default provider therefore
-    returns ``needs_review`` for live content even when the text equals a
-    synthetic fixture. A provider that wants to mark ``matched`` for live
-    content must be a separately authorized batch.
+    Returns ``(materialized, error_code)``. ``materialized`` is ``True`` only
+    when the proposal was matched and at least one ``RequirementChange`` row
+    was created; ``error_code`` distinguishes an unknown model outcome
+    (``EXTRACTION_RESULT_UNKNOWN``, never auto-retried and possibly charged)
+    and a context that advanced during the call (``SOURCE_SUPERSEDED``) from
+    an ordinary needs-review result. The WAHA branch always marks the request
+    ``origin="live"``, so the deterministic default provider still refuses
+    live content.
     """
     target_order_id: str | None = None
     base_snapshot = None
@@ -233,6 +239,10 @@ def _route_through_provider(
             target_order_id = target.id
             base_snapshot = target.data
             base_version = target.data.get("version")
+    received_at = inbox.received_at
+    if received_at.tzinfo is None:
+        received_at = received_at.replace(tzinfo=UTC)
+    budget = budget_snapshot(db, account.id)
     request = ExtractionRequest(
         account_id=account.id,
         conversation_id=conversation.id,
@@ -244,6 +254,9 @@ def _route_through_provider(
         base_work_order_version=base_version,
         base_work_order_snapshot=base_snapshot,
         origin="live",
+        message_received_at=received_at.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        workspace_timezone=workspace_timezone(),
+        **budget.as_request_fields(),
     )
     outcome = provider().propose(request)
     proposal_row = persist_proposal(
@@ -254,6 +267,13 @@ def _route_through_provider(
         proposal=outcome.proposal,
         outcome=outcome,
     )
+    unknown = "llm:result-unknown" in outcome.notes
+    # Revalidate after the model call: a new message may have advanced the
+    # context while the request was in flight. The proposal is still kept as
+    # evidence (and cost accounting), but it must not materialize changes.
+    db.refresh(conversation)
+    if conversation.context_version != request.context_version:
+        return False, _SOURCE_SUPERSEDED
     if outcome.proposal.assignment.value == "matched" and target_order_id is not None:
         order = db.get(WorkOrderRow, target_order_id)
         new_ids = persist_changes_for(
@@ -276,8 +296,10 @@ def _route_through_provider(
                 # Role B's draft_text is a merchant-facing summary (prompt v1), not a
                 # customer reply, so the customer-facing body uses the role C template.
                 draft_for_change(db, account.id, order, conversation, change.data)
-            return True
-    return False
+            return True, None
+    if unknown:
+        return False, EXTRACTION_RESULT_UNKNOWN
+    return False, None
 
 
 def complete_metrics(job, inbox, began):

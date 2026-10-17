@@ -39,6 +39,8 @@ _AUDIO_VENDOR_ENV = "GIGMATE_MEDIA_AUDIO_VENDOR"
 _AUDIO_MODEL_ENV = "GIGMATE_MEDIA_AUDIO_MODEL"
 _API_KEY_ENV = "GIGMATE_MEDIA_API_KEY"
 _ENDPOINT_ENV = "GIGMATE_MEDIA_ENDPOINT"
+_MODALITIES_ENV = "GIGMATE_MEDIA_MODALITIES"
+_VISION_VENDORS_ENV = "GIGMATE_MEDIA_VISION_VENDORS"
 
 _PROMPT_PATH_ENV = "GIGMATE_MEDIA_PROMPT_PATH"
 _DEFAULT_PROMPT_FILENAME = "role_b_media_v1.txt"
@@ -318,6 +320,39 @@ def is_live_origin_allowed() -> bool:
     return os.environ.get(_LIVE_ORIGIN_GATE, "").strip() == "1"
 
 
+def authorized_modalities() -> frozenset[str]:
+    """Return the explicitly authorized media modalities.
+
+    Empty by default: ``GIGMATE_MEDIA_LIVE`` opens the transport, but each
+    modality (``ocr`` / ``asr`` / ``pdf`` / ``text``) must also be named in
+    ``GIGMATE_MEDIA_MODALITIES`` before real bytes are sent. That keeps a
+    deployment that only verified image OCR from silently transcribing audio
+    or shipping documents.
+    """
+
+    raw = os.environ.get(_MODALITIES_ENV, "")
+    return frozenset(item.strip().lower() for item in raw.split(",") if item.strip())
+
+
+def is_modality_authorized(dispatch: str) -> bool:
+    return dispatch in authorized_modalities()
+
+
+def vision_vendors() -> frozenset[str]:
+    """Vendors whose image/vision input has been verified by the operator.
+
+    Empty by default: a chat-completions vendor is not assumed to accept image
+    content merely because it accepts text.
+    """
+
+    raw = os.environ.get(_VISION_VENDORS_ENV, "")
+    return frozenset(item.strip().lower() for item in raw.split(",") if item.strip())
+
+
+def is_vision_vendor_verified(vendor: str) -> bool:
+    return vendor.strip().lower() in vision_vendors()
+
+
 def env_summary() -> dict[str, str]:
     """Return a redacted summary of the media-processor env for diagnostics.
 
@@ -333,6 +368,8 @@ def env_summary() -> dict[str, str]:
         "audio_vendor": os.environ.get(_AUDIO_VENDOR_ENV, "openai"),
         "audio_model": os.environ.get(_AUDIO_MODEL_ENV, ""),
         "endpoint": os.environ.get(_ENDPOINT_ENV, ""),
+        "modalities": ",".join(sorted(authorized_modalities())),
+        "vision_vendors": ",".join(sorted(vision_vendors())),
         "api_key": "***" if os.environ.get(_API_KEY_ENV, "") else "",
     }
 
@@ -346,9 +383,13 @@ __all__ = [
     "chat_extraction_completions",
     "default_client_factory",
     "dispatch_key",
+    "authorized_modalities",
     "env_summary",
     "is_live_origin_allowed",
     "is_live_unlocked",
+    "is_modality_authorized",
+    "is_vision_vendor_verified",
+    "vision_vendors",
     "read_prompt_version",
     "resolve_pdf_prompt_path",
     "resolve_prompt_path",

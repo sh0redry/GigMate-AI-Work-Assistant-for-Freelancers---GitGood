@@ -1,5 +1,7 @@
 # Business API agreement
 
+2026-10-17 real-model and media-promotion batch: implemented `POST /work-orders/{id}/evidence` and `GET /work-orders/{id}/evidence` (migration 0015, `WorkOrderEvidenceCommand` / `WorkOrderEvidenceView`). A merchant can keep an already source-reviewed attachment as work-order evidence. The command echoes the exact reviewed binding (attachment version, context version, result-job UUID) and the server revalidates ownership, active connection/source, review, and original-file integrity before writing; the attachment's conversation must already be linked to the order. Re-submitting the same binding is idempotent. The row snapshots attachment version, context version, result job and SHA-256; later source/result/context changes do not rewrite it — reads return `stale: true` with a stable `stale_reason`. This writes no `RequirementChange`, confirms no field, and grants no sending authority. The extraction provider's live gates, daily budget, time basis and provenance re-binding are described in [role B extraction](../docs/en/role-b-extraction.md); they change no HTTP shape here.
+
 2026-10-10 A media batch 2: implemented read-only `GET /connectors/{id}/media/attachments/{attachment_id}/evidence`, returning source-reviewed `WahaMediaEvidence` 0.1.0 with required expected attachment/context versions and result-job UUID. Ownership, active authorization, source/expiry, exact review and original-file integrity are rechecked; no-store applies. This is context handoff, not a work-order promotion/confirmation or execution permission. Media commands accept an optional validated IANA timezone; the queued input context records merchant choice and original message time separately from event/observation time. Missing evidence remains null. Requires additive migration 0010; see [A/B/C media protocol](../docs/en/role-a-media-ingestion.md).
 
 Status: **wire baseline 0.1.0, v0.2 subset implemented**. Prefix: `/api/v1`. JSON and server-session HttpOnly/SameSite=strict cookies; CSRF tokens and trusted-origin checks protect mutations. COOKIE_SECURE defaults false for loopback HTTP development; this is not production authentication. Resources are scoped by trusted account context, never client account IDs. Implemented routes are listed in generated [OpenAPI](openapi.json).
@@ -55,6 +57,8 @@ Errors: `{"error": {"code": "VERSION_CONFLICT", "message": "Refresh and review t
 | GET /work-orders/{id}/changes | pagination | Requirement changes and customer-confirmation state |
 | POST /work-orders/{id}/changes/{change_id}/confirm | ConfirmChangeCommand | Merchant-approved internal mutation; conflict checks and atomic dependent updates |
 | POST /work-orders/{id}/changes/{change_id}/reject | RejectCommand | Record rejection; preserve history |
+| POST /work-orders/{id}/evidence | WorkOrderEvidenceCommand | Keep one reviewed attachment as order evidence; revalidates the exact review and conversation link, idempotent binding, no field confirmation |
+| GET /work-orders/{id}/evidence | pagination | Evidence links with computed `stale` / `stale_reason` |
 | GET /actions | pagination, optional state | Review queue or execution history |
 | GET /actions/{id} | ID | Server-produced snapshot hash and provenance |
 | POST /actions/{id}/approve | ApproveActionCommand | Approve exact current snapshot, create durable work; return 202, not sent |
@@ -74,7 +78,7 @@ For send_text snapshots, hash exactly these fields from the stored action: id, a
 
 ## Work orders from conversation to confirmation (planned, role C)
 
-Status: **planned contract, not implemented**. Proposed 2026-10-09 for team review (see Issue #7). Implementation adds source models/routes and regenerated OpenAPI; until then OpenAPI remains authoritative for implemented behavior. Everything below is a local database operation: none of it requires the WhatsApp connector or a model to be available, and nothing is sent without merchant approval.
+Status: **planned contract, not implemented**. Proposed 2026-10-09 for team review (see Issue #7). Implementation adds source models/routes and regenerated OpenAPI; until then OpenAPI remains authoritative for implemented behavior. At the 2026-10-16 feature freeze nothing here is implemented, including manual creation: there is no `POST /work-orders` route, and every work order still comes from the development seed. The recognition half is additionally blocked on role B publishing its "new work order" result format (Issue #31); role C enforces that result and does not define it, so this section cannot be implemented before that contract exists. Everything below is a local database operation: none of it requires the WhatsApp connector or a model to be available, and nothing is sent without merchant approval.
 
 Today every work order comes from the development seed, so a live conversation has no order to attach changes to. This section covers the whole path: recognizing jobs in a conversation, creating the order, following up on missing information, and confirming. The rule stays the same throughout: **AI proposes, deterministic rules check, the merchant decides.**
 

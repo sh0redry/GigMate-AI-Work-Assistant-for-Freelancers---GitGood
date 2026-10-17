@@ -256,6 +256,40 @@ class WahaMediaJob(Base):
     __table_args__ = (UniqueConstraint("connection_id", "request_key", name="uq_waha_media_key"),)
 
 
+class WorkOrderEvidenceRow(Base):
+    """Reviewed attachment kept as work-order evidence by a merchant.
+
+    The row snapshots every binding it was created with (attachment version,
+    context version, reviewed result job and file hash) so later changes can
+    be detected on read instead of silently rewriting history. It is not a
+    requirement change and never confirms a field.
+    """
+
+    __tablename__ = "work_order_evidence"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"), index=True)
+    work_order_id: Mapped[str] = mapped_column(ForeignKey("work_orders.id"), index=True)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"))
+    attachment_id: Mapped[str] = mapped_column(ForeignKey("waha_attachments.id"), index=True)
+    attachment_version: Mapped[int] = mapped_column(Integer)
+    context_version: Mapped[int] = mapped_column(Integer)
+    result_job_id: Mapped[str] = mapped_column(String(36))
+    sha256: Mapped[str] = mapped_column(String(64))
+    source_fingerprint: Mapped[str] = mapped_column(String(64))
+    mimetype: Mapped[str | None] = mapped_column(String(80))
+    review_note: Mapped[str | None] = mapped_column(String(2000))
+    note: Mapped[str | None] = mapped_column(String(2000))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (
+        UniqueConstraint(
+            "work_order_id",
+            "attachment_id",
+            "attachment_version",
+            name="uq_work_order_evidence_binding",
+        ),
+    )
+
+
 class MessageRow(Base):
     __tablename__ = "message_revisions"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -420,6 +454,12 @@ class ModelCallTrace(Base):
     latency_ms: Mapped[int] = mapped_column(Integer)
     refused_reason: Mapped[str | None] = mapped_column(String(256))
     notes: Mapped[list] = mapped_column(JSON)
+    # Vendor token accounting. Null whenever no call reached the vendor
+    # (every refusal path) or the vendor reported nothing usable, so a
+    # refused call can never look like it was billed.
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 

@@ -10,13 +10,14 @@ never accepts credentials or model endpoints over HTTP.
 The default implementation in :mod:`gigmate.media.processor` mirrors the two-gate
 safety pattern used by :mod:`gigmate.extraction.llm`:
 
-1. Module-level :data:`_ENABLED` flag. While ``False`` (the shipping default) the
-   processor refuses every call with :class:`gigmate.media_processing.ProcessingUnavailable`
-   *before* it reads any environment variable. This is the safety net that
+1. Module-level :data:`_ENABLED` flag. It is ``True`` because the vendor
+   adapters are implemented; while it is ``False`` the processor refuses every
+   call with :class:`gigmate.media_processing.ProcessingUnavailable` *before*
+   it reads any environment variable. Keeping the flag is the safety net that
    prevents a future contributor from silently turning the seam on by exporting
    :envvar:`GIGMATE_MEDIA_LIVE`.
-2. ``GIGMATE_MEDIA_LIVE=1`` operator switch. Even after the class flag flips,
-   the processor refuses every call unless this variable is exported.
+2. ``GIGMATE_MEDIA_LIVE=1`` operator switch. The processor refuses every call
+   unless this variable is exported, together with ``GIGMATE_MEDIA_API_KEY``.
 
 The seam returns :class:`gigmate.contracts.WahaMediaResult` proposals only.
 Merchant confirmation is enforced by :class:`gigmate.contracts.WahaMediaEvidence`
