@@ -5,7 +5,6 @@ import hashlib
 import importlib.metadata
 import json
 import re
-import sys
 import unicodedata
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone

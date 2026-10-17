@@ -31,6 +31,7 @@ from .routing import route
 
 log = logging.getLogger(__name__)
 
+_SEAM_ENABLE_ENV = "GIGMATE_MEDIA_ENABLED"
 _LIVE_GATE = "GIGMATE_MEDIA_LIVE"
 _LIVE_ORIGIN_GATE = "GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN"
 _CHAT_VENDOR_ENV = "GIGMATE_MEDIA_CHAT_VENDOR"
@@ -301,6 +302,18 @@ def dispatch_key(mimetype: str) -> str:
     only need to know which adapter handles a given MIME."""
 
     return route(mimetype)
+
+
+def is_seam_enabled() -> bool:
+    """Return True only when the operator switched the media seam itself on.
+
+    ``GIGMATE_MEDIA_ENABLED=1`` is the separate, evidenced step that replaces
+    the hardcoded ``False``; it never unlocks anything on its own because the
+    live switch, the per-modality authorization and the vision allowlist still
+    gate every call afterwards.
+    """
+
+    return os.environ.get(_SEAM_ENABLE_ENV, "").strip() == "1"
 
 
 def is_live_unlocked() -> bool:

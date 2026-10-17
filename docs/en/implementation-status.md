@@ -874,3 +874,94 @@ Latest d9e1fe7 passes the original provenance, collection-type, zero-budget and 
 ## Combined B/C repair validation — 2026-10-17
 
 Preserved both 0018 migration branches and added no-op merge revision 0020_business_model_heads after 0019_action_send_link. Worker keeps C per-job assignment and B post-call source/version checks. Added old-cache and immutable-body link regressions (22 boundary cases). Final isolated Linux/PostgreSQL complete suite: **957 passed / 1 skipped**; includes upgrades from model-cost, schedule-settings and send-link parents. Fresh PostgreSQL Alembic upgrade/check: one head, no schema drift. Frontend **143 passed**, TypeScript/Vite build passed, generated exports and full backend Ruff/format (121 files) passed. Foreign-account and occupied-key cases never contact a provider. No real WhatsApp/model acceptance claimed; model seams remain closed in this PR.
+
+
+## Live vendor, media and bounded drafts — 2026-10-17 (role B, issue #29 items 3-6)
+
+Independent review of PR #34 `reviewed_llm` (issue #29 item 1 for B): the paid
+call really is moved outside the business transaction — `worker.py` assigns
+`job.model_request_id` and persists it inside the locked block, performs
+`provider().propose(request)` with no session open, then re-takes the lock and
+refuses on consent, lease, source-revision, context, candidate or control-version
+change before writing. The child gets one 20 s deadline (`subprocess.run`
+TimeoutExpired -> kill + wait), one request (`_MAX_RETRIES = 0`), a 2 MiB
+in/out bound and an identity check on `request_id` / `conversation_id` /
+`base_context_version`; anything else is `llm:result-unknown` and is never
+resubmitted. `configured_for_live()` passes `None` into `_refusal_reason`,
+which is safe because that method only reads configuration. Ran
+`test_reviewed_product.py` on the PR head in a throwaway worktree: **27
+passed**. Two non-blocking notes remain: the timeout relies on
+`communicate()`'s kill + wait (there is no process-group kill), and an
+oversized child payload collapses into the generic `llm:result-unknown:process`
+code.
+
+**Live quality suite (issue #29 item 3).** `contracts/evaluation/live_quality.json`
+adds eight target scenarios — relative date with and without a time basis,
+partial reply, two open orders, a first-time request, a vague reply,
+instruction injection and a stale source revision — and
+`scripts/run_evaluation.py --open-seam` runs them against the real vendor
+(refused unless `GIGMATE_LLM_LIVE=1`; the default path stays free). The last
+real run was **8 passed / 0 failed**. It found a real defect: the vendor echoes
+the wrong identifier into `sources[].message_id` (observed: the work-order id
+on every proposal), so four of eight proposals were refused with
+`llm:response-provenance-failed:source-message-id`. Because a request carries
+exactly one message and revision, the server now writes the source itself
+(`_provenance_problem` re-binds, records `llm:source-rebound` on the trace and
+still refuses a change with no source at all), and prompt 1.3.0 tells the model
+to copy identifiers verbatim. Suggested new-order fields are re-bound the same
+way. An earlier run also showed the model proposing an address change after an
+injection payload (`proposed`, never `confirmed`); that is recorded as a real
+failure mode rather than hidden — the contract stopped it from becoming
+business state, but the suite must be re-run.
+
+**Real media (issue #29 item 4).** The seam flag is now configuration-owned:
+`GIGMATE_MEDIA_ENABLED=1` replaces the hardcoded `False` and is only the first
+gate — live switch, key, `GIGMATE_MEDIA_MODALITIES` and
+`GIGMATE_MEDIA_VISION_VENDORS` still follow — so enabling the seam authorises
+nothing on its own (pinned by `test_media_live_seam.py`, 9 cases). A real
+end-to-end OCR call on a synthetic image returned `segments: ["TUE 3PM"]`,
+`coverage: partial`, `model_version: deepseek:deepseek-chat`, prompt 1.1.0; a
+real text attachment returned the original text plus two sensible
+`unresolved_questions`. The first real response also exposed a second defect:
+the vendor adds keys the contract forbids (`segments[].index`), and under
+`extra=forbid` that failed the whole proposal, so unknown segment keys are now
+dropped server-side instead of trusted. Audio has no vendor in this build:
+`asr` is refused with `MEDIA_AUDIO_VENDOR_REQUIRED` unless
+`GIGMATE_MEDIA_AUDIO_VENDOR` names one, and naming DeepSeek is refused
+explicitly instead of posting the chat key to a default ASR endpoint.
+
+**Evidence promotion (issue #29, B/C).** `work_evidence.attach` now also
+refuses a disabled connection (`CONSENT_REVOKED`), expired bytes
+(`MEDIA_SOURCE_EXPIRED`) and a cancelled or failed media job
+(`MEDIA_RESULT_STOPPED`), so a late result cannot resurrect content a stop or a
+consent change already ended (10 evidence cases pass).
+
+**Bounded agent drafts (issue #29, B item 6).** `gigmate.agent_drafts` plus
+migration `0022_agent_drafts` add follow-up/polish drafts that are text only:
+created either from a proposal the extraction seam already produced under its
+own gates or from the merchant's own input — there is no free-form question
+path — and bounded by a daily ceiling, a TTL that reads as `expired`,
+revocation, opt-in quiet hours and one-time consumption. Consuming returns text
+and marks the row used; it never sends, never confirms a field and grants no
+execution authority (`execution_authority: false` in the payload). 7 cases pass.
+
+**Operator configuration check.** `scripts/check_model_config.py` reports
+whether an installation is privately configured (vendor, model, live gate,
+prices, budgets, token caps, time basis, media gates). It prints presence only
+and never echoes a key, and states that configuration completeness is not
+vendor, price or real-run acceptance.
+
+**Actual evidence for this batch:** backend suite (SQLite) **998 passed / 25
+skipped / 12 failed**, where the 12 are the pre-existing native-macOS
+`MEDIA_PDF_LIMIT_UNAVAILABLE` cases (the PDF isolation path is Linux-only);
+Ruff check/format clean; `export_contracts.py` synchronized; Alembic on a
+throwaway SQLite file reaches head `0022_agent_drafts` with no drift. Real
+vendor calls used the operator's own key, which stayed in a git-ignored local
+`.env` and was never committed.
+
+**Not done, recorded honestly:** no ASR/voice vendor is configured, so no real
+transcription was attempted; no PDF was processed end to end against a real
+vendor (the local parser refuses on native macOS by design); real OCR accuracy
+on customer scans, prompt-injection resilience under real photos, vendor rate
+limiting, long-run cost and PostgreSQL row locking remain unverified, and the
+live quality suite is 8 synthetic cases, not a production accuracy claim.

@@ -44,6 +44,15 @@ def _parse_args() -> argparse.Namespace:
         help="Target database URL. Defaults to DATABASE_URL or local sqlite.",
     )
     parser.add_argument(
+        "--open-seam",
+        action="store_true",
+        help=(
+            "Explicitly lift the always-closed llm skeleton seam for this run and "
+            "issue real, billed vendor calls. Requires GIGMATE_LLM_LIVE=1 and a "
+            "priced configuration; without it the run stays offline and free."
+        ),
+    )
+    parser.add_argument(
         "--json-out",
         type=Path,
         default=None,
@@ -56,6 +65,18 @@ def main() -> int:
     args = _parse_args()
     if args.provider:
         os.environ["GIGMATE_EXTRACTION_PROVIDER"] = args.provider
+    seam_opened = False
+    if args.open_seam:
+        # Lifting the seam is an operator decision, not a test convenience:
+        # it is refused unless the live gate is already on, so the default
+        # (and CI) path can never spend money by accident.
+        if os.environ.get("GIGMATE_LLM_LIVE") != "1":
+            sys.stderr.write("--open-seam requires GIGMATE_LLM_LIVE=1; refusing.\n")
+            return 2
+        from gigmate.extraction.llm import LLMProvider  # noqa: PLC0415
+
+        LLMProvider._SKELETON_SEAM = False
+        seam_opened = True
     engine = make_engine(args.database_url)
     Base.metadata.create_all(engine)
     factory = sessionmaker(engine, expire_on_commit=False)
@@ -65,6 +86,8 @@ def main() -> int:
         "started_at": summary.run_row.started_at.astimezone(UTC).isoformat(),
         "finished_at": summary.run_row.finished_at.astimezone(UTC).isoformat(),
         "provider_name": summary.run_row.provider_name,
+        "seam_opened": seam_opened,
+        "billed_vendor_calls": seam_opened,
         "model_version": summary.run_row.model_version,
         "prompt_version": summary.run_row.prompt_version,
         "case_count": summary.run_row.case_count,

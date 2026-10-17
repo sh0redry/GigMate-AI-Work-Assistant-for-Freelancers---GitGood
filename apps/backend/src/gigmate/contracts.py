@@ -1385,6 +1385,50 @@ class WorkOrderEvidenceCommand(Model):
     note: Annotated[str, Field(max_length=2000)] | None = None
 
 
+class AgentDraftCommand(Model):
+    """A bounded request for one merchant-facing draft (follow-up or polish).
+
+    This is *not* free-form Q&A and grants no execution authority: the draft is
+    text a merchant reads and then sends through the existing approval path, or
+    discards. ``base_proposal_id`` reuses text the extraction seam already
+    produced under its own gates (budget, provenance, time basis); ``text`` is
+    merchant-written input that the server only stores. Neither turns the model
+    into a sender.
+    """
+
+    kind: Literal["follow_up", "polish"]
+    base_proposal_id: Id | None = None
+    text: Annotated[str, Field(max_length=4000)] | None = None
+    note: Annotated[str, Field(max_length=2000)] | None = None
+
+    @model_validator(mode="after")
+    def _one_source(self):
+        if (self.base_proposal_id is None) == (self.text is None):
+            raise ValueError("exactly one of base_proposal_id or text is required")
+        return self
+
+
+class AgentDraftView(Model):
+    id: Id
+    work_order_id: Id
+    conversation_id: Id
+    kind: Literal["follow_up", "polish"]
+    text: str
+    context_version: int
+    base_work_order_version: int | None
+    proposal_id: Id | None
+    status: Literal["proposed", "consumed", "revoked", "expired"]
+    expires_at: str
+    revoked_at: str | None
+    consumed_at: str | None
+    note: str | None
+    created_at: str
+    # A draft is a proposal surface only: it never sends, never confirms and
+    # never grants authority. Stated in the payload so a client cannot mistake
+    # it for a send receipt.
+    execution_authority: Literal[False] = False
+
+
 class WorkOrderEvidenceView(Model):
     id: Id
     work_order_id: Id

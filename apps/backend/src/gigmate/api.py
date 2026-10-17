@@ -21,6 +21,8 @@ from gigmate.config import COOKIE_SECURE, TRUSTED_ORIGINS
 from gigmate.contracts import (
     ActionState,
     AddRequirementCommand,
+    AgentDraftCommand,
+    AgentDraftView,
     ApprovalAction,
     ApproveActionCommand,
     ArchiveCommand,
@@ -661,6 +663,76 @@ def list_work_order_evidence(
 
     rows = work_evidence.list_for_order(db, account, str(order_id))
     return page(request, rows, cursor, limit, lambda row: work_evidence.view(db, row))
+
+
+@app.post(
+    "/api/v1/work-orders/{order_id}/drafts",
+    response_model=Detail[AgentDraftView],
+    status_code=201,
+)
+def create_agent_draft(
+    order_id: UUID,
+    command: AgentDraftCommand,
+    request: Request,
+    account=Depends(actor),
+    db=Depends(database, scope="function"),
+):
+    """Create one bounded merchant-facing draft (follow-up or polish).
+
+    The text comes either from a proposal the extraction seam already produced
+    under its own gates, or from the merchant's own input: there is no
+    free-form question path. A draft is text only — never sent, never
+    confirming a field, granting no execution authority — and it is limited per
+    day, expires, can be revoked and can be consumed once.
+    """
+    from gigmate import agent_drafts
+
+    return detail(request, agent_drafts.create(db, account, str(order_id), command))
+
+
+@app.get("/api/v1/work-orders/{order_id}/drafts", response_model=Page[AgentDraftView])
+def list_agent_drafts(
+    order_id: UUID,
+    request: Request,
+    cursor: str | None = None,
+    limit: int = Query(20, ge=1, le=100),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    from gigmate import agent_drafts
+
+    rows = agent_drafts.list_for_order(db, account, str(order_id))
+    return page(request, rows, cursor, limit, lambda row: agent_drafts.view(db, row))
+
+
+@app.post("/api/v1/drafts/{draft_id}/revoke", response_model=Detail[AgentDraftView])
+def revoke_agent_draft(
+    draft_id: UUID,
+    request: Request,
+    account=Depends(actor),
+    db=Depends(database, scope="function"),
+):
+    """Withdraw a draft so it can no longer be consumed."""
+    from gigmate import agent_drafts
+
+    return detail(request, agent_drafts.revoke(db, account, str(draft_id)))
+
+
+@app.post("/api/v1/drafts/{draft_id}/consume", response_model=Detail[AgentDraftView])
+def consume_agent_draft(
+    draft_id: UUID,
+    request: Request,
+    account=Depends(actor),
+    db=Depends(database, scope="function"),
+):
+    """Take the draft text into the merchant's existing approval flow, once.
+
+    Consuming returns the text and marks the draft used; it never sends
+    anything and never bypasses approval.
+    """
+    from gigmate import agent_drafts
+
+    return detail(request, agent_drafts.consume(db, account, str(draft_id)))
 
 
 @app.get("/api/v1/actions", response_model=Page[ActionView])

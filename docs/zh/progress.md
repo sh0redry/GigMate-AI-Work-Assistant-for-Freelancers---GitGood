@@ -879,3 +879,22 @@ PR #18（`llm:live-gate-off` + malformed-prompt/证据修复）以 `cc2ac8e` 合
 ## B/C 组合修复验证 — 2026-10-17
 
 保留两条 0018 迁移历史，在 0019_action_send_link 后新增空操作 merge revision 0020_business_model_heads。worker 同时保留 C 每条消息的归单与 B 调用后的来源/版本校验。补旧缓存/正文关联回归，边界用例共 22 项。最后隔离 Linux/PostgreSQL 全套 **957 通过 / 1 跳过**，覆盖费用、排期、关联三条父版本升级。新 PostgreSQL Alembic upgrade/check：唯一 head、无结构漂移。前端 **143 通过**、TypeScript/Vite、生成合同、后端全量 Ruff/格式（121 文件）通过。跨账号/占键测试没有联系提供方。本 PR 模型开关仍关闭，不宣称真实手机或模型验收。
+
+
+## 真实供应商、媒体与受限草稿 — 2026-10-17（B 侧，issue #29 第 3–6 项）
+
+独立复核 PR #34 `reviewed_llm`（issue #29 中 B 的第 1 项）：付费调用确实移出了业务事务 —— `worker.py` 在持锁块内分配并持久化 `job.model_request_id`，随后在无 session 的情况下执行 `provider().propose(request)`，回写前重新取锁，并在授权、租约、来源 revision、上下文、候选工单或控制版本变化时拒绝。子进程有 20 秒单一时限（`subprocess.run` TimeoutExpired → kill + wait）、单次请求（`_MAX_RETRIES = 0`）、2 MiB 输入输出上限，以及 `request_id` / `conversation_id` / `base_context_version` 的身份校验；其余情况一律为 `llm:result-unknown` 且不再重投。`configured_for_live()` 向 `_refusal_reason(None)` 传 None 是安全的，因为该方法只读配置。在临时工作树中实跑 PR head 的 `test_reviewed_product.py`：**27 通过**。两条非阻塞观察：超时依赖 `communicate()` 的 kill + wait（没有进程组级 kill）；子进程输出超限会归到通用的 `llm:result-unknown:process`。
+
+**真实质量套件（第 3 项）。** `contracts/evaluation/live_quality.json` 新增八个目标场景 —— 有/无时间依据的相对日期、部分回复、两个在办工单、首次下单、含糊回复、指令注入、过期来源 revision；`scripts/run_evaluation.py --open-seam` 可用真实供应商运行（未设 `GIGMATE_LLM_LIVE=1` 时拒绝，默认路径不花钱）。最后一次真实运行 **8 通过 / 0 失败**。它暴露了一个真实缺陷：供应商把错误标识回写到 `sources[].message_id`（实测每次都写成工单 id），八条里四条以 `llm:response-provenance-failed:source-message-id` 被拒。由于一次请求只携带一条消息及其 revision，服务端改为自己写入来源（`_provenance_problem` 重绑定、在 trace 上记录 `llm:source-rebound`，来源为空仍拒绝），prompt 升到 1.3.0 要求逐字复制标识；新单建议字段同样重绑定。更早一次运行中，模型在注入载荷下提出了地址变更（`proposed`，从未 `confirmed`）—— 这作为真实失效模式记录而非掩盖：契约阻止它变成业务状态，但套件需要重跑。
+
+**真实媒体（第 4 项）。** 接缝开关改为配置所有：`GIGMATE_MEDIA_ENABLED=1` 取代硬编码的 `False`，且只是第一道门 —— 之后仍有 live 开关、密钥、`GIGMATE_MEDIA_MODALITIES` 与 `GIGMATE_MEDIA_VISION_VENDORS`，因此打开接缝本身不授权任何能力（由 `test_media_live_seam.py` 9 条钉住）。一次真实端到端 OCR 对合成图片返回 `segments: ["TUE 3PM"]`、`coverage: partial`、`model_version: deepseek:deepseek-chat`、prompt 1.1.0；一次真实文本附件返回原文与两条合理的 `unresolved_questions`。首个真实响应还暴露第二个缺陷：供应商会输出契约禁止的键（`segments[].index`），在 `extra=forbid` 下导致整条提案失败，现在未知段键在服务端丢弃而不被采信。本构建没有语音供应商：`asr` 在未显式设置 `GIGMATE_MEDIA_AUDIO_VENDOR` 时以 `MEDIA_AUDIO_VENDOR_REQUIRED` 拒绝，填 deepseek 也明确拒绝，不会把对话密钥发到默认 ASR 端点。
+
+**依据人工核对（B/C）。** `work_evidence.attach` 现在还拒绝已禁用连接（`CONSENT_REVOKED`）、已过期字节（`MEDIA_SOURCE_EXPIRED`）与已取消/失败的媒体作业（`MEDIA_RESULT_STOPPED`），迟到结果因此无法复活已被停止或撤权终结的内容（10 条依据用例通过）。
+
+**受限 Agent 草稿（B 第 6 项）。** `gigmate.agent_drafts` 与迁移 `0022_agent_drafts` 提供追问/润色草稿，只有文本：正文来自提取接缝已在自身闸门下产出的提案，或来自商户自己的输入 —— 没有自由问答通道 —— 并受每日上限、TTL（读取时显示 `expired`）、撤销、可选安静时段与一次消费约束。消费只返回文本并标记已用；不发送、不确认字段、不授予执行权（载荷里 `execution_authority: false`）。7 条用例通过。
+
+**运维配置自检。** `scripts/check_model_config.py` 报告本机私密配置是否完整（供应商、模型、live 开关、价格、预算、token 上限、时间依据、媒体闸门），只打印存在性、绝不回显密钥，并声明"配置完整"不等同于供应商、价格或真实验收。
+
+**本批实际证据：** 后端全套（SQLite）**998 通过 / 25 跳过 / 12 失败**，12 项失败是原生 macOS 既有的 `MEDIA_PDF_LIMIT_UNAVAILABLE`（PDF 隔离路径仅 Linux）；Ruff 检查/格式通过；`export_contracts.py` 一致；临时 SQLite 上 Alembic 到 head `0022_agent_drafts` 无漂移。真实调用使用运营方自己的 key，密钥只放在被 Git 忽略的本地 `.env`，从未提交。
+
+**如实记录未做之事：** 未配置语音/ASR 供应商，因此没有真实转写；没有对真实供应商端到端处理 PDF（原生 macOS 上本地解析器按设计拒绝）；真实客户扫描件的 OCR 准确率、真实图片下的注入防护、供应商限流、长期成本与 PostgreSQL 行锁仍未验证；真实质量套件是 8 条合成用例，不构成生产准确率结论。

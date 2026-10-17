@@ -29,6 +29,7 @@ from gigmate.db import (
     ConversationRow,
     WahaAttachment,
     WahaConnection,
+    WahaMediaJob,
     WorkOrderEvidenceRow,
     WorkOrderRow,
 )
@@ -111,6 +112,20 @@ def attach(db, account, order_id: str, command: WorkOrderEvidenceCommand) -> dic
     connection = db.get(WahaConnection, asset.connection_id)
     if not connection or connection.account_id != account.id:
         raise BusinessError(404, "NOT_FOUND", "Attachment not found")
+    if not connection.enabled:
+        raise BusinessError(
+            409,
+            "CONSENT_REVOKED",
+            "The connection that produced this attachment is disabled; its "
+            "result cannot become work-order evidence.",
+        )
+    if not asset.expires_at or utc(asset.expires_at) <= datetime.now(UTC):
+        raise BusinessError(
+            409,
+            "MEDIA_SOURCE_EXPIRED",
+            "The attachment bytes are no longer retained; a late result cannot "
+            "be promoted to evidence.",
+        )
     evidence = waha_media.evidence(
         db,
         connection,
@@ -119,6 +134,17 @@ def attach(db, account, order_id: str, command: WorkOrderEvidenceCommand) -> dic
         command.expected_context_version,
         str(command.expected_result_job_id),
     )
+    # A result that arrives after its job was stopped or cancelled is late: it
+    # must never resurrect content the merchant (or the consent change) already
+    # stopped, and it must not be promoted as if nothing happened.
+    job = db.get(WahaMediaJob, evidence["result_job_id"])
+    if job is None or job.state in {"cancelled", "failed"}:
+        raise BusinessError(
+            409,
+            "MEDIA_RESULT_STOPPED",
+            "The media job for this result is no longer live; a late result "
+            "cannot become work-order evidence.",
+        )
     linked = db.scalar(
         select(ConversationOrder).where(
             ConversationOrder.conversation_id == evidence["conversation_id"],

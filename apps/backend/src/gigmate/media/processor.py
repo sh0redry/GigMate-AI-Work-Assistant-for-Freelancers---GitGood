@@ -5,13 +5,14 @@ This module is the production-shaped B-side implementation loaded by
 points at :class:`MediaProcessorImpl`. It mirrors the two-gate safety pattern
 used by :class:`gigmate.extraction.llm.LLMProvider`:
 
-1. Module-level :data:`_ENABLED` flag. It stays ``False`` in this batch: the
-   vendor adapters and the per-modality gates are implemented and unit-tested,
-   but no real OCR/ASR/PDF acceptance run has happened, so the seam is still
-   locked. While it is ``False`` the processor refuses every call with
-   :class:`gigmate.media_processing.ProcessingUnavailable` *before* it reads
-   any environment variable. The batch that completes live acceptance flips it
-   together with recorded evidence; the operator switch alone is never enough.
+1. Module-level :data:`_ENABLED` flag, read from ``GIGMATE_MEDIA_ENABLED``
+   (default ``False``). The vendor adapters and the per-modality gates are
+   implemented and unit-tested, and the seam stays locked until an operator
+   exports ``GIGMATE_MEDIA_ENABLED=1`` *after* recording live acceptance
+   evidence: while it is closed the processor refuses every call with
+   :class:`gigmate.media_processing.ProcessingUnavailable` before it builds a
+   client. The switch is only the first of several gates, so flipping it
+   alone still authorises nothing.
 2. ``GIGMATE_MEDIA_LIVE=1`` operator switch. Once unlocked, the processor
    still refuses every call unless this variable is exported, together with
    ``GIGMATE_MEDIA_API_KEY``.
@@ -63,11 +64,14 @@ from .routing import route
 
 log = logging.getLogger(__name__)
 
-# Two-gate safety flag. Still False: the adapters and modality gates are
-# implemented, but no real OCR/ASR/PDF acceptance has been recorded, so every
-# call is refused before any environment variable is read. Unlocking is a
-# separate, evidenced step; the operator switch alone is never sufficient.
-_ENABLED = False
+# Operator switch for the seam itself. It defaults to closed and is read from
+# the environment on import, so a deployment that never exports
+# ``GIGMATE_MEDIA_ENABLED=1`` keeps the historical behaviour: every call is
+# refused before a client is built. Unlocking is a separate, evidenced step —
+# the switch alone still does not authorise any modality, and the live gate,
+# the API key, ``GIGMATE_MEDIA_MODALITIES`` and
+# ``GIGMATE_MEDIA_VISION_VENDORS`` are all checked afterwards.
+_ENABLED = os.environ.get(llm._SEAM_ENABLE_ENV, "").strip() == "1"
 
 
 class MediaProcessorImpl:
@@ -91,10 +95,11 @@ class MediaProcessorImpl:
 
     @staticmethod
     def _gates_open() -> None:
-        if not _ENABLED:
+        if not is_seam_enabled():
             raise ProcessingUnavailable(
                 "gigmate.media.processor._ENABLED is False; the media seam is "
-                "disabled in this build, so no vendor call is attempted."
+                "disabled until GIGMATE_MEDIA_ENABLED=1 is exported with "
+                "recorded acceptance evidence, so no vendor call is attempted."
             )
         if not llm.is_live_unlocked():
             raise ProcessingUnavailable(
@@ -160,6 +165,15 @@ class MediaProcessorImpl:
         except llm.MediaIntegrationPending as exc:
             raise ProcessingUnavailable(str(exc)) from None
 
+        # Audio always needs its own vendor: falling back to a default ASR
+        # endpoint would send the chat vendor's key to another vendor's
+        # service, so the refusal is explicit and named.
+        if dispatch == "asr" and not os.environ.get(llm._AUDIO_VENDOR_ENV, "").strip():
+            raise ProcessingUnavailable(
+                "MEDIA_AUDIO_VENDOR_REQUIRED: set GIGMATE_MEDIA_AUDIO_VENDOR "
+                "(openai|custom) before authorising the asr modality; no "
+                "vendor request was made."
+            )
         # A text-completions vendor is not assumed to accept images. Only a
         # vendor the operator explicitly verified may receive OCR content.
         if dispatch == "ocr" and not llm.is_vision_vendor_verified(vendor):
@@ -369,7 +383,7 @@ class MediaProcessorImpl:
         flipped and the operator switch is on.
         """
 
-        if not _ENABLED or not llm.is_live_unlocked():
+        if not is_seam_enabled() or not llm.is_live_unlocked():
             return None
         return None
 
@@ -388,9 +402,11 @@ def build_processor() -> MediaProcessor:
 
 
 # Defensive: re-export the configured default so tests can introspect it
-# without reaching into the module-private constant.
+# without reaching into the module-private constant. The environment is read
+# on every call too, so a long-running worker honours an operator change
+# without a restart.
 def is_seam_enabled() -> bool:
-    return _ENABLED
+    return _ENABLED or llm.is_seam_enabled()
 
 
 __all__ = [

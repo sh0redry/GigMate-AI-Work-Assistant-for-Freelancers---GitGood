@@ -1449,8 +1449,12 @@ class LLMProvider:
         )
 
     @staticmethod
-    def _provenance_problem(data: dict, request: ExtractionRequest) -> str | None:
+    def _provenance_problem(data: dict, request: ExtractionRequest) -> tuple[str | None, bool]:
         """Re-bind model-supplied identity fields to the issued request.
+
+        Returns ``(problem, rebound)``: ``problem`` is a stable refusal code or
+        ``None``, and ``rebound`` marks that a source identifier the model
+        supplied had to be replaced by the server's own value.
 
         Pre-activation gate 1: ``_parse_response`` used to accept an
         LLM-supplied ``work_order_id``, ``base_work_order_version``,
@@ -1475,14 +1479,15 @@ class LLMProvider:
         into a job failure retry (paying for the same call twice) instead of
         the stable ``needs_review`` this module promises.
         """
+        rebound = False
         if data.get("conversation_id") != request.conversation_id:
-            return "llm:response-provenance-failed:conversation_id"
+            return "llm:response-provenance-failed:conversation_id", rebound
         if data.get("assignment") == "matched":
             chosen = data.get("work_order_id")
             if chosen not in request.candidate_work_order_ids:
-                return "llm:response-provenance-failed:work_order_id"
+                return "llm:response-provenance-failed:work_order_id", rebound
             if data.get("base_work_order_version") != request.base_work_order_version:
-                return "llm:response-provenance-failed:base_work_order_version"
+                return "llm:response-provenance-failed:base_work_order_version", rebound
         # P2-3: the context version is server-owned; a different value is a
         # mismatch, not something to overwrite silently. Round 2 also refuses
         # an echoed value that is merely *equal* after coercion — ``7.0`` and
@@ -1492,35 +1497,46 @@ class LLMProvider:
         declared_context = data.get("base_context_version")
         if declared_context is not None:
             if not isinstance(declared_context, int) or isinstance(declared_context, bool):
-                return "llm:response-provenance-failed:base_context_version"
+                return "llm:response-provenance-failed:base_context_version", rebound
             if declared_context != request.context_version:
-                return "llm:response-provenance-failed:base_context_version"
+                return "llm:response-provenance-failed:base_context_version", rebound
         changes = data.get("changes")
         if changes is not None and not isinstance(changes, list):
-            return "llm:response-provenance-failed:changes-shape"
+            return "llm:response-provenance-failed:changes-shape", rebound
         for change in changes or []:
             if not isinstance(change, dict):
-                return "llm:response-provenance-failed:change-shape"
+                return "llm:response-provenance-failed:change-shape", rebound
             sources = change.get("sources")
             if sources is not None and not isinstance(sources, list):
-                return "llm:response-provenance-failed:source-shape"
+                return "llm:response-provenance-failed:source-shape", rebound
+            if not sources:
+                # A change with no source at all is still unbacked: refuse.
+                return "llm:response-provenance-failed:source-missing", rebound
             for source in sources or []:
                 if not isinstance(source, dict):
-                    return "llm:response-provenance-failed:source-shape"
+                    return "llm:response-provenance-failed:source-shape", rebound
+                # Server-authoritative re-binding. The request carries exactly
+                # one message and its revision, so any source can only ever be
+                # that message. Real vendors echo the wrong identifier often —
+                # observed live: DeepSeek wrote the *work order* id into
+                # ``sources[].message_id`` on every proposal — which used to
+                # fail the whole proposal with ``source-message-id``. Writing
+                # the server's own value is stricter than trusting the echo and
+                # keeps the proposal usable; a missing source is still refused.
                 if source.get("message_id") != request.message_id:
-                    return "llm:response-provenance-failed:source-message-id"
-                if source.get("message_revision") != request.message_revision:
-                    return "llm:response-provenance-failed:source-message-revision"
+                    rebound = True
+                source["message_id"] = request.message_id
+                source["message_revision"] = request.message_revision
         # P2-4 (round 2): every other collection the module reads is
         # type-checked here as well, before Pydantic sees it. A wrong shape is
         # then reported as a provenance code instead of a schema one, and no
         # code path iterates a value the model chose the type of.
         candidates = data.get("candidates")
         if candidates is not None and not isinstance(candidates, list):
-            return "llm:response-provenance-failed:candidates-shape"
+            return "llm:response-provenance-failed:candidates-shape", rebound
         questions = data.get("unresolved_questions")
         if questions is not None and not isinstance(questions, list):
-            return "llm:response-provenance-failed:unresolved-questions-shape"
+            return "llm:response-provenance-failed:unresolved-questions-shape", rebound
         # Batch 3: a new-work-order suggestion carries critical fields too, so
         # every suggested value is bound to the same source message that was
         # issued with this request. Without this check a compromised model could
@@ -1528,30 +1544,32 @@ class LLMProvider:
         suggestion = data.get("new_work_order")
         if suggestion is not None:
             if not isinstance(suggestion, dict):
-                return "llm:response-provenance-failed:new-work-order-shape"
+                return "llm:response-provenance-failed:new-work-order-shape", rebound
             fields = suggestion.get("fields")
             if fields is not None and not isinstance(fields, list):
-                return "llm:response-provenance-failed:suggested-fields-shape"
+                return "llm:response-provenance-failed:suggested-fields-shape", rebound
             for suggested in fields or []:
                 if not isinstance(suggested, dict):
-                    return "llm:response-provenance-failed:suggested-field-shape"
+                    return "llm:response-provenance-failed:suggested-field-shape", rebound
                 sources = suggested.get("sources")
                 if sources is not None and not isinstance(sources, list):
-                    return "llm:response-provenance-failed:suggested-source-shape"
+                    return "llm:response-provenance-failed:suggested-source-shape", rebound
+                if not sources:
+                    return "llm:response-provenance-failed:suggested-source-missing", rebound
                 for source in sources or []:
                     if not isinstance(source, dict):
-                        return "llm:response-provenance-failed:suggested-source-shape"
+                        return "llm:response-provenance-failed:suggested-source-shape", rebound
                     if source.get("message_id") != request.message_id:
-                        return "llm:response-provenance-failed:suggested-source-message-id"
-                    if source.get("message_revision") != request.message_revision:
-                        return "llm:response-provenance-failed:suggested-source-message-revision"
+                        rebound = True
+                    source["message_id"] = request.message_id
+                    source["message_revision"] = request.message_revision
             missing = suggestion.get("missing_fields")
             if missing is not None and not isinstance(missing, list):
-                return "llm:response-provenance-failed:missing-fields-shape"
+                return "llm:response-provenance-failed:missing-fields-shape", rebound
             suggested_questions = suggestion.get("unresolved_questions")
             if suggested_questions is not None and not isinstance(suggested_questions, list):
-                return "llm:response-provenance-failed:suggested-questions-shape"
-        return None
+                return "llm:response-provenance-failed:suggested-questions-shape", rebound
+        return None, rebound
 
     def _time_basis_problem(self, proposal, request: ExtractionRequest) -> str | None:
         """Refuse schedule values that were produced without a real basis.
@@ -1691,7 +1709,7 @@ class LLMProvider:
                 and request.base_work_order_version is not None
             ):
                 data["base_work_order_version"] = request.base_work_order_version
-        problem = self._provenance_problem(data, request)
+        problem, rebound = self._provenance_problem(data, request)
         if problem is not None:
             return self._needs_review(
                 request,
@@ -1745,12 +1763,16 @@ class LLMProvider:
                 cost_usd=cost_usd,
                 cost_note=cost_note,
             )
+        # Observability, not trust: when the vendor echoed the wrong source
+        # identifier the proposal still carries the server's value, and the
+        # trace says so instead of hiding the correction.
+        outcome_notes = ("llm:source-rebound",) if rebound else ()
         if proposal.assignment.value == "matched":
             return ExtractionOutcome(
                 provider_name=self.name,
                 proposal=proposal,
                 latency_ms=self._elapsed(began),
-                notes=("llm:matched",),
+                notes=("llm:matched", *outcome_notes),
                 refused_reason=None,
                 request_id=request_id,
                 input_tokens=input_tokens,
@@ -1764,7 +1786,7 @@ class LLMProvider:
             provider_name=self.name,
             proposal=proposal,
             latency_ms=self._elapsed(began),
-            notes=("llm:needs-review",),
+            notes=("llm:needs-review", *outcome_notes),
             refused_reason="llm:needs-review",
             request_id=request_id,
             input_tokens=input_tokens,

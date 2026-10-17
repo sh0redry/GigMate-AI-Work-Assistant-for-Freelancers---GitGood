@@ -85,6 +85,11 @@ def saved_env(monkeypatch):
     # exercising routing / call shape rather than the authorization gate.
     monkeypatch.setenv("GIGMATE_MEDIA_MODALITIES", "ocr,asr,pdf,text")
     monkeypatch.setenv("GIGMATE_MEDIA_VISION_VENDORS", "openai")
+    # Audio is only reachable with its own named vendor; without it the
+    # processor refuses instead of posting the chat key to a default ASR
+    # endpoint (asserted by test_audio_vendor_must_be_named).
+    monkeypatch.setenv("GIGMATE_MEDIA_AUDIO_VENDOR", "openai")
+    monkeypatch.setenv("GIGMATE_MEDIA_AUDIO_MODEL", "whisper-1")
     yield monkeypatch
 
 

@@ -56,7 +56,7 @@ _BASE_PROPOSAL = {
     "unresolved_questions": [],
     "draft_text": None,
     "model_version": "openai:gpt-4o-mini",
-    "prompt_version": "1.2.0",
+    "prompt_version": "1.3.0",
 }
 
 
@@ -406,7 +406,7 @@ class _StubProvider:
 
     name = "stub:suggestion"
     model_version = "stub:1"
-    prompt_version = "1.2.0"
+    prompt_version = "1.3.0"
 
     def __init__(self, proposal: ChangeProposal, *, refused_reason: str | None = None):
         self._proposal = proposal

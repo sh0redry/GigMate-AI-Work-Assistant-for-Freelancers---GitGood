@@ -216,6 +216,57 @@ def test_promotion_requires_explicit_csrf_headers(setup):
     assert response.status_code == 403
 
 
+def test_revoked_connection_and_late_results_never_become_evidence(setup):
+    """A late result cannot resurrect content a stop or a consent change ended.
+
+    Three facts are checked: a disabled connection, an expired attachment and a
+    cancelled media job each refuse promotion, so only a live, reviewed result
+    that the merchant still holds can become evidence.
+    """
+
+    from datetime import UTC, datetime, timedelta
+
+    from gigmate.db import WahaConnection, WahaMediaJob
+
+    identifier, _, query = processed(setup)
+    link_order(setup)
+    assert checked(setup, identifier, query).status_code == 200
+
+    with setup[1].begin() as db:
+        attachment = db.get(WahaAttachment, identifier)
+        connection = db.get(WahaConnection, attachment.connection_id)
+        connection.enabled = False
+    disabled = setup[0].post(
+        f"/api/v1/work-orders/{ORDER}/evidence", json=payload(identifier, query), headers=setup[2]
+    )
+    assert disabled.status_code == 409
+    assert disabled.json()["error"]["code"] == "CONSENT_REVOKED"
+
+    with setup[1].begin() as db:
+        connection = db.get(WahaConnection, db.get(WahaAttachment, identifier).connection_id)
+        connection.enabled = True
+        attachment = db.get(WahaAttachment, identifier)
+        attachment.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+    expired = setup[0].post(
+        f"/api/v1/work-orders/{ORDER}/evidence", json=payload(identifier, query), headers=setup[2]
+    )
+    assert expired.status_code == 409
+    assert expired.json()["error"]["code"] == "MEDIA_SOURCE_EXPIRED"
+
+    with setup[1].begin() as db:
+        attachment = db.get(WahaAttachment, identifier)
+        attachment.expires_at = datetime.now(UTC) + timedelta(hours=1)
+        db.get(WahaMediaJob, query["expected_result_job_id"]).state = "cancelled"
+    stopped = setup[0].post(
+        f"/api/v1/work-orders/{ORDER}/evidence", json=payload(identifier, query), headers=setup[2]
+    )
+    assert stopped.status_code == 409
+    assert stopped.json()["error"]["code"] == "MEDIA_RESULT_STOPPED"
+
+    with setup[1]() as db:
+        assert db.scalar(select(func.count()).select_from(WorkOrderEvidenceRow)) == 0
+
+
 def test_download_only_attachment_cannot_be_promoted(setup):
     """An attachment that was never processed has no reviewed result."""
     assert enqueue(setup, body(setup)).status_code == 202

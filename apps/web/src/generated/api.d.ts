@@ -1034,6 +1034,49 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/drafts/{draft_id}/consume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Consume Agent Draft
+     * @description Take the draft text into the merchant's existing approval flow, once.
+     *
+     *     Consuming returns the text and marks the draft used; it never sends
+     *     anything and never bypasses approval.
+     */
+    post: operations["consume_agent_draft_api_v1_drafts__draft_id__consume_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/drafts/{draft_id}/revoke": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Revoke Agent Draft
+     * @description Withdraw a draft so it can no longer be consumed.
+     */
+    post: operations["revoke_agent_draft_api_v1_drafts__draft_id__revoke_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/replay": {
     parameters: {
       query?: never;
@@ -1285,6 +1328,33 @@ export interface paths {
     put?: never;
     /** Defer Order Item */
     post: operations["defer_order_item_api_v1_work_orders__order_id__defer_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/work-orders/{order_id}/drafts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Agent Drafts */
+    get: operations["list_agent_drafts_api_v1_work_orders__order_id__drafts_get"];
+    put?: never;
+    /**
+     * Create Agent Draft
+     * @description Create one bounded merchant-facing draft (follow-up or polish).
+     *
+     *     The text comes either from a proposal the extraction seam already produced
+     *     under its own gates, or from the merchant's own input: there is no
+     *     free-form question path. A draft is text only — never sent, never
+     *     confirming a field, granting no execution authority — and it is limited per
+     *     day, expires, can be revoked and can be consumed once.
+     */
+    post: operations["create_agent_draft_api_v1_work_orders__order_id__drafts_post"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1554,6 +1624,82 @@ export interface components {
       sources: components["schemas"]["SourceRef"][];
       /** Text */
       text: string;
+    };
+    /**
+     * AgentDraftCommand
+     * @description A bounded request for one merchant-facing draft (follow-up or polish).
+     *
+     *     This is *not* free-form Q&A and grants no execution authority: the draft is
+     *     text a merchant reads and then sends through the existing approval path, or
+     *     discards. ``base_proposal_id`` reuses text the extraction seam already
+     *     produced under its own gates (budget, provenance, time basis); ``text`` is
+     *     merchant-written input that the server only stores. Neither turns the model
+     *     into a sender.
+     */
+    AgentDraftCommand: {
+      /** Base Proposal Id */
+      base_proposal_id?: string | null;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "follow_up" | "polish";
+      /** Note */
+      note?: string | null;
+      /** Text */
+      text?: string | null;
+    };
+    /** AgentDraftView */
+    AgentDraftView: {
+      /** Base Work Order Version */
+      base_work_order_version: number | null;
+      /** Consumed At */
+      consumed_at: string | null;
+      /** Context Version */
+      context_version: number;
+      /**
+       * Conversation Id
+       * Format: uuid
+       */
+      conversation_id: string;
+      /** Created At */
+      created_at: string;
+      /**
+       * Execution Authority
+       * @default false
+       * @constant
+       */
+      execution_authority: false;
+      /** Expires At */
+      expires_at: string;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "follow_up" | "polish";
+      /** Note */
+      note: string | null;
+      /** Proposal Id */
+      proposal_id: string | null;
+      /** Revoked At */
+      revoked_at: string | null;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "proposed" | "consumed" | "revoked" | "expired";
+      /** Text */
+      text: string;
+      /**
+       * Work Order Id
+       * Format: uuid
+       */
+      work_order_id: string;
     };
     /** ApproveActionCommand */
     ApproveActionCommand: {
@@ -2062,6 +2208,15 @@ export interface components {
        */
       request_id: string;
     };
+    /** Detail[AgentDraftView] */
+    Detail_AgentDraftView_: {
+      data: components["schemas"]["AgentDraftView"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
     /** Detail[AssignmentResult] */
     Detail_AssignmentResult_: {
       data: components["schemas"]["AssignmentResult"];
@@ -2409,6 +2564,18 @@ export interface components {
     Page_ActionView_: {
       /** Items */
       items: components["schemas"]["ActionView"][];
+      /** Next Cursor */
+      next_cursor: string | null;
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Page[AgentDraftView] */
+    Page_AgentDraftView_: {
+      /** Items */
+      items: components["schemas"]["AgentDraftView"][];
       /** Next Cursor */
       next_cursor: string | null;
       /**
@@ -6341,6 +6508,68 @@ export interface operations {
       };
     };
   };
+  consume_agent_draft_api_v1_drafts__draft_id__consume_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        draft_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_AgentDraftView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  revoke_agent_draft_api_v1_drafts__draft_id__revoke_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        draft_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_AgentDraftView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   replay_api_v1_replay_post: {
     parameters: {
       query?: never;
@@ -6905,6 +7134,75 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Detail_WorkOrder_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  list_agent_drafts_api_v1_work_orders__order_id__drafts_get: {
+    parameters: {
+      query?: {
+        cursor?: string | null;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        order_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Page_AgentDraftView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  create_agent_draft_api_v1_work_orders__order_id__drafts_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        order_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AgentDraftCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_AgentDraftView_"];
         };
       };
       /** @description Validation Error */

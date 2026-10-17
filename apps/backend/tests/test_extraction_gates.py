@@ -378,12 +378,39 @@ def test_gate1_stale_base_work_order_version_is_refused(monkeypatch):
         [{"message_id": MESSAGE_ID, "message_revision": 2}],
     ],
 )
-def test_gate1_sources_must_reference_the_issued_message(monkeypatch, sources):
+def test_gate1_sources_are_rebound_to_the_issued_message(monkeypatch, sources):
+    """A source identifier is server-owned, not whatever the vendor echoed.
+
+    Real vendors echo the wrong identifier routinely (observed: DeepSeek wrote
+    the work-order id into ``sources[].message_id``). Because a request carries
+    exactly one message, the server writes its own value instead of trusting the
+    echo — and says so on the trace. An empty ``sources`` list is still refused:
+    a change with no origin at all is not a proposal, it is a guess.
+    """
+
+    request = _grounded_request()
+    payload = _schedule_payload()
+    payload["changes"][0]["sources"] = sources
+    outcome, _ = _run(monkeypatch, payload, request)
+    assert outcome.refused_reason is None
+    assert outcome.proposal.assignment.value == "matched"
+    bound = outcome.proposal.changes[0].sources[0]
+    assert bound.message_id == request.message_id
+    assert bound.message_revision == request.message_revision
+    # The correction is visible on the trace whenever the vendor echoed a
+    # different identifier.
+    assert ("llm:source-rebound" in outcome.notes) == (
+        sources[0]["message_id"] != request.message_id
+    )
+
+
+@pytest.mark.parametrize("sources", [[], None])
+def test_gate1_change_without_any_source_is_refused(monkeypatch, sources):
     payload = _schedule_payload()
     payload["changes"][0]["sources"] = sources
     outcome, _ = _run(monkeypatch, payload, _grounded_request())
     assert outcome.notes == ("llm:response-provenance-failed",)
-    assert outcome.refused_reason.startswith("llm:response-provenance-failed:source-")
+    assert outcome.refused_reason == "llm:response-provenance-failed:source-missing"
 
 
 def test_gate1_correctly_bound_response_still_matches(monkeypatch):
