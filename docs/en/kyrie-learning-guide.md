@@ -1,8 +1,20 @@
 # Kyrie's GigMate learning guide: start from zero
 
-Updated 2026-10-17. [中文](../zh/kyrie-learning-guide.md). Learn the [user workflow](role-d-frontend-user-guide.md) first; you do not need to understand every technical word at once.
+Updated 2026-10-18. [中文](../zh/kyrie-learning-guide.md). Learn the [user workflow](role-d-frontend-user-guide.md) first; you do not need to understand every technical word at once.
 
 ## Imagine a small shop
+
+2026-10-18: **updated source files do not update an already-running program**.
+The counter can use a new form while the office still follows an old manual,
+which produces missing-interface errors. `scripts/start_product.py` now builds
+the frontend, backend and worker together, checks the backend contract, and
+offers one user entry on port 18780 only after those checks succeed.
+
+A fictional demo deployment is different from the Python `.venv` dependency
+folder. The user startup no longer launches the former; the latter contains
+libraries needed by the startup tools, not fictional customers or orders.
+Automated tests still use synthetic messages internally, without delivering a
+second user-login website.
 
 D's frontend is the counter. C's business backend is the office that checks ownership and updates the notebook. B's AI is an assistant that organises messages and suggests, but cannot sign for the merchant or send messages independently. A's connector is the phone line. A worker is a background colleague who can process persisted work even after the page closes.
 

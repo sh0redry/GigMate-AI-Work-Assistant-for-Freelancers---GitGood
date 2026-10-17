@@ -2605,9 +2605,9 @@ export interface components {
       csrf_token: string;
       /**
        * Mode
-       * @constant
+       * @enum {string}
        */
-      mode: "synthetic_replay";
+      mode: "product" | "synthetic_replay";
       /** Username */
       username: string;
     };

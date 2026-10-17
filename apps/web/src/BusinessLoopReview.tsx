@@ -86,11 +86,7 @@ export function BusinessLoopReview({
         : Promise.resolve([]),
       allPages<Loop["ActionView"]>(request, "/actions", a.signal),
       features.business_sending
-        ? request<{ data: Model["ConnectorStatus"][] }>(
-            "/connectors",
-            undefined,
-            a.signal,
-          ).then((v) => v.data)
+        ? allPages<Model["ConnectorStatus"]>(request, "/connectors", a.signal)
         : Promise.resolve([]),
     ])
       .then(([q, ac, c]) => {

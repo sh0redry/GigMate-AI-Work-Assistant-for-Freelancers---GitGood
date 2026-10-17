@@ -217,6 +217,21 @@ export function canConfirm(
   );
 }
 export function changePresentation(change: Change, current: boolean) {
+  if (
+    current &&
+    change.status === "needs_review" &&
+    change.field === "schedule" &&
+    (!change.new_value ||
+      typeof change.new_value !== "object" ||
+      !["timed", "date_only"].includes(change.new_value.kind))
+  )
+    return {
+      label: t("待复核"),
+      text: t(
+        "时间尚不完整或格式需核对。请补充结束时间或时长，再生成可确认的日历提议。",
+      ),
+      warning: true,
+    };
   if (change.status === "confirmed")
     return {
       label: t("已确认"),

@@ -625,8 +625,8 @@ test("business sending resolves a different chat UUID from the owned conversatio
   globalThis.fetch = async (url) => {
     if (url.includes("/actions?"))
       return Response.json({ items: [action], next_cursor: null });
-    if (url.endsWith("/connectors"))
-      return Response.json({ data: [{ id: connection }] });
+    if (url.includes("/connectors?"))
+      return Response.json({ items: [{ id: connection }], next_cursor: null });
     if (url.endsWith("/setup"))
       return Response.json({
         data: {
@@ -932,4 +932,144 @@ test("review and recovery render the exact formatted snapshot without translatin
   );
   assert.equal(document.querySelector('[role="region"] p').textContent, review);
   assert.equal(document.querySelector("img"), null);
+});
+
+test("business replies load paginated connections and prepare exact authorised sending without writing", async () => {
+  const { BusinessLoopReview } = await import(
+    pathToFileURL(join(directory, "BusinessLoopReview.mjs"))
+  );
+  const accountId = "00000000-0000-4000-8000-000000000001";
+  const actionId = "00000000-0000-4000-8000-000000000006";
+  const conversationId = "00000000-0000-4000-8000-000000000002";
+  const connectionId = "00000000-0000-4000-8000-000000000009";
+  const chatId = "00000000-0000-4000-8000-000000000010";
+  const draft = {
+    id: actionId,
+    account_id: accountId,
+    work_order_id: "00000000-0000-4000-8000-000000000003",
+    conversation_id: conversationId,
+    revision: 1,
+    state: "approved",
+    body: "Synthetic approved reply",
+    expires_at: "2099-10-17T00:00:00Z",
+    snapshot_hash: "synthetic-snapshot",
+    send_action_id: null,
+  };
+  const reads = [],
+    errors = [],
+    writes = [];
+  globalThis.fetch = async (url, options) => {
+    assert.equal(options.method, "GET");
+    const parsed = new URL(url, "http://localhost");
+    const path = parsed.pathname.replace(/^.*\/api\/v1/, "");
+    reads.push(path + parsed.search);
+    if (path === "/actions")
+      return Response.json({ items: [draft], next_cursor: null });
+    if (path === "/connectors")
+      return Response.json(
+        parsed.searchParams.has("cursor")
+          ? { items: [{ id: connectionId }], next_cursor: null }
+          : {
+              items: [{ id: "00000000-0000-4000-8000-000000000008" }],
+              next_cursor: "synthetic-next",
+            },
+      );
+    if (path.endsWith("/setup"))
+      return Response.json({
+        data: {
+          connection_id: connectionId,
+          enabled: true,
+          available: true,
+          provider_sample_stale: false,
+          control_version: 3,
+        },
+      });
+    if (path.endsWith("/sending/permission"))
+      return Response.json({
+        data: {
+          version: 2,
+          enabled: true,
+          chat_ids: [chatId],
+          expires_at: "2099-10-17T00:00:00Z",
+        },
+      });
+    if (path.endsWith("/chats"))
+      return Response.json({
+        data: [{ id: chatId, conversation_id: conversationId, selected: true }],
+      });
+    throw Error("Unexpected synthetic read: " + path);
+  };
+  root = createRoot(document.getElementById("root"));
+  await act(async () =>
+    root.render(
+      createElement(BusinessLoopReview, {
+        api: {
+          read: async () => draft,
+          pending: null,
+          error: "",
+          submit: (...args) => writes.push(args),
+        },
+        csrf: "synthetic-reply-csrf",
+        accountId,
+        features: { business_sending: true, manual_assignment: false },
+        orders: [],
+        onDone() {},
+        onBusy() {},
+        onError: (e) => errors.push(e),
+      }),
+    ),
+  );
+  const select = (label) =>
+    [...document.querySelectorAll("label")]
+      .find((node) => node.textContent.includes(label))
+      .querySelector("select");
+  await act(async () => {
+    select("业务草稿").value = actionId;
+    select("业务草稿").dispatchEvent(
+      new window.Event("change", { bubbles: true }),
+    );
+  });
+  assert.equal(select("发送连接").options.length, 3);
+  await act(async () => {
+    select("发送连接").value = connectionId;
+    select("发送连接").dispatchEvent(
+      new window.Event("change", { bubbles: true }),
+    );
+  });
+  assert.ok(reads.some((path) => path.includes("cursor=synthetic-next")));
+  assert.equal(button("核对并提交业务发送").disabled, false);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(writes, []);
+});
+
+test("malformed connector list reports an error without crashing the business reply page", async () => {
+  const { BusinessLoopReview } = await import(
+    pathToFileURL(join(directory, "BusinessLoopReview.mjs"))
+  );
+  const errors = [];
+  globalThis.fetch = async (url) =>
+    Response.json(
+      url.includes("/connectors")
+        ? { data: [] }
+        : { items: [], next_cursor: null },
+    );
+  root = createRoot(document.getElementById("root"));
+  await act(async () =>
+    root.render(
+      createElement(BusinessLoopReview, {
+        api: { pending: null, error: "" },
+        csrf: "synthetic-invalid-csrf",
+        accountId: "synthetic-account",
+        features: { business_sending: true, manual_assignment: false },
+        orders: [],
+        onDone() {},
+        onBusy() {},
+        onError: (e) => errors.push(e),
+      }),
+    ),
+  );
+  assert.match(document.body.textContent, /归单与业务回复/);
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].code, "INVALID_RESPONSE");
+  assert.equal(button("核对并提交业务发送"), undefined);
 });

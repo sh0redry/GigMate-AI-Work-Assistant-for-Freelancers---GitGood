@@ -1,18 +1,18 @@
 # GigMate frontend user guide
 
-Current candidate: 2026-10-17, based on main `14aa34e`. [中文](../zh/role-d-frontend-user-guide.md). Technical evidence: [BCD delivery](bcd-product-delivery.md).
+Local user delivery, updated 2026-10-18. [中文](../zh/role-d-frontend-user-guide.md). Technical evidence: [implementation status](implementation-status.md).
 
 ## Run on your own laptop
 
-The team does not need a shared server for local use: your laptop runs the web page, API, worker and database. While PR34 is unmerged, use its branch (`codex/d-api-cache-glass`), which includes `infra/compose.text.yaml`; an older main checkout does not include that file. Keep your own `.env` private and ignored, never copy another teammate's key or database. Configure optional model credentials/gates/pricing as described in [BCD delivery](bcd-product-delivery.md).
+Your computer runs the page, API, worker, database and WhatsApp connection. Keep your own `.env` private; never copy another person's key, database or WhatsApp session. For a first installation follow the root README and use `--init` once. Existing installations preserve their `.env`, login and sessions.
 
-Start Docker Desktop, open a terminal **at the root of that checkout**, then run:
+Each time: start Docker Desktop, open a terminal **at the project root**, then run on macOS/Linux:
 
 ```text
-docker compose --env-file .env -f infra/compose.yaml -f infra/compose.text.yaml up --build -d --wait
+.venv/bin/python scripts/start_product.py
 ```
 
-Open http://127.0.0.1:18080. Use the account/password seeded in your own database; changing `.env` later does not reset an existing password. Keep existing WAHA overlays in the same Compose command if your local WhatsApp setup uses them; the text overlay alone does not install or pair WhatsApp. To stop the base/text stack, use the same options followed by `down`, without `-v`, to retain data. `restart` alone does not reload changed `.env` values; use `up -d --wait` again. Do not run two clones against the same Compose project/volume unintentionally.
+On Windows use `.venv/Scripts/python.exe scripts/start_product.py`. Open http://127.0.0.1:18780. This command builds the frontend, backend and worker together and checks the backend contract before reporting ready. You do not need Node or a separate frontend development server. It never starts the fictional replay stack. Fresh installations use a private password configured in `.env`, or the random login in ignored `local-data/waha-a02/login.json`; existing passwords are unchanged. Do not use `--init` again or remove database/session volumes to troubleshoot. Stopping Docker retains data; rerun this command after restarting Docker.
 
 ## Five useful words
 
@@ -33,6 +33,8 @@ Choose **New order**, select an authorised conversation and read customer messag
 Review the order, check the confirmation box, then save. **AI new-order suggestions** appear only when the backend has valid current suggestions. Selecting one fills the summary only. You still review sources, enter critical values and confirm creation. AI never silently creates a formal order. Manual creation works without a suggestion.
 
 ## Daily workflow
+
+A start time alone is not a complete appointment interval. It stays visible as a proposal needing review, alongside any valid address proposal; it does not crash processing or erase the address. Ask for the end time or duration. Only a complete reviewed schedule can update the calendar; the application does not invent a duration or convert a start time into an all-day booking.
 
 1. **Workspace:** search orders, inspect current arrangements, source messages and proposed changes. Edited/revoked sources invalidate old evidence.
 2. **Business management:** review the summary; assign ambiguous messages, defer missing information, manage materials/commitments/questions, set hours/breaks and review other field proposals.

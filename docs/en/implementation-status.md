@@ -1,5 +1,57 @@
 # Implementation status and validation
 
+## Single user deployment and partial-time recovery — 2026-10-18
+
+The default runtime is now `product`. Health/login report the actual mode,
+and product mode rejects fixture replay/custom replay and legacy replay status
+with 404. `scripts/start_product.py` builds the compiled web UI, backend and
+worker together, uses the existing owned WAHA/PostgreSQL installation, and
+checks both product health and exact implemented OpenAPI before reporting ready
+at http://127.0.0.1:18780. No fictional account/order/chat is seeded by this
+startup. New installations use a configured private password or an initially
+generated private random login; existing accounts are never reset. Model keys
+are copied via stdin into a backend-only read-only file volume, not Compose
+environment values, process arguments, frontend assets or Git.
+
+A model's schedule can legally be a scalar `FieldValue` (for example, a
+start timestamp with no end). The old conflict-draft path called `.get()` on
+that string, rolling back the entire proposal including a valid address.
+Synthetic reproduction confirms this failure. Worker promotion now keeps such
+time evidence as `needs_review`, persists the other changes and model trace,
+and never invents an end time/calendar interval. Draft generation independently
+tolerates partial values. The frontend explains why time needs review in all
+three UI languages. Prompt 1.3.1 documents complete intervals, missing duration
+and valid customer-confirmation values. Error logs add exception class and code
+location without exception messages or customer content.
+
+On the existing local installation, one explicitly requested manual analysis
+used a new request identifier and reproduced the same string-valued schedule.
+Its saved result was promoted after source/context/order/consent checks. The
+original request fence and an explicit original-unknown diagnostic remain,
+alongside the new trace/audit; no automatic model retry, field confirmation,
+calendar mutation or message send was performed. Actual authenticated HTTP
+checks through the compiled frontend confirm product mode, model availability,
+an address proposal, a time needing review and a 404 replay response.
+
+The two obsolete local replay deployments were checked to contain no WAHA
+connections/messages and then removed with their fictional database volumes and
+networks, as requested. Only the real installation remains running. Python
+`.venv` is a dependency directory, not a fictional business environment.
+
+Verification: clean source snapshot (no ignored private files) in Linux against
+isolated PostgreSQL schemas: **1105 passed / 1 skipped**; frontend **179 passed**;
+Ruff check/format, generated contracts/API type check and compiled production
+frontend/backend startup pass. Native focused checks passed as well. This is
+one local installation, not new Windows installer, fresh-device, commercial
+deployment or broad vendor-quality acceptance. The desktop installer remains
+separate work; no binary has been published by this correction.
+
+Integrated latest main `f47e740` (PR37 UI label/count fixes) before the final
+frontend check and rebuilt the product deployment. Main introduced no backend
+changes relative to the PostgreSQL-tested backend tree; both progress histories
+were preserved. Repository baseline and whitespace checks pass.
+
+
 ## Status action labels, change count and approval filter — 2026-10-17
 
 Status controls now name the action they perform (start work, mark waiting for customer, complete order, cancel order) instead of repeating the resulting state. A `pending_confirmation` order previously offered a single control labelled "cancelled", which read as an outcome rather than the one legal action.
@@ -9,6 +61,7 @@ The changes heading counts awaited proposals and the total recorded changes, so 
 The review queue grouped four different missing fields under one "address" label, printing the same line four times per order. Each missing field now uses its own name (address, specification, quantity, deadline).
 
 Evidence: frontend **176 passed**, including a new regression that action labels never repeat a state name; TypeScript and Prettier pass. No API, contract, migration or backend change. These are implementation checks, not teammate or device acceptance.
+
 
 ## PR35/main integration — 2026-10-17
 
@@ -1126,3 +1179,23 @@ this branch no longer claims the `0021` prefix that PR #34 uses for
 database (head `0023_agent_drafts`) and the migration suite passes (21 cases).
 When #34 lands, the two heads will need a merge revision — the same shape the
 repository already used for `0020_business_model_heads`.
+
+## Business reply selection white-screen fix — 2026-10-17
+
+With business sending enabled, selecting an approved reply crashed the page:
+the frontend read `GET /connectors` as `{data: [...]}`, although the implemented
+contract returns `{items: [...], next_cursor: ...}`. Business reply review now
+uses the shared validated paginator. It loads every connection page and reports
+invalid list responses through the existing error handler. The per-connection
+chat endpoint correctly remains a detail response.
+
+Updated the existing sending test to match the implemented connector contract;
+added regressions for multiple connector pages without any writes and malformed
+connector responses without a render crash. Before the fix both new cases
+failed; afterwards all **177 frontend tests passed**. TypeScript, frontend API
+type synchronization, Prettier, Vite production build, generated contracts and
+repository baseline checks passed (the build retains the bundle-size advisory).
+In the local running UI, selecting the existing approved draft and connection
+now displays the enabled send-review button. No send was submitted during this
+verification. No backend behavior changed; backend tests were not rerun for this
+frontend-only correction. This does not establish WhatsApp delivery acceptance.

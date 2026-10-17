@@ -18,7 +18,7 @@ from gigmate import identity
 from gigmate import waha_controls as controls
 from gigmate.approvals import approve, reissue, reject, views
 from gigmate.conditional_reads import conditional_read
-from gigmate.config import COOKIE_SECURE, TRUSTED_ORIGINS
+from gigmate.config import APP_MODE, COOKIE_SECURE, TRUSTED_ORIGINS
 from gigmate.contracts import (
     ActionState,
     AddRequirementCommand,
@@ -119,7 +119,7 @@ from gigmate.workorders import (
 )
 from gigmate.workspace_api import install as install_workspace
 
-app = FastAPI(title="GigMate replay skeleton", version="0.2.0")
+app = FastAPI(title="GigMate API", version="0.2.0")
 
 
 class LoginCommand(Model):
@@ -131,7 +131,7 @@ class LoginResult(Model):
     account_id: str
     username: str
     csrf_token: str
-    mode: Literal["synthetic_replay"]
+    mode: Literal["product", "synthetic_replay"]
 
 
 class ReplayCommand(Model):
@@ -306,7 +306,7 @@ def health(db=Depends(database)):
             raise BusinessError(
                 503, "CONNECTOR_CONFIG_INVALID", "Connector configuration is invalid"
             )
-    return {"status": "ok", "mode": "synthetic_replay"}
+    return {"status": "ok", "mode": "product" if APP_MODE == "product" else "synthetic_replay"}
 
 
 @app.post("/api/v1/auth/login", response_model=Detail[LoginResult])
@@ -333,7 +333,7 @@ def login(
             "account_id": account.id,
             "username": account.username,
             "csrf_token": csrf,
-            "mode": "synthetic_replay",
+            "mode": "product" if APP_MODE == "product" else "synthetic_replay",
         },
     )
 
@@ -1022,6 +1022,8 @@ def calendar(
 
 @app.get("/api/v1/connection-status", response_model=Detail[ConnectionInfo])
 def connection(request: Request, account=Depends(actor)):
+    if APP_MODE != "replay":
+        raise BusinessError(404, "NOT_FOUND", "Use the owned connector status endpoint")
     return detail(
         request, {"mode": "synthetic_replay", "connector": "replay", "live_connected": False}
     )
@@ -1717,6 +1719,8 @@ def replay(
     account=Depends(actor),
     db=Depends(database),
 ):
+    if APP_MODE != "replay":
+        raise BusinessError(404, "NOT_FOUND", "Replay is not available in the product")
     digest, cache = command_cache(db, account.id, "replay", idempotency_key, command.model_dump())
     result = cache.data if cache else ingest(db, account, replay_event(command.scenario))
     if not cache:
@@ -1732,6 +1736,8 @@ def replay_custom(
     account=Depends(actor),
     db=Depends(database),
 ):
+    if APP_MODE != "replay":
+        raise BusinessError(404, "NOT_FOUND", "Replay is not available in the product")
     digest, cache = command_cache(db, account.id, "replay/events", idempotency_key, event)
     result = cache.data if cache else ingest(db, account, event)
     if not cache:
