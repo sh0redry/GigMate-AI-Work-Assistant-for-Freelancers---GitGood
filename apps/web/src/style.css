@@ -1189,3 +1189,15 @@ footer {
     background: rgba(255, 255, 255, 0.94);
   }
 }
+
+/* Keep backdrop sampling inside the rounded glass surfaces in WebKit. */
+.app-header {
+  overflow: hidden;
+  isolation: isolate;
+}
+@media (min-width: 761px) {
+  .workspace-navigation {
+    overflow: hidden;
+    isolation: isolate;
+  }
+}
