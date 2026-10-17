@@ -5,10 +5,15 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
 
 const directory = await mkdtemp(join(tmpdir(), "gigmate-http-api-"));
 for (const name of [
+  "i18n",
+  "locales",
   "environment",
+  "read-cache",
   "connection-api",
   "waha-live-api",
   "waha-sync-api",
@@ -26,6 +31,13 @@ for (const name of [
     },
   }).outputText;
   code = code
+    .replaceAll('"./i18n.ts"', '"./i18n.mjs"')
+    .replaceAll('"./locales.ts"', '"./locales.mjs"')
+    .replace(
+      '"react"',
+      JSON.stringify(pathToFileURL(require.resolve("react")).href),
+    )
+    .replaceAll('"./read-cache.ts"', '"./read-cache.mjs"')
     .replaceAll('"./environment.ts"', '"./environment.mjs"')
     .replaceAll('"./connection-api"', '"./connection-api.mjs"')
     .replaceAll('"./waha-live-api"', '"./waha-live-api.mjs"');

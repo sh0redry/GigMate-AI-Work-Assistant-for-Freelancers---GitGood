@@ -17,6 +17,7 @@ from starlette.concurrency import run_in_threadpool
 from gigmate import identity
 from gigmate import waha_controls as controls
 from gigmate.approvals import approve, reissue, reject, views
+from gigmate.conditional_reads import conditional_read
 from gigmate.config import COOKIE_SECURE, TRUSTED_ORIGINS
 from gigmate.contracts import (
     ActionState,
@@ -26,7 +27,6 @@ from gigmate.contracts import (
     ApprovalAction,
     ApproveActionCommand,
     ArchiveCommand,
-    AssignmentResult,
     AssignMessageCommand,
     CalendarEvent,
     ConfirmChangeCommand,
@@ -40,6 +40,7 @@ from gigmate.contracts import (
     DeliveryChecklist,
     Detail,
     EditActionCommand,
+    MessageAssignmentResult,
     Model,
     Page,
     RecoveryIssue,
@@ -179,7 +180,7 @@ async def request_context(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Request-ID"] = request.state.request_id
     response.headers["Cache-Control"] = "no-store"
-    return response
+    return await conditional_read(request, response)
 
 
 @app.exception_handler(BusinessError)
@@ -342,7 +343,7 @@ def logout(
     request: Request,
     response: Response,
     account=Depends(actor),
-    db=Depends(database, scope="function"),
+    db=Depends(database),
 ):
     db.delete(db.get(LoginSession, identity.digest(request.cookies["gigmate_session"])))
     response.delete_cookie("gigmate_session", path="/")
@@ -468,7 +469,7 @@ def reject_order_change(
     )
 
 
-@app.post("/api/v1/review-items/{job_id}/assign", response_model=Detail[AssignmentResult])
+@app.post("/api/v1/review-items/{job_id}/assign", response_model=Detail[MessageAssignmentResult])
 def assign_review_item(
     job_id: UUID,
     command: AssignMessageCommand,
@@ -680,7 +681,7 @@ def create_agent_draft(
     command: AgentDraftCommand,
     request: Request,
     account=Depends(actor),
-    db=Depends(database, scope="function"),
+    db=Depends(database),
 ):
     """Create one bounded merchant-facing draft (follow-up or polish).
 
@@ -715,7 +716,7 @@ def revoke_agent_draft(
     draft_id: UUID,
     request: Request,
     account=Depends(actor),
-    db=Depends(database, scope="function"),
+    db=Depends(database),
 ):
     """Withdraw a draft so it can no longer be consumed."""
     from gigmate import agent_drafts
@@ -728,7 +729,7 @@ def consume_agent_draft(
     draft_id: UUID,
     request: Request,
     account=Depends(actor),
-    db=Depends(database, scope="function"),
+    db=Depends(database),
 ):
     """Take the draft text into the merchant's existing approval flow, once.
 
@@ -1740,3 +1741,8 @@ def replay_custom(
 
 install_sending(app, database, setup_actor, detail, page, sending_io_actor)
 install_workspace(app, database, actor, detail, page, conversation_info)
+
+
+from gigmate.product_commands import install as install_product  # noqa: E402
+
+install_product(app, database, actor, detail, page)

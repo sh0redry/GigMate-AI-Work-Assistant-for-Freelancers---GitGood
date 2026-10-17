@@ -1277,6 +1277,32 @@
           "title": "Conversation Id",
           "type": "string"
         },
+        "expected_context_version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Context Version"
+        },
+        "from_proposal_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "From Proposal Id"
+        },
         "schedule": {
           "anyOf": [
             {
@@ -1777,6 +1803,53 @@
         "timezone"
       ],
       "title": "InstantDeadline",
+      "type": "object"
+    },
+    "NewOrderSuggestionView": {
+      "additionalProperties": false,
+      "properties": {
+        "context_version": {
+          "minimum": 1,
+          "title": "Context Version",
+          "type": "integer"
+        },
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
+        },
+        "suggestion": {
+          "$ref": "#/$defs/NewWorkOrderSuggestion"
+        }
+      },
+      "required": [
+        "id",
+        "conversation_id",
+        "context_version",
+        "suggestion",
+        "sources",
+        "created_at"
+      ],
+      "title": "NewOrderSuggestionView",
       "type": "object"
     },
     "NewWorkOrderSuggestedField": {
@@ -2587,6 +2660,18 @@
           ],
           "title": "Message Id"
         },
+        "model_request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Request Id"
+        },
         "observed_at": {
           "format": "date-time",
           "pattern": "Z$",
@@ -2744,6 +2829,39 @@
       "title": "SendApprovedActionCommand",
       "type": "object"
     },
+    "SetTaskStatusCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_state": {
+          "enum": [
+            "pending",
+            "blocked"
+          ],
+          "title": "Expected State",
+          "type": "string"
+        },
+        "expected_version": {
+          "minimum": 1,
+          "title": "Expected Version",
+          "type": "integer"
+        },
+        "state": {
+          "enum": [
+            "completed",
+            "cancelled"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_version",
+        "expected_state",
+        "state"
+      ],
+      "title": "SetTaskStatusCommand",
+      "type": "object"
+    },
     "SetWorkOrderStatusCommand": {
       "additionalProperties": false,
       "description": "Merchant moves an order along its life cycle (see TRANSITIONS in workorders).",
@@ -2795,6 +2913,133 @@
         "message_revision"
       ],
       "title": "SourceRef",
+      "type": "object"
+    },
+    "SummaryEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Action Id"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "calendar_event_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Calendar Event Id"
+        },
+        "change_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Change Id"
+        },
+        "job_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Job Id"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kind"
+        },
+        "open_items": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Open Items",
+          "type": "array"
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Task Id"
+        },
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "work_order_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Work Order Id"
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "title": "SummaryEntry",
       "type": "object"
     },
     "Task": {
@@ -3169,6 +3414,19 @@
     "WahaChoice": {
       "additionalProperties": false,
       "properties": {
+        "conversation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Conversation Id"
+        },
         "expires_at": {
           "anyOf": [
             {
@@ -5650,8 +5908,13 @@
           "title": "Automatic Understanding",
           "type": "boolean"
         },
+        "business_loop_reviewed": {
+          "default": true,
+          "title": "Business Loop Reviewed",
+          "type": "boolean"
+        },
         "business_sending": {
-          "default": false,
+          "default": true,
           "title": "Business Sending",
           "type": "boolean"
         },
@@ -5666,7 +5929,7 @@
           "type": "boolean"
         },
         "manual_assignment": {
-          "default": false,
+          "default": true,
           "title": "Manual Assignment",
           "type": "boolean"
         },
@@ -5677,6 +5940,62 @@
         }
       },
       "title": "WorkspaceCapabilities",
+      "type": "object"
+    },
+    "WorkspaceQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "question": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        }
+      },
+      "required": [
+        "question"
+      ],
+      "title": "WorkspaceQuery",
+      "type": "object"
+    },
+    "WorkspaceQueryResult": {
+      "additionalProperties": false,
+      "properties": {
+        "day": {
+          "format": "date",
+          "title": "Day",
+          "type": "string"
+        },
+        "intent": {
+          "enum": [
+            "today",
+            "tomorrow",
+            "waiting",
+            "open_items",
+            "unsupported"
+          ],
+          "title": "Intent",
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/SummaryEntry"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "supported": {
+          "title": "Supported",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "supported",
+        "intent",
+        "day",
+        "items"
+      ],
+      "title": "WorkspaceQueryResult",
       "type": "object"
     }
   },

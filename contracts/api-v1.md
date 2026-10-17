@@ -190,3 +190,10 @@ Pydantic domain generation, implemented OpenAPI, frontend type generation, owner
 Calendar export compares the calendar time and exact source revisions with the current confirmed schedule and refuses future event versions, tentative/date-only entries and closed orders. A later address/status-only order revision is valid: the file uses the latest owned order version and only its current confirmed location. A changed time or source still fails closed.
 
 Proposal-list conflict IDs are computed only for schedule proposals whose value is a timed interval. Address, date-only and other field values remain readable with an empty conflict list; this does not authorize confirmation of unsupported fields. 中文：提案列表仅对具体起止时间计算冲突，地址／仅日期／其他字段正常读取并返回空冲突列表；可读取不表示可以确认尚未支持的字段。
+
+
+## BCD text-product additions — 2026-10-17
+
+Canonical implemented OpenAPI includes owned `GET /new-order-suggestions`, explicit `CreateWorkOrderCommand.from_proposal_id` with current `expected_context_version`, `POST /tasks/{id}/status`, and read-only `POST /workspace-query`. Suggestion consumption never grants AI confirmation/execution authority; the merchant explicitly reviews creation and each critical value retains current customer sources. One source event can be consumed once through a suggestion. Omitted suggestion fields preserve legacy manual-command receipt digests.
+
+Task decisions bind current order version and task state, validate source/consent/prerequisites and atomically update linked requirements, audit and receipt. `WahaChoice.conversation_id` is an optional owned mapping on selected chats; candidate choices do not invent a conversation. Unknown model jobs expose their original correlation ID for review and cannot be reassigned for blind resubmission. Existing model/connector credentials never enter these models. See [English delivery](../docs/en/bcd-product-delivery.md) and its Chinese counterpart linked there.

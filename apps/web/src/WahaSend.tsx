@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { t, localized } from "./i18n.ts";
+import { privateReadDenied } from "./read-cache";
+import { useStableState as useState } from "./useStableState";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   sendingApi,
   sendingMime,
@@ -11,7 +14,7 @@ import {
 } from "./waha-send-api";
 import type { TimelineMessage } from "./waha-sync-api";
 
-const names: Record<SendPayload["kind"], string> = {
+const names: Record<SendPayload["kind"], string> = localized({
   text: "文字 / 链接",
   image: "图片",
   file: "文件",
@@ -23,8 +26,8 @@ const names: Record<SendPayload["kind"], string> = {
   contact: "联系人",
   poll: "投票",
   reaction: "表情回应",
-};
-const states: Record<string, string> = {
+});
+const states: Record<string, string> = localized({
   draft: "待核对草稿",
   queued: "已批准，排队中",
   preparing: "连接检查中",
@@ -38,7 +41,7 @@ const states: Record<string, string> = {
   delivered: "已送达",
   read: "已读",
   unknown: "未知",
-};
+});
 
 export function WahaSend({
   connection,
@@ -190,7 +193,12 @@ export function WahaSend({
         epoch === scope.current &&
         sequence === refreshSequence.current
       ) {
-        setInstalled(false);
+        if (privateReadDenied(error)) {
+          setActions([]);
+          setPolicies([]);
+          setDraftView(null);
+          setInstalled(false);
+        }
         setPermission(null);
         setPreview(null);
         report(error);
@@ -319,7 +327,7 @@ export function WahaSend({
     if (
       ["image", "file", "audio", "voice", "video", "sticker"].includes(kind)
     ) {
-      if (!upload) throw new Error("请先上传并核对附件");
+      if (!upload) throw new Error(t("请先上传并核对附件"));
       return {
         kind,
         upload_id: upload.id,
@@ -330,7 +338,8 @@ export function WahaSend({
       };
     }
     if (kind === "location") {
-      if (!latitude.trim() || !longitude.trim()) throw new Error("请填写坐标");
+      if (!latitude.trim() || !longitude.trim())
+        throw new Error(t("请填写坐标"));
       return {
         kind,
         latitude: Number(latitude),
@@ -355,7 +364,7 @@ export function WahaSend({
     return { kind, target_snapshot_id: target, reaction };
   }
   async function prepare(policy?: SendPolicy) {
-    if (pending.current && !uncertain) throw new Error("请先核对原请求");
+    if (pending.current && !uncertain) throw new Error(t("请先核对原请求"));
     const epoch = scope.current;
     const restored = recoverKey ?? storedKey();
     if (restored && !pending.current) {
@@ -364,7 +373,7 @@ export function WahaSend({
       clearReference(restored);
       updateRecovery();
       setDraftView(result.action);
-      setNotice("已核对原请求，没有重新提交。");
+      setNotice(t("已核对原请求，没有重新提交。"));
       return;
     }
     if (!pending.current) {
@@ -377,7 +386,7 @@ export function WahaSend({
       if (other) {
         setRecoverKey(other);
         setUncertain(true);
-        setNotice("本会话有待核对请求，请先核对原记录。");
+        setNotice(t("本会话有待核对请求，请先核对原记录。"));
         return;
       }
       pending.current = {
@@ -415,8 +424,8 @@ export function WahaSend({
       setDraftView(result);
       setNotice(
         policy
-          ? "已按批准的固定内容政策排队。"
-          : "草稿已保存，请核对下方最终内容再批准发送。",
+          ? t("已按批准的固定内容政策排队。")
+          : t("草稿已保存，请核对下方最终内容再批准发送。"),
       );
     } catch (error) {
       if (!active.current || epoch !== scope.current) return;
@@ -445,13 +454,21 @@ export function WahaSend({
   }
   if (!chat) return null;
   return (
-    <section className="send-panel" aria-label="WhatsApp 发送">
-      <h3>向「{label}」发送 WhatsApp 消息</h3>
+    <section className="send-panel" aria-label={t("WhatsApp 发送")}>
+      <h3>
+        {t("向「")}
+        {label}
+        {t("」发送 WhatsApp 消息")}
+      </h3>
       <p>
-        读取聊天授权与发送授权分开。草稿、已批准、已接受和已送达是不同状态。
+        {t(
+          "读取聊天授权与发送授权分开。草稿、已批准、已接受和已送达是不同状态。",
+        )}
       </p>
-      {!installed && <p>发送功能暂不可用，请联系接入负责人确认服务配置。</p>}
-      {notice && <p role="status">{notice}</p>}
+      {!installed && (
+        <p>{t("发送功能暂不可用，请联系接入负责人确认服务配置。")}</p>
+      )}
+      {notice && <p role="status">{t(notice)}</p>}
       <button
         className="secondary"
         disabled={busy}
@@ -461,7 +478,7 @@ export function WahaSend({
           void refresh();
         }}
       >
-        刷新发送记录
+        {t("刷新发送记录")}
       </button>
       <label>
         <input
@@ -469,7 +486,7 @@ export function WahaSend({
           checked={consent}
           onChange={(e) => setConsent(e.target.checked)}
         />
-        我允许本会话发送消息，授权有效期 24 小时
+        {t("我允许本会话发送消息，授权有效期 24 小时")}
       </label>
       <button
         disabled={busy || !installed || !enabled || !consent}
@@ -486,7 +503,7 @@ export function WahaSend({
           })
         }
       >
-        保存发送授权
+        {t("保存发送授权")}
       </button>
       <button
         className="secondary"
@@ -503,27 +520,29 @@ export function WahaSend({
           })
         }
       >
-        撤销全部发送授权
+        {t("撤销全部发送授权")}
       </button>
       <fieldset
         disabled={busy || !installed || !enabled || !permitted || uncertain}
       >
-        <legend>准备消息（尚未发送）</legend>
+        <legend>{t("准备消息（尚未发送）")}</legend>
         <label>
-          内容来源
+          {t("内容来源")}
           <select
             value={mode}
             onChange={(e) => setMode(e.target.value as typeof mode)}
           >
-            <option value="manual">用户手动输入</option>
-            <option value="agent_assisted">Agent 建议稿，人工核对</option>
+            <option value="manual">{t("用户手动输入")}</option>
+            <option value="agent_assisted">
+              {t("Agent 建议稿，人工核对")}
+            </option>
           </select>
         </label>
         {mode === "agent_assisted" && (
-          <p>自动润色暂不可用。可粘贴建议稿，修改并核对后发送。</p>
+          <p>{t("自动润色暂不可用。可粘贴建议稿，修改并核对后发送。")}</p>
         )}
         <label>
-          消息类型
+          {t("消息类型")}
           <select
             value={kind}
             onChange={(e) => {
@@ -542,7 +561,7 @@ export function WahaSend({
         </label>
         {kind === "text" && (
           <label>
-            文字
+            {t("文字")}
             <textarea
               value={text}
               maxLength={4096}
@@ -555,7 +574,7 @@ export function WahaSend({
         ) && (
           <>
             <label>
-              文件类型（高级选项，可留空自动识别）
+              {t("文件类型（高级选项，可留空自动识别）")}
               <input
                 value={mime}
                 onChange={(e) => setMime(e.target.value)}
@@ -564,14 +583,14 @@ export function WahaSend({
             </label>
             <input
               type="file"
-              aria-label="上传发送附件"
+              aria-label={t("上传发送附件")}
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (file)
                   void run(async () => {
                     const epoch = scope.current;
                     if (file.size > 20 * 1024 * 1024)
-                      throw new Error("附件最大 20 MiB");
+                      throw new Error(t("附件最大 20 MiB"));
                     const value = await api.upload(
                       file,
                       sendingMime(file, mime),
@@ -586,12 +605,16 @@ export function WahaSend({
             />
             {upload && (
               <p>
-                {upload.filename} · {upload.size_bytes} 字节 · SHA256{" "}
+                {upload.filename} · {upload.size_bytes} {t("字节 · SHA256")}{" "}
                 {upload.sha256.slice(0, 12)}
               </p>
             )}
             {preview && upload?.mimetype.startsWith("image/") && (
-              <img className="send-preview" src={preview} alt="待发送图片" />
+              <img
+                className="send-preview"
+                src={preview}
+                alt={t("待发送图片")}
+              />
             )}
             {preview && upload?.mimetype.startsWith("audio/") && (
               <audio controls src={preview} />
@@ -606,12 +629,12 @@ export function WahaSend({
                 rel="noreferrer"
                 download={upload?.filename}
               >
-                查看 / 下载待发送文件
+                {t("查看 / 下载待发送文件")}
               </a>
             )}
             {["image", "file", "audio", "video"].includes(kind) && (
               <label>
-                说明文字
+                {t("说明文字")}
                 <textarea
                   value={caption}
                   maxLength={1024}
@@ -624,21 +647,21 @@ export function WahaSend({
         {kind === "location" && (
           <>
             <label>
-              纬度
+              {t("纬度")}
               <input
                 value={latitude}
                 onChange={(e) => setLatitude(e.target.value)}
               />
             </label>
             <label>
-              经度
+              {t("经度")}
               <input
                 value={longitude}
                 onChange={(e) => setLongitude(e.target.value)}
               />
             </label>
             <label>
-              地点名称
+              {t("地点名称")}
               <input value={title} onChange={(e) => setTitle(e.target.value)} />
             </label>
           </>
@@ -646,14 +669,14 @@ export function WahaSend({
         {kind === "contact" && (
           <>
             <label>
-              联系人姓名
+              {t("联系人姓名")}
               <input
                 value={contactName}
                 onChange={(e) => setContactName(e.target.value)}
               />
             </label>
             <label>
-              电话号码（含 + 国家码）
+              {t("电话号码（含 + 国家码）")}
               <input value={phone} onChange={(e) => setPhone(e.target.value)} />
             </label>
           </>
@@ -661,11 +684,11 @@ export function WahaSend({
         {kind === "poll" && (
           <>
             <label>
-              投票问题
+              {t("投票问题")}
               <input value={title} onChange={(e) => setTitle(e.target.value)} />
             </label>
             <label>
-              选项（每行一个，2–12 项）
+              {t("选项（每行一个，2–12 项）")}
               <textarea
                 value={options}
                 onChange={(e) => setOptions(e.target.value)}
@@ -677,14 +700,14 @@ export function WahaSend({
                 checked={multiple}
                 onChange={(e) => setMultiple(e.target.checked)}
               />
-              允许多选
+              {t("允许多选")}
             </label>
           </>
         )}
         <label>
           {kind === "reaction"
-            ? "回应目标消息"
-            : "引用回复（可选，先载入时间线）"}
+            ? t("回应目标消息")
+            : t("引用回复（可选，先载入时间线）")}
           <select
             value={kind === "reaction" ? target : reply}
             onChange={(e) =>
@@ -693,7 +716,7 @@ export function WahaSend({
                 : setReply(e.target.value)
             }
           >
-            <option value="">请选择</option>
+            <option value="">{t("请选择")}</option>
             {messages
               .filter((m) => !m.revoked)
               .map((m) => (
@@ -705,7 +728,7 @@ export function WahaSend({
         </label>
         {kind === "reaction" && (
           <label>
-            表情（留空移除）
+            {t("表情（留空移除）")}
             <input
               value={reaction}
               maxLength={32}
@@ -714,7 +737,7 @@ export function WahaSend({
           </label>
         )}
         <button onClick={() => void run(() => prepare())}>
-          保存待审核草稿
+          {t("保存待审核草稿")}
         </button>
         <label>
           <input
@@ -722,8 +745,9 @@ export function WahaSend({
             checked={policyConsent}
             onChange={(e) => setPolicyConsent(e.target.checked)}
           />
-          预先允许 Agent 在本会话使用下方相同内容，24 小时内最多 5
-          次；正文和附件不能改变
+          {t(
+            "预先允许 Agent 在本会话使用下方相同内容，24 小时内最多 5 次；正文和附件不能改变",
+          )}
         </label>
         <button
           className="secondary"
@@ -743,18 +767,18 @@ export function WahaSend({
                 maximum_uses: 5,
               });
               setPolicyConsent(false);
-              setNotice("固定内容政策已保存，尚未发送消息。");
+              setNotice(t("固定内容政策已保存，尚未发送消息。"));
             })
           }
         >
-          批准固定内容自动政策
+          {t("批准固定内容自动政策")}
         </button>
       </fieldset>
       {uncertain && (
         <p>
-          草稿保存结果待确认。
+          {t("草稿保存结果待确认。")}
           <button disabled={busy} onClick={() => void run(() => prepare())}>
-            核对原草稿请求
+            {t("核对原草稿请求")}
           </button>
           <button
             className="secondary"
@@ -775,47 +799,57 @@ export function WahaSend({
                     ["dispatching", "accepted", "result_unknown"].includes(
                       result.action.state,
                     )
-                    ? "原任务已进入发送，无法取消；请核对下方记录，不要重发。"
-                    : "原请求已取消；晚到的相同请求也不会创建发送任务。",
+                    ? t(
+                        "原任务已进入发送，无法取消；请核对下方记录，不要重发。",
+                      )
+                    : t("原请求已取消；晚到的相同请求也不会创建发送任务。"),
                 );
               })
             }
           >
-            取消原请求并核对
+            {t("取消原请求并核对")}
           </button>
         </p>
       )}
       {draftView && (
         <article className="send-review">
-          <h4>最终发送快照 · {states[draftView.state]}</h4>
+          <h4>
+            {t("最终发送快照 ·")}
+            {states[draftView.state]}
+          </h4>
           <p>
-            接收会话：{label} · 上下文版本 {draftView.context_version}
+            {t("接收会话：")}
+            {label} {t("· 上下文版本")}
+            {draftView.context_version}
           </p>
           <pre>{JSON.stringify(draftView.payload, null, 2)}</pre>
           {Object.keys(draftView.work_order_versions ?? {}).length > 0 && (
             <p>
-              关联工单版本（不自动确认业务）：
+              {t("关联工单版本（不自动确认业务）：")}
               {JSON.stringify(draftView.work_order_versions)}
               {draftView.work_order_id &&
-                ` · 本条明确关联 ${draftView.work_order_id}`}
+                t(" · 本条明确关联 {0}", draftView.work_order_id)}
             </p>
           )}
           {draftView.upload && (
             <p>
-              附件：{draftView.upload.filename} · {draftView.upload.size_bytes}{" "}
-              字节 · SHA256 {draftView.upload.sha256}
+              {t("附件：")}
+              {draftView.upload.filename} · {draftView.upload.size_bytes}{" "}
+              {t("字节 · SHA256")}
+              {draftView.upload.sha256}
               <br />
               <a
                 href={api.previewUrl(draftView.upload.id)}
                 target="_blank"
                 rel="noreferrer"
               >
-                核对这条草稿绑定的附件
+                {t("核对这条草稿绑定的附件")}
               </a>
             </p>
           )}
           <p>
-            截止 {new Date(draftView.expires_at).toLocaleString()} ·{" "}
+            {t("截止")}
+            {new Date(draftView.expires_at).toLocaleString()} ·{" "}
             {states[draftView.delivery_status]}
           </p>
           {draftView.error_code && <p>{draftView.error_code}</p>}
@@ -824,7 +858,7 @@ export function WahaSend({
               disabled={busy || !enabled || !permitted}
               onClick={() => void run(() => mutate(draftView, "approve"))}
             >
-              确认上述内容并发送
+              {t("确认上述内容并发送")}
             </button>
           )}
           {["draft", "queued", "preparing"].includes(draftView.state) && (
@@ -833,7 +867,7 @@ export function WahaSend({
               disabled={busy}
               onClick={() => void run(() => mutate(draftView, "cancel"))}
             >
-              取消此任务
+              {t("取消此任务")}
             </button>
           )}
           {["result_unknown", "accepted"].includes(draftView.state) && (
@@ -842,14 +876,14 @@ export function WahaSend({
               disabled={busy}
               onClick={() => void run(() => mutate(draftView, "reconcile"))}
             >
-              只读核对发送结果
+              {t("只读核对发送结果")}
             </button>
           )}
           {draftView.state === "result_unknown" &&
             !draftView.unknown_reviewed_at && (
               <div>
                 <label>
-                  人工核对说明
+                  {t("人工核对说明")}
                   <input
                     value={unknownNote}
                     maxLength={500}
@@ -862,7 +896,9 @@ export function WahaSend({
                     checked={unknownConsent}
                     onChange={(e) => setUnknownConsent(e.target.checked)}
                   />
-                  我已核对手机，理解本条可能已发出；保留未知状态，不重发本条，只允许后续独立任务继续
+                  {t(
+                    "我已核对手机，理解本条可能已发出；保留未知状态，不重发本条，只允许后续独立任务继续",
+                  )}
                 </label>
                 <button
                   disabled={busy || !unknownConsent || !unknownNote.trim()}
@@ -881,21 +917,24 @@ export function WahaSend({
                     })
                   }
                 >
-                  记录核对并解除后续阻塞
+                  {t("记录核对并解除后续阻塞")}
                 </button>
               </div>
             )}
           {draftView.unknown_reviewed_at && (
             <p>
-              已记录当时未知状态的人工核对；当前状态以上方结果为准，本条不会重发。
+              {t(
+                "已记录当时未知状态的人工核对；当前状态以上方结果为准，本条不会重发。",
+              )}
             </p>
           )}
         </article>
       )}
-      <h4>已批准的自动政策</h4>
+      <h4>{t("已批准的自动政策")}</h4>
       <p>
-        自动触发尚未接入。目前只能由你明确触发已批准的固定内容；这不是 AI
-        自由生成的自动回复。
+        {t(
+          "自动触发尚未接入。目前只能由你明确触发已批准的固定内容；这不是 AI 自由生成的自动回复。",
+        )}
       </p>
       {policies
         .filter((p) => p.chat_id === chat)
@@ -903,8 +942,9 @@ export function WahaSend({
           <article key={p.id}>
             <pre>{JSON.stringify(p.payload, null, 2)}</pre>
             <p>
-              {p.enabled ? "有效" : "已撤销"} · 已预留 {p.uses}/{p.maximum_uses}{" "}
-              次 · 截止 {new Date(p.expires_at).toLocaleString()}
+              {p.enabled ? t("有效") : t("已撤销")} {t("· 已预留")}
+              {p.uses}/{p.maximum_uses} {t("次 · 截止")}
+              {new Date(p.expires_at).toLocaleString()}
             </p>
             <button
               disabled={
@@ -918,7 +958,7 @@ export function WahaSend({
               }
               onClick={() => void run(() => prepare(p))}
             >
-              按已授权政策提交
+              {t("按已授权政策提交")}
             </button>
             <button
               className="secondary"
@@ -929,7 +969,7 @@ export function WahaSend({
                 })
               }
             >
-              撤销此政策
+              {t("撤销此政策")}
             </button>
           </article>
         ))}
@@ -945,10 +985,10 @@ export function WahaSend({
             })
           }
         >
-          加载更多政策
+          {t("加载更多政策")}
         </button>
       )}
-      <h4>发送记录</h4>
+      <h4>{t("发送记录")}</h4>
       {actions
         .filter((a) => a.chat_id === chat)
         .map((a) => (
@@ -971,12 +1011,13 @@ export function WahaSend({
             })
           }
         >
-          加载更多发送记录
+          {t("加载更多发送记录")}
         </button>
       )}
       <p>
-        结果未知时不会自动重发，同一会话后续发送暂停。没有 WAHA 返回的消息 ID
-        时，无法自动证明某条相同文字就是本次发送；需人工核对。
+        {t(
+          "结果未知时不会自动重发，同一会话后续发送暂停。没有 WAHA 返回的消息 ID 时，无法自动证明某条相同文字就是本次发送；需人工核对。",
+        )}
       </p>
     </section>
   );

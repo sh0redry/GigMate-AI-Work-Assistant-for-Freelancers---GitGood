@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { t } from "./i18n.ts";
+import { privateReadDenied } from "./read-cache";
+import { useStableState as useState } from "./useStableState";
+import { useEffect, useMemo } from "react";
 import {
   allPages,
   workspaceApi,
@@ -7,15 +10,8 @@ import {
   type Change,
 } from "./workspace-api";
 import type { components } from "./generated/api";
-import { fieldNames, fieldValue } from "./work-order-view";
+import { fieldNames, fieldValue, reviewReasons } from "./work-order-view";
 type ReviewItem = components["schemas"]["ReviewItem"];
-const reasons: Record<string, string> = {
-  LIVE_EXTRACTION_PENDING: "真实消息理解尚未启用",
-  EXTRACTION_NEEDS_REVIEW: "模型未能确定业务含义，需要人工核对",
-  ASSIGNMENT_NEEDS_REVIEW: "无法确定属于哪张工单",
-  PROCESSING_FAILED: "处理失败，需要核对原文",
-  RETRY_EXHAUSTED: "多次处理未完成，需要人工核对",
-};
 export function ReviewWorkspace({
   csrf,
   onSessionExpired,
@@ -39,10 +35,9 @@ export function ReviewWorkspace({
     [version, setVersion] = useState(0);
   useEffect(() => {
     const abort = new AbortController();
-    setLoading(true);
+    setLoading(!items.length && !orders.length);
     setError("");
-    setSelected(null);
-    setMessages([]);
+
     void (async () => {
       try {
         const [queue, list] = await Promise.all([
@@ -61,16 +56,23 @@ export function ReviewWorkspace({
           )
         ).flat();
         if (!abort.signal.aborted) {
+          setSelected((old) =>
+            old ? (queue.find((i) => i.id === old.id) ?? null) : null,
+          );
           setItems(queue);
           setOrders(list);
           setChanges(allChanges);
         }
       } catch (e) {
         if (!abort.signal.aborted) {
-          setItems([]);
-          setOrders([]);
-          setChanges([]);
-          setError(e instanceof Error ? e.message : "复核数据暂不可用");
+          if (privateReadDenied(e)) {
+            setItems([]);
+            setOrders([]);
+            setChanges([]);
+            setSelected(null);
+            setMessages([]);
+          }
+          setError(e instanceof Error ? e.message : t("复核数据暂不可用"));
           if ((e as { code?: string })?.code === "UNAUTHENTICATED")
             onSessionExpired();
         }
@@ -82,7 +84,6 @@ export function ReviewWorkspace({
   }, [api, version, onSessionExpired]);
   useEffect(() => {
     const abort = new AbortController();
-    setMessages([]);
     setContextError("");
     if (selected)
       void allPages<Message>(
@@ -95,26 +96,34 @@ export function ReviewWorkspace({
             if (
               values.some((m) => m.conversation_id !== selected.conversation_id)
             )
-              throw new Error("来源会话无法核对。");
+              throw new Error(t("来源会话无法核对。"));
             setMessages(values);
           }
         })
         .catch((e) => {
           if (!abort.signal.aborted) {
-            setContextError(e instanceof Error ? e.message : "原文无法读取");
+            setContextError(e instanceof Error ? e.message : t("原文无法读取"));
             if (e?.code === "UNAUTHENTICATED") onSessionExpired();
           }
         });
     return () => abort.abort();
-  }, [api, selected, onSessionExpired]);
+  }, [
+    api,
+    selected?.id,
+    selected?.current_context_version,
+    version,
+    onSessionExpired,
+  ]);
   return (
-    <section aria-label="人工复核">
+    <section aria-label={t("人工复核")}>
       <div className="page-heading">
         <div>
-          <p className="eyebrow">需要你判断</p>
-          <h1>人工复核</h1>
+          <p className="eyebrow">{t("需要你判断")}</p>
+          <h1>{t("人工复核")}</h1>
           <p>
-            把没有理解、没有归单和来源失效的问题摆出来。不会自动接受、重发或改写工单。
+            {t(
+              "把没有理解、没有归单和来源失效的问题摆出来。不会自动接受、重发或改写工单。",
+            )}
           </p>
         </div>
         <button
@@ -122,68 +131,85 @@ export function ReviewWorkspace({
           disabled={loading}
           onClick={() => setVersion((v) => v + 1)}
         >
-          刷新复核事项
+          {t("刷新复核事项")}
         </button>
       </div>
       {error && (
         <p role="alert" className="notice stale">
-          {error}
+          {t(error)}
         </p>
       )}
-      {loading && <p role="status">正在读取复核事项…</p>}
+      {loading && <p role="status">{t("正在读取复核事项…")}</p>}
       <div className="planning-grid">
         <div className="panel">
-          <h2>消息处理待核对</h2>
+          <h2>{t("消息处理待核对")}</h2>
           <small>
-            这是处理记录，可能包含旧轮次；查看最新原文后再判断，不能把旧诊断当成当前失败。
+            {t(
+              "这是处理记录，可能包含旧轮次；查看最新原文后再判断，不能把旧诊断当成当前失败。",
+            )}
           </small>
           {items.map((item) => (
             <article className="review-item" key={item.id}>
               <h3>
                 {item.reason === "PROCESSING_FAILED" &&
                 ["pending", "processing"].includes(item.state)
-                  ? "处理暂未完成，系统正在自动重试"
-                  : (reasons[item.reason] ?? "需要人工核对")}
+                  ? t("处理暂未完成，系统正在自动重试")
+                  : (reviewReasons[item.reason] ?? t("需要人工核对"))}
               </h3>
               <small>
-                会话 {item.conversation_id.slice(-6)} · 记录 v
-                {item.context_version} / 当前 v{item.current_context_version}
+                {t("会话")}
+                {item.conversation_id.slice(-6)} {t("· 记录 v")}
+                {item.context_version} {t("/ 当前 v")}
+                {item.current_context_version}
                 {item.context_version !== item.current_context_version
-                  ? " · 历史轮次"
+                  ? t(" · 历史轮次")
                   : ""}
               </small>
               <button
                 className="secondary"
                 aria-pressed={selected?.id === item.id}
-                onClick={() => setSelected(item)}
+                onClick={() => {
+                  if (selected?.conversation_id !== item.conversation_id)
+                    setMessages([]);
+                  setSelected(item);
+                }}
               >
-                查看这条会话原文
+                {t("查看这条会话原文")}
               </button>
             </article>
           ))}
           {!loading && !error && !items.length && (
-            <p>目前没有记录到需复核的处理事项。这不表示 AI 已理解所有聊天。</p>
+            <p>
+              {t(
+                "目前没有记录到需复核的处理事项。这不表示 AI 已理解所有聊天。",
+              )}
+            </p>
           )}
           {selected && (
             <section className="review-panel">
-              <h3>来源会话 {selected.conversation_id.slice(-6)}</h3>
+              <h3>
+                {t("来源会话")}
+                {selected.conversation_id.slice(-6)}
+              </h3>
               {contextError && <p role="alert">{contextError}</p>}
               {messages.map((m) => (
                 <article className="message" key={m.id}>
                   <small>
-                    {m.direction === "incoming" ? "客户" : "商户"} · r
+                    {m.direction === "incoming" ? t("客户") : t("商户")} · r
                     {m.revision}
-                    {m.id === selected.message_id ? " · 触发消息" : ""}
+                    {m.id === selected.message_id ? t(" · 触发消息") : ""}
                   </small>
                   <p>
                     {m.revoked
-                      ? "已撤回，不可用于确认"
-                      : (m.text ?? "无可读取文字，请核对附件")}
+                      ? t("已撤回，不可用于确认")
+                      : (m.text ?? t("无可读取文字，请核对附件"))}
                   </p>
                 </article>
               ))}
-              {!messages.length && !contextError && <p>尚无可读取原文。</p>}
-              <h3>该会话已有工单</h3>
+              {!messages.length && !contextError && (
+                <p>{t("尚无可读取原文。")}</p>
+              )}
+              <h3>{t("该会话已有工单")}</h3>
               {orders
                 .filter((o) =>
                   o.conversation_ids.includes(selected.conversation_id),
@@ -197,15 +223,11 @@ export function ReviewWorkspace({
                     {o.summary}
                   </button>
                 ))}
-              <button disabled>保存人工归单／延期跟进</button>
-              <p className="availability-note">
-                归单与延期保存接口尚未交付；查看原文和已有工单不会替你完成归属确认。
-              </p>
             </section>
           )}
         </div>
         <aside className="panel">
-          <h2>工单缺项与含糊回复</h2>
+          <h2>{t("工单缺项与含糊回复")}</h2>
           {orders
             .filter((o) => !["completed", "cancelled"].includes(o.status))
             .filter(
@@ -224,13 +246,13 @@ export function ReviewWorkspace({
                   .filter(([, f]) => f.status !== "confirmed")
                   .map(([key, f]) => (
                     <p key={key}>
-                      {key === "schedule" ? "时间" : "地址"}：
+                      {key === "schedule" ? t("时间") : t("地址")}：
                       {fieldValue(f.value)} ·{" "}
                       {f.status === "missing"
-                        ? "等待客户提供"
+                        ? t("等待客户提供")
                         : f.status === "needs_review"
-                          ? "原文或含义需要复核"
-                          : "等待客户核实和商户确认"}
+                          ? t("原文或含义需要复核")
+                          : t("等待客户核实和商户确认")}
                     </p>
                   ))}
                 {changes
@@ -243,25 +265,25 @@ export function ReviewWorkspace({
                     <p key={c.id}>
                       {fieldNames[c.field]}：
                       {c.customer_confirmation === "ambiguous"
-                        ? "客户回复含糊，不能默认同意"
+                        ? t("客户回复含糊，不能默认同意")
                         : c.customer_confirmation === "confirmed"
-                          ? "客户已确认，等待商户核对"
-                          : "客户尚未明确确认"}
+                          ? t("客户已确认，等待商户核对")
+                          : t("客户尚未明确确认")}
                     </p>
                   ))}
                 <button className="secondary" onClick={() => onOpenOrder(o.id)}>
-                  核对工单和来源
+                  {t("核对工单和来源")}
                 </button>
               </article>
             ))}
-          <h2>附件与部分结果</h2>
+          <h2>{t("附件与部分结果")}</h2>
           <p>
-            到 WhatsApp
-            消息页查看附件、部分文字、来源版本和人工确认。处理失败或结果未知不会自动重发；扫描
-            PDF 的文字识别和真实语音理解仍未交付。
+            {t(
+              "到 WhatsApp 消息页查看附件、部分文字、来源版本和人工确认。处理失败或结果未知不会自动重发；扫描 PDF 的文字识别和真实语音理解仍未交付。",
+            )}
           </p>
           <button className="secondary" onClick={onConnect}>
-            前往消息与附件
+            {t("前往消息与附件")}
           </button>
         </aside>
       </div>

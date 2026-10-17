@@ -205,3 +205,22 @@ test("confirmed and invalidated cards describe their completed or historical sta
     /冲突/,
   );
 });
+
+test("unchanged polls retain the exact snapshot, stable timestamp and ready controls without loading notifications", async () => {
+  let time = 1000;
+  const { store } = setup({}, () => time);
+  await flush();
+  const first = store.getSnapshot();
+  let notifications = 0;
+  store.subscribe(() => notifications++);
+  time += 9000;
+  await store.refresh();
+  assert.equal(store.getSnapshot(), first);
+  assert.equal(notifications, 0);
+  assert.equal(store.ready(), true);
+  time += 9000;
+  await store.refresh();
+  assert.equal(store.ready(), true);
+  assert.equal(store.getSnapshot().updatedAt, 1000);
+  store.dispose();
+});

@@ -19,12 +19,14 @@ from typing import Iterable
 from .deterministic import DeterministicProvider
 from .disabled import DisabledProvider
 from .llm import LLMProvider
+from .reviewed import ReviewedLLMProvider
 from .types import ExtractionRequest, Provider
 
 _REGISTRY: dict[str, type[Provider]] = {
     "deterministic": DeterministicProvider,
     "disabled": DisabledProvider,
     "llm": LLMProvider,
+    "reviewed_llm": ReviewedLLMProvider,
 }
 
 _lock = threading.Lock()

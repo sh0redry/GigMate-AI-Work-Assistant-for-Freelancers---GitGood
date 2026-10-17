@@ -1,4 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { t, localized, useLocale, setLocale } from "./i18n.ts";
+import { useStableState as useState } from "./useStableState";
+import { useCallback, useEffect } from "react";
+import { clearReadCache, setReadScope } from "./read-cache";
+import { NavIcon } from "./NavIcon";
+import { BusinessLoopWorkspace } from "./BusinessLoopWorkspace";
 import { ConnectionWorkspace } from "./ConnectionWorkspace";
 import { ApprovalsWorkspace } from "./ApprovalsWorkspace";
 import { WorkOrderWorkspace } from "./WorkOrderWorkspace";
@@ -8,8 +13,8 @@ import { ReviewWorkspace } from "./ReviewWorkspace";
 import { DeliveryGuide } from "./DeliveryGuide";
 import { workspaceApi, type Detail, type Login } from "./workspace-api";
 import { clearConnectionAttempts } from "./connection-api";
-import { unavailableFeatures, type Features } from "./features";
-const pages = {
+import { unavailableFeatures, loopReady, type Features } from "./features";
+const pages = localized({
   business: "业务工作台",
   create: "新建工单",
   approvals: "回复审批",
@@ -17,9 +22,20 @@ const pages = {
   review: "人工复核",
   connect: "WhatsApp 连接",
   guide: "功能与使用说明",
-};
+  management: "业务管理",
+});
 type View = keyof typeof pages;
 export function App() {
+  const language = useLocale();
+  useEffect(() => {
+    document.documentElement.lang =
+      language === "en"
+        ? "en-HK"
+        : language === "yue"
+          ? "yue-Hant-HK"
+          : "zh-CN";
+  }, [language]);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [view, setView] = useState<View>("business"),
     [selectedOrder, setSelectedOrder] = useState(""),
     [login, setLogin] = useState<Login | null>(null),
@@ -31,17 +47,20 @@ export function App() {
     [featureError, setFeatureError] = useState("");
   const clearSession = useCallback((message: string) => {
     clearConnectionAttempts();
+    setReadScope("");
+    clearReadCache();
     setLogin(null);
     setPassword("");
     setUsername("");
     setView("business");
+    setMoreOpen(false);
     setSelectedOrder("");
     setBusy(false);
     setFeatures(unavailableFeatures);
     setNotice(message);
   }, []);
   const expireSession = useCallback(
-    () => clearSession("登录已过期，请重新登录。"),
+    () => clearSession(t("登录已过期，请重新登录。")),
     [clearSession],
   );
   useEffect(() => {
@@ -58,17 +77,24 @@ export function App() {
         if (abort.signal.aborted) return;
         if (
           !result.data ||
-          Object.keys(unavailableFeatures).some(
-            (key) => typeof result.data[key as keyof Features] !== "boolean",
-          )
+          Object.keys(unavailableFeatures)
+            .filter((key) => key !== "business_loop_reviewed")
+            .some(
+              (key) => typeof result.data[key as keyof Features] !== "boolean",
+            )
         )
-          throw new Error("后端能力状态不完整，请联系维护者更新服务。");
-        setFeatures(result.data);
+          throw new Error(t("后端能力状态不完整，请联系维护者更新服务。"));
+        setFeatures({
+          ...result.data,
+          business_loop_reviewed: result.data.business_loop_reviewed === true,
+        });
       })
       .catch((e) => {
         if (!abort.signal.aborted) {
           setFeatures(unavailableFeatures);
-          setFeatureError(e instanceof Error ? e.message : "无法读取功能状态");
+          setFeatureError(
+            e instanceof Error ? e.message : t("无法读取功能状态"),
+          );
           if (e?.code === "UNAUTHENTICATED") expireSession();
         }
       });
@@ -78,12 +104,23 @@ export function App() {
     if (busy) return;
     setNotice("");
     setView(next);
-    queueMicrotask(() => document.getElementById("workspace-content")?.focus());
+    setMoreOpen(false);
+    queueMicrotask(() => {
+      document
+        .getElementById("workspace-content")
+        ?.focus({ preventScroll: true });
+      document.scrollingElement?.scrollTo({ top: 0 });
+    });
   }
   const openOrder = useCallback((id: string) => {
     setSelectedOrder(id);
     setView("business");
-    queueMicrotask(() => document.getElementById("workspace-content")?.focus());
+    queueMicrotask(() => {
+      document
+        .getElementById("workspace-content")
+        ?.focus({ preventScroll: true });
+      document.scrollingElement?.scrollTo({ top: 0 });
+    });
   }, []);
   async function signIn() {
     if (busy) return;
@@ -94,12 +131,13 @@ export function App() {
         username,
         password,
       });
+      setReadScope(result.data.account_id + ":" + result.data.csrf_token);
       setLogin(result.data);
       setPassword("");
       setView("business");
-      setNotice("已登录工作台");
+      setNotice("");
     } catch (e) {
-      setNotice(e instanceof Error ? e.message : "登录失败，请重试。");
+      setNotice(e instanceof Error ? e.message : t("登录失败，请重试。"));
     } finally {
       setBusy(false);
     }
@@ -109,11 +147,12 @@ export function App() {
     setBusy(true);
     try {
       await workspaceApi(login?.csrf_token)("/auth/logout", {});
-      clearSession("已退出。");
+      clearSession(t("已退出。"));
     } catch (e) {
       if ((e as { code?: string })?.code === "UNAUTHENTICATED")
-        clearSession("已退出，请重新登录。");
-      else setNotice(e instanceof Error ? e.message : "暂时无法退出，请重试。");
+        clearSession(t("已退出，请重新登录。"));
+      else
+        setNotice(e instanceof Error ? e.message : t("暂时无法退出，请重试。"));
     } finally {
       setBusy(false);
     }
@@ -125,23 +164,50 @@ export function App() {
   if (window.location.pathname.startsWith("/environments/"))
     return (
       <main className="panel login">
-        <h1>旧入口已停用</h1>
+        <h1>{t("旧入口已停用")}</h1>
         <p>
-          本版只连接维护者配置的业务服务。为避免旧地址意外切换数据，请确认服务地址后再打开工作台。旧操作记录不会自动搬运。
+          {t(
+            "本版只连接维护者配置的业务服务。为避免旧地址意外切换数据，请确认服务地址后再打开工作台。旧操作记录不会自动搬运。",
+          )}
         </p>
-        <a href="/">打开当前工作台</a>
+        <a href="/">{t("打开当前工作台")}</a>
       </main>
     );
   return (
     <div className="shell">
       <a className="skip-link" href="#workspace-content">
-        跳到主要内容
+        {t("跳到主要内容")}
       </a>
       <header className="app-header">
+        <div
+          className="language-switch"
+          role="group"
+          aria-label={t("界面语言")}
+        >
+          {(
+            [
+              ["zh", "中文"],
+              ["en", "English"],
+              ["yue", "粵語"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              type="button"
+              key={id}
+              aria-pressed={language === id}
+              onClick={() => setLocale(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <a className="brand" href="#workspace-content">
-          跟單 <span>GigMate</span>
+          {t("跟單")}
+          <span>GigMate</span>
         </a>
-        <span className="mode">{login ? pages[view] : "把业务安排清楚"}</span>
+        <span className="mode">
+          {login ? pages[view] : t("把业务安排清楚")}
+        </span>
         {login && (
           <div className="account-actions">
             <span>{login.username}</span>
@@ -150,28 +216,28 @@ export function App() {
               disabled={busy}
               onClick={() => void signOut()}
             >
-              退出
+              {t("退出")}
             </button>
           </div>
         )}
       </header>
       {notice && (
         <div className="notice" role="status" aria-live="polite">
-          {notice}
+          {t(notice)}
         </div>
       )}
       {!login ? (
         <main id="workspace-content" tabIndex={-1} className="welcome-grid">
           <section className="welcome-copy">
-            <p className="eyebrow">为独立工作者整理每一次约定</p>
+            <p className="eyebrow">{t("为独立工作者整理每一次约定")}</p>
             <h1>
-              从聊天里的约定，
+              {t("从聊天里的约定，")}
               <br />
-              到日历上的安排。
+              {t("到日历上的安排。")}
             </h1>
-            <p>核对客户原文、管理工单和回复审批，让下一步清楚可见。</p>
+            <p>{t("核对客户原文、管理工单和回复审批，让下一步清楚可见。")}</p>
             <p className="subtle">
-              登录后可查看功能状态；未接通的能力会明确标注。
+              {t("登录后可查看功能状态；未接通的能力会明确标注。")}
             </p>
           </section>
           <form
@@ -181,10 +247,10 @@ export function App() {
               void signIn();
             }}
           >
-            <h2>登录 GigMate</h2>
-            <p>使用维护者为你配置的账号。</p>
+            <h2>{t("登录 GigMate")}</h2>
+            <p>{t("使用维护者为你配置的账号。")}</p>
             <label>
-              账号
+              {t("账号")}
               <input
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -194,7 +260,7 @@ export function App() {
               />
             </label>
             <label>
-              密码
+              {t("密码")}
               <input
                 type="password"
                 value={password}
@@ -204,28 +270,75 @@ export function App() {
                 disabled={busy}
               />
             </label>
-            <button disabled={busy}>{busy ? "正在登录…" : "进入工作台"}</button>
+            <button disabled={busy}>
+              {busy ? t("正在登录…") : t("进入工作台")}
+            </button>
             <small>
-              这是 GigMate 的账号，不是 WhatsApp
-              手机账号。没有账号或忘记密码时，请联系维护者。
+              {t(
+                "这是 GigMate 的账号，不是 WhatsApp 手机账号。没有账号或忘记密码时，请联系维护者。",
+              )}
             </small>
           </form>
         </main>
       ) : (
         <div className="app-layout">
-          <nav className="workspace-navigation" aria-label="工作台页面">
-            {Object.entries(pages).map(([id, label]) => (
-              <button
-                key={id}
-                className="secondary"
-                aria-current={view === id ? "page" : undefined}
-                aria-pressed={view === id}
-                disabled={busy}
-                onClick={() => navigate(id as View)}
-              >
-                {label}
-              </button>
-            ))}
+          <nav
+            className="workspace-navigation"
+            aria-label={t("工作台页面")}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setMoreOpen(false);
+            }}
+            data-expanded={moreOpen}
+          >
+            <p className="nav-caption">{t("我的工作空间")}</p>
+            <div className="nav-primary">
+              {(["business", "approvals", "planning", "connect"] as View[]).map(
+                (id) => (
+                  <button
+                    key={id}
+                    className="secondary"
+                    aria-current={view === id ? "page" : undefined}
+                    aria-pressed={view === id}
+                    disabled={busy}
+                    onClick={() => navigate(id)}
+                  >
+                    <NavIcon name={id} />
+                    <span>{pages[id]}</span>
+                  </button>
+                ),
+              )}
+            </div>
+            <div className="nav-secondary" id="additional-pages">
+              {(["create", "review", "management", "guide"] as View[])
+                .filter((id) => id !== "management" || loopReady(features))
+                .filter((id) => id !== "create" || features.create_order)
+                .map((id) => (
+                  <button
+                    key={id}
+                    className="secondary"
+                    aria-current={view === id ? "page" : undefined}
+                    aria-pressed={view === id}
+                    disabled={busy}
+                    onClick={() => navigate(id)}
+                  >
+                    <NavIcon name={id} />
+                    <span>{pages[id]}</span>
+                  </button>
+                ))}
+            </div>
+            <button
+              className="secondary mobile-more"
+              aria-expanded={moreOpen}
+              aria-controls="additional-pages"
+              disabled={busy}
+              onClick={() => setMoreOpen((v) => !v)}
+            >
+              <NavIcon name="more" />
+              <span>{moreOpen ? t("收起") : t("更多")}</span>
+            </button>
+            <small className="nav-footnote">
+              {t("每一份约定，清楚有序。")}
+            </small>
           </nav>
           <main
             id="workspace-content"
@@ -234,30 +347,28 @@ export function App() {
           >
             {featureError && (
               <p className="notice stale" role="status">
-                暂时无法核对后端功能状态，依赖功能保持关闭。请在功能说明页查看详情。
+                {t(
+                  "暂时无法核对后端功能状态，依赖功能保持关闭。请在功能说明页查看详情。",
+                )}
               </p>
             )}
             {view === "business" && (
               <>
                 <div className="page-heading">
                   <div>
-                    <p className="eyebrow">业务工作台</p>
-                    <h1>把变更核对清楚，再落实安排。</h1>
-                    <p>
-                      客户提出、客户确认和商户批准分别记录。正式更新需要你明确核对。
-                    </p>
+                    <p className="eyebrow">{t("业务工作台")}</p>
+                    <h1>{t("安排好，下一步。")}</h1>
+                    <p>{t("从客户原文到正式安排，每一步都由你确认。")}</p>
                   </div>
-                  <button
-                    className="secondary"
-                    disabled={busy}
-                    onClick={() => navigate("create")}
-                  >
-                    新建工单
-                  </button>
+                  {features.create_order && (
+                    <button disabled={busy} onClick={() => navigate("create")}>
+                      {t("新建工单")}
+                    </button>
+                  )}
                 </div>
                 <WorkOrderWorkspace
                   {...props}
-                  key={login.account_id + selectedOrder}
+                  key={login.account_id}
                   accountId={login.account_id}
                   features={features}
                   initialSelected={selectedOrder}
@@ -276,10 +387,11 @@ export function App() {
             )}
             {view === "approvals" && (
               <>
-                <h1>回复审批</h1>
+                <h1>{t("回复审批")}</h1>
                 <p className="availability-note">
-                  批准只保存业务决定，尚未接通 WhatsApp
-                  自动发送。手动发送请到连接页单独授权与核对；不会自动搬运已批准正文。
+                  {t(
+                    "批准后，请到业务管理核对准确正文并提交发送。需先在连接页单独授权对应聊天；批准和提交都不代表客户已收到。",
+                  )}
                 </p>
                 <ApprovalsWorkspace
                   {...props}
@@ -304,22 +416,33 @@ export function App() {
             )}
             {view === "connect" && (
               <>
-                <h1>WhatsApp 连接与消息</h1>
                 <p className="availability-note">
-                  手动发送网关已提供，需要单独发送授权。AI
-                  润色、业务审批直发与自由生成自动回复尚未接通。
+                  {t(
+                    "手动与业务审批发送均需单独授权。AI 润色和自由生成自动回复尚未接通。",
+                  )}
                 </p>
                 <ConnectionWorkspace {...props} onBusyChange={setBusy} />
               </>
             )}
+            {view === "management" && (
+              <BusinessLoopWorkspace
+                {...props}
+                accountId={login.account_id}
+                features={features}
+                onBusyChange={setBusy}
+                onOpenOrder={openOrder}
+              />
+            )}
             {view === "guide" && (
-              <DeliveryGuide features={features} error={featureError} />
+              <DeliveryGuide features={features} error={t(featureError)} />
             )}
           </main>
         </div>
       )}
       <footer>
-        你的聊天由你授权；正式安排需要确认。批准、发送与客户确认是不同步骤。
+        {t(
+          "你的聊天由你授权；正式安排需要确认。批准、发送与客户确认是不同步骤。",
+        )}
       </footer>
     </div>
   );

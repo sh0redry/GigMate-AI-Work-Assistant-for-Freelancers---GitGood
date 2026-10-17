@@ -131,7 +131,7 @@ def _build_reschedule_request(
 
 
 def test_registered_providers_includes_deterministic_and_disabled():
-    assert {"deterministic", "disabled", "llm"} <= set(registered_providers())
+    assert {"deterministic", "disabled", "llm", "reviewed_llm"} <= set(registered_providers())
 
 
 # ---------------------------------------------------------------------------
@@ -1194,7 +1194,7 @@ def test_list_provider_metadata_is_json_serialisable():
     from gigmate.extraction.registry import list_provider_metadata
 
     rows = list_provider_metadata()
-    assert {row["name"] for row in rows} == {"deterministic", "disabled", "llm"}
+    assert {row["name"] for row in rows} == {"deterministic", "disabled", "llm", "reviewed_llm"}
     for row in rows:
         assert isinstance(row["name"], str)
         assert isinstance(row["model_version"], str)

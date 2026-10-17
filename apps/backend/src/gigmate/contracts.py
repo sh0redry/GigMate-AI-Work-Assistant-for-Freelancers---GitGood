@@ -59,12 +59,14 @@ class WorkspaceCapabilities(Model):
     create_order: bool = True
     order_status: bool = True
     address_confirmation: bool = True
-    manual_assignment: bool = False
-    business_sending: bool = False
+    manual_assignment: bool = True
+    business_sending: bool = True
     automatic_understanding: bool = False
+    business_loop_reviewed: bool = True
 
 
 class ReviewItem(Model):
+    model_request_id: str | None = None
     id: Id
     conversation_id: Id
     message_id: Id | None
@@ -122,6 +124,7 @@ class WahaSelectionCommand(WahaVersionCommand):
 
 
 class WahaChoice(Model):
+    conversation_id: Id | None = None
     id: Id
     label: str
     selected: bool
@@ -971,6 +974,14 @@ class CreateWorkOrderCommand(Model):
     # The customer message(s) where the address was stated; required with an address.
     address_sources: list[SourceRef] = []
     confirm_additional_order: bool = False
+    from_proposal_id: Id | None = None
+    expected_context_version: Positive | None = None
+
+    @model_validator(mode="after")
+    def proposal_needs_context(self):
+        if self.from_proposal_id and self.expected_context_version is None:
+            raise ValueError("A new-order suggestion requires its current context version")
+        return self
 
 
 class RejectCommand(Model):
@@ -1018,7 +1029,7 @@ class AssignMessageCommand(Model):
         return self
 
 
-class AssignmentResult(Model):
+class MessageAssignmentResult(Model):
     job_id: Id
     conversation_id: Id
     action: Literal["assign", "dismiss"]
@@ -1462,3 +1473,29 @@ class Page(Model, Generic[T]):
     items: list[T]
     next_cursor: str | None
     request_id: Id
+
+
+class SetTaskStatusCommand(Model):
+    expected_version: Positive
+    expected_state: Literal["pending", "blocked"]
+    state: Literal["completed", "cancelled"]
+
+
+class NewOrderSuggestionView(Model):
+    id: Id
+    conversation_id: Id
+    context_version: Positive
+    suggestion: NewWorkOrderSuggestion
+    sources: Annotated[list[SourceRef], Field(min_length=1)]
+    created_at: UtcTimestamp
+
+
+class WorkspaceQuery(Model):
+    question: Annotated[str, Field(min_length=1, max_length=200)]
+
+
+class WorkspaceQueryResult(Model):
+    supported: bool
+    intent: Literal["today", "tomorrow", "waiting", "open_items", "unsupported"]
+    day: date
+    items: list[SummaryEntry]

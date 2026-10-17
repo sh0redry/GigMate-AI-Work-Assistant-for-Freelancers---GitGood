@@ -13,9 +13,13 @@
 - `tests/test_waha_media.py::test_media_bookkeeping_does_not_require_new_tables_for_existing_pause`：先丢弃 `work_order_evidence` 再丢弃 `waha_attachments`。新表的外键让这个"旧 schema（没有依据表）"用例只在 PostgreSQL 上失败；SQLite 不检查 DROP 依赖，所以本地一直是绿的。
 - 护栏：每个 workflow job 都显式声明 `timeout-minutes`（`backend` 20、`pdf-isolation` 15、`frontend_platforms` 25、`frontend` 5、`documentation-and-contracts` 10），并且 `apps/backend/pyproject.toml` 增加 `faulthandler_timeout = 300`；将来若有卡死的用例，会先 dump 全部线程栈再退出，而不是挂到平台超时。
 
-**证据。** 本地 `postgres:17.9` 容器 + `TEST_DATABASE_URL` 复现：修复前该用例永不返回，`-o faulthandler_timeout=60` 会 dump 出上面两个等待；修复后 `pytest apps/backend/tests/test_work_evidence.py` **8 项通过，5.24s**。后端全量：PostgreSQL **945 通过、14 跳过、12 失败**，SQLite **1006 通过、25 跳过、12 失败**，两边的 12 个失败都是已记录的 macOS PDF 资源隔离用例（`pdf_child` 在非 Linux 平台拒绝）。`ruff check` / `ruff format --check apps/backend`：干净。`export_contracts.py --check`：同步。`check_baseline.py`：PASS（91 个 Markdown、1037 个本地链接）。
+**第二轮：草稿路由上的同一个缺陷。** 推送后 `backend` job 4 分 29 秒就结束（不再挂死），说明 CI 超时护栏生效，但这一批第一次在 PostgreSQL 上完整跑，发现另外三个路由是同样的写法：`POST /work-orders/{id}/drafts`、`POST /drafts/{id}/revoke`、`POST /drafts/{id}/consume` 同时声明 `account=Depends(actor)` 与 `db=Depends(database, scope="function")`，于是草稿 INSERT 又去等身份会话持有的同一行 `accounts` 锁（栈：`agent_drafts.py:227 db.flush()`，阻塞在 `psycopg ... cursor.execute`）。`logout` 也是混合声明，只是后面没有写操作。四处统一改为请求级依赖，与 `setup_actor`／`sending_io_actor`（刻意让 `database` 和身份认证都处在 function scope）保持一致。这两条新路由还遗留了「文件改名为 `0022`、文件内 `revision` 仍写 `0021_work_order_evidence`」的不一致；`test_agent_drafts` 用随机 `event_id` 组提案，SQLite 不查外键而 PostgreSQL 拒绝。两者都已修。
 
-**仍待确认。** Linux CI 需要端到端跑一遍 PostgreSQL job；本地两套都是 macOS 环境，带有已知的 PDF 失败。本次没有改动 SQLite 路径、契约或任何 API 形状。
+**合并 main。** `main` 已前进到 `c516656`（PR #34），在 `0020_business_model_heads` 之上新增 `0021_reviewed_product`；本分支的 `0022_work_order_evidence` 指向同一个父节点，于是出现两个 Alembic head（`test_waha_migration.py` 报 `assert 2 == 1`，共 22 项失败）。现在 `0022` 挂在 `0021_reviewed_product` 上，形成单链 `0020 -> 0021 -> 0022 -> 0023_agent_drafts`。`.env.example`、`contracts/openapi.json`、`apps/web/src/generated/api.d.ts` 三个冲突都用重新生成解决（`export_contracts.py`、`npm run generate:api`），没有手改生成文件；两份状态文档同时保留双方的带日期段落。
+
+**证据。** 本地 `postgres:17.9` 容器 + `TEST_DATABASE_URL` 复现：修复前该用例永不返回，`-o faulthandler_timeout=60` 会 dump 出上面两个等待；修复后 `pytest apps/backend/tests/test_work_evidence.py` **8 项通过，5.24s**，`test_agent_drafts.py` 与 `test_work_evidence.py` 一起 **16 项通过，9.46s**（此前会挂住）。合并 main 之后后端全量：PostgreSQL **1058 通过、14 跳过、12 失败**，SQLite **1045 通过、27 跳过、12 失败**，两边的 12 个失败都是已记录的 macOS PDF 资源隔离用例（`pdf_child` 在非 Linux 平台拒绝）；`test_waha_migration.py` **21 项通过**。`alembic upgrade head` + `check`：临时 SQLite 与 PostgreSQL 上均无新操作，head 唯一为 `0023_agent_drafts`。`ruff check` / `ruff format --check apps/backend`：干净。`export_contracts.py --check`：同步。`check_baseline.py`：PASS（95 个 Markdown、1041 个本地链接）。
+
+**仍待确认。** 推送后的第一次 Linux 运行把 `backend` job 压缩到 4 分 29 秒（不再挂死）但依旧失败，正是它暴露了草稿路由缺陷与双 head。下一次运行需要在 Ubuntu 上端到端确认整个 PostgreSQL job；本地两套都是 macOS，能证明锁行为但证明不了 Linux 的 PDF 沙箱。
 
 ## 媒体分模态授权与已核对附件转工单依据（B/C）— 2026-10-17
 
@@ -40,6 +44,16 @@
 **如实记录未做之事：** 未发出真实音频/ASR 请求，也没有端到端处理真实附件；真实 OCR/ASR 准确率、prompt 注入防护、供应商限流与长期成本仍未验证。12 个 macOS PDF 资源隔离用例仍在本机失败（`pdf_child` 在非 Linux 平台拒绝），预期在 CI 通过；SQLite 不证明 PostgreSQL 锁。
 
 证据：`pytest apps/backend/tests` **981 通过、25 跳过、12 失败**（12 个均为已记录的 macOS PDF 用例）。`ruff check` / `ruff format --check apps/backend`：干净。`export_contracts.py --check`：同步。`check_baseline.py`：PASS（89 个 Markdown、1037 个本地链接）。临时 SQLite 上 `alembic upgrade head` + `check`：head `0022_work_order_evidence`，无新操作。`apps/web` 已重新生成 API 类型。
+## PR34 独立复审修正 — 2026-10-17
+
+修复日期输入导致渲染白屏、复核／恢复文字二次翻译和旧成功提示残留；归单、行动、回执状态改为可读译文。建议消费增加事务内唯一约束兜底，冲突为 409，失败整单回滚，保留账号串行处理；查询在 SQL 排除无建议和已消费消息。未知调用恢复／重试耗尽也记录完成耗时。业务管理读取全部关联会话，拒绝过期、撤回、混合及旧修订来源。
+
+证据：Linux／锁定依赖＋独立 PostgreSQL **998 通过、1 跳过**；产品专项 **37 通过**，包括同步起跑的真实并发 HTTP 建单、签名接入及正式暂停／恢复接口。SQLite 产品专项 **35 通过、2 项要求 PostgreSQL 而跳过**。前端 **175 通过**；TypeScript、格式、契约和构建通过。新旧代码对照复现日期、复核文字、提示、唯一约束兜底、耗时记录的旧失败。正常 HTTP 并发本来已有账号锁：不同编号为 201／409，同编号返回相同结果，不将它描述为已复现的 500。授权和证据边界见[交付说明](bcd-product-delivery.md)；不代表付费模型或 WhatsApp 实机验收，配置仍留本地。
+
+## 当前 BCD 文字产品候选 — 2026-10-17
+
+PR31／32／33 已合并；基线 main `14aa34e`。接口、缓存、玻璃设计三份提交后，补齐商户核对 AI 建单建议、待办决定、可选隔离进程文字入口、统一业务类型和中／英／粤界面。Linux＋隔离 PostgreSQL：**987 通过、1 跳过**；新产品测试 **26 通过**，包括真实子进程访问本机假 HTTP 供应商。0021 升级／结构校验、默认关闭 Compose 文字配置校验通过。没有真实供应商、手机或部署验收。见[范围、证据与限制](bcd-product-delivery.md)；下方旧日期结论为历史。
+
 
 ## 交付前检查清单、归档与审批分页（C）— 2026-10-16
 
@@ -883,6 +897,23 @@ PR #18（`llm:live-gate-off` + malformed-prompt/证据修复）以 `cc2ac8e` 合
 - 前端：`npm run check:api`、`format:check`、`build` 全部通过（本环境用 `npm ci` 安装依赖）。
 - `run_evaluation.py`（一次性 SQLite）：deterministic 9/9 退出 0；`--provider llm` 7 通过、2 预期失败（用例 1-2 需真实模型）。
 
+## D 接口接入准备（2026-10-17）
+
+完成主线接口核对并准备 PR32 页面，详见[接口清单与开放条件](role-d-api-audit.md)。新增默认关闭的后端验收标记，候选合同独立生成类型；操作复核和结果未知保留原编号。没有 PR32 的主线可继续使用。后端交付测试本地 12 通过；前端和合同检查将在完成后补充实际结果。未宣称真实发送或模型验收。
+
+接口阶段实际验证：前端 **149/149 通过**、TypeScript/Vite 构建、两份类型检查、两份后端改动的 Ruff/格式、合同导出检查、baseline（86 Markdown、992 本地链接）通过。后端交付测试 **12/12 通过**。候选 PR32 仅用固定合同和测试替身验证，未运行未验收的业务发送。
+
+## D 会话缓存（2026-10-17）
+
+工作台、连接、同步、附件和发送统一使用有界的会话内存 JSON 缓存；主线在完整鉴权/业务读取后计算弱 ETag，没有变化返回空 304。失败不会伪装为缓存读取成功。退出/换账号、权限错误和所有写请求（包括结果未知）清缓存。二维码、文件、ICS 不缓存，无离线写入权限。相同数据保留对象引用；业务轮询改为页面可见时每 5 秒，内容未变不切加载、不改数据更新时间。审批复核只在真实绑定变化时失效。网络错误保留并提示旧内容，私人访问失效则清理。
+
+缓存验证：前端 **157/157 通过**，含刷新不变时保留勾选/焦点及不通知整页更新的回归；TypeScript/Vite 通过。后端条件请求、权限、工作台和附件证据子集 **33/33 通过**。完整 macOS 尝试为 **687 通过、13 失败、22 跳过**；其中 1 项响应头精确断言已修复并在上述子集通过，其余 12 项为 macOS 原生 PDF 限制 `MEDIA_PDF_LIMIT_UNAVAILABLE`。不宣称 PostgreSQL 锁或真实提供方验收。
+
+## D 玻璃视觉语言（2026-10-17）
+
+珍珠白、雾灰、雾蓝替换主界面/连接页/图标/安装信息的绿色；统一线条图标，桌面玻璃导航，手机四个主入口加更多菜单，并提供实色回退、增强对比、减少动态和键盘焦点。浏览器验收使用新建虚构 SQLite 数据库，未启动提供方或 worker；检查 1440px 桌面和 390px 手机，无横向溢出。私人截图不跟踪。最终检查数量稍后记录。
+
+视觉验证：前端 **157 通过**、格式、TypeScript/Vite、baseline 通过。浏览器检查 1440px 业务/日历与 390px 业务/日历/建单；标题不被固定页头遮挡，无横向溢出或可见报错，手机更多菜单可回到页面顶部。不宣称原生 iOS 光学等价或真实提供方验收。
 ## PR32 独立修复与主线组合 — 2026-10-17
 
 作者提到的 e6ba13f 未出现在远端 PR；按 Kyrie 授权直接修复可见的 d696735 分支。新增 0019_action_send_link：业务审批到准确发送任务的可空、唯一外键。读取/取消核对连接账号、聊天/会话、工单/上下文版本和完整正文；已有占键任务不能被接管。旧记录缺少可信关联时显示结果未知，不猜测回填；旧缓存发送 ID 也重新检查归属。延期、需求新增/关闭、草稿编辑在写入前拒绝暂停或未关联的会话。摘要日期由真实日期类型校验，非法日期 422；最新审批 ID 在 SQL 中计算，无筛选 limit=1 最多实例化 2 条记录。保留 main 的 ICS 来源校验与非时段提案列表修复。
