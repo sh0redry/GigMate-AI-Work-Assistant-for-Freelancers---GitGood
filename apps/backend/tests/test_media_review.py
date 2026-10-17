@@ -4,7 +4,7 @@ from argparse import Namespace
 from pathlib import Path
 
 import pytest
-from test_media_processor import make_input
+from test_media_processor import LINUX_PDF_ONLY, make_input
 
 from gigmate.media import llm
 from gigmate.media.coercion import coerce_chat_response, coerce_transcription_response
@@ -40,7 +40,13 @@ def test_smoke_refusal_and_unknown_are_nonzero(monkeypatch, tmp_path, error):
     [
         # PDF is now a real parser (gigmate.media.pdfparse, 2026-10-12); a
         # non-parseable payload still refuses before the client exists.
-        ("application/pdf", b"%PDF-synthetic", "openai", "PDF_NOT_PARSEABLE"),
+        pytest.param(
+            "application/pdf",
+            b"%PDF-synthetic",
+            "openai",
+            "PDF_NOT_PARSEABLE",
+            marks=LINUX_PDF_ONLY,
+        ),
         ("image/png", b"synthetic", "deepseek", "VISION_VENDOR_UNVERIFIED"),
         ("text/plain", b"\xff", "openai", "TEXT_ENCODING_INVALID"),
         ("text/plain", b"a" * 90001, "openai", "TEXT_CHUNKING_PENDING"),

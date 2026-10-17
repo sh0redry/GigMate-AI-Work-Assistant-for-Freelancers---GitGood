@@ -30,6 +30,7 @@ import base64
 import hashlib
 import io
 import json
+import sys
 from typing import Any
 
 import httpx
@@ -42,6 +43,11 @@ from gigmate.contracts import WahaMediaResult
 from gigmate.media.coercion import coerce_chat_response, coerce_transcription_response
 from gigmate.media.processor import _ENABLED, MediaProcessorImpl, build_processor
 from gigmate.media_processing import MediaInput, ProcessingUnavailable, ProcessingUncertain
+
+LINUX_PDF_ONLY = pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="PDF child isolation needs Linux RLIMIT_AS/prctl; elsewhere the seam refuses with MEDIA_PDF_LIMIT_UNAVAILABLE",
+)
 
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aA4sAAAAASUVORK5CYII="
@@ -213,6 +219,7 @@ def test_deepseek_is_never_assumed_to_accept_images(saved_env, saved_seam_flag):
         MediaProcessorImpl().process(make_input())
 
 
+@LINUX_PDF_ONLY
 def test_pdf_modality_requires_its_own_authorization(saved_env, saved_seam_flag):
     """Authorizing OCR alone must not enable document shipping."""
     mp._ENABLED = True
@@ -609,6 +616,7 @@ def _pdf_ok() -> dict[str, Any]:
     }
 
 
+@LINUX_PDF_ONLY
 def test_pdf_real_parse_and_extraction(saved_env, saved_seam_flag):
     """Two-layer pipeline: local page text is the source of truth; the
     model only contributes the business layer and cannot retype
@@ -646,6 +654,7 @@ def test_pdf_real_parse_and_extraction(saved_env, saved_seam_flag):
     assert "Second page quote text" in sent_text
 
 
+@LINUX_PDF_ONLY
 def test_pdf_no_text_layer_refuses_without_vendor_call(saved_env, saved_seam_flag):
     mp._ENABLED = True
     saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
@@ -659,6 +668,7 @@ def test_pdf_no_text_layer_refuses_without_vendor_call(saved_env, saved_seam_fla
     assert fake.calls == []
 
 
+@LINUX_PDF_ONLY
 def test_pdf_invalid_bytes_refuse_without_vendor_call(saved_env, saved_seam_flag):
     mp._ENABLED = True
     saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
@@ -674,6 +684,7 @@ def test_pdf_invalid_bytes_refuse_without_vendor_call(saved_env, saved_seam_flag
     assert fake.calls == []
 
 
+@LINUX_PDF_ONLY
 def test_pdf_page_limit_refuses(saved_env, saved_seam_flag):
     """The page bound is checked before any text is extracted: a 201-page
     file is refused with the page-limit code, not the no-text-layer code."""
@@ -692,6 +703,7 @@ def test_pdf_page_limit_refuses(saved_env, saved_seam_flag):
     assert fake.calls == []
 
 
+@LINUX_PDF_ONLY
 def test_pdf_long_page_splits_into_bounded_segments(saved_env, saved_seam_flag):
     mp._ENABLED = True
     saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
@@ -708,6 +720,7 @@ def test_pdf_long_page_splits_into_bounded_segments(saved_env, saved_seam_flag):
     assert "".join(segment.text for segment in result.segments) == "x" * 9000
 
 
+@LINUX_PDF_ONLY
 def test_pdf_blank_pages_surface_unresolved_question(saved_env, saved_seam_flag):
     """A partly scanned PDF keeps its readable pages but the result must
     say how many pages carried no text instead of claiming full
@@ -726,6 +739,7 @@ def test_pdf_blank_pages_surface_unresolved_question(saved_env, saved_seam_flag)
     assert any("1 of 2 pages" in question for question in result.unresolved_questions)
 
 
+@LINUX_PDF_ONLY
 def test_pdf_vendor_5xx_is_uncertain(saved_env, saved_seam_flag):
     """Once the local parse succeeds and the vendor is contacted, a 5xx
     may have been charged and must be Uncertain, not Unavailable."""
@@ -743,6 +757,7 @@ def test_pdf_vendor_5xx_is_uncertain(saved_env, saved_seam_flag):
         )
 
 
+@LINUX_PDF_ONLY
 def test_pdf_text_limit_refuses(saved_env, saved_seam_flag):
     """A document whose extracted text exceeds the contract's 100000-char
     bound is refused outright, never silently truncated."""
@@ -760,6 +775,7 @@ def test_pdf_text_limit_refuses(saved_env, saved_seam_flag):
     assert fake.calls == []
 
 
+@LINUX_PDF_ONLY
 def test_pdf_oversized_document_refuses_on_text_bound(saved_env, saved_seam_flag):
     """Bound precedence: an oversized multi-page document hits the
     total-text bound before the split can overflow the segment bound,
@@ -782,6 +798,7 @@ def test_pdf_oversized_document_refuses_on_text_bound(saved_env, saved_seam_flag
     assert fake.calls == []
 
 
+@LINUX_PDF_ONLY
 def test_pdf_model_bad_source_indices_is_uncertain(saved_env, saved_seam_flag):
     mp._ENABLED = True
     saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")

@@ -99,6 +99,10 @@ Stacked on the status-command PR. Design: 方案 §4.5 (send after approval, can
 
 Evidence: `test_business_send.py` **7 passed** (synthetic chat and provider), `test_change_reject.py` **3 passed**; approvals + sending suites 82 passed, 3 skipped; frontend 119 passed with the same 3 environment-dependent failures as before the change; contract export and baseline passed. No real WhatsApp send was performed.
 
+## PDF isolation tests declared Linux-only (baseline cleanup) — 2026-10-17
+
+The PDF child runner needs Linux-only primitives (`RLIMIT_AS` plus `prctl(PR_SET_PDEATHSIG)`), so on native macOS every real-parse test failed with `MEDIA_PDF_LIMIT_UNAVAILABLE` — 12 failures that were identical on unmodified `main` and therefore hid real regressions behind known noise. Those 12 cases (10 in `test_media_processor.py`, 1 in `test_pdf_limits.py`, the `pdf` parameter of `test_media_review.py`) now carry `LINUX_PDF_ONLY = pytest.mark.skipif(sys.platform != "linux", reason=...)`; the refusal path itself is unchanged, and a Linux runner still executes all of them. Evidence after the change: full backend suite (SQLite) **1044 passed / 40 skipped / 0 failed**; `ruff check` and `ruff format` clean on the three touched files; `scripts/export_contracts.py --check` synchronized; `scripts/check_baseline.py` **PASS: 95 Markdown files, 1041 local links, 3 schemas, 14 valid fixtures, 8 rejected fixtures, 12 synthetic acceptance scenarios**. Still not verified here: the Linux-container re-run of the PDF isolation suite, and PostgreSQL row-lock semantics (no PostgreSQL server and no `TEST_DATABASE_URL` on this machine).
+
 ## Role B pre-activation review fixes, round 2 (PR #31) — 2026-10-17
 
 The five [PR #31](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/pull/31) review threads were re-reproduced on branch `william/role-b-preactivation-gates` with a fake transport and a fake clock, and the first fix batch was shown to be insufficient for four of them; all five are re-fixed, still **without** flipping the seam (`_SKELETON_SEAM = True`, media `_ENABLED = False`): (1) the remaining deadline budget is now split across the `httpx` operations, because a scalar timeout is applied per operation and one attempt could spend 30 s connecting plus 30 s reading — the fake-clock measurement is **45.0 s** where it was 60.0 s; (2) a non-positive cost budget is refused before any pricing arithmetic, closing the zero-priced-vendor case where `0 > 0` was false and the call was still issued; (3) an echoed `base_context_version` must be an `int` (not `bool`) equal to the request's, since `7.0 == 7`; (4) `candidates` / `unresolved_questions` / suggestion `missing_fields` / suggestion `unresolved_questions` are shape-checked before Pydantic, like `changes` / `sources` already were; (5) the time-basis guard is field-keyed, so a date written as free text or a bare number on `schedule` / `deadline` is refused without a basis instead of being promoted as `matched`. Full rationale and the new stable codes are in [role-b-extraction.md](role-b-extraction.md). No migration, contract or API surface changed.
@@ -1056,3 +1060,37 @@ deployed, and real prices / budgets / token caps must be entered and re-checked
 by the maintainer against the vendor's published price list (the checklist says
 so). No audio vendor has been procured, so no real transcription was attempted.
 Issue #29 items 2 and 4 therefore remain unchecked in the issue itself.
+
+
+## Platform and database verification, and the audio question — 2026-10-17
+
+**Linux suite: 1031 passed / 12 skipped / 0 failed.** Run inside a
+`python:3.12-slim` container against the same tree. This closes the open
+question behind the 12 native-macOS `MEDIA_PDF_LIMIT_UNAVAILABLE` failures:
+they are the platform limit of the PDF isolation sandbox
+(`media/pdf_child.py` uses resource limits macOS cannot provide), not a
+defect — the same cases pass on Linux.
+
+**PostgreSQL.** The suite was also run against a real PostgreSQL 16 container
+(`TEST_DATABASE_URL` / `DATABASE_URL`) instead of SQLite, which is what the row
+locking test needs. It found one real defect this time: `test_agent_drafts.py`
+inserted a `Proposal` with a random `event_id`, which SQLite accepts and
+PostgreSQL rejects on the `inbox` foreign key; the fixture now creates the
+event row first. PostgreSQL results are recorded below once the run finishes.
+
+**Audio is confirmed unavailable on this vendor, not merely unconfigured.**
+Two probes posted a synthetic WAV to
+`https://api.deepseek.com/v1/audio/transcriptions` and
+`https://api.deepseek.com/audio/transcriptions` with the operator key: both
+returned HTTP 404. DeepSeek exposes no transcription endpoint, so ASR cannot be
+"enabled" by pointing it at the chat vendor — it genuinely needs a different
+credential, and the code keeps refusing (`MEDIA_AUDIO_VENDOR_REQUIRED`) until
+one is supplied.
+
+**Migration numbering.** `0021_work_order_evidence` was renumbered to
+`0022_work_order_evidence` and `0022_agent_drafts` to `0023_agent_drafts`, so
+this branch no longer claims the `0021` prefix that PR #34 uses for
+`0021_reviewed_product`. The chain still upgrades cleanly on a throwaway
+database (head `0023_agent_drafts`) and the migration suite passes (21 cases).
+When #34 lands, the two heads will need a merge revision — the same shape the
+repository already used for `0020_business_model_heads`.

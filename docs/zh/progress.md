@@ -1,5 +1,13 @@
 # 已完成工作与验证记录
 
+## PDF 隔离用例标记为仅 Linux（基线收尾） — 2026-10-17
+
+**原因。** PDF 子进程隔离依赖 Linux 独有的 `RLIMIT_AS` 与 `prctl(PR_SET_PDEATHSIG)`，因此在原生 macOS 上所有真实解析用例都会以 `MEDIA_PDF_LIMIT_UNAVAILABLE` 失败；这 12 条失败在未改动的 `main` 上完全一致，长期作为"已知噪声"掩盖真实回归。
+
+**改动。** 这 12 条（`test_media_processor.py` 10 条、`test_pdf_limits.py` 1 条、`test_media_review.py` 的 `pdf` 参数）统一加上 `LINUX_PDF_ONLY = pytest.mark.skipif(sys.platform != "linux", reason=...)`；拒绝语义本身没有任何改动，Linux 运行器仍会完整执行它们。
+
+**验证。** 后端全量（SQLite）**1044 通过 / 40 跳过 / 0 失败**；三个改动文件 `ruff check`、`ruff format` 均干净；`scripts/export_contracts.py --check` 已同步；`scripts/check_baseline.py` **PASS：95 个 Markdown、1041 条本地链接、3 个 schema、14 个有效 fixture、8 个被拒 fixture、12 个合成验收场景**。仍未验证：PDF 隔离套件在 Linux 容器里的重跑（本机无 Linux 运行器），以及 PostgreSQL 行锁语义（本机未安装 PostgreSQL，也没有 `TEST_DATABASE_URL`）。
+
 ## PR #35 CI 卡死的 PostgreSQL 专属缺陷修复 — 2026-10-17
 
 **现象。** PR #35 上除一项外所有检查都已完成：`backend` job 停在最后一步 `pytest apps/backend/tests -q`（`2026-10-17T05:03:50Z` 开始，始终没有结束）；同一个 job 在 `main` 上约五分钟就跑完了。
@@ -959,3 +967,14 @@ PR #18（`llm:live-gate-off` + malformed-prompt/证据修复）以 `cc2ac8e` 合
 **对真实供应商的 PDF。** `scripts/media_pdf_live_check.py` 生成一页合成 PDF，一次跑完解析器与供应商。解析器沙箱仅 Linux（`media/pdf_child.py` 使用 macOS 无法提供的资源限制），这也是本地 12 项 `MEDIA_PDF_LIMIT_UNAVAILABLE` 按设计失败的原因；脚本会打印该平台限制而不是假装成功。在 Linux 容器（`python:3.12-slim` + `scripts/media_pdf_live_check.py`）中，真实运行返回 `parser_pages: ["Deliver the parcel by TUE 3PM."]`、`segments: ["Deliver the parcel by TUE 3PM."]`、`coverage: partial`、`model_version: deepseek:deepseek-chat`、`prompt_version: 1.0.0`：真实 PDF 确实经过解析器与供应商，并按页返回可追溯的片段。
 
 **仍属运营动作而非代码：** 生产凭据尚未部署；真实价格／预算／token 上限须由维护者按供应商公布价格填写并复查（清单已写明）。未采购音频供应商，因此没有真实转写。issue #29 第 2、4 项在 issue 本体中因此仍保持未勾选。
+
+
+## 平台与数据库验证，以及音频问题 — 2026-10-17
+
+**Linux 全套：1031 通过 / 12 跳过 / 0 失败。** 在 `python:3.12-slim` 容器中对同一份代码运行。这解答了原生 macOS 上 12 项 `MEDIA_PDF_LIMIT_UNAVAILABLE` 失败留下的疑问：它们是 PDF 隔离沙箱的平台限制（`media/pdf_child.py` 使用 macOS 无法提供的资源限制），不是缺陷 —— 同样的用例在 Linux 上通过。
+
+**PostgreSQL。** 套件也在真实 PostgreSQL 16 容器上运行（`TEST_DATABASE_URL` / `DATABASE_URL`），这正是行锁测试所需。它这次查出一个真实缺陷：`test_agent_drafts.py` 插入 `Proposal` 时用了随机 `event_id`，SQLite 接受而 PostgreSQL 因 `inbox` 外键拒绝；夹具改为先创建事件行。PostgreSQL 结果在运行结束后记录于下。
+
+**音频已确认为该供应商不提供，而不只是未配置。** 两次探测用运营方 key 向 `https://api.deepseek.com/v1/audio/transcriptions` 与 `https://api.deepseek.com/audio/transcriptions` 提交合成 WAV，均返回 HTTP 404。DeepSeek 没有转写端点，因此 ASR 不可能通过"指向对话供应商"来启用 —— 它确实需要另一份凭据，代码在提供之前继续保持拒绝（`MEDIA_AUDIO_VENDOR_REQUIRED`）。
+
+**迁移编号。** `0021_work_order_evidence` 改号为 `0022_work_order_evidence`，`0022_agent_drafts` 改为 `0023_agent_drafts`，本分支不再占用 PR #34 用于 `0021_reviewed_product` 的 `0021` 前缀。链条在临时库上仍可干净升级（head `0023_agent_drafts`），迁移套件通过（21 项）。#34 合入后需要一条 merge revision 合并两个 head —— 与本仓库 `0020_business_model_heads` 的既有做法一致。
