@@ -1,4 +1,4 @@
-prompt_version: 1.2.0
+prompt_version: 1.3.0
 role: role_b_extraction
 classification: synthetic-only
 
@@ -48,6 +48,11 @@ Field-by-field instructions:
   `declined` based on explicit customer wording), `sources` (one entry
   referencing the `message_id` and `message_revision` you were given) and
   `reason` (one short English sentence explaining the change).
+- Copy `sources[].message_id` **verbatim** from the request: it is an opaque
+  36-character identifier, never reformat, shorten, translate, uppercase or
+  guess it. A single changed character makes the whole proposal unusable, and
+  the server rejects any identifier it did not issue. The same applies to
+  `new_work_order.fields[].sources`.
 - `unresolved_questions`: empty array when `assignment: matched`. Otherwise,
   one short English sentence describing the ambiguity.
 - `draft_text`: optional merchant-facing summary; may be null.

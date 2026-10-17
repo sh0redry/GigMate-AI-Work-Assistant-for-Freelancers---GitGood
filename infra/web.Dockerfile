@@ -8,5 +8,6 @@ COPY apps/web .
 RUN npm run format:check && npm run bundle
 
 FROM nginx:1.28.2-alpine
-COPY infra/nginx.conf /etc/nginx/conf.d/default.conf
+ARG NGINX_CONF=infra/nginx.conf
+COPY ${NGINX_CONF} /etc/nginx/conf.d/default.conf
 COPY --from=build /web/dist /usr/share/nginx/html

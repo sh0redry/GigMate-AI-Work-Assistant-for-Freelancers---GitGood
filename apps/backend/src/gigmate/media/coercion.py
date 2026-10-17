@@ -220,6 +220,12 @@ def coerce_transcription_response(
 # ----------------------------------------------------------- internals
 
 
+# Keys the segment contract accepts; everything else a vendor invents is
+# dropped (see ``_coerce_proposal``) so an over-eager response cannot fail the
+# whole proposal on a field the business layer never reads.
+_SEGMENT_FIELDS = frozenset(WahaMediaSegment.model_fields)
+
+
 def _coerce_proposal(
     parsed: Mapping[str, Any],
     *,
@@ -235,12 +241,22 @@ def _coerce_proposal(
         isinstance(item, dict) and item.get("text") for item in parsed["segments"]
     ):
         raise ProcessingUncertain("Proposal has no readable segments")
+    # Real vendors add their own book-keeping keys (a running ``index``,
+    # confidence, bounding boxes). The contract is strict on purpose, so the
+    # unknown keys are dropped here rather than trusted: the position of a
+    # segment in the array is its index, and a vendor-supplied one can never
+    # be more authoritative than the server's own ordering.
+    segments = [
+        {key: value for key, value in item.items() if key in _SEGMENT_FIELDS}
+        for item in parsed.get("segments") or []
+        if isinstance(item, dict)
+    ]
     proposal: dict[str, Any] = {
         "provider": vendor,
         "model_version": model_version,
         "prompt_version": prompt_version,
         "coverage": parsed.get("coverage", "unknown"),
-        "segments": parsed.get("segments", []),
+        "segments": segments,
         "summary": parsed.get("summary"),
         "suggestions": parsed.get("suggestions", []),
         "unresolved_questions": parsed.get("unresolved_questions", []),

@@ -1,6 +1,7 @@
 import pypdf
 import pytest
 from test_media_processor import (
+    LINUX_PDF_ONLY,
     MediaProcessorImpl,
     _build_pdf,
     _FakeClient,
@@ -15,6 +16,7 @@ from test_media_processor import saved_seam_flag as saved_seam_flag
 from gigmate.media import pdfparse
 
 
+@LINUX_PDF_ONLY
 def test_missing_page_text_overrides_model_complete_claim(saved_env, saved_seam_flag):
     mp._ENABLED = True
     for key, value in {

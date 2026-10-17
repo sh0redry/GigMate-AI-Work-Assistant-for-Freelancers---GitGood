@@ -1,5 +1,69 @@
 # 已完成工作与验证记录
 
+## PR35 与 main 集成验证 — 2026-10-17
+
+按 Kyrie 本轮处理冲突并合并 PR35 的指示，把 main `0b665f0`（已合入 PR36）接入 PR35 修复版。冲突仅在这两份进度文档，保留 PR35 和 PR36 双方记录；接口、业务代码和迁移没有需要另写实现的冲突。Linux、锁定依赖及新建隔离 PostgreSQL 的集成全量后端 **1090 通过 / 1 跳过**；前端 **175 通过**，API 类型、Ruff 检查与格式、契约导出、基线及空白检查均通过。这是集成验证，不代表新增组员批准或真实模型／WhatsApp 验收。
+
+## PR35 草稿绑定与配置检查修复 — 2026-10-17
+
+Kyrie 授权在 William 的 PR35 上直接修复，由 William 独立复审本提交。创建草稿时，AI 提议必须明确属于当前工单、工单版本仍有效，提议的会话也必须归属正确、仍获授权并确实关联该工单。同一工单关联多个聊天时不再随便选第一条：有提议则按提议确定；纯手写草稿无法指明聊天时拒绝歧义。读取和取用共用归属、会话／工单版本、授权、关联及提议检查。尚未取用的失效草稿显示 `revoked`，取用返回 409；读取不改数据库，`revoked_at` 只记录显式撤销。已取用历史保留。有效提议重复提交时可在每日上限后取回原草稿，不会从另一工单返回错误记录。
+
+私密配置检查改为识别实际选中的 `reviewed_llm`，复用该入口的可用性检查，不再拿永久关闭的旧 `llm` 入口误报。部署准备状态还要求人工核对的价格、真实来源开关和时区；支持直接值和文件凭据，只报存在性，不打印 key、不调用供应商。旧入口、离线／未知入口及缺失／关闭配置仍明确失败。模型每日调用／token 配额及模型账号白名单尚未实现，检查器和启用清单不再把它们写成已生效限制；原有单次费用和 token 限制不变。
+
+证据：用 **37 项新增回归**覆盖此前实测的五个失败反例及相关边界。SQLite 草稿／配置测试 **43 通过 / 1 项 PostgreSQL 专用跳过**；Linux、锁定依赖及新建隔离 PostgreSQL 全量后端 **1073 通过 / 1 跳过**，并发取用只有一次 200、另一次 409。Alembic 升至 `0023_agent_drafts` 和结构漂移检查通过；前端 **175 通过**，API 类型、格式、TypeScript／Vite、Ruff、生成契约和基线均通过。保留已有打包体积提示。未改数据库结构、迁移或前端；未调用真实模型或 WhatsApp，未提交私密配置，未重启或重置日常本地服务／数据库。以上是开发验证，仍待 William 独立复审。
+
+## PDF 隔离用例标记为仅 Linux（基线收尾） — 2026-10-17
+
+**原因。** PDF 子进程隔离依赖 Linux 独有的 `RLIMIT_AS` 与 `prctl(PR_SET_PDEATHSIG)`，因此在原生 macOS 上所有真实解析用例都会以 `MEDIA_PDF_LIMIT_UNAVAILABLE` 失败；这 12 条失败在未改动的 `main` 上完全一致，长期作为"已知噪声"掩盖真实回归。
+
+**改动。** 这 12 条（`test_media_processor.py` 10 条、`test_pdf_limits.py` 1 条、`test_media_review.py` 的 `pdf` 参数）统一加上 `LINUX_PDF_ONLY = pytest.mark.skipif(sys.platform != "linux", reason=...)`；拒绝语义本身没有任何改动，Linux 运行器仍会完整执行它们。
+
+**验证。** 后端全量（SQLite）**1044 通过 / 40 跳过 / 0 失败**；三个改动文件 `ruff check`、`ruff format` 均干净；`scripts/export_contracts.py --check` 已同步；`scripts/check_baseline.py` **PASS：95 个 Markdown、1041 条本地链接、3 个 schema、14 个有效 fixture、8 个被拒 fixture、12 个合成验收场景**。仍未验证：PDF 隔离套件在 Linux 容器里的重跑（本机无 Linux 运行器），以及 PostgreSQL 行锁语义（本机未安装 PostgreSQL，也没有 `TEST_DATABASE_URL`）。
+
+## PR #35 CI 卡死的 PostgreSQL 专属缺陷修复 — 2026-10-17
+
+**现象。** PR #35 上除一项外所有检查都已完成：`backend` job 停在最后一步 `pytest apps/backend/tests -q`（`2026-10-17T05:03:50Z` 开始，始终没有结束）；同一个 job 在 `main` 上约五分钟就跑完了。
+
+**根因（有证据，不是猜测）。** `POST /api/v1/work-orders/{id}/evidence` 声明的是 `db=Depends(database, scope="function")`，而 `actor` 依赖用的是请求级 `Depends(database)`。FastAPI 的依赖缓存键是 `(call, scopes, computed_scope)`，因此一次请求拿到了**两个** Session，也就是**两条 PostgreSQL 连接**。`identity.authenticate` 在变更请求里对商户行加 `SELECT ... FOR UPDATE`（`identity.py:47`）；第二个事务的 `INSERT INTO work_order_evidence` 因为指向 `accounts` 的外键，必须拿到同一行的 `KEY SHARE` 锁，而这把锁只有身份事务提交后才释放，身份事务又要等 endpoint 返回 —— 自死锁；PostgreSQL 没有设置 `lock_timeout`，于是请求永远等待。本地用 `postgres:17.9` 容器复现：`pg_stat_activity` 显示 INSERT 正在等待 `transactionid` ShareLock，阻塞者是处于 `idle in transaction` 的身份认证会话，Python 栈停在 `work_evidence.py:160 db.flush()`。SQLite 完全看不到，因为 pysqlite 每线程复用一条连接，两个 Session 共用同一个事务。
+
+**改动。**
+
+- `api.py`：evidence endpoint 改回请求级依赖，身份锁与写入落在同一个事务里（同资源的 `GET` 路由本来就是这样）。
+- `work_evidence.attach`：在 PostgreSQL 上设置有界等待（`SET LOCAL lock_timeout = '3s'`、`SET LOCAL statement_timeout = '5s'`），与 `waha_ingress`、`waha_sync`、`waha_recovery`、`waha_media` 已有的做法一致，使将来任何跨事务等待都明确失败，而不是无限占用 HTTP worker 或 CI job。
+- `tests/test_waha_media.py::test_media_bookkeeping_does_not_require_new_tables_for_existing_pause`：先丢弃 `work_order_evidence` 再丢弃 `waha_attachments`。新表的外键让这个"旧 schema（没有依据表）"用例只在 PostgreSQL 上失败；SQLite 不检查 DROP 依赖，所以本地一直是绿的。
+- 护栏：每个 workflow job 都显式声明 `timeout-minutes`（`backend` 20、`pdf-isolation` 15、`frontend_platforms` 25、`frontend` 5、`documentation-and-contracts` 10），并且 `apps/backend/pyproject.toml` 增加 `faulthandler_timeout = 300`；将来若有卡死的用例，会先 dump 全部线程栈再退出，而不是挂到平台超时。
+
+**第二轮：草稿路由上的同一个缺陷。** 推送后 `backend` job 4 分 29 秒就结束（不再挂死），说明 CI 超时护栏生效，但这一批第一次在 PostgreSQL 上完整跑，发现另外三个路由是同样的写法：`POST /work-orders/{id}/drafts`、`POST /drafts/{id}/revoke`、`POST /drafts/{id}/consume` 同时声明 `account=Depends(actor)` 与 `db=Depends(database, scope="function")`，于是草稿 INSERT 又去等身份会话持有的同一行 `accounts` 锁（栈：`agent_drafts.py:227 db.flush()`，阻塞在 `psycopg ... cursor.execute`）。`logout` 也是混合声明，只是后面没有写操作。四处统一改为请求级依赖，与 `setup_actor`／`sending_io_actor`（刻意让 `database` 和身份认证都处在 function scope）保持一致。这两条新路由还遗留了「文件改名为 `0022`、文件内 `revision` 仍写 `0021_work_order_evidence`」的不一致；`test_agent_drafts` 用随机 `event_id` 组提案，SQLite 不查外键而 PostgreSQL 拒绝。两者都已修。
+
+**合并 main。** `main` 已前进到 `c516656`（PR #34），在 `0020_business_model_heads` 之上新增 `0021_reviewed_product`；本分支的 `0022_work_order_evidence` 指向同一个父节点，于是出现两个 Alembic head（`test_waha_migration.py` 报 `assert 2 == 1`，共 22 项失败）。现在 `0022` 挂在 `0021_reviewed_product` 上，形成单链 `0020 -> 0021 -> 0022 -> 0023_agent_drafts`。`.env.example`、`contracts/openapi.json`、`apps/web/src/generated/api.d.ts` 三个冲突都用重新生成解决（`export_contracts.py`、`npm run generate:api`），没有手改生成文件；两份状态文档同时保留双方的带日期段落。
+
+**证据。** 本地 `postgres:17.9` 容器 + `TEST_DATABASE_URL` 复现：修复前该用例永不返回，`-o faulthandler_timeout=60` 会 dump 出上面两个等待；修复后 `pytest apps/backend/tests/test_work_evidence.py` **8 项通过，5.24s**，`test_agent_drafts.py` 与 `test_work_evidence.py` 一起 **16 项通过，9.46s**（此前会挂住）。合并 main 之后后端全量：PostgreSQL **1058 通过、14 跳过、12 失败**，SQLite **1045 通过、27 跳过、12 失败**，两边的 12 个失败都是已记录的 macOS PDF 资源隔离用例（`pdf_child` 在非 Linux 平台拒绝）；`test_waha_migration.py` **21 项通过**。`alembic upgrade head` + `check`：临时 SQLite 与 PostgreSQL 上均无新操作，head 唯一为 `0023_agent_drafts`。`ruff check` / `ruff format --check apps/backend`：干净。`export_contracts.py --check`：同步。`check_baseline.py`：PASS（95 个 Markdown、1041 个本地链接）。
+
+**仍待确认。** 推送后的第一次 Linux 运行把 `backend` job 压缩到 4 分 29 秒（不再挂死）但依旧失败，正是它暴露了草稿路由缺陷与双 head。下一次运行需要在 Ubuntu 上端到端确认整个 PostgreSQL job；本地两套都是 macOS，能证明锁行为但证明不了 Linux 的 PDF 沙箱。
+
+## 媒体分模态授权与已核对附件转工单依据（B/C）— 2026-10-17
+
+本批在 PR #31 合入后重建于 main 之上。它原先携带的文字模型门槛（来源重绑定、时间基准、token/成本记账、重试分类、`SOURCE_SUPERSEDED`）在 main 上已有更严格的实现，因此**丢弃了重复的 provider 实现**，`extraction/llm.py` 原样采用 main 版本；`0014_llm_usage` 已删除，因为 `0017_model_call_request_id` / `0018_model_call_cost` 已经加上请求 id、token 与成本列。保留的是 main 真正没有的部分。
+
+**媒体**
+
+- **分模态授权：** `GIGMATE_MEDIA_MODALITIES`（`ocr,asr,pdf,text`）默认为空；在 live 开关之后、创建客户端之前以 `MEDIA_MODALITY_NOT_AUTHORIZED` 拒绝，验收 OCR 不会顺带打开 ASR 或文档外发。
+- **视觉供应商白名单：** `GIGMATE_MEDIA_VISION_VENDORS` 之外的供应商收到 OCR 内容前以 `MEDIA_VISION_VENDOR_UNVERIFIED` 拒绝；不假设 chat-completions 供应商能看图。
+- **接缝保持锁定：** 没有任何真实 OCR/ASR/PDF 验收记录，因此 `_ENABLED` 仍为 `False`。适配器与闸门只在测试里临时打开验证；`test_default_seam_flag_stays_locked` 断言即使 live 开关、凭据与全部模态都导出的情况下，锁定的接缝依然拒绝。
+
+**工单依据（商户决定）**
+
+- 迁移 `0022_work_order_evidence`（`(work_order_id, attachment_id, attachment_version)` 唯一）、`gigmate/work_evidence.py`、`POST/GET /api/v1/work-orders/{id}/evidence`。
+- attach 重新校验账户归属、连接/来源有效、授权、到期、核对记录、原始字节（`waha_media.evidence`），以及附件会话已关联该工单（否则 `MEDIA_ORDER_LINK_REQUIRED`）；结果更新为 `MEDIA_RESULT_CHANGED`，版本/上下文变化为 `MEDIA_SOURCE_CHANGED`。重复提交同一绑定幂等，返回已存行，绝不会被刷新成更新的结果。
+- 行内快照附件版本、上下文版本、结果任务、SHA-256 与来源指纹；读取时计算 `stale`/`stale_reason`，历史不被改写。不写 `RequirementChange`、不确认字段、不授予批准或发送权限。
+
+**测试：** 新增 `tests/test_work_evidence.py` 8 个用例（未核对拒绝、幂等提升、未关联会话、更新结果、他人账户、上下文变化后 stale、CSRF、仅可下载附件），在合并后的基线上全部通过。`tests/test_media_processor.py` 新增 4 个模态/视觉用例与锁定接缝断言；`tests/test_media_injection.py` 的 fixture 改为显式授权模态（因为默认是拒绝）。
+
+**真实探测（运营方自备 key，从未提交）：** `scripts/smoke_deepseek.py` 一次真实 `deepseek-chat` 调用返回 matched 提案，延迟 1729 ms、1707 tokens，"下周四下午三点"按 `Asia/Hong_Kong` 正确解析。另两次裸探测（64x64 纯绿/纯红 PNG）分别回答 "Green"/"Red"，各 202 prompt tokens，响应 `model` 为 `deepseek-flash`。这说明该账号路由确实处理图像，但 OCR 仍只能经显式白名单启用，不因一次探测而默认打开。
+
+**如实记录未做之事：** 未发出真实音频/ASR 请求，也没有端到端处理真实附件；真实 OCR/ASR 准确率、prompt 注入防护、供应商限流与长期成本仍未验证。12 个 macOS PDF 资源隔离用例仍在本机失败（`pdf_child` 在非 Linux 平台拒绝），预期在 CI 通过；SQLite 不证明 PostgreSQL 锁。
+
+证据：`pytest apps/backend/tests` **981 通过、25 跳过、12 失败**（12 个均为已记录的 macOS PDF 用例）。`ruff check` / `ruff format --check apps/backend`：干净。`export_contracts.py --check`：同步。`check_baseline.py`：PASS（89 个 Markdown、1037 个本地链接）。临时 SQLite 上 `alembic upgrade head` + `check`：head `0022_work_order_evidence`，无新操作。`apps/web` 已重新生成 API 类型。
 ## PR36 复审加固：使用持久保存的决策记录 — 2026-10-17
 
 C 角色已批准原改动，并建议反方向也核对 `ProposalDecision`。现在消息一旦通过建议建单，即使以后任务错误码被重置为两种待复核状态，也不能再归单或忽略；待复核列表同样排除已建单消息。原请求的成功回执仍可正常重取。新增四种测试先复现了错误的 200，修复后归单和忽略均返回 409，不改任务、归属、审计或命令回执。SQLite 业务与归单测试 **53 通过 / 4 项 PostgreSQL 专用跳过**；Linux 加隔离 PostgreSQL **57 通过**。Ruff 检查与格式、契约导出及基线检查通过。未改数据库结构、迁移或前端，未调用模型或 WhatsApp。
@@ -893,3 +957,46 @@ PR #18（`llm:live-gate-off` + malformed-prompt/证据修复）以 `cc2ac8e` 合
 ## B/C 组合修复验证 — 2026-10-17
 
 保留两条 0018 迁移历史，在 0019_action_send_link 后新增空操作 merge revision 0020_business_model_heads。worker 同时保留 C 每条消息的归单与 B 调用后的来源/版本校验。补旧缓存/正文关联回归，边界用例共 22 项。最后隔离 Linux/PostgreSQL 全套 **957 通过 / 1 跳过**，覆盖费用、排期、关联三条父版本升级。新 PostgreSQL Alembic upgrade/check：唯一 head、无结构漂移。前端 **143 通过**、TypeScript/Vite、生成合同、后端全量 Ruff/格式（121 文件）通过。跨账号/占键测试没有联系提供方。本 PR 模型开关仍关闭，不宣称真实手机或模型验收。
+
+
+## 真实供应商、媒体与受限草稿 — 2026-10-17（B 侧，issue #29 第 3–6 项）
+
+独立复核 PR #34 `reviewed_llm`（issue #29 中 B 的第 1 项）：付费调用确实移出了业务事务 —— `worker.py` 在持锁块内分配并持久化 `job.model_request_id`，随后在无 session 的情况下执行 `provider().propose(request)`，回写前重新取锁，并在授权、租约、来源 revision、上下文、候选工单或控制版本变化时拒绝。子进程有 20 秒单一时限（`subprocess.run` TimeoutExpired → kill + wait）、单次请求（`_MAX_RETRIES = 0`）、2 MiB 输入输出上限，以及 `request_id` / `conversation_id` / `base_context_version` 的身份校验；其余情况一律为 `llm:result-unknown` 且不再重投。`configured_for_live()` 向 `_refusal_reason(None)` 传 None 是安全的，因为该方法只读配置。在临时工作树中实跑 PR head 的 `test_reviewed_product.py`：**27 通过**。两条非阻塞观察：超时依赖 `communicate()` 的 kill + wait（没有进程组级 kill）；子进程输出超限会归到通用的 `llm:result-unknown:process`。
+
+**真实质量套件（第 3 项）。** `contracts/evaluation/live_quality.json` 新增八个目标场景 —— 有/无时间依据的相对日期、部分回复、两个在办工单、首次下单、含糊回复、指令注入、过期来源 revision；`scripts/run_evaluation.py --open-seam` 可用真实供应商运行（未设 `GIGMATE_LLM_LIVE=1` 时拒绝，默认路径不花钱）。最后一次真实运行 **8 通过 / 0 失败**。它暴露了一个真实缺陷：供应商把错误标识回写到 `sources[].message_id`（实测每次都写成工单 id），八条里四条以 `llm:response-provenance-failed:source-message-id` 被拒。由于一次请求只携带一条消息及其 revision，服务端改为自己写入来源（`_provenance_problem` 重绑定、在 trace 上记录 `llm:source-rebound`，来源为空仍拒绝），prompt 升到 1.3.0 要求逐字复制标识；新单建议字段同样重绑定。更早一次运行中，模型在注入载荷下提出了地址变更（`proposed`，从未 `confirmed`）—— 这作为真实失效模式记录而非掩盖：契约阻止它变成业务状态，但套件需要重跑。
+
+**真实媒体（第 4 项）。** 接缝开关改为配置所有：`GIGMATE_MEDIA_ENABLED=1` 取代硬编码的 `False`，且只是第一道门 —— 之后仍有 live 开关、密钥、`GIGMATE_MEDIA_MODALITIES` 与 `GIGMATE_MEDIA_VISION_VENDORS`，因此打开接缝本身不授权任何能力（由 `test_media_live_seam.py` 9 条钉住）。一次真实端到端 OCR 对合成图片返回 `segments: ["TUE 3PM"]`、`coverage: partial`、`model_version: deepseek:deepseek-chat`、prompt 1.1.0；一次真实文本附件返回原文与两条合理的 `unresolved_questions`。首个真实响应还暴露第二个缺陷：供应商会输出契约禁止的键（`segments[].index`），在 `extra=forbid` 下导致整条提案失败，现在未知段键在服务端丢弃而不被采信。本构建没有语音供应商：`asr` 在未显式设置 `GIGMATE_MEDIA_AUDIO_VENDOR` 时以 `MEDIA_AUDIO_VENDOR_REQUIRED` 拒绝，填 deepseek 也明确拒绝，不会把对话密钥发到默认 ASR 端点。
+
+**依据人工核对（B/C）。** `work_evidence.attach` 现在还拒绝已禁用连接（`CONSENT_REVOKED`）、已过期字节（`MEDIA_SOURCE_EXPIRED`）与已取消/失败的媒体作业（`MEDIA_RESULT_STOPPED`），迟到结果因此无法复活已被停止或撤权终结的内容（10 条依据用例通过）。
+
+**受限 Agent 草稿（B 第 6 项）。** `gigmate.agent_drafts` 与迁移 `0023_agent_drafts` 提供追问/润色草稿，只有文本：正文来自提取接缝已在自身闸门下产出的提案，或来自商户自己的输入 —— 没有自由问答通道 —— 并受每日上限、TTL（读取时显示 `expired`）、撤销、可选安静时段与一次消费约束。消费只返回文本并标记已用；不发送、不确认字段、不授予执行权（载荷里 `execution_authority: false`）。7 条用例通过。
+
+**运维配置自检。** `scripts/check_model_config.py` 报告本机私密配置是否完整（供应商、模型、live 开关、价格、预算、token 上限、时间依据、媒体闸门），只打印存在性、绝不回显密钥，并声明"配置完整"不等同于供应商、价格或真实验收。
+
+**本批实际证据：** 后端全套（SQLite）**998 通过 / 25 跳过 / 12 失败**，12 项失败是原生 macOS 既有的 `MEDIA_PDF_LIMIT_UNAVAILABLE`（PDF 隔离路径仅 Linux）；Ruff 检查/格式通过；`export_contracts.py` 一致；临时 SQLite 上 Alembic 到 head `0023_agent_drafts` 无漂移。真实调用使用运营方自己的 key，密钥只放在被 Git 忽略的本地 `.env`，从未提交。
+
+**如实记录未做之事：** 未配置语音/ASR 供应商，因此没有真实转写；没有对真实供应商端到端处理 PDF（原生 macOS 上本地解析器按设计拒绝）；真实客户扫描件的 OCR 准确率、真实图片下的注入防护、供应商限流、长期成本与 PostgreSQL 行锁仍未验证；真实质量套件是 8 条合成用例，不构成生产准确率结论。
+
+
+## 私密配置与剩余媒体接缝 — 2026-10-17（issue #29 第 2、4 项）
+
+**凭据现在可以用文件配置。** `gigmate.secrets` 优先解析 `GIGMATE_LLM_API_KEY_FILE` / `GIGMATE_MEDIA_API_KEY_FILE`（或等价的 secret 挂载），因为值会泄漏到服务器上的 `docker inspect`、进程列表与 shell 历史。文件被指定但不可读时抛 `SecretUnreadable`，而不是退化成"未配置"，运维因此不会看到一个看似正常、实则每次调用都被拒的部署。本地开发仍可用值。`scripts/check_model_config.py` 与 `scripts/smoke_deepseek.py` 走同一个加载器（只报存在性，绝不打印）。
+
+**文件形式确实可用的证据：** 以 `GIGMATE_LLM_API_KEY_FILE` 指向 600 权限文件、值变量清空后重跑真实质量套件 —— **7 通过 / 1 失败**（真实供应商），说明私密配置链路能到达供应商，唯一失败是供应商波动而非配置问题。
+
+**供应商选择已作为决策记录。** ADR 0008（`docs/en/adr/0008-vendor-selection-and-private-configuration.md`，中文版在 `docs/zh/`）记录：文字与视觉用 DeepSeek `deepseek-chat`（视觉仍需 `GIGMATE_MEDIA_VISION_VENDORS=deepseek`，因为图像探测只是账号路由层面的观察）；**音频没有供应商** —— ASR 需要自己的 OpenAI 兼容端点，DeepSeek 用于音频被明确拒绝，对话密钥因此不会发到默认 ASR 端点；并给出九步启用清单，最后一步是 `scripts/check_model_config.py`。
+
+**对真实供应商的 PDF。** `scripts/media_pdf_live_check.py` 生成一页合成 PDF，一次跑完解析器与供应商。解析器沙箱仅 Linux（`media/pdf_child.py` 使用 macOS 无法提供的资源限制），这也是本地 12 项 `MEDIA_PDF_LIMIT_UNAVAILABLE` 按设计失败的原因；脚本会打印该平台限制而不是假装成功。在 Linux 容器（`python:3.12-slim` + `scripts/media_pdf_live_check.py`）中，真实运行返回 `parser_pages: ["Deliver the parcel by TUE 3PM."]`、`segments: ["Deliver the parcel by TUE 3PM."]`、`coverage: partial`、`model_version: deepseek:deepseek-chat`、`prompt_version: 1.0.0`：真实 PDF 确实经过解析器与供应商，并按页返回可追溯的片段。
+
+**仍属运营动作而非代码：** 生产凭据尚未部署；真实价格／预算／token 上限须由维护者按供应商公布价格填写并复查（清单已写明）。未采购音频供应商，因此没有真实转写。issue #29 第 2、4 项在 issue 本体中因此仍保持未勾选。
+
+
+## 平台与数据库验证，以及音频问题 — 2026-10-17
+
+**Linux 全套：1031 通过 / 12 跳过 / 0 失败。** 在 `python:3.12-slim` 容器中对同一份代码运行。这解答了原生 macOS 上 12 项 `MEDIA_PDF_LIMIT_UNAVAILABLE` 失败留下的疑问：它们是 PDF 隔离沙箱的平台限制（`media/pdf_child.py` 使用 macOS 无法提供的资源限制），不是缺陷 —— 同样的用例在 Linux 上通过。
+
+**PostgreSQL。** 套件也在真实 PostgreSQL 16 容器上运行（`TEST_DATABASE_URL` / `DATABASE_URL`），这正是行锁测试所需。它这次查出一个真实缺陷：`test_agent_drafts.py` 插入 `Proposal` 时用了随机 `event_id`，SQLite 接受而 PostgreSQL 因 `inbox` 外键拒绝；夹具改为先创建事件行。PostgreSQL 结果在运行结束后记录于下。
+
+**音频已确认为该供应商不提供，而不只是未配置。** 两次探测用运营方 key 向 `https://api.deepseek.com/v1/audio/transcriptions` 与 `https://api.deepseek.com/audio/transcriptions` 提交合成 WAV，均返回 HTTP 404。DeepSeek 没有转写端点，因此 ASR 不可能通过"指向对话供应商"来启用 —— 它确实需要另一份凭据，代码在提供之前继续保持拒绝（`MEDIA_AUDIO_VENDOR_REQUIRED`）。
+
+**迁移编号。** `0021_work_order_evidence` 改号为 `0022_work_order_evidence`，`0022_agent_drafts` 改为 `0023_agent_drafts`，本分支不再占用 PR #34 用于 `0021_reviewed_product` 的 `0021` 前缀。链条在临时库上仍可干净升级（head `0023_agent_drafts`），迁移套件通过（21 项）。#34 合入后需要一条 merge revision 合并两个 head —— 与本仓库 `0020_business_model_heads` 的既有做法一致。

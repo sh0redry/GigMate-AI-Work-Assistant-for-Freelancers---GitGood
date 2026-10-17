@@ -11,6 +11,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
+    Text,
     UniqueConstraint,
     create_engine,
 )
@@ -332,6 +333,72 @@ class WahaSendAction(Base):
     __table_args__ = (
         UniqueConstraint("connection_id", "request_key", name="uq_waha_send_request"),
         UniqueConstraint("connection_id", "provider_message_id", name="uq_waha_send_message"),
+    )
+
+
+class WorkOrderEvidenceRow(Base):
+    """Reviewed attachment kept as work-order evidence by a merchant.
+
+    The row snapshots every binding it was created with (attachment version,
+    context version, reviewed result job and file hash) so later changes can
+    be detected on read instead of silently rewriting history. It is not a
+    requirement change and never confirms a field.
+    """
+
+    __tablename__ = "work_order_evidence"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"), index=True)
+    work_order_id: Mapped[str] = mapped_column(ForeignKey("work_orders.id"), index=True)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"))
+    attachment_id: Mapped[str] = mapped_column(ForeignKey("waha_attachments.id"), index=True)
+    attachment_version: Mapped[int] = mapped_column(Integer)
+    context_version: Mapped[int] = mapped_column(Integer)
+    result_job_id: Mapped[str] = mapped_column(String(36))
+    sha256: Mapped[str] = mapped_column(String(64))
+    source_fingerprint: Mapped[str] = mapped_column(String(64))
+    mimetype: Mapped[str | None] = mapped_column(String(80))
+    review_note: Mapped[str | None] = mapped_column(String(2000))
+    note: Mapped[str | None] = mapped_column(String(2000))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (
+        UniqueConstraint(
+            "work_order_id",
+            "attachment_id",
+            "attachment_version",
+            name="uq_work_order_evidence_binding",
+        ),
+    )
+
+
+class AgentDraftRow(Base):
+    """A bounded, expiring merchant-facing draft (follow-up or polish).
+
+    The row is a proposal surface, never a send: ``status`` moves to
+    ``consumed`` when a merchant takes the text into the existing approval
+    flow, and to ``revoked`` / ``expired`` when it must no longer be used. The
+    bindings it was created with (context version, work-order version, source
+    proposal) are snapshotted so a later change surfaces as revocation rather
+    than being silently reused.
+    """
+
+    __tablename__ = "agent_drafts"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"), index=True)
+    work_order_id: Mapped[str] = mapped_column(ForeignKey("work_orders.id"), index=True)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"))
+    kind: Mapped[str] = mapped_column(String(16))
+    text: Mapped[str] = mapped_column(Text)
+    context_version: Mapped[int] = mapped_column(Integer)
+    base_work_order_version: Mapped[int | None] = mapped_column(Integer)
+    proposal_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    status: Mapped[str] = mapped_column(String(16), default="proposed")
+    note: Mapped[str | None] = mapped_column(String(2000))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (
+        UniqueConstraint("account_id", "proposal_id", name="uq_agent_draft_proposal"),
     )
 
 

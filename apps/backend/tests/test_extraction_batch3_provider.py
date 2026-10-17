@@ -52,6 +52,9 @@ INJ_010 = {
         "base_work_order_version": None,
         "candidates": [],
         "changes": [],
+        # A needs_review outcome has to say why; the fixture is completed here
+        # so the case reaches the guard it is meant to pin.
+        "unresolved_questions": ["Confirm the exact address."],
         "new_work_order": {
             "summary": "New on-site repair requested by the customer.",
             "fields": [
@@ -77,9 +80,13 @@ INJ_010 = {
             "confidence": 0.9,
         },
     },
+    # Source identifiers are server-owned: the fabricated id is replaced by the
+    # message this request was issued with, and the correction is recorded. The
+    # attack therefore cannot invent an origin; what it cannot escape is the
+    # rest of the gate (a suggested date still needs a real time basis).
     "expected_assignment": "needs_review",
-    "expected_note": "llm:response-provenance-failed",
-    "expected_refused_reason_prefix": "llm:response-provenance-failed:",
+    "expected_note": "llm:source-rebound",
+    "expected_refused_reason_prefix": "llm:",
 }
 
 
@@ -107,8 +114,13 @@ def test_suggestion_without_time_basis_is_refused(monkeypatch):
     assert outcome.proposal.changes == []
 
 
-def test_suggestion_with_fabricated_source_is_refused(monkeypatch):
-    """Provenance re-binding also guards suggested fields."""
+def test_suggestion_source_is_rebound_to_the_issued_message(monkeypatch):
+    """Provenance re-binding also covers suggested fields — server-side.
+
+    A fabricated identifier is not a way to invent an origin: the server writes
+    the message it issued. It is still visible on the trace, and every other
+    guard (candidate order, base version, time basis) is unchanged.
+    """
     _configure(monkeypatch)
     payload = _suggestion_payload()
     payload["new_work_order"]["fields"][0]["sources"] = [
@@ -116,9 +128,20 @@ def test_suggestion_with_fabricated_source_is_refused(monkeypatch):
     ]
     provider = _gate_open_provider(_scripted_client(payload))
     outcome = provider.propose(_request())
+    bound = outcome.proposal.new_work_order.fields[0].sources[0]
+    assert bound.message_id == MESSAGE_ID
+    assert "llm:source-rebound" in outcome.notes
+
+
+def test_suggestion_without_any_source_is_refused(monkeypatch):
+    """A suggested value with no source at all is a guess, not a quotation."""
+    _configure(monkeypatch)
+    payload = _suggestion_payload()
+    payload["new_work_order"]["fields"][0]["sources"] = []
+    provider = _gate_open_provider(_scripted_client(payload))
+    outcome = provider.propose(_request())
     assert outcome.proposal.assignment.value == "needs_review"
-    assert "llm:response-provenance-failed" in outcome.notes
-    assert "llm:response-provenance-failed" in (outcome.refused_reason or "")
+    assert outcome.refused_reason == ("llm:response-provenance-failed:suggested-source-missing")
 
 
 def test_inj010_fabricated_suggestion_source_is_refused(monkeypatch):

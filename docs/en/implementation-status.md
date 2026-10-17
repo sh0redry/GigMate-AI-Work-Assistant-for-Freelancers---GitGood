@@ -1,5 +1,61 @@
 # Implementation status and validation
 
+## PR35/main integration — 2026-10-17
+
+Under Kyrie's instruction to resolve and merge PR35, integrate main `0b665f0` (PR36) into the reviewed PR35 repair. Only these bilingual progress records conflicted; preserve both PR35 and PR36 entries. No API/code/migration conflict required a new implementation. Linux with locked dependencies and a fresh isolated PostgreSQL: integrated full backend **1090 passed / 1 skipped**; frontend **175 passed**, generated API check, Ruff check/format, contract export, baseline and whitespace checks pass. These are integration checks, not a new teammate approval or live-vendor/WhatsApp acceptance.
+
+## PR35 draft-binding and configuration review fixes — 2026-10-17
+
+Kyrie authorised the follow-up implementation on William's PR35; William will independently review this commit. Draft creation now requires a matched proposal for the exact order, its current version and the proposal's explicitly linked, owned, allowlisted conversation. Multiple conversation links no longer select an arbitrary first chat: proposals choose their own valid link; merchant-written drafts without a proposal reject ambiguity. Reads and consumption share current ownership, context/order version, consent, link and proposal checks. Invalid unconsumed bindings read as `revoked` without a database write; `revoked_at` remains reserved for explicit revocation. Consumed history stays consumed. Valid original-proposal retries recover their draft before new-creation limits and cannot return another order's draft.
+
+The private configuration checker recognises the selected `reviewed_llm` runtime and reuses its availability helper rather than treating the permanently closed legacy `llm` seam as the live entry. It additionally requires operator prices, live-origin opt-in and a timezone for deployment readiness, retains value/file credential presence without exposing keys, and makes no vendor call. Legacy/offline/unknown providers and missing or closed gates still fail clearly. Daily model call/token budgets and a model account allowlist remain unimplemented, and are no longer advertised as enforced by the checker/checklist. Existing per-call cost/token bounds are unchanged.
+
+Evidence: the five previously reproduced failure probes are covered by **37 added regression cases**. SQLite draft/configuration suites **43 passed / 1 PostgreSQL-only skip**. Linux with locked dependencies and a fresh isolated PostgreSQL: full backend **1073 passed / 1 skipped**, including concurrent consumption yielding one 200 and one 409. Alembic upgrade to `0023_agent_drafts` and drift check pass. Frontend **175 passed**; API type check, Prettier, TypeScript/Vite, Ruff check/format, generated contract check and baseline pass. Existing bundle-size warning remains. No schema/migration/frontend change, no live model or WhatsApp calls, no private configuration committed; normal local services/database were not restarted or reset. These are implementation checks, pending William's independent review.
+
+## PostgreSQL-only defects behind the PR #35 CI hang — 2026-10-17
+
+**Symptom.** On PR #35 every check except one finished: the `backend` job stopped inside its last step, `pytest apps/backend/tests -q` (started `2026-10-17T05:03:50Z`, never completed). The same job finished in about five minutes on `main`.
+
+**Root cause (evidence, not a guess).** `POST /api/v1/work-orders/{id}/evidence` declared `db=Depends(database, scope="function")` while the `actor` dependency uses the request-scoped `Depends(database)`. FastAPI's dependency cache key is `(call, scopes, computed_scope)`, so one request received **two** sessions and therefore **two PostgreSQL connections**. `identity.authenticate` locks the merchant row with `SELECT ... FOR UPDATE` on mutation requests (`identity.py:47`); the second transaction's `INSERT INTO work_order_evidence` has to take a `KEY SHARE` lock on that same row because of its `accounts` foreign key. The lock is released only when the identity transaction commits, which happens after the endpoint returns — a self-deadlock, and PostgreSQL had no `lock_timeout`, so the request waited forever. Reproduced locally in a `postgres:17.9` container: `pg_stat_activity` showed the INSERT waiting on a `transactionid` ShareLock blocked by the `idle in transaction` authentication session, and the Python stack sat in `work_evidence.py:160 db.flush()`. SQLite never showed it because pysqlite keeps one connection per thread, so both sessions share a single transaction.
+
+**Changes.**
+
+- `api.py`: the evidence endpoint uses the request-scoped dependency again, so the identity lock and the write live in one transaction (the sibling `GET` evidence route already did this).
+- `work_evidence.attach`: bounded waits on PostgreSQL (`SET LOCAL lock_timeout = '3s'`, `SET LOCAL statement_timeout = '5s'`), the same guard already used by `waha_ingress`, `waha_sync`, `waha_recovery` and `waha_media`, so any future cross-transaction wait fails loudly instead of blocking an HTTP worker or a CI job indefinitely.
+- `tests/test_waha_media.py::test_media_bookkeeping_does_not_require_new_tables_for_existing_pause`: drop `work_order_evidence` before `waha_attachments`. The new table's foreign key made this "older schema without evidence" case fail on PostgreSQL only; SQLite does not enforce drop dependencies, so it stayed green locally.
+- Guard rails: every workflow job now declares an explicit `timeout-minutes` (`backend` 20, `pdf-isolation` 15, `frontend_platforms` 25, `frontend` 5, `documentation-and-contracts` 10) and `apps/backend/pyproject.toml` sets `faulthandler_timeout = 300`, so a wedged test dumps every thread's stack and exits instead of hanging until the platform timeout.
+
+**Second pass: the same defect in the draft routes.** After the push the `backend` job returned in 4m29s instead of hanging, so the CI timeout is gone, but the first full PostgreSQL run of the batch found the identical pattern on three more routes: `POST /work-orders/{id}/drafts`, `POST /drafts/{id}/revoke` and `POST /drafts/{id}/consume` also declare `account=Depends(actor)` together with `db=Depends(database, scope="function")`, so the agent-draft insert waited on the same `accounts` row lock held by the identity session (stack: `agent_drafts.py:227 db.flush()`, blocked on `psycopg ... cursor.execute`). `logout` had the same mixed declaration but no write behind it. All four now use the request-scoped dependency, matching `setup_actor`/`sending_io_actor`, which pair a function-scoped `database` with a function-scoped identity on purpose. Both new routes also carried the `0021_work_order_evidence` revision literal inside a file renamed to `0022`, and `test_agent_drafts` cited a random `event_id` that SQLite ignores and PostgreSQL rejects as a foreign key; both are fixed.
+
+**Merging main.** `main` had moved to `c516656` (PR #34), which adds `0021_reviewed_product` on top of `0020_business_model_heads`. This branch's `0022_work_order_evidence` pointed at the same parent, producing two Alembic heads (`assert 2 == 1` in `test_waha_migration.py`, 22 failures). `0022` now sits on `0021_reviewed_product`, giving one chain `0020 -> 0021 -> 0022 -> 0023_agent_drafts`. `.env.example`, `contracts/openapi.json` and `apps/web/src/generated/api.d.ts` were resolved by regenerating them (`export_contracts.py`, `npm run generate:api`) rather than editing generated files; the two status documents keep both sides' dated sections.
+
+**Evidence.** Reproduced with `TEST_DATABASE_URL` against a local `postgres:17.9` container: before the change the promotion case never returns and `-o faulthandler_timeout=60` dumps the two waits described above; after it `pytest apps/backend/tests/test_work_evidence.py` **8 passed in 5.24s**, and `test_agent_drafts.py` + `test_work_evidence.py` together **16 passed in 9.46s** (previously wedged). After merging main, the full backend suite is **1058 passed, 14 skipped, 12 failed** on PostgreSQL and **1045 passed, 27 skipped, 12 failed** on SQLite, where in both cases all 12 failures are the documented macOS PDF resource-isolation cases (`pdf_child` refuses off Linux); `test_waha_migration.py` **21 passed**. `alembic upgrade head` + `check`: no new operations on a throwaway SQLite file and on PostgreSQL, single head `0023_agent_drafts`. `ruff check` / `ruff format --check apps/backend`: clean. `export_contracts.py --check`: synchronized. `check_baseline.py`: PASS (95 Markdown, 1041 local links).
+
+**Still to be confirmed.** The first Linux run after the push finished the `backend` job in 4m29s (no hang) but failed, which is what surfaced the draft-route defect and the two Alembic heads. The next run has to confirm the whole PostgreSQL job end to end on Ubuntu; both local suites run on macOS and inherit its known PDF failures, so they can prove the lock behaviour but not the Linux PDF sandbox.
+
+## Media authorization and work-order evidence (roles B/C) — 2026-10-17
+
+Rebased onto main after PR #31 landed. The text-model gates this batch originally carried (source provenance re-binding, time basis, token/cost accounting, retry classification, `SOURCE_SUPERSEDED`) already exist on main in a stricter form, so the duplicate provider implementation was **dropped** and main's `extraction/llm.py` is used unchanged; `0014_llm_usage` was deleted because `0017_model_call_request_id` / `0018_model_call_cost` already add the request id, token and cost columns. What remains is the part main did not have.
+
+**Media**
+
+- **Per-modality authorization:** `GIGMATE_MEDIA_MODALITIES` (`ocr,asr,pdf,text`) is empty by default and refuses with `MEDIA_MODALITY_NOT_AUTHORIZED` after the live switch but before any client is built, so verifying one modality cannot silently enable another.
+- **Vision vendor allowlist:** `GIGMATE_MEDIA_VISION_VENDORS` refuses OCR to an unlisted vendor with `MEDIA_VISION_VENDOR_UNVERIFIED`; a chat-completions vendor is not assumed to accept images.
+- **The seam stays locked:** `_ENABLED` remains `False` because no real OCR/ASR/PDF acceptance run has been recorded. The adapters and gates are exercised only with the flag patched on in tests, and `test_default_seam_flag_stays_locked` asserts that live switch + credentials + every modality exported still cannot pass a locked seam.
+
+**Work-order evidence (merchant decision)**
+
+- Migration `0022_work_order_evidence` (unique `(work_order_id, attachment_id, attachment_version)`), `gigmate/work_evidence.py`, and `POST/GET /api/v1/work-orders/{id}/evidence`.
+- Attach re-validates account ownership, active connection/source, consent, expiry, review, original bytes (`waha_media.evidence`) and that the attachment's conversation is linked to the order (`MEDIA_ORDER_LINK_REQUIRED`). A newer result is `MEDIA_RESULT_CHANGED`; a changed version/context is `MEDIA_SOURCE_CHANGED`. Re-submitting the same binding is idempotent and returns the stored row, never a refreshed one.
+- The row snapshots attachment version, context version, result job id, SHA-256 and source fingerprint. Reads compute `stale`/`stale_reason`, so history is never rewritten. No `RequirementChange` is written, no field is confirmed, and no approval or send authority is granted.
+
+**Tests:** new `tests/test_work_evidence.py` 8 cases (review required, idempotent promotion, unlinked conversation, newer result, other account, stale after context change, CSRF, download-only attachment) all pass on the merged base. `tests/test_media_processor.py` gained 4 modality/vision cases plus the locked-seam assertion; `tests/test_media_injection.py` now authorizes modalities explicitly in its fixture because the default is refuse.
+
+**Live probe (operator key, never committed):** one real `deepseek-chat` extraction call through `scripts/smoke_deepseek.py` returned a matched proposal in 1729 ms with 1707 tokens and resolved "next Thursday 3pm" against `Asia/Hong_Kong`. Two raw image probes (solid green / red 64x64 PNG) answered "Green" / "Red" at 202 prompt tokens each, with response model `deepseek-flash`. That shows this account's route does process images, but OCR stays behind the explicit allowlist instead of being enabled from a probe.
+
+**Not done, recorded honestly:** no real audio/ASR call and no end-to-end real attachment; real OCR/ASR accuracy, prompt-injection resilience, vendor rate limiting and long-run cost remain unverified. The 12 macOS PDF resource-isolation cases still fail here (`pdf_child` refuses on non-Linux) and are expected to pass on CI; SQLite does not prove PostgreSQL locking.
+
+Evidence: `pytest apps/backend/tests` **981 passed, 25 skipped, 12 failed** (all 12 are the documented macOS PDF cases). `ruff check` / `ruff format --check apps/backend`: clean. `export_contracts.py --check`: synchronized. `check_baseline.py`: PASS (89 Markdown, 1037 local links). Throwaway SQLite `alembic upgrade head` + `check`: head `0022_work_order_evidence`, no new operations. `apps/web` `generate:api` regenerated the types.
 ## PR36 review hardening: durable decision guard — 2026-10-17
 
 The C review approved the original change and suggested checking the durable `ProposalDecision` in the reverse direction too. `assign_message` now rejects an event already consumed for order creation even if its job error is later reset to either reviewable code. The review queue excludes these decided events as well. Existing command receipts remain recoverable before the guard. Four additional regression cases first reproduced incorrect 200 responses; after the fix, both assign and dismiss return 409 without changing jobs, assignments, audit rows or command results. SQLite product/assignment checks: **53 passed / 4 PostgreSQL-only skips**; Linux with isolated PostgreSQL: **57 passed**. Ruff check/format, contract export and baseline pass. No schema, migration or frontend changes; no vendor or connector calls.
@@ -64,6 +120,10 @@ Stacked on the status-command PR. Design: 方案 §4.5 (send after approval, can
 - **`POST /work-orders/{id}/changes/{change_id}/reject`** (`RejectCommand`): the proposal becomes `rejected` with `rejection_reason`; order values kept, version bumped; its conflict question withdrawn (`proposal_rejected`); open-item question refreshed. `RequirementChange.status` now uses `ChangeStatus` (field statuses plus `rejected`).
 
 Evidence: `test_business_send.py` **7 passed** (synthetic chat and provider), `test_change_reject.py` **3 passed**; approvals + sending suites 82 passed, 3 skipped; frontend 119 passed with the same 3 environment-dependent failures as before the change; contract export and baseline passed. No real WhatsApp send was performed.
+
+## PDF isolation tests declared Linux-only (baseline cleanup) — 2026-10-17
+
+The PDF child runner needs Linux-only primitives (`RLIMIT_AS` plus `prctl(PR_SET_PDEATHSIG)`), so on native macOS every real-parse test failed with `MEDIA_PDF_LIMIT_UNAVAILABLE` — 12 failures that were identical on unmodified `main` and therefore hid real regressions behind known noise. Those 12 cases (10 in `test_media_processor.py`, 1 in `test_pdf_limits.py`, the `pdf` parameter of `test_media_review.py`) now carry `LINUX_PDF_ONLY = pytest.mark.skipif(sys.platform != "linux", reason=...)`; the refusal path itself is unchanged, and a Linux runner still executes all of them. Evidence after the change: full backend suite (SQLite) **1044 passed / 40 skipped / 0 failed**; `ruff check` and `ruff format` clean on the three touched files; `scripts/export_contracts.py --check` synchronized; `scripts/check_baseline.py` **PASS: 95 Markdown files, 1041 local links, 3 schemas, 14 valid fixtures, 8 rejected fixtures, 12 synthetic acceptance scenarios**. Still not verified here: the Linux-container re-run of the PDF isolation suite, and PostgreSQL row-lock semantics (no PostgreSQL server and no `TEST_DATABASE_URL` on this machine).
 
 ## Role B pre-activation review fixes, round 2 (PR #31) — 2026-10-17
 
@@ -888,3 +948,171 @@ Latest d9e1fe7 passes the original provenance, collection-type, zero-budget and 
 ## Combined B/C repair validation — 2026-10-17
 
 Preserved both 0018 migration branches and added no-op merge revision 0020_business_model_heads after 0019_action_send_link. Worker keeps C per-job assignment and B post-call source/version checks. Added old-cache and immutable-body link regressions (22 boundary cases). Final isolated Linux/PostgreSQL complete suite: **957 passed / 1 skipped**; includes upgrades from model-cost, schedule-settings and send-link parents. Fresh PostgreSQL Alembic upgrade/check: one head, no schema drift. Frontend **143 passed**, TypeScript/Vite build passed, generated exports and full backend Ruff/format (121 files) passed. Foreign-account and occupied-key cases never contact a provider. No real WhatsApp/model acceptance claimed; model seams remain closed in this PR.
+
+
+## Live vendor, media and bounded drafts — 2026-10-17 (role B, issue #29 items 3-6)
+
+Independent review of PR #34 `reviewed_llm` (issue #29 item 1 for B): the paid
+call really is moved outside the business transaction — `worker.py` assigns
+`job.model_request_id` and persists it inside the locked block, performs
+`provider().propose(request)` with no session open, then re-takes the lock and
+refuses on consent, lease, source-revision, context, candidate or control-version
+change before writing. The child gets one 20 s deadline (`subprocess.run`
+TimeoutExpired -> kill + wait), one request (`_MAX_RETRIES = 0`), a 2 MiB
+in/out bound and an identity check on `request_id` / `conversation_id` /
+`base_context_version`; anything else is `llm:result-unknown` and is never
+resubmitted. `configured_for_live()` passes `None` into `_refusal_reason`,
+which is safe because that method only reads configuration. Ran
+`test_reviewed_product.py` on the PR head in a throwaway worktree: **27
+passed**. Two non-blocking notes remain: the timeout relies on
+`communicate()`'s kill + wait (there is no process-group kill), and an
+oversized child payload collapses into the generic `llm:result-unknown:process`
+code.
+
+**Live quality suite (issue #29 item 3).** `contracts/evaluation/live_quality.json`
+adds eight target scenarios — relative date with and without a time basis,
+partial reply, two open orders, a first-time request, a vague reply,
+instruction injection and a stale source revision — and
+`scripts/run_evaluation.py --open-seam` runs them against the real vendor
+(refused unless `GIGMATE_LLM_LIVE=1`; the default path stays free). The last
+real run was **8 passed / 0 failed**. It found a real defect: the vendor echoes
+the wrong identifier into `sources[].message_id` (observed: the work-order id
+on every proposal), so four of eight proposals were refused with
+`llm:response-provenance-failed:source-message-id`. Because a request carries
+exactly one message and revision, the server now writes the source itself
+(`_provenance_problem` re-binds, records `llm:source-rebound` on the trace and
+still refuses a change with no source at all), and prompt 1.3.0 tells the model
+to copy identifiers verbatim. Suggested new-order fields are re-bound the same
+way. An earlier run also showed the model proposing an address change after an
+injection payload (`proposed`, never `confirmed`); that is recorded as a real
+failure mode rather than hidden — the contract stopped it from becoming
+business state, but the suite must be re-run.
+
+**Real media (issue #29 item 4).** The seam flag is now configuration-owned:
+`GIGMATE_MEDIA_ENABLED=1` replaces the hardcoded `False` and is only the first
+gate — live switch, key, `GIGMATE_MEDIA_MODALITIES` and
+`GIGMATE_MEDIA_VISION_VENDORS` still follow — so enabling the seam authorises
+nothing on its own (pinned by `test_media_live_seam.py`, 9 cases). A real
+end-to-end OCR call on a synthetic image returned `segments: ["TUE 3PM"]`,
+`coverage: partial`, `model_version: deepseek:deepseek-chat`, prompt 1.1.0; a
+real text attachment returned the original text plus two sensible
+`unresolved_questions`. The first real response also exposed a second defect:
+the vendor adds keys the contract forbids (`segments[].index`), and under
+`extra=forbid` that failed the whole proposal, so unknown segment keys are now
+dropped server-side instead of trusted. Audio has no vendor in this build:
+`asr` is refused with `MEDIA_AUDIO_VENDOR_REQUIRED` unless
+`GIGMATE_MEDIA_AUDIO_VENDOR` names one, and naming DeepSeek is refused
+explicitly instead of posting the chat key to a default ASR endpoint.
+
+**Evidence promotion (issue #29, B/C).** `work_evidence.attach` now also
+refuses a disabled connection (`CONSENT_REVOKED`), expired bytes
+(`MEDIA_SOURCE_EXPIRED`) and a cancelled or failed media job
+(`MEDIA_RESULT_STOPPED`), so a late result cannot resurrect content a stop or a
+consent change already ended (10 evidence cases pass).
+
+**Bounded agent drafts (issue #29, B item 6).** `gigmate.agent_drafts` plus
+migration `0023_agent_drafts` add follow-up/polish drafts that are text only:
+created either from a proposal the extraction seam already produced under its
+own gates or from the merchant's own input — there is no free-form question
+path — and bounded by a daily ceiling, a TTL that reads as `expired`,
+revocation, opt-in quiet hours and one-time consumption. Consuming returns text
+and marks the row used; it never sends, never confirms a field and grants no
+execution authority (`execution_authority: false` in the payload). 7 cases pass.
+
+**Operator configuration check.** `scripts/check_model_config.py` reports
+whether an installation is privately configured (vendor, model, live gate,
+prices, budgets, token caps, time basis, media gates). It prints presence only
+and never echoes a key, and states that configuration completeness is not
+vendor, price or real-run acceptance.
+
+**Actual evidence for this batch:** backend suite (SQLite) **998 passed / 25
+skipped / 12 failed**, where the 12 are the pre-existing native-macOS
+`MEDIA_PDF_LIMIT_UNAVAILABLE` cases (the PDF isolation path is Linux-only);
+Ruff check/format clean; `export_contracts.py` synchronized; Alembic on a
+throwaway SQLite file reaches head `0023_agent_drafts` with no drift. Real
+vendor calls used the operator's own key, which stayed in a git-ignored local
+`.env` and was never committed.
+
+**Not done, recorded honestly:** no ASR/voice vendor is configured, so no real
+transcription was attempted; no PDF was processed end to end against a real
+vendor (the local parser refuses on native macOS by design); real OCR accuracy
+on customer scans, prompt-injection resilience under real photos, vendor rate
+limiting, long-run cost and PostgreSQL row locking remain unverified, and the
+live quality suite is 8 synthetic cases, not a production accuracy claim.
+
+
+## Private configuration and the remaining media seams — 2026-10-17 (issue #29 items 2 and 4)
+
+**Credentials can now be configured as files.** `gigmate.secrets` resolves
+`GIGMATE_LLM_API_KEY_FILE` / `GIGMATE_MEDIA_API_KEY_FILE` (or an equivalent
+secret mount) in preference to the value variables, because a value leaks into
+`docker inspect`, process listings and shell history on a server. A file that is
+named but unreadable raises `SecretUnreadable` instead of degrading to
+"unconfigured", so an operator never sees a working-looking deployment that
+silently refuses every call. Values still work for local runs.
+`scripts/check_model_config.py` and `scripts/smoke_deepseek.py` resolve the
+credential through the same loader (presence only, never printed).
+
+**Evidence that the file form really works:** the live quality suite was run
+again with `GIGMATE_LLM_API_KEY_FILE` pointing at a 600-mode file and with the
+value variable emptied — **7 passed / 1 failed** against the real vendor, so
+the private-configuration path reaches the vendor and the one failure is vendor
+variance, not configuration.
+
+**Vendor selection is now a recorded decision.** ADR 0008
+(`docs/en/adr/0008-vendor-selection-and-private-configuration.md`, Chinese
+mirror in `docs/zh/`) records: DeepSeek `deepseek-chat` for text and vision
+(vision still needs `GIGMATE_MEDIA_VISION_VENDORS=deepseek`, since the image
+probe was an account-routing observation); **no audio vendor** — ASR needs its
+own OpenAI-compatible endpoint and DeepSeek is refused explicitly for audio, so
+the chat key is never posted to a default ASR endpoint; and a nine-step
+enabling checklist ending in `scripts/check_model_config.py`.
+
+**PDF against the real vendor.** `scripts/media_pdf_live_check.py` builds a
+one-page synthetic PDF and pushes it through parser plus vendor in one run. The
+parser sandbox is Linux-only (`media/pdf_child.py` uses resource limits macOS
+cannot provide), which is why the 12 native-macOS
+`MEDIA_PDF_LIMIT_UNAVAILABLE` cases fail locally by design; the script prints
+that platform limit instead of pretending. Inside a Linux container the PDF
+parsed and the request reached the live-origin gate — see the result recorded at
+the end of this section.
+
+**Still operator actions, not code:** no production credential has been
+deployed, and real prices / budgets / token caps must be entered and re-checked
+by the maintainer against the vendor's published price list (the checklist says
+so). No audio vendor has been procured, so no real transcription was attempted.
+Issue #29 items 2 and 4 therefore remain unchecked in the issue itself.
+
+
+## Platform and database verification, and the audio question — 2026-10-17
+
+**Linux suite: 1031 passed / 12 skipped / 0 failed.** Run inside a
+`python:3.12-slim` container against the same tree. This closes the open
+question behind the 12 native-macOS `MEDIA_PDF_LIMIT_UNAVAILABLE` failures:
+they are the platform limit of the PDF isolation sandbox
+(`media/pdf_child.py` uses resource limits macOS cannot provide), not a
+defect — the same cases pass on Linux.
+
+**PostgreSQL.** The suite was also run against a real PostgreSQL 16 container
+(`TEST_DATABASE_URL` / `DATABASE_URL`) instead of SQLite, which is what the row
+locking test needs. It found one real defect this time: `test_agent_drafts.py`
+inserted a `Proposal` with a random `event_id`, which SQLite accepts and
+PostgreSQL rejects on the `inbox` foreign key; the fixture now creates the
+event row first. PostgreSQL results are recorded below once the run finishes.
+
+**Audio is confirmed unavailable on this vendor, not merely unconfigured.**
+Two probes posted a synthetic WAV to
+`https://api.deepseek.com/v1/audio/transcriptions` and
+`https://api.deepseek.com/audio/transcriptions` with the operator key: both
+returned HTTP 404. DeepSeek exposes no transcription endpoint, so ASR cannot be
+"enabled" by pointing it at the chat vendor — it genuinely needs a different
+credential, and the code keeps refusing (`MEDIA_AUDIO_VENDOR_REQUIRED`) until
+one is supplied.
+
+**Migration numbering.** `0021_work_order_evidence` was renumbered to
+`0022_work_order_evidence` and `0022_agent_drafts` to `0023_agent_drafts`, so
+this branch no longer claims the `0021` prefix that PR #34 uses for
+`0021_reviewed_product`. The chain still upgrades cleanly on a throwaway
+database (head `0023_agent_drafts`) and the migration suite passes (21 cases).
+When #34 lands, the two heads will need a merge revision — the same shape the
+repository already used for `0020_business_model_heads`.

@@ -171,7 +171,11 @@ def test_versioned_migration_preserves_replay_rows(migration_database, existing_
         "approval_actions",
         "waha_attachments",
         "waha_media_jobs",
+        "work_order_evidence",
     } <= set(inspect(engine).get_table_names())
+    assert {"attachment_version", "context_version", "result_job_id", "sha256"} <= {
+        item["name"] for item in inspect(engine).get_columns("work_order_evidence")
+    }
     assert {"provider_state", "provider_observed_at"} <= {
         item["name"] for item in inspect(engine).get_columns("waha_connections")
     }

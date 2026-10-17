@@ -367,6 +367,195 @@
         "title": "AddRequirementCommand",
         "type": "object"
       },
+      "AgentDraftCommand": {
+        "additionalProperties": false,
+        "description": "A bounded request for one merchant-facing draft (follow-up or polish).\n\nThis is *not* free-form Q&A and grants no execution authority: the draft is\ntext a merchant reads and then sends through the existing approval path, or\ndiscards. ``base_proposal_id`` reuses text the extraction seam already\nproduced under its own gates (budget, provenance, time basis); ``text`` is\nmerchant-written input that the server only stores. Neither turns the model\ninto a sender.",
+        "properties": {
+          "base_proposal_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Proposal Id"
+          },
+          "kind": {
+            "enum": [
+              "follow_up",
+              "polish"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "AgentDraftCommand",
+        "type": "object"
+      },
+      "AgentDraftView": {
+        "additionalProperties": false,
+        "properties": {
+          "base_work_order_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Work Order Version"
+          },
+          "consumed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consumed At"
+          },
+          "context_version": {
+            "title": "Context Version",
+            "type": "integer"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "execution_authority": {
+            "const": false,
+            "default": false,
+            "title": "Execution Authority",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "follow_up",
+              "polish"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "proposal_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposal Id"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "status": {
+            "enum": [
+              "proposed",
+              "consumed",
+              "revoked",
+              "expired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "work_order_id": {
+            "format": "uuid",
+            "title": "Work Order Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "work_order_id",
+          "conversation_id",
+          "kind",
+          "text",
+          "context_version",
+          "base_work_order_version",
+          "proposal_id",
+          "status",
+          "expires_at",
+          "revoked_at",
+          "consumed_at",
+          "note",
+          "created_at"
+        ],
+        "title": "AgentDraftView",
+        "type": "object"
+      },
       "ApproveActionCommand": {
         "additionalProperties": false,
         "properties": {
@@ -1595,6 +1784,25 @@
         "title": "Detail[ActionView]",
         "type": "object"
       },
+      "Detail_AgentDraftView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AgentDraftView"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[AgentDraftView]",
+        "type": "object"
+      },
       "Detail_ConnectionInfo_": {
         "additionalProperties": false,
         "properties": {
@@ -2068,6 +2276,25 @@
           "request_id"
         ],
         "title": "Detail[WahaSyncResult]",
+        "type": "object"
+      },
+      "Detail_WorkOrderEvidenceView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/WorkOrderEvidenceView"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[WorkOrderEvidenceView]",
         "type": "object"
       },
       "Detail_WorkOrder_": {
@@ -2621,6 +2848,41 @@
         "title": "Page[ActionView]",
         "type": "object"
       },
+      "Page_AgentDraftView_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AgentDraftView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor",
+          "request_id"
+        ],
+        "title": "Page[AgentDraftView]",
+        "type": "object"
+      },
       "Page_CalendarEvent_": {
         "additionalProperties": false,
         "properties": {
@@ -3144,6 +3406,41 @@
           "request_id"
         ],
         "title": "Page[WahaTimelineMessage]",
+        "type": "object"
+      },
+      "Page_WorkOrderEvidenceView_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkOrderEvidenceView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor",
+          "request_id"
+        ],
+        "title": "Page[WorkOrderEvidenceView]",
         "type": "object"
       },
       "Page_WorkOrder_": {
@@ -6936,6 +7233,168 @@
         "title": "WorkOrder",
         "type": "object"
       },
+      "WorkOrderEvidenceCommand": {
+        "additionalProperties": false,
+        "description": "Merchant decision to keep one reviewed attachment as work-order evidence.\n\nThis is a merchant action, not a customer confirmation and not an AI\nwrite: every identity field is echoed from the reviewed evidence the\nmerchant actually saw, so a newer result or file cannot inherit it.",
+        "properties": {
+          "attachment_id": {
+            "format": "uuid",
+            "title": "Attachment Id",
+            "type": "string"
+          },
+          "expected_attachment_version": {
+            "minimum": 1.0,
+            "title": "Expected Attachment Version",
+            "type": "integer"
+          },
+          "expected_context_version": {
+            "minimum": 0.0,
+            "title": "Expected Context Version",
+            "type": "integer"
+          },
+          "expected_result_job_id": {
+            "format": "uuid",
+            "title": "Expected Result Job Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "attachment_id",
+          "expected_attachment_version",
+          "expected_context_version",
+          "expected_result_job_id"
+        ],
+        "title": "WorkOrderEvidenceCommand",
+        "type": "object"
+      },
+      "WorkOrderEvidenceView": {
+        "additionalProperties": false,
+        "properties": {
+          "attachment_id": {
+            "format": "uuid",
+            "title": "Attachment Id",
+            "type": "string"
+          },
+          "attachment_version": {
+            "minimum": 1.0,
+            "title": "Attachment Version",
+            "type": "integer"
+          },
+          "context_version": {
+            "minimum": 0.0,
+            "title": "Context Version",
+            "type": "integer"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "pattern": "Z$",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "mimetype": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mimetype"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "result_job_id": {
+            "format": "uuid",
+            "title": "Result Job Id",
+            "type": "string"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "stale_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stale Reason"
+          },
+          "work_order_id": {
+            "format": "uuid",
+            "title": "Work Order Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "work_order_id",
+          "conversation_id",
+          "attachment_id",
+          "attachment_version",
+          "context_version",
+          "result_job_id",
+          "sha256",
+          "mimetype",
+          "review_note",
+          "note",
+          "created_at",
+          "stale",
+          "stale_reason"
+        ],
+        "title": "WorkOrderEvidenceView",
+        "type": "object"
+      },
       "WorkOrderFields": {
         "additionalProperties": false,
         "description": "Key items (schedule, address) decide confirmation; the others are business detail.",
@@ -10640,6 +11099,88 @@
         "summary": "Daily Summary"
       }
     },
+    "/api/v1/drafts/{draft_id}/consume": {
+      "post": {
+        "description": "Take the draft text into the merchant's existing approval flow, once.\n\nConsuming returns the text and marks the draft used; it never sends\nanything and never bypasses approval.",
+        "operationId": "consume_agent_draft_api_v1_drafts__draft_id__consume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_AgentDraftView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Consume Agent Draft"
+      }
+    },
+    "/api/v1/drafts/{draft_id}/revoke": {
+      "post": {
+        "description": "Withdraw a draft so it can no longer be consumed.",
+        "operationId": "revoke_agent_draft_api_v1_drafts__draft_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_AgentDraftView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Agent Draft"
+      }
+    },
     "/api/v1/new-order-suggestions": {
       "get": {
         "operationId": "suggestions_api_v1_new_order_suggestions_get",
@@ -11686,6 +12227,240 @@
           }
         },
         "summary": "Defer Order Item"
+      }
+    },
+    "/api/v1/work-orders/{order_id}/drafts": {
+      "get": {
+        "operationId": "list_agent_drafts_api_v1_work_orders__order_id__drafts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_AgentDraftView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Agent Drafts"
+      },
+      "post": {
+        "description": "Create one bounded merchant-facing draft (follow-up or polish).\n\nThe text comes either from a proposal the extraction seam already produced\nunder its own gates, or from the merchant's own input: there is no\nfree-form question path. A draft is text only — never sent, never\nconfirming a field, granting no execution authority — and it is limited per\nday, expires, can be revoked and can be consumed once.",
+        "operationId": "create_agent_draft_api_v1_work_orders__order_id__drafts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentDraftCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_AgentDraftView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Agent Draft"
+      }
+    },
+    "/api/v1/work-orders/{order_id}/evidence": {
+      "get": {
+        "operationId": "list_work_order_evidence_api_v1_work_orders__order_id__evidence_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_WorkOrderEvidenceView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Work Order Evidence"
+      },
+      "post": {
+        "description": "Keep one reviewed attachment as evidence for this work order.\n\nThe reviewed binding (attachment version, context version, result job and\nhash) is re-validated before anything is written, and the row snapshots it\nso a later change shows up as ``stale`` rather than silently refreshing.",
+        "operationId": "attach_work_order_evidence_api_v1_work_orders__order_id__evidence_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkOrderEvidenceCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_WorkOrderEvidenceView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Attach Work Order Evidence"
       }
     },
     "/api/v1/work-orders/{order_id}/requirements": {

@@ -30,6 +30,7 @@ import base64
 import hashlib
 import io
 import json
+import sys
 from typing import Any
 
 import httpx
@@ -42,6 +43,11 @@ from gigmate.contracts import WahaMediaResult
 from gigmate.media.coercion import coerce_chat_response, coerce_transcription_response
 from gigmate.media.processor import _ENABLED, MediaProcessorImpl, build_processor
 from gigmate.media_processing import MediaInput, ProcessingUnavailable, ProcessingUncertain
+
+LINUX_PDF_ONLY = pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="PDF child isolation needs Linux RLIMIT_AS/prctl; elsewhere the seam refuses with MEDIA_PDF_LIMIT_UNAVAILABLE",
+)
 
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aA4sAAAAASUVORK5CYII="
@@ -76,8 +82,20 @@ def saved_env(monkeypatch):
         "GIGMATE_MEDIA_AUDIO_VENDOR",
         "GIGMATE_MEDIA_AUDIO_MODEL",
         "GIGMATE_MEDIA_PROMPT_PATH",
+        "GIGMATE_MEDIA_MODALITIES",
+        "GIGMATE_MEDIA_VISION_VENDORS",
     ):
         monkeypatch.delenv(key, raising=False)
+    # Per-modality authorization and vision-vendor verification are asserted
+    # by their own tests; the remaining cases opt in explicitly so they keep
+    # exercising routing / call shape rather than the authorization gate.
+    monkeypatch.setenv("GIGMATE_MEDIA_MODALITIES", "ocr,asr,pdf,text")
+    monkeypatch.setenv("GIGMATE_MEDIA_VISION_VENDORS", "openai")
+    # Audio is only reachable with its own named vendor; without it the
+    # processor refuses instead of posting the chat key to a default ASR
+    # endpoint (asserted by test_audio_vendor_must_be_named).
+    monkeypatch.setenv("GIGMATE_MEDIA_AUDIO_VENDOR", "openai")
+    monkeypatch.setenv("GIGMATE_MEDIA_AUDIO_MODEL", "whisper-1")
     yield monkeypatch
 
 
@@ -105,12 +123,31 @@ def make_input(
 # Two-gate safety
 
 
-def test_default_seam_flag_is_false(saved_env, saved_seam_flag):
-    """The shipping default must be off so a future operator cannot flip live
-    processing by exporting the env var alone."""
+def test_default_seam_flag_stays_locked(saved_env, saved_seam_flag):
+    """The seam ships locked until real media acceptance is recorded.
+
+    The adapters and the per-modality gates exist, but unlocking is a separate,
+    evidenced step: with ``_ENABLED`` False the processor refuses before it
+    reads any environment variable, so deploying this code (even with the live
+    switch and every modality exported) cannot start sending attachments.
+    """
 
     assert _ENABLED is False
     assert isinstance(build_processor(), MediaProcessorImpl)
+    saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
+    saved_env.setenv("GIGMATE_MEDIA_API_KEY", "synthetic-key")
+    saved_env.setenv("GIGMATE_MEDIA_MODALITIES", "ocr,asr,pdf,text")
+    with pytest.raises(ProcessingUnavailable, match="_ENABLED"):
+        MediaProcessorImpl().process(make_input())
+
+
+def test_seam_flag_off_still_refuses(saved_env, saved_seam_flag):
+    """Flipping ``_ENABLED`` back to False keeps refusing before any env read."""
+
+    mp._ENABLED = False
+    saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
+    saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
     with pytest.raises(ProcessingUnavailable, match="_ENABLED"):
         MediaProcessorImpl().process(make_input())
 
@@ -139,6 +176,60 @@ def test_live_origin_refused_by_default(saved_env, saved_seam_flag):
     saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
     with pytest.raises(ProcessingUnavailable, match="Live-origin media is refused"):
         MediaProcessorImpl().process(make_input(origin="live"))
+
+
+def test_modality_must_be_explicitly_authorized(saved_env, saved_seam_flag):
+    """Opening the live switch does not authorize any specific modality."""
+    mp._ENABLED = True
+    saved_env.delenv("GIGMATE_MEDIA_MODALITIES", raising=False)
+    saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
+    saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
+    saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
+    saved_env.setattr(llm, "default_client_factory", lambda **kwargs: pytest.fail("client built"))
+    with pytest.raises(ProcessingUnavailable, match="MEDIA_MODALITY_NOT_AUTHORIZED"):
+        MediaProcessorImpl().process(make_input())
+
+
+def test_ocr_requires_a_verified_vision_vendor(saved_env, saved_seam_flag):
+    """A chat vendor is not assumed to accept images without verification."""
+    mp._ENABLED = True
+    saved_env.setenv("GIGMATE_MEDIA_MODALITIES", "ocr")
+    saved_env.delenv("GIGMATE_MEDIA_VISION_VENDORS", raising=False)
+    saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
+    saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
+    saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
+    saved_env.setattr(llm, "default_client_factory", lambda **kwargs: pytest.fail("client built"))
+    with pytest.raises(ProcessingUnavailable, match="MEDIA_VISION_VENDOR_UNVERIFIED"):
+        MediaProcessorImpl().process(make_input())
+
+
+def test_deepseek_is_never_assumed_to_accept_images(saved_env, saved_seam_flag):
+    """Verifying one vendor must not implicitly verify another."""
+    mp._ENABLED = True
+    saved_env.setenv("GIGMATE_MEDIA_MODALITIES", "ocr")
+    saved_env.setenv("GIGMATE_MEDIA_VISION_VENDORS", "openai")
+    saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
+    saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
+    saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "deepseek")
+    saved_env.setattr(llm, "default_client_factory", lambda **kwargs: pytest.fail("client built"))
+    with pytest.raises(ProcessingUnavailable, match="MEDIA_VISION_VENDOR_UNVERIFIED"):
+        MediaProcessorImpl().process(make_input())
+
+
+@LINUX_PDF_ONLY
+def test_pdf_modality_requires_its_own_authorization(saved_env, saved_seam_flag):
+    """Authorizing OCR alone must not enable document shipping."""
+    mp._ENABLED = True
+    saved_env.setenv("GIGMATE_MEDIA_MODALITIES", "ocr")
+    saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
+    saved_env.setenv("GIGMATE_MEDIA_API_KEY", "test-key")
+    saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
+    saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
+    with pytest.raises(ProcessingUnavailable, match="MEDIA_MODALITY_NOT_AUTHORIZED: pdf"):
+        MediaProcessorImpl().process(make_input(mimetype="application/pdf", content=b"%PDF-1"))
 
 
 def test_unknown_origin_passes_origin_check(saved_env, saved_seam_flag):
@@ -525,6 +616,7 @@ def _pdf_ok() -> dict[str, Any]:
     }
 
 
+@LINUX_PDF_ONLY
 def test_pdf_real_parse_and_extraction(saved_env, saved_seam_flag):
     """Two-layer pipeline: local page text is the source of truth; the
     model only contributes the business layer and cannot retype
@@ -562,6 +654,7 @@ def test_pdf_real_parse_and_extraction(saved_env, saved_seam_flag):
     assert "Second page quote text" in sent_text
 
 
+@LINUX_PDF_ONLY
 def test_pdf_no_text_layer_refuses_without_vendor_call(saved_env, saved_seam_flag):
     mp._ENABLED = True
     saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
@@ -575,6 +668,7 @@ def test_pdf_no_text_layer_refuses_without_vendor_call(saved_env, saved_seam_fla
     assert fake.calls == []
 
 
+@LINUX_PDF_ONLY
 def test_pdf_invalid_bytes_refuse_without_vendor_call(saved_env, saved_seam_flag):
     mp._ENABLED = True
     saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
@@ -590,6 +684,7 @@ def test_pdf_invalid_bytes_refuse_without_vendor_call(saved_env, saved_seam_flag
     assert fake.calls == []
 
 
+@LINUX_PDF_ONLY
 def test_pdf_page_limit_refuses(saved_env, saved_seam_flag):
     """The page bound is checked before any text is extracted: a 201-page
     file is refused with the page-limit code, not the no-text-layer code."""
@@ -608,6 +703,7 @@ def test_pdf_page_limit_refuses(saved_env, saved_seam_flag):
     assert fake.calls == []
 
 
+@LINUX_PDF_ONLY
 def test_pdf_long_page_splits_into_bounded_segments(saved_env, saved_seam_flag):
     mp._ENABLED = True
     saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
@@ -624,6 +720,7 @@ def test_pdf_long_page_splits_into_bounded_segments(saved_env, saved_seam_flag):
     assert "".join(segment.text for segment in result.segments) == "x" * 9000
 
 
+@LINUX_PDF_ONLY
 def test_pdf_blank_pages_surface_unresolved_question(saved_env, saved_seam_flag):
     """A partly scanned PDF keeps its readable pages but the result must
     say how many pages carried no text instead of claiming full
@@ -642,6 +739,7 @@ def test_pdf_blank_pages_surface_unresolved_question(saved_env, saved_seam_flag)
     assert any("1 of 2 pages" in question for question in result.unresolved_questions)
 
 
+@LINUX_PDF_ONLY
 def test_pdf_vendor_5xx_is_uncertain(saved_env, saved_seam_flag):
     """Once the local parse succeeds and the vendor is contacted, a 5xx
     may have been charged and must be Uncertain, not Unavailable."""
@@ -659,6 +757,7 @@ def test_pdf_vendor_5xx_is_uncertain(saved_env, saved_seam_flag):
         )
 
 
+@LINUX_PDF_ONLY
 def test_pdf_text_limit_refuses(saved_env, saved_seam_flag):
     """A document whose extracted text exceeds the contract's 100000-char
     bound is refused outright, never silently truncated."""
@@ -676,6 +775,7 @@ def test_pdf_text_limit_refuses(saved_env, saved_seam_flag):
     assert fake.calls == []
 
 
+@LINUX_PDF_ONLY
 def test_pdf_oversized_document_refuses_on_text_bound(saved_env, saved_seam_flag):
     """Bound precedence: an oversized multi-page document hits the
     total-text bound before the split can overflow the segment bound,
@@ -698,6 +798,7 @@ def test_pdf_oversized_document_refuses_on_text_bound(saved_env, saved_seam_flag
     assert fake.calls == []
 
 
+@LINUX_PDF_ONLY
 def test_pdf_model_bad_source_indices_is_uncertain(saved_env, saved_seam_flag):
     mp._ENABLED = True
     saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")

@@ -71,6 +71,8 @@ def saved_env(monkeypatch):
         "GIGMATE_MEDIA_AUDIO_VENDOR",
         "GIGMATE_MEDIA_AUDIO_MODEL",
         "GIGMATE_MEDIA_PROMPT_PATH",
+        "GIGMATE_MEDIA_MODALITIES",
+        "GIGMATE_MEDIA_VISION_VENDORS",
     ):
         monkeypatch.delenv(key, raising=False)
     yield monkeypatch
@@ -185,6 +187,10 @@ def _process_case(
     saved_env.setenv("GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN", "1")
     saved_env.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
     saved_env.setenv("GIGMATE_MEDIA_AUDIO_VENDOR", "openai")
+    # The per-modality and vision-vendor gates are deliberately empty by
+    # default; a test that expects a vendor call must authorize it explicitly.
+    saved_env.setenv("GIGMATE_MEDIA_MODALITIES", "ocr,asr,pdf,text")
+    saved_env.setenv("GIGMATE_MEDIA_VISION_VENDORS", "openai")
 
     dispatch = route(case["media"]["mimetype"])
     payload = case["vendor_response"]

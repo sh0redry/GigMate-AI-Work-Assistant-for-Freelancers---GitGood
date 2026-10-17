@@ -4,7 +4,7 @@ from argparse import Namespace
 from pathlib import Path
 
 import pytest
-from test_media_processor import make_input
+from test_media_processor import LINUX_PDF_ONLY, make_input
 
 from gigmate.media import llm
 from gigmate.media.coercion import coerce_chat_response, coerce_transcription_response
@@ -40,7 +40,13 @@ def test_smoke_refusal_and_unknown_are_nonzero(monkeypatch, tmp_path, error):
     [
         # PDF is now a real parser (gigmate.media.pdfparse, 2026-10-12); a
         # non-parseable payload still refuses before the client exists.
-        ("application/pdf", b"%PDF-synthetic", "openai", "PDF_NOT_PARSEABLE"),
+        pytest.param(
+            "application/pdf",
+            b"%PDF-synthetic",
+            "openai",
+            "PDF_NOT_PARSEABLE",
+            marks=LINUX_PDF_ONLY,
+        ),
         ("image/png", b"synthetic", "deepseek", "VISION_VENDOR_UNVERIFIED"),
         ("text/plain", b"\xff", "openai", "TEXT_ENCODING_INVALID"),
         ("text/plain", b"a" * 90001, "openai", "TEXT_CHUNKING_PENDING"),
@@ -53,6 +59,8 @@ def test_unimplemented_routes_refuse_before_client(monkeypatch, mime, content, v
     monkeypatch.setenv("GIGMATE_MEDIA_LIVE", "1")
     monkeypatch.setenv("GIGMATE_MEDIA_API_KEY", "synthetic-key")
     monkeypatch.setenv("GIGMATE_MEDIA_CHAT_VENDOR", vendor)
+    monkeypatch.setenv("GIGMATE_MEDIA_MODALITIES", "ocr,asr,pdf,text")
+    monkeypatch.setenv("GIGMATE_MEDIA_VISION_VENDORS", "openai")
     monkeypatch.delenv("GIGMATE_MEDIA_ENDPOINT", raising=False)
     monkeypatch.setattr(
         llm, "default_client_factory", lambda **kwargs: pytest.fail("client constructed")
@@ -65,6 +73,9 @@ def test_non_utf8_prompt_is_unavailable(monkeypatch, tmp_path):
     monkeypatch.setattr("gigmate.media.processor._ENABLED", True)
     monkeypatch.setenv("GIGMATE_MEDIA_LIVE", "1")
     monkeypatch.setenv("GIGMATE_MEDIA_API_KEY", "synthetic-key")
+    monkeypatch.setenv("GIGMATE_MEDIA_CHAT_VENDOR", "openai")
+    monkeypatch.setenv("GIGMATE_MEDIA_MODALITIES", "ocr")
+    monkeypatch.setenv("GIGMATE_MEDIA_VISION_VENDORS", "openai")
     path = tmp_path / "prompt.txt"
     path.write_bytes(b"\xff")
     monkeypatch.setenv("GIGMATE_MEDIA_PROMPT_PATH", str(path))
@@ -107,6 +118,8 @@ def test_client_is_closed_and_raw_error_not_logged(monkeypatch, caplog, failed):
         "GIGMATE_MEDIA_LIVE": "1",
         "GIGMATE_MEDIA_API_KEY": "synthetic-key",
         "GIGMATE_MEDIA_CHAT_VENDOR": "openai",
+        "GIGMATE_MEDIA_MODALITIES": "ocr",
+        "GIGMATE_MEDIA_VISION_VENDORS": "openai",
     }.items():
         monkeypatch.setenv(name, value)
 

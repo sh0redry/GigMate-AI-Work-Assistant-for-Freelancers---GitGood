@@ -13,3 +13,14 @@ TRUSTED_ORIGINS = set(
 )
 if os.environ.get("APP_MODE", "replay") != "replay":
     raise RuntimeError("This development skeleton only supports APP_MODE=replay")
+
+
+def workspace_timezone() -> str | None:
+    """Trusted merchant/workspace timezone for relative-date resolution.
+
+    Read at call time (not import time) so a worker restart is the only thing
+    needed to pick up a changed setting. ``None`` means "not configured"; the
+    model provider refuses live extraction rather than guessing a basis.
+    """
+    value = os.environ.get("GIGMATE_WORKSPACE_TIMEZONE", "").strip()
+    return value or None

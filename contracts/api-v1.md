@@ -1,5 +1,7 @@
 # Business API agreement
 
+2026-10-17 evidence and media-authorization batch: implemented `POST /work-orders/{id}/evidence` and `GET /work-orders/{id}/evidence` (additive migration 0021, `WorkOrderEvidenceCommand` / `WorkOrderEvidenceView`). A merchant can keep an already source-reviewed attachment as work-order evidence. The command echoes the exact reviewed binding (attachment version, context version, result-job UUID) and the server re-validates ownership, active connection/source, review, original-file integrity and that the attachment's conversation is linked to the order before writing; re-submitting the same binding is idempotent. The row snapshots attachment version, context version, result job and SHA-256, so later source/result/context changes never rewrite history — reads return `stale: true` with a stable `stale_reason`. This writes no `RequirementChange`, confirms no field and grants no sending authority. The same batch adds per-modality media authorization (`GIGMATE_MEDIA_MODALITIES`, empty by default) and an explicit vision-vendor allowlist (`GIGMATE_MEDIA_VISION_VENDORS`) that refuse OCR before a client exists; they change no HTTP shape.
+
 2026-10-10 authorized sending branch: implemented account-owned `/connectors/{id}/sending` permission, raw uploads/private preview, immutable drafts/approval/outbox, opaque request lookup/cancellation fences, paginated actions/policies, exact-payload automatic preauthorization, receipt lookup and explicit possible-delivery review. Source models `WahaSend*` generate implemented OpenAPI; additive migration 0011 grants no consent. No arbitrary send URL or model authority; no-ID unknown outcomes never blindly resend. Generic legacy action APIs, real B generation/triggers and physical/PostgreSQL acceptance remain separate. See [sending agreement](../docs/en/role-a-waha-sending.md) and its [Chinese counterpart](../docs/zh/role-a-waha-sending.md).
 
 PR #21 compatibility: additive migration 0013 joins shared sending 0011 and media-stop 0012; public domain/API shapes are unchanged. Raw uploads revalidate owned allowlisted sending authorization before persistence and bind the original control/permission versions across streaming. Changed authorization returns 403 `SEND_UPLOAD_AUTHORIZATION_CHANGED`, including revoke/regrant, with no upload row/blob persisted. A fresh upload requires a separate explicit request, never an automatic retry.
@@ -65,6 +67,8 @@ Errors: `{"error": {"code": "VERSION_CONFLICT", "message": "Refresh and review t
 | POST /work-orders/{id}/requirements, POST /work-orders/{id}/requirements/{item_id} | AddRequirementCommand, UpdateRequirementCommand | Required materials, promises either side made and open questions (方案 §4.3), each with owner, optional due and source messages, kept in `WorkOrder.requirements`. Materials and promises create memo tasks (e.g. `跟进 {summary}：索取证件尺寸`, `{summary}：发初稿`); questions stay on the order. Marking an item done/cancelled closes its task |
 | GET /work-orders/{id}/checklist, POST /work-orders/{id}/archive | none, ArchiveCommand | 方案 §4.6 交付前检查与收尾: confirmed fields and finished items to check, and unfinished ones (open materials/promises/questions, unconfirmed key items, unhandled proposals, unsent or unknown replies). Completing an order with unfinished items returns 409 `CHECKLIST_OPEN` with the list unless `acknowledge_open_items` is true. A completed or cancelled order can be archived: hidden from `GET /work-orders` unless `include_archived=true`, history kept |
 | POST /work-orders/{id}/status | SetWorkOrderStatusCommand | Merchant moves the order: confirmed → in_progress / waiting_customer / completed / cancelled; in_progress ↔ waiting_customer; pending or unclassified → cancelled only; completed and cancelled are final (409 `INVALID_TRANSITION` with `allowed`). Closing frees the time slot, cancels unsent drafts and open generated tasks (completed → task completed), and returns pending proposals to review; nothing is deleted or sent |
+| POST /work-orders/{id}/evidence | WorkOrderEvidenceCommand | Keep one reviewed, source-verified attachment as order evidence; revalidates the exact review, file bytes and conversation link, idempotent binding, no field confirmation |
+| GET /work-orders/{id}/evidence | pagination | Evidence links with computed `stale` / `stale_reason`; never rewritten by later source changes |
 | POST /work-orders/{id}/changes/{change_id}/confirm | ConfirmChangeCommand | Merchant-approved internal mutation; conflict checks and atomic dependent updates. Besides the key items (schedule, address) it confirms `summary`, `specification`, `quantity` and `deadline`; these never decide order confirmation. A customer-confirmed deadline becomes the delivery task (`MM/DD 交付 {summary}`), replacing an older one |
 | POST /work-orders/{id}/changes/{change_id}/reject | RejectCommand | Merchant rejects an open proposal (`proposed`/`needs_review`) with a reason: the change stays as `rejected` with `rejection_reason`, the order keeps its values and its version increases, the conflict question written for it is withdrawn (`proposal_rejected`) and the open-item question is refreshed. Rejected proposals cannot be confirmed |
 | GET /actions | pagination, optional state, optional work_order_id | Review queue or execution history; keyset pages read from the database in id order and bounded batches (Issue #28); expiry and send outcome computed on read, never written |
@@ -187,6 +191,36 @@ Calendar export compares the calendar time and exact source revisions with the c
 
 Proposal-list conflict IDs are computed only for schedule proposals whose value is a timed interval. Address, date-only and other field values remain readable with an empty conflict list; this does not authorize confirmation of unsupported fields. 中文：提案列表仅对具体起止时间计算冲突，地址／仅日期／其他字段正常读取并返回空冲突列表；可读取不表示可以确认尚未支持的字段。
 
+
+## Bounded draft bindings (PR35 review follow-up)
+
+`POST /work-orders/{id}/drafts` accepts a proposal only when it is matched to
+that exact owned, open work order, at its current version, and its owned,
+allowlisted conversation is explicitly linked to the order. The proposal selects
+the conversation when an order has several links; a proposal assigned to another
+order or still awaiting assignment returns 409 `AGENT_DRAFT_PROPOSAL_MISMATCH`.
+Stale order/context versions return 409 `AGENT_DRAFT_STALE`; paused processing
+returns 403 `CONSENT_REVOKED`. Merchant-written text without a proposal requires
+exactly one conversation link; multiple links return 409
+`AGENT_DRAFT_CONVERSATION_AMBIGUOUS` rather than choosing an arbitrary chat.
+
+Draft reads and `POST /drafts/{id}/consume` revalidate ownership, current order
+and context versions, consent, conversation/order link and source-proposal
+bindings. An unconsumed, unexpired draft with invalid bindings reads as `revoked`
+and consumption returns 409 `AGENT_DRAFT_NOT_USABLE`. This status is computed
+without a read-side write; `revoked_at` is populated only by explicit revocation.
+Consumed/explicitly revoked history is retained. A valid duplicate proposal
+request returns its original draft even after the creation quota is reached;
+it never returns a different order's draft. Consumption remains text only and
+grants no sending or confirmation authority.
+
+中文：建议草稿必须明确属于当前工单，并核对工单版本、已关联会话、会话当前版本和授权。
+同一聊天的 A 工单提议不能用到 B 工单；同一工单关联多个聊天时按提议确定会话。
+手写草稿没有提议可指明聊天，因此多会话时返回 409，不能随便选第一条。
+已有草稿读取和取用时再次核对这些绑定；失效但尚未取用／过期的草稿显示 `revoked`，
+取用返回 409。读取不改数据库，`revoked_at` 只记录显式撤销；历史已取用记录保留。
+重复提交有效提议仍可取回原草稿，不新增配额，也不会跨工单返回别人的草稿。
+取用只返回文字，发送仍须走原审批流程。
 
 ## BCD text-product additions — 2026-10-17
 
