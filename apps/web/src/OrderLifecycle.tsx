@@ -2,7 +2,7 @@ import { t } from "./i18n.ts";
 import { useStableState as useState } from "./useStableState";
 import type { Order } from "./workspace-api";
 import type { OrderTarget, OrderCommands } from "./order-command-api";
-import { orderStates } from "./work-order-view";
+import { orderActionLabels } from "./work-order-view";
 const transitions: Record<Order["status"], OrderTarget[]> = {
   unclassified: ["cancelled"],
   pending_confirmation: ["cancelled"],
@@ -88,7 +88,7 @@ export function OrderLifecycle({
                   setConsent(false);
                 }}
               >
-                {orderStates[s]}
+                {orderActionLabels[s]}
               </button>
             ))}
           </div>
@@ -102,7 +102,7 @@ export function OrderLifecycle({
           {target && (
             <div className="review-panel">
               <h3>
-                {orderStates[target]}：「{order.summary}」
+                {orderActionLabels[target]}：「{order.summary}」
               </h3>
               <p>
                 {["completed", "cancelled"].includes(target)

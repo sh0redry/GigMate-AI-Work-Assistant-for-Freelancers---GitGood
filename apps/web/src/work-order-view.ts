@@ -15,6 +15,12 @@ export const orderStates: Record<Order["status"], string> = localized({
   completed: "已完成",
   cancelled: "已取消",
 });
+export const orderActionLabels = localized({
+  in_progress: "开始处理",
+  waiting_customer: "标记等待客户",
+  completed: "完成工单",
+  cancelled: "取消工单",
+});
 export const fieldStates = localized({
   missing: "未提供",
   proposed: "提议",

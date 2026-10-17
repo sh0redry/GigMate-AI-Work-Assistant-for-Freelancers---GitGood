@@ -510,7 +510,10 @@ export function WorkOrderWorkspace({
               <h2>
                 {t("待核对变更")}
                 <span className="tag">
-                  {pending.length} {t("项提议")}
+                  {pending.length} {t("项待确认")}
+                  {changes.length > pending.length
+                    ? ` · ${t("共 {0} 项", changes.length)}`
+                    : ""}
                 </span>
               </h2>
               {!changes.length && (

@@ -497,7 +497,7 @@ test("calendar renders formal/tentative appointments, gates export and opens the
   );
   assert.match(document.body.textContent, /Synthetic delivery order/);
   assert.equal(document.querySelectorAll("main").length, 1);
-  assert.equal(button("已取消"), undefined);
+  assert.equal(button("取消工单"), undefined);
 });
 test("review inbox distinguishes old rounds, shows source and leaves unavailable assignment disabled", async () => {
   deliveryFixture();

@@ -7,6 +7,8 @@ import {
   filterOrders,
   onDay,
   fieldValue,
+  orderActionLabels,
+  orderStates,
   reviewBinding,
   hongKongDateTime,
 } from "./src/work-order-view.ts";
@@ -236,4 +238,17 @@ test("conflict identifiers resolve calendar entries before their work orders", (
   };
   assert.equal(conflictLabel(data, "calendar-1"), "Synthetic other booking");
   assert.match(conflictLabel(data, "unavailable"), /日历/);
+});
+
+test("status buttons name the action, not the state they produce", () => {
+  const states = new Set(Object.values(orderStates));
+  for (const label of Object.values(orderActionLabels)) {
+    assert.equal(
+      states.has(label),
+      false,
+      `action label "${label}" repeats a state name`,
+    );
+  }
+  assert.equal(orderActionLabels.cancelled, "取消工单");
+  assert.equal(orderActionLabels.completed, "完成工单");
 });
