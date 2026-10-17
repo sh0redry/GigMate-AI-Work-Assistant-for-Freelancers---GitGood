@@ -246,7 +246,7 @@ export function ReviewWorkspace({
                   .filter(([, f]) => f.status !== "confirmed")
                   .map(([key, f]) => (
                     <p key={key}>
-                      {key === "schedule" ? t("时间") : t("地址")}：
+                      {fieldNames[key as keyof typeof fieldNames] ?? key}：
                       {fieldValue(f.value)} ·{" "}
                       {f.status === "missing"
                         ? t("等待客户提供")

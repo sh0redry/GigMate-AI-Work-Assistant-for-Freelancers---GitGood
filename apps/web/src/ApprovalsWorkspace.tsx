@@ -295,7 +295,7 @@ export function ApprovalsWorkspace({
           {!!selected && !visibleSelected && (
             <p>{t("当前选择不在筛选结果中，右侧仍保留该草稿。")}</p>
           )}
-          {shown.length === 0 && (
+          {shown.length === 0 && !selected && (
             <p>
               {data ? t("此筛选下没有草稿。") : t("等待审批列表。")}{" "}
               {t(

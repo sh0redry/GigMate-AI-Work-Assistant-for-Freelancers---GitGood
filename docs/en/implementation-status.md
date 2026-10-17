@@ -1,5 +1,15 @@
 # Implementation status and validation
 
+## Status action labels, change count and approval filter — 2026-10-17
+
+Status controls now name the action they perform (start work, mark waiting for customer, complete order, cancel order) instead of repeating the resulting state. A `pending_confirmation` order previously offered a single control labelled "cancelled", which read as an outcome rather than the one legal action.
+
+The changes heading counts awaited proposals and the total recorded changes, so a confirmed change no longer appears beside "0 proposals". The approvals list no longer prints "no drafts for this filter" while a selected draft is deliberately retained outside that filter.
+
+The review queue grouped four different missing fields under one "address" label, printing the same line four times per order. Each missing field now uses its own name (address, specification, quantity, deadline).
+
+Evidence: frontend **176 passed**, including a new regression that action labels never repeat a state name; TypeScript and Prettier pass. No API, contract, migration or backend change. These are implementation checks, not teammate or device acceptance.
+
 ## PR35/main integration — 2026-10-17
 
 Under Kyrie's instruction to resolve and merge PR35, integrate main `0b665f0` (PR36) into the reviewed PR35 repair. Only these bilingual progress records conflicted; preserve both PR35 and PR36 entries. No API/code/migration conflict required a new implementation. Linux with locked dependencies and a fresh isolated PostgreSQL: integrated full backend **1090 passed / 1 skipped**; frontend **175 passed**, generated API check, Ruff check/format, contract export, baseline and whitespace checks pass. These are integration checks, not a new teammate approval or live-vendor/WhatsApp acceptance.
