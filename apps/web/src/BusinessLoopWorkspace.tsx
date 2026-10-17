@@ -56,7 +56,7 @@ function BusinessLoopContent({
     [order, setOrder] = useState<LoopOrder | null>(null),
     [changes, setChanges] = useState<Change[]>([]),
     [messages, setMessages] = useState<Message[]>([]),
-    [context, setContext] = useState(0);
+    [contexts, setContexts] = useState<Record<string, number>>({});
   const [summary, setSummary] = useState<Loop["DailySummary"] | null>(null),
     [settings, setSettings] = useState<Loop["ScheduleSettings"] | null>(null),
     [checklist, setChecklist] = useState<Loop["DeliveryChecklist"] | null>(
@@ -125,6 +125,7 @@ function BusinessLoopContent({
       setChecklist(null);
       setSchedule(null);
       setSource("");
+      setContexts({});
     }
     if (id)
       void (async () => {
@@ -147,26 +148,57 @@ function BusinessLoopContent({
           s.work_order_id !== id
         )
           throw Error(t("工单归属无法核对"));
-        const conversation = o.conversation_ids[0];
-        const [ms, info] = await Promise.all([
-          allPages<Message>(
-            request,
-            `/conversations/${conversation}/messages`,
-            abort.signal,
-          ),
-          request<Detail<components["schemas"]["Conversation"]>>(
-            `/conversations/${conversation}`,
-            undefined,
-            abort.signal,
-          ),
-        ]);
+        const conversationIds = [...new Set(o.conversation_ids)];
+        const timelines = await Promise.all(
+          conversationIds.map(async (conversation) => {
+            const [ms, info] = await Promise.all([
+              allPages<Message>(
+                request,
+                `/conversations/${conversation}/messages`,
+                abort.signal,
+              ),
+              request<Detail<components["schemas"]["Conversation"]>>(
+                `/conversations/${conversation}`,
+                undefined,
+                abort.signal,
+              ),
+            ]);
+            if (
+              info.data.id !== conversation ||
+              !Number.isInteger(info.data.context_version) ||
+              info.data.context_version < 1 ||
+              ms.some((message) => message.conversation_id !== conversation)
+            )
+              throw Error(t("对话范围或版本无效，请刷新核对。"));
+            return {
+              id: conversation,
+              messages: ms,
+              version: info.data.context_version,
+            };
+          }),
+        );
+        const primary = timelines[0];
+        if (!primary) throw Error(t("工单没有可核对的对话。"));
         if (abort.signal.aborted) return;
         setOrder(o);
         setChecklist(c);
         setSchedule(s);
         setChanges(ch);
-        setMessages(ms);
-        setContext(info.data.context_version);
+        setMessages(
+          timelines
+            .flatMap((timeline) => timeline.messages)
+            .sort(
+              (a, b) =>
+                a.occurred_at.localeCompare(b.occurred_at) ||
+                a.id.localeCompare(b.id) ||
+                a.revision - b.revision,
+            ),
+        );
+        setContexts(
+          Object.fromEntries(
+            timelines.map((timeline) => [timeline.id, timeline.version]),
+          ),
+        );
         setDetailReady(true);
         setCheckedAt(Date.now());
       })().catch((e) => {
@@ -176,6 +208,7 @@ function BusinessLoopContent({
   }, [id, revision, api, request, accountId, report]);
   const sources = messages.filter(
     (m) =>
+      m.conversation_id === order?.conversation_ids[0] &&
       m.direction === "incoming" &&
       !m.revoked &&
       !messages.some((n) => n.id === m.id && n.revision > m.revision),
@@ -183,6 +216,21 @@ function BusinessLoopContent({
   const selectedSource = sources.find(
     (m) => m.id + ":" + m.revision === source,
   );
+  const changeContext = (change: Change): number | null => {
+    const conversationIds = new Set<string>();
+    for (const ref of change.sources) {
+      const message = messages.find(
+        (item) =>
+          item.id === ref.message_id &&
+          item.revision === ref.message_revision &&
+          !item.revoked,
+      );
+      if (!message) return null;
+      conversationIds.add(message.conversation_id);
+    }
+    if (conversationIds.size !== 1) return null;
+    return contexts[[...conversationIds][0]] ?? null;
+  };
   const refs = selectedSource
     ? [
         {
@@ -740,7 +788,8 @@ function BusinessLoopContent({
                       </p>
                       {c.status === "proposed" &&
                         c.base_work_order_version === order.version &&
-                        c.context_version === context &&
+                        changeContext(c) !== null &&
+                        c.context_version === changeContext(c) &&
                         !c.conflict_ids.length &&
                         c.sources.every((r) =>
                           messages.some(
@@ -757,13 +806,13 @@ function BusinessLoopContent({
                               path: `/work-orders/${id}/changes/${c.id}/confirm`,
                               body: {
                                 expected_version: order.version,
-                                expected_context_version: context,
+                                expected_context_version: changeContext(c)!,
                                 apply_calendar_update: c.field === "schedule",
                               },
                               review: t(
                                 "工单 v{0}／会话 v{1}：接受{2}“{3}”。客户未确认的值仍保持待核实。",
                                 order.version,
-                                context,
+                                changeContext(c)!,
                                 fieldNames[c.field],
                                 fieldValue(c.new_value),
                               ),

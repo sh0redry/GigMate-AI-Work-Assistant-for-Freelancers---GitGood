@@ -1567,6 +1567,7 @@ export const english: Record<string, string> = {
     "Pagination was not read completely. Refresh and retry.",
   "当前工单没有可核对的对话，请联系后端负责人。":
     "This order has no verifiable conversation. Contact the backend maintainer.",
+  "工单没有可核对的对话。": "This order has no verifiable conversation.",
   "对话范围或版本无效，请刷新核对。":
     "Invalid conversation scope or version. Refresh and check.",
   "业务已切换，请刷新并重新核对。":
@@ -3103,6 +3104,7 @@ export const cantonese: Record<string, string> = {
   "分页数据未能完整读取，请刷新重试。": "分頁數據未能完整讀取，請刷新重試。",
   "当前工单没有可核对的对话，请联系后端负责人。":
     "當前工作單沒有可核對的對話，請聯繫後端負責人。",
+  "工单没有可核对的对话。": "工作單沒有可核對的對話。",
   "对话范围或版本无效，请刷新核对。": "對話範圍或版本無效，請刷新核對。",
   "业务已切换，请刷新并重新核对。": "業務已切換，請刷新並重新核對。",
   "当前只能确认时间或地址提议。": "當前只能確認時間或地址提議。",

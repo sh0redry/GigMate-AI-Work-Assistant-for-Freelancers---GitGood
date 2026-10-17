@@ -25,6 +25,7 @@ from gigmate.db import (
     Proposal,
     ProposalDecision,
     TaskRow,
+    WahaConnection,
     WorkOrderRow,
 )
 from gigmate.extraction.disabled import DisabledProvider
@@ -68,10 +69,20 @@ def test_model_io_has_no_business_locks_and_revalidates_consent(signed_in):
         _reset_provider_for_testing()
 
 
-@pytest.mark.parametrize("change", ["context", "order", "crash"])
+@pytest.mark.parametrize("change", ["context", "order", "pause-regrant", "crash"])
 def test_model_results_never_promote_stale_snapshots_or_repeat_unknown_calls(signed_in, change):
     _, factory, _, _ = signed_in
     incoming(factory)
+    with factory.begin() as db:
+        connection = WahaConnection(
+            id=uid(80),
+            account_id=uid(1),
+            instance_id="synthetic-instance",
+            session_id="synthetic-session",
+            enabled=True,
+        )
+        db.add(connection)
+        db.scalar(select(Inbox)).connection_id = connection.id
 
     class DuringCall(DisabledProvider):
         calls = 0
@@ -83,9 +94,11 @@ def test_model_results_never_promote_stale_snapshots_or_repeat_unknown_calls(sig
             with factory.begin() as db:
                 if change == "context":
                     db.get(ConversationRow, uid(2)).context_version += 1
-                else:
+                elif change == "order":
                     order = db.get(WorkOrderRow, uid(3))
                     order.data = {**order.data, "version": order.data["version"] + 1}
+                elif change == "pause-regrant":
+                    db.get(WahaConnection, uid(80)).control_version += 2
             return super().propose(request)
 
     p = DuringCall()

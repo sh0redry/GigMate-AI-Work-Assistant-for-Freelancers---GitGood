@@ -154,7 +154,13 @@ def run_once(factory=Session):
                 request = _extraction_request(
                     db, account, event, conversation, linked, request_id=job.model_request_id
                 )
-                deferred = (request, copy.deepcopy(event), linked)
+                deferred = (
+                    request,
+                    copy.deepcopy(event),
+                    linked,
+                    inbox.connection_id,
+                    connection.control_version if connection else None,
+                )
             else:
                 linked = open_orders(db, conversation.id, job.id)
                 if len(linked) != 1:
@@ -211,7 +217,7 @@ def run_once(factory=Session):
                 complete_metrics(job, inbox, began)
         if deferred is not None:
             # No Session or database lock spans model/network I/O.
-            request, event, linked = deferred
+            request, event, linked, submitted_connection_id, submitted_control_version = deferred
             outcome = provider().propose(request)
             with factory.begin() as db:
                 account = db.scalar(
@@ -251,6 +257,14 @@ def run_once(factory=Session):
                     or conversation.context_version != request.context_version
                     or inbox.context_version != request.context_version
                     or open_orders(db, conversation.id, job.id) != linked
+                    or inbox.connection_id != submitted_connection_id
+                    or (
+                        submitted_connection_id is not None
+                        and (
+                            connection is None
+                            or connection.control_version != submitted_control_version
+                        )
+                    )
                 ):
                     job.state, job.error_code = "completed", "SOURCE_SUPERSEDED"
                 else:

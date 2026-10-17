@@ -1,5 +1,6 @@
 """Merchant-reviewed suggestion consumption and task decisions; no external effects."""
 
+import base64
 import copy
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
@@ -203,27 +204,68 @@ def install(app, database, actor, detail, page):
         account=Depends(actor),
         db=Depends(database),
     ):
-        from types import SimpleNamespace
+        try:
+            last_id = base64.urlsafe_b64decode(cursor.encode()).decode() if cursor else ""
+            if last_id:
+                UUID(last_id)
+        except (ValueError, UnicodeDecodeError):
+            raise BusinessError(422, "VALIDATION_FAILED", "Invalid cursor") from None
 
+        # Filter obvious candidates in SQL and inspect only bounded batches.
+        # Source/context validation still happens in current_suggestion; it is
+        # deliberately not replaced by a JSON shortcut.
+        batch_size = max(2, min(limit + 1, 100))
+        scan_id = last_id
         result = []
-        for row in db.scalars(select(Proposal).where(Proposal.account_id == account.id)):
-            try:
-                current, refs = current_suggestion(db, account.id, row.id)
-            except BusinessError:
-                continue
-            result.append(
-                {
-                    "id": current.id,
-                    "conversation_id": current.conversation_id,
-                    "context_version": current.context_version,
-                    "suggestion": current.proposal["new_work_order"],
-                    "sources": refs,
-                    "created_at": current.created_at.replace(tzinfo=UTC)
-                    .isoformat()
-                    .replace("+00:00", "Z"),
-                }
+        has_more = False
+        for _ in range(5):
+            query = (
+                select(Proposal)
+                .where(
+                    Proposal.account_id == account.id,
+                    Proposal.assignment == "needs_review",
+                    Proposal.work_order_id.is_(None),
+                    Proposal.id > scan_id,
+                )
+                .order_by(Proposal.id)
+                .limit(batch_size + 1)
             )
-        return page(request, [SimpleNamespace(id=v["id"], data=v) for v in result], cursor, limit)
+            batch = list(db.scalars(query))
+            has_more = len(batch) > batch_size
+            for row in batch[:batch_size]:
+                scan_id = row.id
+                try:
+                    current, refs = current_suggestion(db, account.id, row.id)
+                except BusinessError:
+                    continue
+                result.append(
+                    {
+                        "id": current.id,
+                        "conversation_id": current.conversation_id,
+                        "context_version": current.context_version,
+                        "suggestion": current.proposal["new_work_order"],
+                        "sources": refs,
+                        "created_at": current.created_at.replace(tzinfo=UTC)
+                        .isoformat()
+                        .replace("+00:00", "Z"),
+                    }
+                )
+                if len(result) >= limit + 1:
+                    break
+            if len(result) >= limit + 1 or not has_more:
+                break
+        visible = result[:limit]
+        if len(result) > limit:
+            next_cursor = base64.urlsafe_b64encode(visible[-1]["id"].encode()).decode()
+        elif has_more:
+            next_cursor = base64.urlsafe_b64encode(scan_id.encode()).decode()
+        else:
+            next_cursor = None
+        return {
+            "items": visible,
+            "next_cursor": next_cursor,
+            "request_id": request.state.request_id,
+        }
 
     @app.post("/api/v1/tasks/{task_id}/status", response_model=Detail[Task])
     def update_task(
