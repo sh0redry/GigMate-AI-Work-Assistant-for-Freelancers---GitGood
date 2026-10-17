@@ -1010,3 +1010,12 @@ PR #18（`llm:live-gate-off` + malformed-prompt/证据修复）以 `cc2ac8e` 合
 **音频已确认为该供应商不提供，而不只是未配置。** 两次探测用运营方 key 向 `https://api.deepseek.com/v1/audio/transcriptions` 与 `https://api.deepseek.com/audio/transcriptions` 提交合成 WAV，均返回 HTTP 404。DeepSeek 没有转写端点，因此 ASR 不可能通过"指向对话供应商"来启用 —— 它确实需要另一份凭据，代码在提供之前继续保持拒绝（`MEDIA_AUDIO_VENDOR_REQUIRED`）。
 
 **迁移编号。** `0021_work_order_evidence` 改号为 `0022_work_order_evidence`，`0022_agent_drafts` 改为 `0023_agent_drafts`，本分支不再占用 PR #34 用于 `0021_reviewed_product` 的 `0021` 前缀。链条在临时库上仍可干净升级（head `0023_agent_drafts`），迁移套件通过（21 项）。#34 合入后需要一条 merge revision 合并两个 head —— 与本仓库 `0020_business_model_heads` 的既有做法一致。
+
+
+## 客户会话第一批前端 — 2026-10-18
+
+基于 main `f47e740`，分支 `andy/customer-conversations`。详见[使用、边界、B/C 对接与验收](customer-conversations.md)。新增已授权会话列表／搜索、有界可见窗口轮询（约 3 秒，最多十页／500 行）、编辑／撤回更新、阅读位置保留、本次会话内新消息提示，以及紧凑复用原多类型发送网关。进入页面不自动已读、下载、调用模型或发送。新增工单原文定位和带来源提示的人工建单；来源改动会清掉旧勾选。B 已有有效模型提议草稿可明确消费到辅助编辑器，返回身份／绑定须匹配，不自动发送；原网关有未解决请求时不允许再采用新建议。新聊天回复生成／模型润色、任意归单和自动触发仍为 B/C 后续对接，旧 API 明确说明缺失并保留支持的手动路径。
+
+原页面默认行为保留，发送面板新属性／紧凑折叠均为可选。文字及来源类型按聊天留在内存，权限拒绝后清理。本批未改后端／公开契约／迁移，未升级、补种或重置真实安装。
+
+实际检查：全前端 **195 passed**，含新增 **19** 项合成会话/API/DOM 回归；生成类型、格式、TypeScript 和生产构建通过。源契约同步；适用 Ruff check／format（139 文件）通过。复用 `test_waha_sync.py` 与 `test_agent_draft_bindings.py`：临时 SQLite **51 passed / 2 skipped**，有一项既有 Starlette TestClient 弃用提示，不宣称 PG 并发验证。原包体积提示仍在（675.65 kB，gzip 211.68 kB）。浏览器使用不接 WAHA／数据库／模型、不支持发送的临时本机合成服务，检查桌面、390px 手机无横向溢出、来源高亮、切 English 保留原文和输入、打开工单再返回保留未发文字，未观察到控制台错误。真实账号收／编辑／撤回、附件、手机送达／回执时序和 B 实际供应商仍需人工验收；代理未发送真实消息或调用付费模型。

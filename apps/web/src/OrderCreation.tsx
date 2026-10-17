@@ -21,6 +21,8 @@ export function OrderCreation({
   onSessionExpired,
   onBusyChange,
   onOpenOrder,
+  initialConversation = "",
+  initialSources = [],
 }: {
   csrf: string;
   accountId: string;
@@ -28,6 +30,8 @@ export function OrderCreation({
   onSessionExpired: () => void;
   onBusyChange: (b: boolean) => void;
   onOpenOrder: (id: string) => void;
+  initialConversation?: string;
+  initialSources?: { message_id: string; message_revision: number }[];
 }) {
   const active = useRef(true);
   useEffect(() => {
@@ -43,7 +47,7 @@ export function OrderCreation({
     >([]),
     [proposalId, setProposalId] = useState("");
   const [conversations, setConversations] = useState<Conversation[]>([]),
-    [conversation, setConversation] = useState(""),
+    [conversation, setConversation] = useState(initialConversation),
     [messages, setMessages] = useState<Message[]>([]),
     [orders, setOrders] = useState<Order[]>([]),
     [context, setContext] = useState(0),
@@ -520,6 +524,13 @@ export function OrderCreation({
         </form>
         <aside className="panel">
           <h2>{t("选择客户原文依据")}</h2>
+          {initialSources.length > 0 && (
+            <p>
+              {t(
+                "已带入会话和所选来源提示；请逐项核对，不会自动确认时间或地址。",
+              )}
+            </p>
+          )}
           <small>
             {t(
               "只显示本会话最新、未撤回且有文字的客户消息。历史快照和商户回显不能当成客户确认。",
@@ -528,6 +539,11 @@ export function OrderCreation({
           {loading && <p>{t("正在读取…")}</p>}
           {eligible.map((m) => (
             <article className="message" key={m.id}>
+              {initialSources.some(
+                (source) =>
+                  source.message_id === m.id &&
+                  source.message_revision === m.revision,
+              ) && <strong>{t("从客户会话选中的原文")}</strong>}
               <small>
                 {t("客户 · r")}
                 {m.revision} · {m.occurred_at}

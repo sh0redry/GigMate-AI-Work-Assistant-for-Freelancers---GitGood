@@ -1,7 +1,7 @@
 import { t, localized } from "./i18n.ts";
 import { privateReadDenied } from "./read-cache";
 import { useStableState as useState } from "./useStableState";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import {
   sendingApi,
   sendingMime,
@@ -51,6 +51,13 @@ export function WahaSend({
   enabled,
   messages,
   onSessionExpired,
+  initialText = "",
+  initialMode = "manual",
+  composerInput,
+  onTextChange,
+  onBusyChange,
+  compact = false,
+  onComposerBlockedChange,
 }: {
   connection: string;
   csrf: string;
@@ -59,6 +66,18 @@ export function WahaSend({
   enabled: boolean;
   messages: TimelineMessage[];
   onSessionExpired?: () => void;
+  initialText?: string;
+  initialMode?: "manual" | "agent_assisted";
+  composerInput?: {
+    token: string;
+    text?: string;
+    replyId?: string;
+    mode?: "manual" | "agent_assisted";
+  };
+  onTextChange?: (text: string, mode: "manual" | "agent_assisted") => void;
+  onBusyChange?: (busy: boolean) => void;
+  compact?: boolean;
+  onComposerBlockedChange?: (blocked: boolean) => void;
 }) {
   const api = useMemo(() => sendingApi(connection, csrf), [connection, csrf]);
   const [installed, setInstalled] = useState(false),
@@ -68,7 +87,7 @@ export function WahaSend({
   const [cursor, setCursor] = useState<string | null>(null),
     [policyCursor, setPolicyCursor] = useState<string | null>(null);
   const [kind, setKind] = useState<SendPayload["kind"]>("text"),
-    [mode, setMode] = useState<"manual" | "agent_assisted">("manual");
+    [mode, setMode] = useState<"manual" | "agent_assisted">(initialMode);
   const [text, setText] = useState(""),
     [caption, setCaption] = useState(""),
     [title, setTitle] = useState("");
@@ -213,7 +232,7 @@ export function WahaSend({
     setDraftView(null);
     setUpload(null);
     setPreview(null);
-    setText("");
+    setText(initialText);
     setCaption("");
     setReply("");
     setTarget("");
@@ -246,9 +265,44 @@ export function WahaSend({
     return () => {
       active.current = false;
       scope.current++;
+      if (inFlight.current) onBusyChange?.(false);
       clearInterval(timer);
     };
   }, [refresh, chat]);
+  useEffect(() => {
+    if (!composerInput) return;
+    if (inFlight.current || uncertain || pending.current || storedKey()) {
+      setNotice(t("请先核对原发送记录，再采用新的回复。"));
+      return;
+    }
+    if (composerInput.text !== undefined) {
+      setKind("text");
+      setText(composerInput.text);
+      onTextChange?.(composerInput.text, composerInput.mode ?? "manual");
+      setMode(composerInput.mode ?? "manual");
+      setUpload(null);
+      setPreview(null);
+      setReply(composerInput.replyId ?? "");
+    }
+    if (composerInput.replyId !== undefined) {
+      if (kind === "reaction") setKind("text");
+      setReply(composerInput.replyId);
+    }
+    setDraftView(null);
+    // A token is a deliberate adoption/quote action, not a render-time synchronisation.
+  }, [composerInput?.token]);
+  useEffect(() => {
+    onComposerBlockedChange?.(
+      uncertain ||
+        !!recoverKey ||
+        !!(
+          draftView &&
+          ["queued", "preparing", "dispatching", "result_unknown"].includes(
+            draftView.state,
+          )
+        ),
+    );
+  }, [uncertain, recoverKey, draftView?.state, onComposerBlockedChange]);
   useEffect(() => {
     setDraftView(null);
   }, [
@@ -304,6 +358,7 @@ export function WahaSend({
   async function run(work: () => Promise<void>) {
     if (inFlight.current) return;
     inFlight.current = true;
+    onBusyChange?.(true);
     const epoch = scope.current;
     refreshSequence.current++;
     setBusy(true);
@@ -315,6 +370,7 @@ export function WahaSend({
     } finally {
       if (active.current && epoch === scope.current) {
         inFlight.current = false;
+        onBusyChange?.(false);
         setBusy(false);
         void refresh();
       }
@@ -480,92 +536,103 @@ export function WahaSend({
       >
         {t("刷新发送记录")}
       </button>
-      <label>
-        <input
-          type="checkbox"
-          checked={consent}
-          onChange={(e) => setConsent(e.target.checked)}
-        />
-        {t("我允许本会话发送消息，授权有效期 24 小时")}
-      </label>
-      <button
-        disabled={busy || !installed || !enabled || !consent}
-        onClick={() =>
-          void run(async () => {
-            const p = await api.permission();
-            await api.setPermission({
-              expected_version: p.version,
-              enabled: true,
-              chat_ids: [...new Set([...p.chat_ids, chat])],
-              expires_at: new Date(Date.now() + 86400000).toISOString(),
-            });
-            setConsent(false);
-          })
-        }
-      >
-        {t("保存发送授权")}
-      </button>
-      <button
-        className="secondary"
-        disabled={busy || !permission?.enabled}
-        onClick={() =>
-          void run(async () => {
-            const p = await api.permission();
-            await api.setPermission({
-              expected_version: p.version,
-              enabled: false,
-              chat_ids: [],
-            });
-            setPreview(null);
-          })
-        }
-      >
-        {t("撤销全部发送授权")}
-      </button>
+      <SendGroup compact={compact} title={t("发送授权")} open={!permitted}>
+        <label>
+          <input
+            type="checkbox"
+            checked={consent}
+            onChange={(e) => setConsent(e.target.checked)}
+          />
+          {t("我允许本会话发送消息，授权有效期 24 小时")}
+        </label>
+        <button
+          disabled={busy || !installed || !enabled || !consent}
+          onClick={() =>
+            void run(async () => {
+              const p = await api.permission();
+              await api.setPermission({
+                expected_version: p.version,
+                enabled: true,
+                chat_ids: [...new Set([...p.chat_ids, chat])],
+                expires_at: new Date(Date.now() + 86400000).toISOString(),
+              });
+              setConsent(false);
+            })
+          }
+        >
+          {t("保存发送授权")}
+        </button>
+        <button
+          className="secondary"
+          disabled={busy || !permission?.enabled}
+          onClick={() =>
+            void run(async () => {
+              const p = await api.permission();
+              await api.setPermission({
+                expected_version: p.version,
+                enabled: false,
+                chat_ids: [],
+              });
+              setPreview(null);
+            })
+          }
+        >
+          {t("撤销全部发送授权")}
+        </button>
+      </SendGroup>
       <fieldset
         disabled={busy || !installed || !enabled || !permitted || uncertain}
       >
         <legend>{t("准备消息（尚未发送）")}</legend>
-        <label>
-          {t("内容来源")}
-          <select
-            value={mode}
-            onChange={(e) => setMode(e.target.value as typeof mode)}
-          >
-            <option value="manual">{t("用户手动输入")}</option>
-            <option value="agent_assisted">
-              {t("Agent 建议稿，人工核对")}
-            </option>
-          </select>
-        </label>
+        <SendGroup compact={compact} title={t("回复来源与附件类型")}>
+          <label>
+            {t("内容来源")}
+            <select
+              value={mode}
+              onChange={(e) => {
+                const next = e.target.value as typeof mode;
+                setMode(next);
+                onTextChange?.(text, next);
+              }}
+            >
+              <option value="manual">{t("用户手动输入")}</option>
+              <option value="agent_assisted">
+                {t("Agent 建议稿，人工核对")}
+              </option>
+            </select>
+          </label>
+          <label>
+            {t("消息类型")}
+            <select
+              value={kind}
+              onChange={(e) => {
+                setKind(e.target.value as typeof kind);
+                setUpload(null);
+                setPreview(null);
+                setDraftView(null);
+              }}
+            >
+              {Object.entries(names).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </label>
+        </SendGroup>
         {mode === "agent_assisted" && (
           <p>{t("自动润色暂不可用。可粘贴建议稿，修改并核对后发送。")}</p>
         )}
-        <label>
-          {t("消息类型")}
-          <select
-            value={kind}
-            onChange={(e) => {
-              setKind(e.target.value as typeof kind);
-              setUpload(null);
-              setPreview(null);
-              setDraftView(null);
-            }}
-          >
-            {Object.entries(names).map(([k, v]) => (
-              <option key={k} value={k}>
-                {v}
-              </option>
-            ))}
-          </select>
-        </label>
         {kind === "text" && (
           <label>
             {t("文字")}
             <textarea
               value={text}
               maxLength={4096}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => {
+                setText(e.target.value);
+                onTextChange?.(e.target.value, mode);
+              }}
             />
           </label>
         )}
@@ -704,28 +771,34 @@ export function WahaSend({
             </label>
           </>
         )}
-        <label>
-          {kind === "reaction"
-            ? t("回应目标消息")
-            : t("引用回复（可选，先载入时间线）")}
-          <select
-            value={kind === "reaction" ? target : reply}
-            onChange={(e) =>
-              kind === "reaction"
-                ? setTarget(e.target.value)
-                : setReply(e.target.value)
-            }
-          >
-            <option value="">{t("请选择")}</option>
-            {messages
-              .filter((m) => !m.revoked)
-              .map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.text?.slice(0, 50) ?? m.kind} · {m.id.slice(-8)}
-                </option>
-              ))}
-          </select>
-        </label>
+        <SendGroup
+          compact={compact}
+          title={t("引用回复")}
+          open={!!reply || kind === "reaction"}
+        >
+          <label>
+            {kind === "reaction"
+              ? t("回应目标消息")
+              : t("引用回复（可选，先载入时间线）")}
+            <select
+              value={kind === "reaction" ? target : reply}
+              onChange={(e) =>
+                kind === "reaction"
+                  ? setTarget(e.target.value)
+                  : setReply(e.target.value)
+              }
+            >
+              <option value="">{t("请选择")}</option>
+              {messages
+                .filter((m) => !m.revoked)
+                .map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.text?.slice(0, 50) ?? m.kind} · {m.id.slice(-8)}
+                  </option>
+                ))}
+            </select>
+          </label>
+        </SendGroup>
         {kind === "reaction" && (
           <label>
             {t("表情（留空移除）")}
@@ -739,40 +812,42 @@ export function WahaSend({
         <button onClick={() => void run(() => prepare())}>
           {t("保存待审核草稿")}
         </button>
-        <label>
-          <input
-            type="checkbox"
-            checked={policyConsent}
-            onChange={(e) => setPolicyConsent(e.target.checked)}
-          />
-          {t(
-            "预先允许 Agent 在本会话使用下方相同内容，24 小时内最多 5 次；正文和附件不能改变",
-          )}
-        </label>
-        <button
-          className="secondary"
-          disabled={!policyConsent}
-          onClick={() =>
-            void run(async () => {
-              const [context, p] = await Promise.all([
-                api.context(chat),
-                api.permission(),
-              ]);
-              await api.createPolicy({
-                expected_control_version: context.control_version,
-                expected_permission_version: p.version,
-                chat_id: chat,
-                payload: payload(),
-                expires_at: new Date(Date.now() + 86400000).toISOString(),
-                maximum_uses: 5,
-              });
-              setPolicyConsent(false);
-              setNotice(t("固定内容政策已保存，尚未发送消息。"));
-            })
-          }
-        >
-          {t("批准固定内容自动政策")}
-        </button>
+        <SendGroup compact={compact} title={t("固定内容政策（高级选项）")}>
+          <label>
+            <input
+              type="checkbox"
+              checked={policyConsent}
+              onChange={(e) => setPolicyConsent(e.target.checked)}
+            />
+            {t(
+              "预先允许 Agent 在本会话使用下方相同内容，24 小时内最多 5 次；正文和附件不能改变",
+            )}
+          </label>
+          <button
+            className="secondary"
+            disabled={!policyConsent}
+            onClick={() =>
+              void run(async () => {
+                const [context, p] = await Promise.all([
+                  api.context(chat),
+                  api.permission(),
+                ]);
+                await api.createPolicy({
+                  expected_control_version: context.control_version,
+                  expected_permission_version: p.version,
+                  chat_id: chat,
+                  payload: payload(),
+                  expires_at: new Date(Date.now() + 86400000).toISOString(),
+                  maximum_uses: 5,
+                });
+                setPolicyConsent(false);
+                setNotice(t("固定内容政策已保存，尚未发送消息。"));
+              })
+            }
+          >
+            {t("批准固定内容自动政策")}
+          </button>
+        </SendGroup>
       </fieldset>
       {uncertain && (
         <p>
@@ -930,95 +1005,120 @@ export function WahaSend({
           )}
         </article>
       )}
-      <h4>{t("已批准的自动政策")}</h4>
-      <p>
-        {t(
-          "自动触发尚未接入。目前只能由你明确触发已批准的固定内容；这不是 AI 自由生成的自动回复。",
+      <SendGroup compact={compact} title={t("已批准的自动政策")}>
+        <h4>{t("已批准的自动政策")}</h4>
+        <p>
+          {t(
+            "自动触发尚未接入。目前只能由你明确触发已批准的固定内容；这不是 AI 自由生成的自动回复。",
+          )}
+        </p>
+        {policies
+          .filter((p) => p.chat_id === chat)
+          .map((p) => (
+            <article key={p.id}>
+              <pre>{JSON.stringify(p.payload, null, 2)}</pre>
+              <p>
+                {p.enabled ? t("有效") : t("已撤销")} {t("· 已预留")}
+                {p.uses}/{p.maximum_uses} {t("次 · 截止")}
+                {new Date(p.expires_at).toLocaleString()}
+              </p>
+              <button
+                disabled={
+                  busy ||
+                  uncertain ||
+                  !enabled ||
+                  !permitted ||
+                  !p.enabled ||
+                  p.uses >= p.maximum_uses ||
+                  Date.parse(p.expires_at) <= Date.now()
+                }
+                onClick={() => void run(() => prepare(p))}
+              >
+                {t("按已授权政策提交")}
+              </button>
+              <button
+                className="secondary"
+                disabled={busy || !p.enabled}
+                onClick={() =>
+                  void run(async () => {
+                    await api.revokePolicy(p);
+                  })
+                }
+              >
+                {t("撤销此政策")}
+              </button>
+            </article>
+          ))}
+        {policyCursor && (
+          <button
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                const p = await api.policies(policyCursor, chat);
+                morePolicies.current = true;
+                setPolicies((old) => [...old, ...p.items]);
+                setPolicyCursor(p.next_cursor);
+              })
+            }
+          >
+            {t("加载更多政策")}
+          </button>
         )}
-      </p>
-      {policies
-        .filter((p) => p.chat_id === chat)
-        .map((p) => (
-          <article key={p.id}>
-            <pre>{JSON.stringify(p.payload, null, 2)}</pre>
-            <p>
-              {p.enabled ? t("有效") : t("已撤销")} {t("· 已预留")}
-              {p.uses}/{p.maximum_uses} {t("次 · 截止")}
-              {new Date(p.expires_at).toLocaleString()}
+      </SendGroup>
+      <SendGroup compact={compact} title={t("发送记录")}>
+        <h4>{t("发送记录")}</h4>
+        {actions
+          .filter((a) => a.chat_id === chat)
+          .map((a) => (
+            <p key={a.id}>
+              <button className="secondary" onClick={() => setDraftView(a)}>
+                {names[a.payload.kind]} · {states[a.state]} ·{" "}
+                {states[a.delivery_status]}
+              </button>
             </p>
-            <button
-              disabled={
-                busy ||
-                uncertain ||
-                !enabled ||
-                !permitted ||
-                !p.enabled ||
-                p.uses >= p.maximum_uses ||
-                Date.parse(p.expires_at) <= Date.now()
-              }
-              onClick={() => void run(() => prepare(p))}
-            >
-              {t("按已授权政策提交")}
-            </button>
-            <button
-              className="secondary"
-              disabled={busy || !p.enabled}
-              onClick={() =>
-                void run(async () => {
-                  await api.revokePolicy(p);
-                })
-              }
-            >
-              {t("撤销此政策")}
-            </button>
-          </article>
-        ))}
-      {policyCursor && (
-        <button
-          disabled={busy}
-          onClick={() =>
-            void run(async () => {
-              const p = await api.policies(policyCursor, chat);
-              morePolicies.current = true;
-              setPolicies((old) => [...old, ...p.items]);
-              setPolicyCursor(p.next_cursor);
-            })
-          }
-        >
-          {t("加载更多政策")}
-        </button>
-      )}
-      <h4>{t("发送记录")}</h4>
-      {actions
-        .filter((a) => a.chat_id === chat)
-        .map((a) => (
-          <p key={a.id}>
-            <button className="secondary" onClick={() => setDraftView(a)}>
-              {names[a.payload.kind]} · {states[a.state]} ·{" "}
-              {states[a.delivery_status]}
-            </button>
-          </p>
-        ))}
-      {cursor && (
-        <button
-          disabled={busy}
-          onClick={() =>
-            void run(async () => {
-              const p = await api.actions(cursor, chat);
-              moreActions.current = true;
-              setActions((old) => [...old, ...p.items]);
-              setCursor(p.next_cursor);
-            })
-          }
-        >
-          {t("加载更多发送记录")}
-        </button>
-      )}
-      <p>
-        {t(
-          "结果未知时不会自动重发，同一会话后续发送暂停。没有 WAHA 返回的消息 ID 时，无法自动证明某条相同文字就是本次发送；需人工核对。",
+          ))}
+        {cursor && (
+          <button
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                const p = await api.actions(cursor, chat);
+                moreActions.current = true;
+                setActions((old) => [...old, ...p.items]);
+                setCursor(p.next_cursor);
+              })
+            }
+          >
+            {t("加载更多发送记录")}
+          </button>
         )}
-      </p>
+        <p>
+          {t(
+            "结果未知时不会自动重发，同一会话后续发送暂停。没有 WAHA 返回的消息 ID 时，无法自动证明某条相同文字就是本次发送；需人工核对。",
+          )}
+        </p>
+      </SendGroup>
     </section>
+  );
+}
+
+function SendGroup({
+  compact,
+  title,
+  open = false,
+  children,
+}: {
+  compact: boolean;
+  title: string;
+  open?: boolean;
+  children: ReactNode;
+}) {
+  return compact ? (
+    <details className="conversation-send-group" open={open}>
+      <summary>{title}</summary>
+      {children}
+    </details>
+  ) : (
+    <>{children}</>
   );
 }

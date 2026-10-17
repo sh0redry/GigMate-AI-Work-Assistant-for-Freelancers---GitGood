@@ -1,5 +1,211 @@
+const conversationEnglish: Record<string, string> = {
+  发送授权: "Sending permission",
+  回复来源与附件类型: "Reply origin and attachment type",
+  "固定内容政策（高级选项）": "Fixed-content policy (advanced)",
+  "送达状态：": "Delivery status: ",
+  客户会话: "Customer chats",
+  "会话请求未完成，请恢复连接后核对原记录。":
+    "Chat request could not be confirmed. Restore connectivity and check the original record.",
+  "当前后端尚未提供此会话功能，请联系维护者升级。":
+    "This backend does not provide this chat feature yet. Ask the maintainer to upgrade it.",
+  "会话范围或分页响应无效，已停止显示。":
+    "Chat scope or pagination is invalid. Display has been stopped.",
+  "关联工单与 AI 建议": "Linked orders and AI suggestions",
+  "一个聊天可以有多张工单，请明确选择本次业务。":
+    "A chat can contain several orders. Select the job you are handling.",
+  "仅展示本次有界查询结果，列表可能不完整。":
+    "Only this bounded query is shown. The list may be incomplete.",
+  刷新工单与建议: "Refresh orders and suggestions",
+  选择关联工单: "Select a linked order",
+  请选择本次工单: "Select the order for this task",
+  "本次未找到关联工单。可先选择客户消息，再核对新建工单。":
+    "No linked order was found in this query. Select customer messages to review a new order.",
+  定位客户原话: "Locate customer source",
+  查找原文并核对版本: "Find source and check its revision",
+  打开工单处理: "Open order to handle it",
+  "已有 AI 建议回复": "Existing AI reply suggestions",
+  "这里只采用后端已有的有效模型建议；重新生成与自动润色尚未接通。":
+    "Use existing valid model suggestions from the backend. Fresh generation and automatic polishing are not connected yet.",
+  "先刷新核对建议；旧版后端可能尚未提供草稿接口。":
+    "Refresh to check suggestions. Older backends may not provide the draft API.",
+  "暂无可采用的有效 AI 建议，仍可手动回复。":
+    "No valid AI suggestion is available. You can still reply manually.",
+  核对建议回复: "Review suggested reply",
+  "建议绑定当前工单和聊天，采用后仍需核对收件人与正文并批准发送。":
+    "This suggestion is bound to the order and chat. Review the recipient and full body, then approve sending separately.",
+  "采用到输入框（不发送）": "Use in composer (does not send)",
+  "采用结果待核对，不会自动重复消费或发送。请查看原草稿记录。":
+    "Adoption needs review. It will not consume again or send automatically. Check the original draft.",
+  "采用建议会替换当前文字输入，但不会发送。继续吗？":
+    "Using this suggestion replaces the current text without sending it. Continue?",
+  "请先核对原发送记录，再采用新的回复。":
+    "Check the original send record before using another reply.",
+  "关联会话未授权或旧后端缺少映射，请核对连接与后端版本。":
+    "The linked chat is not authorised, or this older backend lacks its mapping. Check the connection and version.",
+  "消息更新超过本次显示上限，请核对近期消息；未声称历史完整。":
+    "Updates exceed this window limit. Review recent messages; history is not claimed to be complete.",
+  "原依据已修改或撤回，当前气泡不是原版本的有效确认依据。":
+    "The source was edited or revoked. This bubble is not valid confirmation of the original revision.",
+  "正在有界查找较早来源；历史快照不能代替客户确认。":
+    "Searching a bounded window for earlier sources. Historical snapshots do not establish customer confirmation.",
+  "本次窗口未找到该来源，请到工单核对记录或明确导入近期历史。":
+    "Source not found in this window. Check the order record or explicitly import recent history.",
+  "对话、回复与工单，在同一处。": "Chats, replies and orders in one place.",
+  "仅显示已授权会话；新消息通常每 3 秒检查，历史可能不完整。":
+    "Only authorised chats are shown. New messages are usually checked every 3 seconds; history may be incomplete.",
+  连接与会话授权: "Connection and chat permissions",
+  "当前安装没有可用连接，请先配置并授权工作会话。":
+    "This installation has no available connection. Configure and authorise work chats first.",
+  当前连接: "Current connection",
+  搜索客户会话: "Search customer chats",
+  个人聊天: "Direct chat",
+  "没有已授权工作会话，请先选择并保存处理授权。":
+    "No work chat is authorised. Select chats and save processing permission first.",
+  尚无可显示消息: "No message available yet",
+  "GigMate 内有新消息": "New messages in GigMate",
+  "新消息标记仅属于 GigMate；查看不会自动发送 WhatsApp 已读回执。":
+    "New-message markers belong to GigMate only. Viewing does not automatically send WhatsApp read receipts.",
+  "选择客户，开始处理对话": "Choose a customer to handle the chat",
+  "左侧选择已授权聊天，即可读取近期消息并准备回复。":
+    "Select an authorised chat on the left to read recent messages and prepare a reply.",
+  返回会话列表: "Back to chats",
+  收起工单侧栏: "Hide order panel",
+  显示工单侧栏: "Show order panel",
+  刷新会话: "Refresh chat",
+  "同步状态待核对，发送保持关闭。":
+    "Sync status needs checking. Sending remains disabled.",
+  "已同步至 {0}": "Synced at {0}",
+  "当前连接未就绪，仍可核对已允许读取的记录。":
+    "The connection is not ready. You can review records you are still permitted to read.",
+  当前聊天消息: "Current chat messages",
+  "已达本次窗口上限，请在连接页明确导入或核对更早记录。":
+    "Window limit reached. Explicitly import or review earlier records on the connection page.",
+  "尚无可显示消息；未接收的旧聊天不会自动补齐。":
+    "No messages are available yet. Older chats not received here are not imported automatically.",
+  "引用消息不在本次窗口内，请先加载更早消息。":
+    "The quoted message is outside this window. Load earlier messages first.",
+  查看引用消息: "View quoted message",
+  附件预览与识别: "Attachment preview and extraction",
+  引用回复: "Quote in reply",
+  选作工单来源: "Select as order source",
+  "查看 {0} 条新消息": "View {0} new messages",
+  "已选 {0} 条有效客户来源": "Selected {0} valid customer sources",
+  从所选消息核对新建工单: "Review a new order from selected messages",
+  准备回复与核对发送: "Prepare reply and review sending",
+  "当前后端缺少会话映射，工单关联保持关闭；仍可读取消息。":
+    "This backend lacks the conversation mapping. Order linking remains disabled; messages can still be read.",
+  在客户会话中查看原话: "View source in customer chat",
+  返回客户会话: "Back to customer chat",
+  "已带入会话和所选来源提示；请逐项核对，不会自动确认时间或地址。":
+    "The chat and selected source hints are carried over. Review each field; no time or address is confirmed automatically.",
+  从客户会话选中的原文: "Source selected in customer chat",
+};
+
+const conversationCantonese: Record<string, string> = {
+  发送授权: "發送授權",
+  回复来源与附件类型: "回覆來源同附件類型",
+  "固定内容政策（高级选项）": "固定內容政策（進階選項）",
+  "送达状态：": "送達狀態：",
+  客户会话: "客人對話",
+  "会话请求未完成，请恢复连接后核对原记录。":
+    "對話請求未能確認，恢復連線後請核對原本記錄。",
+  "当前后端尚未提供此会话功能，请联系维护者升级。":
+    "目前後端未提供呢項對話功能，請聯絡維護者升級。",
+  "会话范围或分页响应无效，已停止显示。":
+    "對話範圍或者分頁回應無效，已停止顯示。",
+  "关联工单与 AI 建议": "相關工單同 AI 建議",
+  "一个聊天可以有多张工单，请明确选择本次业务。":
+    "一個對話可以有幾張工單，請選清楚今次處理邊張。",
+  "仅展示本次有界查询结果，列表可能不完整。":
+    "只顯示今次有限範圍查詢結果，清單可能唔完整。",
+  刷新工单与建议: "更新工單同建議",
+  选择关联工单: "選擇相關工單",
+  请选择本次工单: "請選擇今次工單",
+  "本次未找到关联工单。可先选择客户消息，再核对新建工单。":
+    "今次搵唔到相關工單，可以先揀客人訊息，再核對開新工單。",
+  定位客户原话: "定位客人原話",
+  查找原文并核对版本: "搵原文同核對版本",
+  打开工单处理: "打開工單處理",
+  "已有 AI 建议回复": "已有 AI 建議回覆",
+  "这里只采用后端已有的有效模型建议；重新生成与自动润色尚未接通。":
+    "呢度只採用後端已有嘅有效模型建議，重新生成同自動潤色仲未接通。",
+  "先刷新核对建议；旧版后端可能尚未提供草稿接口。":
+    "請先更新核對建議，舊版後端可能仲未提供草稿介面。",
+  "暂无可采用的有效 AI 建议，仍可手动回复。":
+    "暫時冇可用嘅有效 AI 建議，仍然可以手動回覆。",
+  核对建议回复: "核對建議回覆",
+  "建议绑定当前工单和聊天，采用后仍需核对收件人与正文并批准发送。":
+    "建議綁定目前工單同對話，採用後仍要核對收件人同全文，再批准發送。",
+  "采用到输入框（不发送）": "放入輸入框（唔發送）",
+  "采用结果待核对，不会自动重复消费或发送。请查看原草稿记录。":
+    "採用結果要核對，唔會自動重複採用或者發送，請查看原草稿記錄。",
+  "采用建议会替换当前文字输入，但不会发送。继续吗？":
+    "採用建議會取代目前輸入文字，但唔會發送。繼續嗎？",
+  "请先核对原发送记录，再采用新的回复。":
+    "請先核對原本發送記錄，再採用新回覆。",
+  "关联会话未授权或旧后端缺少映射，请核对连接与后端版本。":
+    "相關對話未授權，或者舊後端缺少對應資料，請核對連線同後端版本。",
+  "消息更新超过本次显示上限，请核对近期消息；未声称历史完整。":
+    "訊息更新超過今次顯示上限，請核對近期訊息；唔代表完整歷史。",
+  "原依据已修改或撤回，当前气泡不是原版本的有效确认依据。":
+    "原本依據已修改或者撤回，目前訊息唔係原版本嘅有效確認依據。",
+  "正在有界查找较早来源；历史快照不能代替客户确认。":
+    "正喺有限範圍搵較早來源，歷史快照唔可以代替客人確認。",
+  "本次窗口未找到该来源，请到工单核对记录或明确导入近期历史。":
+    "今次視窗搵唔到該來源，請到工單核對記錄，或者明確匯入近期歷史。",
+  "对话、回复与工单，在同一处。": "對話、回覆同工單，喺同一處。",
+  "仅显示已授权会话；新消息通常每 3 秒检查，历史可能不完整。":
+    "只顯示已授權對話；通常每 3 秒檢查新訊息，歷史可能唔完整。",
+  连接与会话授权: "連線同對話授權",
+  "当前安装没有可用连接，请先配置并授权工作会话。":
+    "目前安裝冇可用連線，請先設定同授權工作對話。",
+  当前连接: "目前連線",
+  搜索客户会话: "搜尋客人對話",
+  个人聊天: "個人對話",
+  "没有已授权工作会话，请先选择并保存处理授权。":
+    "冇已授權工作對話，請先選擇同儲存處理授權。",
+  尚无可显示消息: "暫時冇可顯示訊息",
+  "GigMate 内有新消息": "GigMate 有新訊息",
+  "新消息标记仅属于 GigMate；查看不会自动发送 WhatsApp 已读回执。":
+    "新訊息標記只屬於 GigMate；查看唔會自動發送 WhatsApp 已讀回執。",
+  "选择客户，开始处理对话": "選擇客人，開始處理對話",
+  "左侧选择已授权聊天，即可读取近期消息并准备回复。":
+    "喺左邊選擇已授權對話，就可以睇近期訊息同準備回覆。",
+  返回会话列表: "返回對話清單",
+  收起工单侧栏: "收起工單側欄",
+  显示工单侧栏: "顯示工單側欄",
+  刷新会话: "更新對話",
+  "同步状态待核对，发送保持关闭。": "同步狀態有待核對，發送保持關閉。",
+  "已同步至 {0}": "已同步至 {0}",
+  "当前连接未就绪，仍可核对已允许读取的记录。":
+    "目前連線未準備好，仍可核對獲准讀取嘅記錄。",
+  当前聊天消息: "目前對話訊息",
+  "已达本次窗口上限，请在连接页明确导入或核对更早记录。":
+    "已到今次視窗上限，請喺連線頁明確匯入或者核對較早記錄。",
+  "尚无可显示消息；未接收的旧聊天不会自动补齐。":
+    "暫時冇可顯示訊息；未接收嘅舊對話唔會自動補齊。",
+  "引用消息不在本次窗口内，请先加载更早消息。":
+    "引用訊息唔喺今次視窗內，請先載入較早訊息。",
+  查看引用消息: "查看引用訊息",
+  附件预览与识别: "附件預覽同識別",
+  引用回复: "引用回覆",
+  选作工单来源: "選作工單來源",
+  "查看 {0} 条新消息": "查看 {0} 條新訊息",
+  "已选 {0} 条有效客户来源": "已揀 {0} 條有效客人來源",
+  从所选消息核对新建工单: "由所選訊息核對開新工單",
+  准备回复与核对发送: "準備回覆同核對發送",
+  "当前后端缺少会话映射，工单关联保持关闭；仍可读取消息。":
+    "目前後端缺少對話對應資料，工單關聯保持關閉；仍可讀取訊息。",
+  在客户会话中查看原话: "喺客人對話查看原話",
+  返回客户会话: "返回客人對話",
+  "已带入会话和所选来源提示；请逐项核对，不会自动确认时间或地址。":
+    "已帶入對話同所選來源提示；請逐項核對，唔會自動確認時間或者地址。",
+  从客户会话选中的原文: "喺客人對話揀嘅原文",
+};
+
 // UI copy only. Customer content and approved payloads are never translated.
 export const english: Record<string, string> = {
+  ...conversationEnglish,
   "跟进时间无效，请输入完整有效的香港日期和时间。":
     "Invalid follow-up time. Enter a complete, valid Hong Kong date and time.",
   "当前后端版本未提供此功能。":
@@ -1633,6 +1839,7 @@ export const english: Record<string, string> = {
     "The server definitely rejected this operation; nothing was saved. Refresh and review the conditions before trying a new operation.",
 };
 export const cantonese: Record<string, string> = {
+  ...conversationCantonese,
   "跟进时间无效，请输入完整有效的香港日期和时间。":
     "跟進時間唔正確，請輸入完整有效嘅香港日期同時間。",
   "当前后端版本未提供此功能。": "目前後端版本未提供呢個功能。",

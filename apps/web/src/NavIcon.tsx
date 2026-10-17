@@ -1,4 +1,5 @@
 const paths: Record<string, string> = {
+  messages: "M4 4h16v12H9l-5 4V4Zm4 4h8M8 12h5",
   business: "M3 4h7v7H3zM14 4h7v5h-7zM3 15h7v5H3zM14 13h7v7h-7z",
   create: "M12 5v14M5 12h14",
   approvals:

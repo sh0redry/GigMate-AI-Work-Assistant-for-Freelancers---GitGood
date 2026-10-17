@@ -19,6 +19,8 @@ const directory = await mkdtemp(join(tmpdir(), "gigmate-app-dom-"));
 const require = createRequire(import.meta.url);
 const components = [
   "App",
+  "CustomerConversations",
+  "ConversationBusiness",
   "NavIcon",
   "BusinessLoopWorkspace",
   "ProductTools",
@@ -41,6 +43,8 @@ const components = [
 for (const name of [
   ...components,
   "features",
+  "conversation-api",
+  "conversation-view",
   "business-loop-api",
   "useWorkspaceData",
   "order-command-api",

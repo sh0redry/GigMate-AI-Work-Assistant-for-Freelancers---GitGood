@@ -1,5 +1,7 @@
 # GigMate 前端使用手册
 
+2026-10-18 新增前端批次：[客户会话](customer-conversations.md)提供已授权聊天选择、有界实时消息轮询、原手动发送网关和工单来源定位，不升级旧后端。可核对采用 B 已有有效草稿，新回复生成／模型润色和自动回复仍为后续对接。
+
 当前候选：2026-10-17，基于 main `14aa34e`。这份手册讲怎么使用；技术验收见[交付说明](bcd-product-delivery.md)。[English](../en/role-d-frontend-user-guide.md)。
 
 ## 每次怎么在自己的电脑打开

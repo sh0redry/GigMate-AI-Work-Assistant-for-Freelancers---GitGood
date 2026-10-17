@@ -41,13 +41,20 @@ type Props = {
   onSessionExpired: () => void;
   onBusyChange: (busy: boolean) => void;
   request?: RequestApi;
+  onOpenConversation?: (
+    conversationId: string,
+    messageId: string,
+    revision: number,
+  ) => void;
 };
 function Sources({
   sources,
   data,
+  onOpenConversation,
 }: {
   sources: Change["sources"];
   data: BusinessSnapshot;
+  onOpenConversation?: Props["onOpenConversation"];
 }) {
   return (
     <small>
@@ -73,6 +80,20 @@ function Sources({
                 ) : (
                   t("{0}（该版本未载入，需复核）", label)
                 )}
+                {message && onOpenConversation && (
+                  <button
+                    className="secondary"
+                    onClick={() =>
+                      onOpenConversation(
+                        message.conversation_id,
+                        source.message_id,
+                        source.message_revision,
+                      )
+                    }
+                  >
+                    {t("在客户会话中查看原话")}
+                  </button>
+                )}
               </span>
             );
           })}
@@ -87,6 +108,7 @@ export function WorkOrderWorkspace({
   onSessionExpired,
   onBusyChange,
   request,
+  onOpenConversation,
 }: Props) {
   const commands = useMemo(
     () => (accountId ? orderCommands(csrf, accountId) : undefined),
@@ -458,7 +480,11 @@ export function WorkOrderWorkspace({
                       >
                         {fieldStates[field.status]}
                       </span>
-                      <Sources sources={field.sources} data={data} />
+                      <Sources
+                        sources={field.sources}
+                        data={data}
+                        onOpenConversation={onOpenConversation}
+                      />
                       {field.interpretation && (
                         <small>
                           {t("解释：")}
@@ -560,7 +586,11 @@ export function WorkOrderWorkspace({
                       {change.base_work_order_version} {t("/ 会话 v")}
                       {change.context_version}
                     </small>
-                    <Sources sources={change.sources} data={data} />
+                    <Sources
+                      sources={change.sources}
+                      data={data}
+                      onOpenConversation={onOpenConversation}
+                    />
                     {change.conflict_ids.length > 0 && (
                       <p>
                         {t("冲突安排：")}
