@@ -19,6 +19,9 @@ for (const name of [
   "WorkOrderWorkspace",
   "OrderLifecycle",
   "InspectOrderAttempt",
+  "ReplyPanel",
+  "approvals-api",
+  "approval-view",
   "order-command-api",
   "features",
   "business-store",
@@ -32,7 +35,7 @@ for (const name of [
 ]) {
   const source = await readFile(
     new URL(
-      `./src/${name}.${["WorkOrderWorkspace", "OrderLifecycle", "InspectOrderAttempt"].includes(name) ? "tsx" : "ts"}`,
+      `./src/${name}.${["WorkOrderWorkspace", "OrderLifecycle", "InspectOrderAttempt", "ReplyPanel"].includes(name) ? "tsx" : "ts"}`,
       import.meta.url,
     ),
     "utf8",
@@ -45,6 +48,7 @@ for (const name of [
           "WorkOrderWorkspace",
           "OrderLifecycle",
           "InspectOrderAttempt",
+          "ReplyPanel",
         ].includes(name)
           ? ".tsx"
           : ".ts"),
@@ -235,32 +239,21 @@ async function mount(f, props = {}) {
     ),
   );
 }
-test("business workspace renders both conversations, missing fields and history without replay controls; confirmation uses explicit consent and source context", async () => {
+test("business workspace renders both conversations, missing fields and the next step without replay controls; confirmation states its effect before saving", async () => {
   const f = fixture();
   await mount(f);
   assert.match(document.body.textContent, /Synthetic first/);
   assert.match(document.body.textContent, /Synthetic second/);
   assert.match(document.body.textContent, /回复含糊/);
-  assert.match(document.body.textContent, /地址：未提供/);
+  assert.match(document.body.textContent, /还没有地址/);
   assert.equal(button("回放：15:00 冲突改期"), undefined);
   assert.equal(
     document.body.textContent.includes("Synthetic cancelled"),
     false,
   );
-  const range = [...document.querySelectorAll("select")].find((s) =>
-    s.parentElement.textContent.includes("待办范围"),
-  );
-  await act(async () => {
-    range.value = "all";
-    range.dispatchEvent(new window.Event("change", { bubbles: true }));
-  });
-  assert.match(document.body.textContent, /Synthetic cancelled/);
-  await click("核对并确认安排");
-  assert.equal(button("确认并同步安排").disabled, true);
-  await act(async () =>
-    document.querySelector('input[type="checkbox"]').click(),
-  );
-  await click("确认并同步安排");
+  await click("确认新时间");
+  assert.match(document.body.textContent, /日历和准备待办会一起更新/);
+  await click("确认");
   assert.equal(f.writes.length, 1);
   assert.deepEqual(f.writes[0].body, {
     expected_version: 3,
@@ -272,10 +265,7 @@ test("business workspace renders both conversations, missing fields and history 
 test("a refreshed changed proposal invalidates an open review and never silently submits new content", async () => {
   const f = fixture();
   await mount(f);
-  await click("核对并确认安排");
-  await act(async () =>
-    document.querySelector('input[type="checkbox"]').click(),
-  );
+  await click("确认新时间");
   f.update({
     new_value: {
       ...schedule,
@@ -283,41 +273,41 @@ test("a refreshed changed proposal invalidates an open review and never silently
       end_at: "2026-10-12T13:00:00Z",
     },
   });
-  await click("刷新业务数据");
-  assert.match(document.body.textContent, /本次复核失效/);
-  assert.equal(button("确认并同步安排").disabled, true);
+  await click("刷新");
+  assert.match(document.body.textContent, /内容刚更新了/);
+  assert.equal(button("确认").disabled, true);
   assert.equal(f.writes.length, 0);
 });
 test("outage marks retained data stale, disables confirmation and recovers with a read", async () => {
   const f = fixture();
   await mount(f);
   f.offline();
-  await click("刷新业务数据");
-  assert.match(document.body.textContent, /上次读取的数据/);
-  assert.equal(button("核对并确认安排").disabled, true);
+  await click("刷新");
+  assert.match(document.body.textContent, /上次读到的内容/);
+  assert.equal(button("确认新时间").disabled, true);
   f.online();
-  await click("刷新业务数据");
-  assert.equal(button("核对并确认安排").disabled, false);
+  await click("刷新");
+  assert.equal(button("确认新时间").disabled, false);
   assert.equal(f.writes.length, 0);
 });
 test("conflicts and missing source revisions stay blocked without replay controls", async () => {
   const f = fixture();
   f.update({ conflict_ids: ["busy"] });
   await mount(f);
-  assert.match(document.body.textContent, /时间冲突/);
-  assert.equal(button("核对并确认安排").disabled, true);
+  assert.match(document.body.textContent, /撞了/);
+  assert.equal(button("确认新时间"), undefined);
   assert.equal(button("回放：15:00 冲突改期"), undefined);
   f.update({
     conflict_ids: [],
     sources: [{ message_id: "m2", message_revision: 2 }],
   });
-  await click("刷新业务数据");
-  assert.match(document.body.textContent, /该版本未载入，需复核/);
-  assert.equal(button("核对并确认安排").disabled, true);
+  await click("刷新");
+  assert.match(document.body.textContent, /依据的消息暂时读不到/);
+  assert.equal(button("确认新时间").disabled, true);
   assert.equal(f.writes.length, 0);
 });
 
-test("an address proposal uses explicit review and the canonical non-calendar confirmation", async () => {
+test("an address proposal states its effect and uses the canonical non-calendar confirmation", async () => {
   const f = fixture();
   f.update({
     field: "address",
@@ -325,14 +315,11 @@ test("an address proposal uses explicit review and the canonical non-calendar co
     customer_confirmation: "pending",
   });
   await mount(f, { features: { address_confirmation: true } });
-  await click("核对并确认地址");
-  await act(async () =>
-    document.querySelector('input[type="checkbox"]').click(),
-  );
-  await click("确认并同步安排");
+  await click("确认新地址");
+  await click("确认");
   assert.equal(f.writes.length, 1);
   assert.equal(f.writes[0].body.apply_calendar_update, false);
-  assert.match(document.body.textContent, /仍等待客户核实/);
+  assert.match(document.body.textContent, /仍需客户核实/);
 });
 
 test("receipt recovery requires a readonly result and separate consent before retiring the local journal", async () => {
@@ -380,4 +367,14 @@ test("receipt recovery requires a readonly result and separate consent before re
   await click("结束已核对的原记录");
   assert.equal(retired, 1);
   assert.equal(done, 1);
+});
+
+test("an incomplete start-time proposal is a next step to ask the client, never confirmable", async () => {
+  const f = fixture();
+  f.update({ status: "needs_review", new_value: "2026-10-12T08:30:00Z" });
+  await mount(f);
+  assert.match(document.body.textContent, /客人说了时间，但还不完整/);
+  assert.match(document.body.textContent, /先问客人/);
+  assert.equal(button("确认新时间"), undefined);
+  assert.equal(f.writes.length, 0);
 });

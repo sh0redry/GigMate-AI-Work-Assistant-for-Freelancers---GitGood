@@ -17,13 +17,14 @@ import {
   approveProblem,
   reissueProblem,
 } from "./approval-view";
-import { instant, messageAnchor } from "./work-order-view";
+import { friendlyInstant, messageAnchor } from "./work-order-view";
 
 type Props = {
   csrf: string;
   accountId: string;
   onSessionExpired: () => void;
   onBusyChange: (busy: boolean) => void;
+  onOpenOrder?: (id: string) => void;
   api?: ApprovalsApi;
 };
 export function ApprovalsWorkspace({
@@ -31,6 +32,7 @@ export function ApprovalsWorkspace({
   accountId,
   onSessionExpired,
   onBusyChange,
+  onOpenOrder,
   api: supplied,
 }: Props) {
   const api = useMemo(
@@ -45,10 +47,10 @@ export function ApprovalsWorkspace({
   const [stale, setStale] = useState(true);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [updatedAt, setUpdatedAt] = useState(0);
+  const [, setUpdatedAt] = useState(0);
   const [now, setNow] = useState(Date.now());
   const [review, setReview] = useState<string | null>(null);
-  const [consent, setConsent] = useState(false);
+  const [, setConsent] = useState(false);
   const [reason, setReason] = useState("");
   const lastData = useRef<ApprovalSnapshot | null>(null),
     checkedAt = useRef(0),
@@ -145,7 +147,9 @@ export function ApprovalsWorkspace({
     !loading &&
     !busy &&
     now - checkedAt.current < 10000;
-  const reviewed = fresh && review === binding && consent;
+  // A fresh read of this exact draft is the check; the backend still
+  // rejects stale versions, so no extra tick box is needed for approval.
+  const reviewed = fresh;
   const approveBlocked = data ? approveProblem(data, now) : t("请先读取草稿。");
   const reissueBlocked = data ? reissueProblem(data) : t("请先读取草稿。");
   const canRetry =
@@ -166,10 +170,8 @@ export function ApprovalsWorkspace({
       (operation === "reissue" && reissueBlocked)
     )
       return;
-    if (
-      (operation === "reject" || operation === "cancel") &&
-      (!reason.trim() || reason.trim().length > 500)
-    )
+    const note = reason.trim() || t("商户选择不发送这条回复");
+    if ((operation === "reject" || operation === "cancel") && note.length > 500)
       return;
     writing.current = true;
     ++generation.current;
@@ -186,12 +188,12 @@ export function ApprovalsWorkspace({
               operation,
               data.conversation?.context_version ??
                 data.action.bound_context_version,
-              reason,
+              note,
             );
       if (!mounted.current) return;
       setNotice(
         result.state === "approved"
-          ? t("批准已保存；消息尚未提交发送。")
+          ? t("已批准。下一步：回到工单点「发送给客人」。")
           : operation === "reissue"
             ? t("新的待审批草稿已生成，需要再次核对批准。")
             : t("操作结果已确认，正在重新读取当前状态。"),
@@ -221,25 +223,29 @@ export function ApprovalsWorkspace({
   }
   return (
     <section aria-label={t("回复审批工作台")}>
-      <div className="intro">
-        <p className="eyebrow">{t("回复审批")}</p>
-        <h1>{t("先核对收件会话和正文，再批准。")}</h1>
-        <p>
-          {t(
-            "这里保存你的批准决定；到业务管理另行核对并提交发送。批准不等于已发送。",
+      <div className="page-heading">
+        <div>
+          <h1>{t("回复审批")}</h1>
+          <p>
+            {t("所有等你批准的回复都在这里。批准后再点「发送」才会发给客人。")}
+          </p>
+        </div>
+        <button
+          className="secondary"
+          disabled={busy || loading}
+          onClick={() => void refresh()}
+        >
+          {t("刷新")}
+        </button>
+      </div>
+      {(error || notice || loading || (stale && data)) && (
+        <div className="notice" role="status" aria-live="polite">
+          {error || notice || (loading ? t("正在读取…") : "")}
+          {stale && data && (
+            <p>{t("网络不稳，下面是上次读到的内容，暂时不能操作。")}</p>
           )}
-        </p>
-      </div>
-      <div className="notice" role="status" aria-live="polite">
-        {error ||
-          notice ||
-          (loading
-            ? t("正在读取审批数据…")
-            : t("没有你的明确批准，草稿不会执行。"))}
-        {stale && data && (
-          <p>{t("下面是上次读取的数据，当前不能提交操作。")}</p>
-        )}
-      </div>
+        </div>
+      )}
       {api.storageError() && (
         <p className="notice stale">{api.storageError()}</p>
       )}
@@ -260,20 +266,6 @@ export function ApprovalsWorkspace({
           </button>
         </div>
       )}
-      <div className="replay-tools">
-        <small>
-          {updatedAt
-            ? t("内容更新于：{0}", instant(new Date(updatedAt).toISOString()))
-            : t("尚未读取")}
-        </small>
-        <button
-          className="secondary"
-          disabled={busy || loading}
-          onClick={() => void refresh()}
-        >
-          {t("刷新审批")}
-        </button>
-      </div>
       <div className="approval-grid">
         <aside className="panel">
           <h2>{t("草稿与历史")}</h2>
@@ -316,12 +308,7 @@ export function ApprovalsWorkspace({
                   t("所属工单未载入")}
               </strong>
               <br />
-              {actionStates[a.state]}
-              <br />
-              <small>
-                {t("有效至")}
-                {instant(a.expires_at)}
-              </small>
+              <small>{actionStates[a.state]}</small>
             </button>
           ))}
         </aside>
@@ -336,55 +323,30 @@ export function ApprovalsWorkspace({
                 {deliveryStates[action.delivery_status]}
               </p>
               <dl className="approval-facts">
-                <dt>{t("为什么需要回复")}</dt>
+                <dt>{t("为什么要回复")}</dt>
                 <dd>{triggerDescription(action.trigger, action.open_items)}</dd>
-                <dt>{t("收件会话（系统编号）")}</dt>
+                <dt>{t("发给")}</dt>
                 <dd>
-                  <code>{action.recipient}</code>
-                  <br />
-                  <small>
-                    {t(
-                      "这是当前工单关联的会话；业务管理提交时由服务端核对准确的 WhatsApp 聊天。",
-                    )}
-                  </small>
+                  {t(
+                    "「{0}」的客人 · WhatsApp",
+                    data.order?.summary ?? t("当前工单"),
+                  )}
                 </dd>
-                <dt>{t("草稿正文")}</dt>
+                <dt>{t("回复内容")}</dt>
                 <dd className="reply-body">{action.body}</dd>
-                <dt>{t("有效期")}</dt>
+                <dt>{t("有效到")}</dt>
                 <dd>
-                  {instant(action.expires_at)}
+                  {friendlyInstant(action.expires_at)}
                   {Date.parse(action.expires_at) <= now && t("（已到期）")}
-                </dd>
-                <dt>{t("版本核对")}</dt>
-                <dd>
-                  {t("草稿第")}
-                  {action.revision} {t("版；工单")}{" "}
-                  {action.bound_work_order_version} {t("→ 当前")}{" "}
-                  {data.order?.version ?? t("未知")}
-                  {t("；聊天")} {action.bound_context_version} {t("→ 当前")}{" "}
-                  {data.conversation?.context_version ?? t("不可读取")}
                 </dd>
               </dl>
               {action.closed_reason && (
                 <p>
                   {t("关闭原因：")}
-                  {closedReasons[action.closed_reason] ??
-                    t("后端已关闭此草稿，请核对当前业务。")}
+                  {closedReasons[action.closed_reason] ?? t("这条回复已关闭。")}
                 </p>
               )}
-              {action.closed_note && (
-                <p>
-                  {t("你记录的原因：")}
-                  {action.closed_note}
-                </p>
-              )}
-              {action.approved_at && (
-                <p>
-                  {t("批准时间：")}
-                  {instant(action.approved_at)}
-                </p>
-              )}
-              <h3>{t("原文依据")}</h3>
+              <h3>{t("客人原话")}</h3>
               {data.contextError && <p>{data.contextError}</p>}
               {action.sources.map((s) => {
                 const m = data.messages.find(
@@ -398,17 +360,15 @@ export function ApprovalsWorkspace({
                     id={messageAnchor(s.message_id, s.message_revision)}
                   >
                     <small>
-                      {t("消息")}
-                      {s.message_id} {t("· 第")}
-                      {s.message_revision} {t("版 ·")}{" "}
-                      {m ? instant(m.occurred_at) : t("该版本不可读取")}
+                      {t("客人")}
+                      {m ? ` · ${friendlyInstant(m.occurred_at)}` : ""}
                     </small>
                     <p>
                       {m
                         ? m.revoked
                           ? t("原文已撤回，不能据此批准。")
                           : (m.text ?? t("原文未提供文字"))
-                        : t("没有可核对的原文，不补造内容。")}
+                        : t("这条消息暂时读不到。")}
                     </p>
                   </div>
                 );
@@ -416,112 +376,80 @@ export function ApprovalsWorkspace({
               {approveBlocked && action.state === "pending_approval" && (
                 <p className="notice stale">{approveBlocked}</p>
               )}
-              {action.reissuable && reissueBlocked && <p>{reissueBlocked}</p>}
-              <button
-                className="secondary"
-                disabled={!fresh}
-                onClick={() => {
-                  setReview(binding);
-                  setConsent(false);
-                }}
-              >
-                {t("核对这份草稿")}
-              </button>
-              {review === binding && (
-                <div className="approval-review">
-                  <h3>{t("本次核对")}</h3>
-                  <p>
-                    {t("接收会话：")}
-                    <code>{action.recipient}</code>
-                  </p>
-                  <p className="reply-body">{action.body}</p>
-                  <label className="confirm-check">
-                    <input
-                      type="checkbox"
-                      checked={consent}
-                      disabled={!fresh}
-                      onChange={(e) => setConsent(e.target.checked)}
-                    />
-                    {t("我已核对收件会话、完整正文、原文与版本。")}
-                  </label>
-                  {!attempt && (
-                    <label>
-                      {t("拒绝／取消原因")}
-                      <textarea
-                        maxLength={500}
-                        value={reason}
-                        disabled={busy}
-                        onChange={(e) => setReason(e.target.value)}
-                        placeholder={t("例如：需要先和客户确认其他时间")}
-                      />
-                    </label>
-                  )}
-                  <div className="approval-buttons">
-                    {attempt ? (
-                      <button
-                        disabled={
-                          !reviewed || !canRetry || !!api.storageError()
-                        }
-                        onClick={() => void perform("retry")}
-                      >
-                        {t("核对后重试原请求")}
-                      </button>
-                    ) : (
+              <div className="approval-buttons">
+                {attempt ? (
+                  <button
+                    disabled={!reviewed || !canRetry || !!api.storageError()}
+                    onClick={() => void perform("retry")}
+                  >
+                    {t("重试上次操作")}
+                  </button>
+                ) : (
+                  <>
+                    {action.state === "pending_approval" && (
                       <>
-                        {action.state === "pending_approval" && (
-                          <>
-                            <button
-                              disabled={
-                                !reviewed || writesBlocked || !!approveBlocked
-                              }
-                              onClick={() => void perform("approve")}
-                            >
-                              {t("批准这份草稿")}
-                            </button>
-                            <button
-                              className="secondary"
-                              disabled={
-                                !reviewed || writesBlocked || !reason.trim()
-                              }
-                              onClick={() => void perform("reject")}
-                            >
-                              {t("拒绝草稿")}
-                            </button>
-                          </>
-                        )}
-                        {["pending_approval", "approved"].includes(
-                          action.state,
-                        ) && (
-                          <button
-                            className="secondary"
-                            disabled={
-                              !reviewed || writesBlocked || !reason.trim()
-                            }
-                            onClick={() => void perform("cancel")}
-                          >
-                            {t("取消待执行草稿")}
-                          </button>
-                        )}
-                        {action.reissuable && (
-                          <button
-                            disabled={
-                              !reviewed || writesBlocked || !!reissueBlocked
-                            }
-                            onClick={() => void perform("reissue")}
-                          >
-                            {t("重新生成待审批问题")}
-                          </button>
-                        )}
+                        <button
+                          disabled={
+                            !reviewed || writesBlocked || !!approveBlocked
+                          }
+                          onClick={() => void perform("approve")}
+                        >
+                          {t("批准这条回复")}
+                        </button>
+                        <button
+                          className="secondary"
+                          disabled={!reviewed || writesBlocked}
+                          onClick={() => void perform("reject")}
+                        >
+                          {t("不发这条")}
+                        </button>
                       </>
                     )}
-                  </div>
-                  <small>
-                    {t(
-                      "拒绝和取消只关闭本机尚未执行的草稿；执行中的发送不能假装撤回。重新提问会生成新草稿，不会直接发送。",
+                    {action.state === "approved" && (
+                      <>
+                        {onOpenOrder && (
+                          <button
+                            onClick={() => onOpenOrder(action.work_order_id)}
+                          >
+                            {t("回到工单去发送")}
+                          </button>
+                        )}
+                        <button
+                          className="secondary"
+                          disabled={!reviewed || writesBlocked}
+                          onClick={() => void perform("cancel")}
+                        >
+                          {t("不发这条")}
+                        </button>
+                      </>
                     )}
-                  </small>
-                </div>
-              )}
+                    {action.reissuable && (
+                      <button
+                        className="secondary"
+                        disabled={
+                          !reviewed || writesBlocked || !!reissueBlocked
+                        }
+                        onClick={() => void perform("reissue")}
+                      >
+                        {t("重新生成回复")}
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+              <details className="quiet">
+                <summary>{t("技术信息")}</summary>
+                <small>
+                  {t("聊天编号")} <code>{action.recipient}</code>
+                  <br />
+                  {t("草稿第")}
+                  {action.revision} {t("版；工单")}{" "}
+                  {action.bound_work_order_version} {t("→ 当前")}{" "}
+                  {data.order?.version ?? t("未知")}
+                  {t("；聊天")} {action.bound_context_version} {t("→ 当前")}{" "}
+                  {data.conversation?.context_version ?? t("不可读取")}
+                </small>
+              </details>
               {["executing", "result_unknown"].includes(action.state) && (
                 <p>{t("执行结果由后端核对。此页面不会重新发送消息。")}</p>
               )}

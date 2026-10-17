@@ -22,7 +22,7 @@ import {
   fieldNames,
   fieldValue,
   hongKongDateTime,
-  instant,
+  friendlyInstant,
   orderStates,
 } from "./work-order-view";
 import type { components } from "./generated/api";
@@ -34,6 +34,7 @@ type Props = {
   onSessionExpired: () => void;
   onBusyChange: (value: boolean) => void;
   onOpenOrder: (id: string) => void;
+  initialActionId?: string;
 };
 export function BusinessLoopWorkspace(props: Props) {
   if (!loopReady(props.features)) return null;
@@ -46,6 +47,7 @@ function BusinessLoopContent({
   onSessionExpired,
   onBusyChange,
   onOpenOrder,
+  initialActionId = "",
 }: Props) {
   const api = useMemo(
     () => businessLoopApi(csrf, accountId, features),
@@ -311,7 +313,11 @@ function BusinessLoopContent({
                 <h3>{label}</h3>
                 {summary[key].map((entry, index) => (
                   <p key={index}>
-                    {entry.at && instant(entry.at)} {entry.title}{" "}
+                    {entry.at && friendlyInstant(entry.at)}{" "}
+                    {entry.title.replace(
+                      /\b(schedule|address|specification|quantity|deadline|summary)\b/g,
+                      (code) => fieldNames[code as keyof typeof fieldNames],
+                    )}{" "}
                     {entry.work_order_id && (
                       <button
                         className="text-button"
@@ -352,6 +358,7 @@ function BusinessLoopContent({
         revision={revision}
       />
       <BusinessLoopReview
+        initialActionId={initialActionId}
         api={api}
         csrf={csrf}
         accountId={accountId}

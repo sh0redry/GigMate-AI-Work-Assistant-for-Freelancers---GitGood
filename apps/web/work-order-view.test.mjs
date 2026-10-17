@@ -225,7 +225,7 @@ test("Hong Kong daily calendar includes overnight spans but excludes events endi
       date: "2026-10-12",
       timezone: "America/New_York",
     }),
-    /2026-10-12 全天（America\/New_York）/,
+    /10\/12（一）全天（按 America\/New_York 时间）/,
   );
   assert.equal(fieldValue(null), "未提供");
   assert.equal(fieldValue(0), "0");

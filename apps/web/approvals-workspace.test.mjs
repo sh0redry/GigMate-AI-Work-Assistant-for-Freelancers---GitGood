@@ -98,23 +98,16 @@ async function mount(f, extra = {}) {
     ),
   );
 }
-async function review() {
-  await click("核对这份草稿");
-  await act(async () =>
-    document.querySelector('input[type="checkbox"]').click(),
-  );
-}
-test("exact review and checkbox gate approval; approval stays unsent and filtering keeps selected history", async () => {
+// The draft itself is the review: a fresh read of the exact action enables
+// approval; the backend still rejects stale versions and snapshots.
+async function review() {}
+test("a fresh read of the exact draft gates approval; approval stays unsent and filtering keeps selected history", async () => {
   const f = fixture();
   await mount(f);
   assert.ok(document.body.textContent.includes(f.data.actions[0].body));
   assert.equal(f.data.writes.length, 0);
-  await click("核对这份草稿");
-  assert.equal(button("批准这份草稿").disabled, true);
-  await act(async () =>
-    document.querySelector('input[type="checkbox"]').click(),
-  );
-  await click("批准这份草稿");
+  assert.equal(document.querySelector('input[type="checkbox"]'), null);
+  await click("批准这条回复");
   assert.equal(f.data.writes.length, 1);
   assert.match(document.body.textContent, /已批准，尚未发送/);
   assert.match(document.body.textContent, /尚未提交发送/);
@@ -130,29 +123,19 @@ test("refresh invalidates reviewed content; stale reads block every write and pr
     revision: 2,
     snapshot_hash: "sha256:" + "b".repeat(64),
   };
-  await click("刷新审批");
-  assert.equal(document.querySelector('input[type="checkbox"]'), null);
-  assert.match(document.body.textContent, /重新核对/);
+  await click("刷新");
+  assert.ok(document.body.textContent.includes("新的完整正文"));
   f.data.offline = true;
-  await click("刷新审批");
-  assert.equal(button("核对这份草稿").disabled, true);
+  await click("刷新");
+  assert.equal(button("批准这条回复").disabled, true);
+  assert.equal(button("不发这条").disabled, true);
   assert.equal(f.data.writes.length, 0);
   f.data.offline = false;
   f.data.denied = true;
-  await click("刷新审批");
-  await review();
-  assert.equal(button("批准这份草稿").disabled, true);
-  const input = document.querySelector("textarea");
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(
-      dom.window.HTMLTextAreaElement.prototype,
-      "value",
-    ).set.call(input, "需要另行确认");
-    input.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
-    input.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
-  });
-  assert.equal(button("拒绝草稿").disabled, false);
-  await click("拒绝草稿");
+  await click("刷新");
+  assert.equal(button("批准这条回复").disabled, true);
+  assert.equal(button("不发这条").disabled, false);
+  await click("不发这条");
   assert.equal(f.data.writes[0].operation, "reject");
   assert.equal(f.data.actions[0].closed_reason, "rejected");
 });
@@ -161,16 +144,16 @@ test("lost response survives remount, never auto-retries, then explicitly uses t
   await mount(f);
   await review();
   f.data.drop = true;
-  await click("批准这份草稿");
+  await click("批准这条回复");
   assert.match(document.body.textContent, /原请求等待核对/);
   assert.equal(f.data.writes.length, 1);
   await act(async () => root.unmount());
   root = null;
   await mount(f);
-  await click("刷新审批");
+  await click("刷新");
   assert.equal(f.data.writes.length, 1);
   await review();
-  await click("核对后重试原请求");
+  await click("重试上次操作");
   assert.equal(f.data.writes.length, 2);
   assert.equal(
     f.data.writes[0].options.headers["Idempotency-Key"],
@@ -186,11 +169,11 @@ test("double approval and navigation are blocked while a write is in flight", as
   let resolve;
   f.data.delayed = new Promise((r) => (resolve = r));
   await act(async () => {
-    button("批准这份草稿").click();
-    button("批准这份草稿").click();
+    button("批准这条回复").click();
+    button("批准这条回复").click();
   });
   assert.equal(f.data.writes.length, 1);
-  assert.equal(button("刷新审批").disabled, true);
+  assert.equal(button("刷新").disabled, true);
   assert.equal(busy.at(-1), true);
   await act(async () => resolve());
   assert.equal(busy.at(-1), false);
@@ -240,8 +223,8 @@ test("rendering with a denied storage getter shows readable guidance, still load
     assert.match(document.body.textContent, /浏览器不允许保存原请求/);
     assert.ok(document.body.textContent.includes(f.data.actions[0].body));
     await review();
-    assert.equal(button("批准这份草稿").disabled, true);
-    await click("刷新审批");
+    assert.equal(button("批准这条回复").disabled, true);
+    await click("刷新");
     assert.equal(f.data.writes.length, 0);
   } finally {
     Object.defineProperty(globalThis, "sessionStorage", previous);
@@ -249,17 +232,15 @@ test("rendering with a denied storage getter shows readable guidance, still load
   }
 });
 
-test("unchanged refresh preserves reviewed consent, focused checkbox and enabled action without a loading flash", async () => {
+test("unchanged refresh keeps focus and the enabled action without a loading flash", async () => {
   const f = fixture();
   await mount(f);
-  await review();
-  const checkbox = document.querySelector('input[type="checkbox"]');
-  checkbox.focus();
-  await click("刷新审批");
-  assert.equal(document.querySelector('input[type="checkbox"]'), checkbox);
-  assert.equal(checkbox.checked, true);
-  assert.equal(document.activeElement, checkbox);
-  assert.equal(button("批准这份草稿").disabled, false);
+  const approve = button("批准这条回复");
+  approve.focus();
+  await click("刷新");
+  assert.equal(button("批准这条回复"), approve);
+  assert.equal(document.activeElement, approve);
+  assert.equal(button("批准这条回复").disabled, false);
   assert.doesNotMatch(document.body.textContent, /正在读取审批数据/);
   assert.equal(f.data.writes.length, 0);
 });
