@@ -1,5 +1,7 @@
 // UI copy only. Customer content and approved payloads are never translated.
 export const english: Record<string, string> = {
+  "时间尚不完整或格式需核对。请补充结束时间或时长，再生成可确认的日历提议。":
+    "The time is incomplete or needs review. Provide an end time or duration before creating a calendar proposal you can confirm.",
   "跟进时间无效，请输入完整有效的香港日期和时间。":
     "Invalid follow-up time. Enter a complete, valid Hong Kong date and time.",
   "当前后端版本未提供此功能。":
@@ -1633,6 +1635,8 @@ export const english: Record<string, string> = {
     "The server definitely rejected this operation; nothing was saved. Refresh and review the conditions before trying a new operation.",
 };
 export const cantonese: Record<string, string> = {
+  "时间尚不完整或格式需核对。请补充结束时间或时长，再生成可确认的日历提议。":
+    "時間未齊或者格式要核對。請補充結束時間或者時長，再產生可以確認嘅日曆提議。",
   "跟进时间无效，请输入完整有效的香港日期和时间。":
     "跟進時間唔正確，請輸入完整有效嘅香港日期同時間。",
   "当前后端版本未提供此功能。": "目前後端版本未提供呢個功能。",

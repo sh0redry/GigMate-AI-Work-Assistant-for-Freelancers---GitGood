@@ -4,6 +4,7 @@ import logging
 import os
 import threading
 import time
+import traceback
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -33,6 +34,7 @@ from gigmate.extraction import (
     provider,
 )
 from gigmate.extraction.llm import validate_provider_config
+from gigmate.extraction.persistence import review_schedule_shapes
 from gigmate.planning import CLOSED
 from gigmate.understanding import extract
 from gigmate.waha_recovery import worker_heartbeat
@@ -296,9 +298,16 @@ def run_once(factory=Session):
                     )
                 job.lease_owner, job.lease_until = None, None
                 complete_metrics(job, inbox, began)
-    except Exception:
+    except Exception as exc:
         # No raw message text or exception values enter logs.
-        log.error("job_failed job_id=%s code=PROCESSING_FAILED", job_id)
+        frame = traceback.extract_tb(exc.__traceback__)[-1]
+        log.error(
+            "job_failed job_id=%s code=PROCESSING_FAILED exception_type=%s location=%s:%s",
+            job_id,
+            type(exc).__name__,
+            frame.name,
+            frame.lineno,
+        )
         with factory.begin() as db:
             job = db.scalar(select(Job).where(Job.id == job_id).with_for_update())
             if job.lease_owner == owner:
@@ -350,7 +359,7 @@ def _route_through_provider(
         request.candidate_work_order_ids[0] if len(request.candidate_work_order_ids) == 1 else None
     )
     base_version = request.base_work_order_version
-    outcome = prepared_outcome or provider().propose(request)
+    outcome = review_schedule_shapes(prepared_outcome or provider().propose(request))
     if job is not None and job.lease_until is not None:
         if job.lease_until.replace(tzinfo=UTC) <= datetime.now(UTC):
             return False

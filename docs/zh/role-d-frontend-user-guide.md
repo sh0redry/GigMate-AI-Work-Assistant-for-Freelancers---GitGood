@@ -1,18 +1,20 @@
 # GigMate 前端使用手册
 
-当前候选：2026-10-17，基于 main `14aa34e`。这份手册讲怎么使用；技术验收见[交付说明](bcd-product-delivery.md)。[English](../en/role-d-frontend-user-guide.md)。
+本地用户版，更新于 2026-10-18。这份手册讲怎么使用；实际验证见[项目进展](progress.md)。[English](../en/role-d-frontend-user-guide.md)。
 
 ## 每次怎么在自己的电脑打开
 
-团队没有共享服务器也能本地使用：你的电脑同时运行网页、后端、后台处理程序和数据库。PR34 未合并前使用它的分支 `codex/d-api-cache-glass`；旧 main 里还没有 `infra/compose.text.yaml`。每个人的密钥放在自己电脑被 Git 忽略的 `.env`，不要复制别人的密钥或数据库。模型开关、单价等配置见[交付说明](bcd-product-delivery.md)。
+不需要团队服务器：你的电脑负责运行网页、后台、数据库和 WhatsApp 连接。API key 放在自己电脑的 `.env`，不会上传 GitHub。第一次安装按根目录 README 操作，`--init` 只用一次。已有安装保留原来的 `.env`、登录账号和手机连接，不要重新初始化或复制别人的数据。
 
-先打开 Docker Desktop，再在**这份分支的项目根目录**打开终端，运行：
+以后每次只需打开 Docker Desktop，再在**项目根目录**打开终端。Mac/Linux 运行：
 
 ```text
-docker compose --env-file .env -f infra/compose.yaml -f infra/compose.text.yaml up --build -d --wait
+.venv/bin/python scripts/start_product.py
 ```
 
-然后打开 http://127.0.0.1:18080，用自己数据库初始化时设置的账号密码登录。后来修改 `.env` 不会重置已有密码。若自己的 WhatsApp 启动方式带了其他 WAHA 叠加文件，继续保留在同一条命令中；只有文字模型叠加文件不会自动安装或配对 WhatsApp。关闭时沿用相同参数，把最后部分改成 `down`，不加 `-v`，这样保留数据。修改 `.env` 后要重新 `up -d --wait`，只执行 `restart` 不会加载新配置。同一台电脑的两个 clone 可能共用 Compose 项目和数据卷，避免无意混用。
+Windows 运行 `.venv/Scripts/python.exe scripts/start_product.py`。然后打开 http://127.0.0.1:18780。这个命令会一起更新网页、后端和后台处理程序，检查它们的接口是否一致，通过后才提示可使用。不需要另开前端开发服务器，也不会启动虚构工单的演示版。
+
+新安装可以在 `.env` 自己设置账号密码；未设置密码时，系统随机生成，保存在本机 `local-data/waha-a02/login.json`。已有账号密码不会改变。遇到问题不要重跑初始化，也不要删数据库或手机会话。关闭 Docker 会停止服务，但保留数据；下次启动后再运行上述命令。
 
 ## 先认识五个概念
 
@@ -37,6 +39,8 @@ docker compose --env-file .env -f infra/compose.yaml -f infra/compose.text.yaml 
 点击“核对新工单”，逐项看清，再勾选确认、保存。**AI 新单建议**仅在后端有有效建议时显示；点选只预填摘要，你仍要读原文、填写关键值并确认。不会自动替你开正式工单；没有建议可以手动操作。
 
 ## 日常处理顺序
+
+客户只说“几点开始”，还不等于完整预约：系统会保留开始时间，显示“待复核”，也会保留同一条消息里的地址建议，不再因为时间不完整而整条处理失败。还需要问清结束时间或持续多久。核对完整时间后才能更新日历，系统不会擅自假设一小时，也不会把一个开始时间改成全天预约。
 
 1. **业务工作台**：搜索工单，核对当前安排、来源消息和待确认变更。客户改消息后旧依据会失效。
 2. **业务管理**：看今日事项，处理归单、稍后确认、资料／承诺／问题；设置工作时间与休息；核对其他字段提议。

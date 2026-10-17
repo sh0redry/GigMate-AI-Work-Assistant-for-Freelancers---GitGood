@@ -9,16 +9,59 @@ optional ``requirement_changes``. All rows are append-only.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Iterable
 from uuid import uuid4
 
 from sqlalchemy.orm import Session as SessionFactory
 
-from gigmate.contracts import ChangeProposal, RequirementChange
+from gigmate.contracts import (
+    ChangeProposal,
+    DateOnly,
+    FieldStatus,
+    RequirementChange,
+    TimedSchedule,
+)
 from gigmate.db import ChangeRow, ModelCallTrace, Proposal
 
 from .types import ExtractionOutcome
+
+
+def review_schedule_shapes(outcome: ExtractionOutcome) -> ExtractionOutcome:
+    """Preserve partial time evidence without treating it as a calendar interval.
+
+    FieldValue intentionally also admits scalar values. A model can therefore
+    return a valid proposal containing only a start timestamp. Do not invent an
+    end time, lose unrelated address changes, or let draft generation crash.
+    """
+    changes = []
+    incomplete = False
+    for change in outcome.proposal.changes:
+        if (
+            change.field == "schedule"
+            and change.field_status == "proposed"
+            and not isinstance(change.new_value, (TimedSchedule, DateOnly))
+        ):
+            change = change.model_copy(update={"field_status": FieldStatus.needs_review})
+            incomplete = True
+        changes.append(change)
+    if not incomplete:
+        return outcome
+    question = (
+        "Review the appointment time and provide any missing end time or duration; "
+        "a partial time cannot be synchronized to the calendar."
+    )
+    questions = list(outcome.proposal.unresolved_questions)
+    if question not in questions:
+        questions.append(question)
+    return replace(
+        outcome,
+        proposal=outcome.proposal.model_copy(
+            update={"changes": changes, "unresolved_questions": questions}
+        ),
+        notes=(*outcome.notes, "schedule:incomplete-value"),
+    )
 
 
 def persist_proposal(
