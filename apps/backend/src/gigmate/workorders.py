@@ -344,11 +344,12 @@ def audit_row(account_id, entity_id, operation, request_id):
 def create(db, account, command, key, request_id):
     """Merchant creates an order from a conversation. Missing values stay missing."""
     scope = "create_work_order"
+    # Lock before reading the command receipt as well as the suggestion. A
+    # concurrent same-key request must see the first committed receipt.
+    db.scalar(select(Account).where(Account.id == account.id).with_for_update())
     digest, cached = command_cache(db, account.id, scope, key, command.model_dump(mode="json"))
     if cached:
         return cached.data
-    # Serialize creation per account so two clicks cannot both pass the checks below.
-    db.scalar(select(Account).where(Account.id == account.id).with_for_update())
     conversation = owned(db, ConversationRow, command.conversation_id, account.id)
     if not conversation.allowlisted:
         raise BusinessError(403, "CONSENT_REVOKED", "Conversation processing is paused")

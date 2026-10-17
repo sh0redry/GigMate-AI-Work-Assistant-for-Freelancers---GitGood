@@ -1,4 +1,4 @@
-import { t, localized } from "./i18n.ts";
+import { t } from "./i18n.ts";
 import { privateReadDenied } from "./read-cache";
 import { useStableState as useState } from "./useStableState";
 import { useEffect, useMemo } from "react";
@@ -10,16 +10,8 @@ import {
   type Change,
 } from "./workspace-api";
 import type { components } from "./generated/api";
-import { fieldNames, fieldValue } from "./work-order-view";
+import { fieldNames, fieldValue, reviewReasons } from "./work-order-view";
 type ReviewItem = components["schemas"]["ReviewItem"];
-const reasons: Record<string, string> = localized({
-  LIVE_EXTRACTION_PENDING: "真实消息理解尚未启用",
-  MODEL_OUTCOME_UNKNOWN: "模型调用结果未知，保留原编号，不能自动重试",
-  EXTRACTION_NEEDS_REVIEW: "模型未能确定业务含义，需要人工核对",
-  ASSIGNMENT_NEEDS_REVIEW: "无法确定属于哪张工单",
-  PROCESSING_FAILED: "处理失败，需要核对原文",
-  RETRY_EXHAUSTED: "多次处理未完成，需要人工核对",
-});
 export function ReviewWorkspace({
   csrf,
   onSessionExpired,
@@ -162,7 +154,7 @@ export function ReviewWorkspace({
                 {item.reason === "PROCESSING_FAILED" &&
                 ["pending", "processing"].includes(item.state)
                   ? t("处理暂未完成，系统正在自动重试")
-                  : (reasons[item.reason] ?? t("需要人工核对"))}
+                  : (reviewReasons[item.reason] ?? t("需要人工核对"))}
               </h3>
               <small>
                 {t("会话")}

@@ -35,15 +35,18 @@ test("pending routes require reviewed release and separate assignment/sending fl
     off.read("/daily-summary"),
     (e) => e.code === "FEATURE_UNAVAILABLE",
   );
-  await assert.rejects(off.submit(intent), /安全验收/);
+  await assert.rejects(
+    off.submit(intent),
+    (e) => e.code === "FEATURE_UNAVAILABLE",
+  );
   const on = businessLoopApi("csrf", account, features, fetcher, storage());
   await assert.rejects(
     on.submit({ ...intent, path: `/actions/${order}/send` }),
-    /安全验收/,
+    (e) => e.code === "FEATURE_UNAVAILABLE",
   );
   await assert.rejects(
     on.submit({ ...intent, path: `/review-items/${order}/assign` }),
-    /安全验收/,
+    (e) => e.code === "FEATURE_UNAVAILABLE",
   );
   assert.equal(n, 0);
 });

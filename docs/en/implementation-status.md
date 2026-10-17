@@ -1,5 +1,11 @@
 # Implementation status and validation
 
+## PR34 independent-review follow-up — 2026-10-17
+
+Fix date-render crashes, preserve exact formatted review/recovery text without reverse translation, clear old success notices on subsequent work/errors, and translate queue/action/receipt states. Add a transaction-safe 409 fence for duplicate suggestion consumption and retain account serialization. Tighten bounded suggestion SQL to exclude missing suggestion blocks and consumed events. Recovery/final retry-limit paths now record completion metrics. Read all linked conversations and reject stale, revoked, mixed or superseded source revisions in business management.
+
+Evidence: Linux/locked dependencies with isolated PostgreSQL **998 passed / 1 skipped**; product suite **37 passed**, including barrier-synchronised concurrent HTTP creation and signed ingress with real control routes. SQLite product suite **35 passed / 2 PostgreSQL-only skips**. Frontend **175 passed**; TypeScript, formatting, contracts and bundle pass. Before/after probes reproduce the old date, review-text, notice, unique-fence and metrics failures. Normal HTTP creation was already serialized by account locks (201/409 for different keys, same receipt for the same key); do not describe that as a reproduced 500. See [scope, authorisation and evidence](bcd-product-delivery.md). No real paid-model or WhatsApp acceptance is implied; configuration remains local/private.
+
 ## Current BCD text-product candidate — 2026-10-17
 
 PR31/32/33 are merged; base main `14aa34e`. The API/cache/glass commits are followed by merchant-reviewed new-order suggestion consumption, task decisions, optional isolated text runtime, canonical business-loop clients and Chinese/English/Cantonese UI. Linux + isolated PostgreSQL: **987 passed, 1 skipped**; new product checks: **26 passed**, including a real child process against a loopback fake HTTP vendor. Alembic 0021 upgrade/check and closed Compose text overlay validation pass. No real vendor, phone or deployment acceptance was performed. See [current scope, evidence and limits](bcd-product-delivery.md); older dated statuses below are history.

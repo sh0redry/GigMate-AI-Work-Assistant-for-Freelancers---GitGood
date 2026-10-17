@@ -66,6 +66,7 @@ def open_orders(db, conversation_id, job_id=None):
 
 
 def run_once(factory=Session):
+    began = time.monotonic()
     owner = str(uuid4())
     now = datetime.now(UTC)
     with factory.begin() as db:
@@ -87,12 +88,12 @@ def run_once(factory=Session):
             # A crashed/expired submitted call may have incurred cost. Never replay it.
             job.state, job.error_code = "completed", "MODEL_OUTCOME_UNKNOWN"
             job.lease_owner, job.lease_until = None, None
-            job.completed_at = now
+            complete_metrics(job, db.get(Inbox, job.event_id), began)
             return True
         if job.attempts >= 3:
             job.state, job.error_code = "failed", "RETRY_EXHAUSTED"
             job.lease_owner, job.lease_until = None, None
-            job.completed_at = now
+            complete_metrics(job, db.get(Inbox, job.event_id), began)
             return True
         if job.state == "processing":
             job.lease_recoveries += 1
@@ -103,7 +104,6 @@ def run_once(factory=Session):
         )
         job.attempts += 1
         job_id, account_id = job.id, job.account_id
-    began = time.monotonic()
     deferred = None
     try:
         with factory.begin() as db:

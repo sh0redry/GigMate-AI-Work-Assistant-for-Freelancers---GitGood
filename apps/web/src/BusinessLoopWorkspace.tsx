@@ -21,6 +21,7 @@ import {
 import {
   fieldNames,
   fieldValue,
+  hongKongDateTime,
   instant,
   orderStates,
 } from "./work-order-view";
@@ -72,7 +73,8 @@ function BusinessLoopContent({
     [settingsAt, setSettingsAt] = useState(0);
   const [source, setSource] = useState(""),
     [deferField, setDeferField] = useState<"schedule" | "address">("address"),
-    [until, setUntil] = useState("");
+    [until, setUntil] = useState(""),
+    [untilUtc, setUntilUtc] = useState<string | null>(null);
   const [kind, setKind] = useState<"material" | "commitment" | "question">(
       "material",
     ),
@@ -82,6 +84,7 @@ function BusinessLoopContent({
     [reason, setReason] = useState("");
   const report = useCallback(
     (e: unknown) => {
+      setNotice("");
       setError(e instanceof Error ? e.message : t("操作无法核对"));
       if ((e as { code?: string })?.code === "UNAUTHENTICATED")
         onSessionExpired();
@@ -89,8 +92,16 @@ function BusinessLoopContent({
     [onSessionExpired],
   );
   const done = () => {
+    setError("");
     setNotice(t("保存结果已确认，正在读取当前状态。"));
     setRevision((v) => v + 1);
+  };
+  const busyChanged = (value: boolean) => {
+    if (value) {
+      setNotice("");
+      setError("");
+    }
+    onBusyChange(value);
   };
   useEffect(() => {
     const abort = new AbortController();
@@ -165,6 +176,7 @@ function BusinessLoopContent({
             ]);
             if (
               info.data.id !== conversation ||
+              info.data.account_id !== accountId ||
               !Number.isInteger(info.data.context_version) ||
               info.data.context_version < 1 ||
               ms.some((message) => message.conversation_id !== conversation)
@@ -223,7 +235,11 @@ function BusinessLoopContent({
         (item) =>
           item.id === ref.message_id &&
           item.revision === ref.message_revision &&
-          !item.revoked,
+          !item.revoked &&
+          item.direction === "incoming" &&
+          !messages.some(
+            (newer) => newer.id === item.id && newer.revision > item.revision,
+          ),
       );
       if (!message) return null;
       conversationIds.add(message.conversation_id);
@@ -245,7 +261,7 @@ function BusinessLoopContent({
     disabled: !detailReady,
     onDone: done,
     onError: report,
-    onBusy: onBusyChange,
+    onBusy: busyChanged,
   };
   return (
     <section aria-label={t("业务管理")}>
@@ -258,7 +274,10 @@ function BusinessLoopContent({
         <button
           className="secondary"
           disabled={loading}
-          onClick={() => setRevision((v) => v + 1)}
+          onClick={() => {
+            setNotice("");
+            setRevision((v) => v + 1);
+          }}
         >
           {t("刷新业务管理")}
         </button>
@@ -320,7 +339,7 @@ function BusinessLoopContent({
         api={api}
         onDone={done}
         onError={report}
-        onBusy={onBusyChange}
+        onBusy={busyChanged}
       />
       <ProductTools
         api={api}
@@ -329,7 +348,7 @@ function BusinessLoopContent({
         onOpenOrder={onOpenOrder}
         onDone={done}
         onError={report}
-        onBusy={onBusyChange}
+        onBusy={busyChanged}
         revision={revision}
       />
       <BusinessLoopReview
@@ -340,7 +359,7 @@ function BusinessLoopContent({
         orders={orders}
         onDone={done}
         onError={report}
-        onBusy={onBusyChange}
+        onBusy={busyChanged}
       />
       {settings && (
         <details className="panel">
@@ -519,7 +538,13 @@ function BusinessLoopContent({
         <h2>{t("工单需求与交付")}</h2>
         <label>
           {t("选择工单")}
-          <select value={id} onChange={(e) => setId(e.target.value)}>
+          <select
+            value={id}
+            onChange={(e) => {
+              setNotice("");
+              setId(e.target.value);
+            }}
+          >
             <option value="">{t("请选择")}</option>
             {orders.map((o) => (
               <option key={o.id} value={o.id}>
@@ -615,11 +640,21 @@ function BusinessLoopContent({
                     {t("跟进时间（香港时间；留空则按后端默认）")}
                     <input
                       type="datetime-local"
+                      step="0.001"
                       value={until}
-                      onChange={(e) => setUntil(e.target.value)}
+                      aria-invalid={!!until && untilUtc === null}
+                      onChange={(e) => {
+                        setUntil(e.target.value);
+                        setUntilUtc(hongKongDateTime(e.target.value));
+                      }}
                     />
                   </label>
-                  {refs.length > 0 && (
+                  {until && untilUtc === null && (
+                    <p role="alert">
+                      {t("跟进时间无效，请输入完整有效的香港日期和时间。")}
+                    </p>
+                  )}
+                  {refs.length > 0 && (!until || untilUtc !== null) && (
                     <LoopCommand
                       {...common}
                       label={t("核对延期跟进")}
@@ -629,13 +664,7 @@ function BusinessLoopContent({
                           field: deferField,
                           expected_version: order.version,
                           sources: refs,
-                          ...(until
-                            ? {
-                                until: new Date(
-                                  until + ":00+08:00",
-                                ).toISOString(),
-                              }
-                            : {}),
+                          ...(untilUtc ? { until: untilUtc } : {}),
                         } satisfies Loop["DeferItemCommand"],
                         review: t(
                           "工单 v{0}：客户稍后确认{1}，{2} 跟进；依据“{3}”。保留缺项，暂停对此项的追问。",

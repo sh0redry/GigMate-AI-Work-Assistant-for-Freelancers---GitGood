@@ -1,4 +1,5 @@
-import { t } from "./i18n.ts";
+import { t, localized } from "./i18n.ts";
+import { actionStates, deliveryStates } from "./approval-view";
 import { useStableState as useState } from "./useStableState";
 import { useEffect, useMemo } from "react";
 import { LoopCommand } from "./LoopCommand";
@@ -12,7 +13,16 @@ import {
 } from "./workspace-api";
 import type { Features } from "./features";
 import type { components } from "./generated/api";
-import { instant } from "./work-order-view";
+import { instant, reviewReasons } from "./work-order-view";
+const sendStates: Record<string, string> = localized({
+  queued: "已批准，排队中",
+  preparing: "连接检查中",
+  dispatching: "提交中，不能取消",
+  accepted: "WAHA 已接受",
+  failed: "未提交成功",
+  cancelled: "已取消",
+  result_unknown: "结果未知，禁止重发",
+});
 type Model = components["schemas"];
 export function BusinessLoopReview({
   api,
@@ -237,7 +247,8 @@ export function BusinessLoopReview({
                 .map((q) => (
                   <option key={q.id} value={q.id}>
                     {t("会话")}
-                    {q.conversation_id.slice(-6)} · {q.reason}
+                    {q.conversation_id.slice(-6)} ·{" "}
+                    {reviewReasons[q.reason] ?? t("需要人工核对")}
                   </option>
                 ))}
             </select>
@@ -338,7 +349,7 @@ export function BusinessLoopReview({
               <option key={a.id} value={a.id}>
                 {orders.find((o) => o.id === a.work_order_id)?.summary ||
                   a.work_order_id.slice(-6)}{" "}
-                · r{a.revision} · {a.state}
+                · r{a.revision} · {actionStates[a.state] ?? t("需要人工核对")}
               </option>
             ))}
           </select>
@@ -441,11 +452,12 @@ export function BusinessLoopReview({
                 {receipt && (
                   <p role="status">
                     {t("已通过当前账号核对关联回执：")}
-                    {receipt.state} · {receipt.delivery_status}
-                    {receipt.error_code && ` · ${receipt.error_code}`}
-                    {t(
-                      "。取消、对账或人工核查请到 WhatsApp 消息页选择此记录",
-                    )}{" "}
+                    {sendStates[receipt.state] ?? t("需要人工核对")} ·{" "}
+                    {deliveryStates[receipt.delivery_status] ??
+                      t("需要人工核对")}
+                    {receipt.error_code &&
+                      ` · ${reviewReasons[receipt.error_code] ?? t("处理失败，需要核对原文")}`}
+                    {t("。取消、对账或人工核查请到 WhatsApp 消息页选择此记录")}{" "}
                     {receipt.id.slice(-6)}。
                   </p>
                 )}

@@ -1,5 +1,9 @@
 // UI copy only. Customer content and approved payloads are never translated.
 export const english: Record<string, string> = {
+  "跟进时间无效，请输入完整有效的香港日期和时间。":
+    "Invalid follow-up time. Enter a complete, valid Hong Kong date and time.",
+  "当前后端版本未提供此功能。":
+    "This backend version does not provide this feature.",
   业务工作台: "Workspace",
   新建工单: "New order",
   回复审批: "Reply approvals",
@@ -1623,6 +1627,9 @@ export const english: Record<string, string> = {
     "The server definitely rejected this operation; nothing was saved. Refresh and review the conditions before trying a new operation.",
 };
 export const cantonese: Record<string, string> = {
+  "跟进时间无效，请输入完整有效的香港日期和时间。":
+    "跟進時間唔正確，請輸入完整有效嘅香港日期同時間。",
+  "当前后端版本未提供此功能。": "目前後端版本未提供呢個功能。",
   业务工作台: "工作台",
   新建工单: "開工作單",
   回复审批: "批核回覆",

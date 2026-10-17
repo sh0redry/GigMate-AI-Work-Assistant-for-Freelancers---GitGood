@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import Depends, Header, Query, Request
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from gigmate.contracts import (
     Detail,
@@ -103,14 +104,29 @@ def bind_suggestion(db, account_id, command):
 def consume_suggestion(db, account_id, row, work_order_id):
     if row is None:
         return
-    db.add(
-        ProposalDecision(
-            event_id=row.event_id,
-            proposal_id=row.id,
-            account_id=account_id,
-            work_order_id=work_order_id,
-        )
-    )
+    try:
+        # The caller holds the account lock; keep the unique constraint as a
+        # final fence, returning a business conflict if another writer won.
+        with db.begin_nested():
+            db.add(
+                ProposalDecision(
+                    event_id=row.event_id,
+                    proposal_id=row.id,
+                    account_id=account_id,
+                    work_order_id=work_order_id,
+                )
+            )
+            db.flush()
+    except IntegrityError:
+        if (
+            db.get(ProposalDecision, row.event_id) is not None
+            or db.scalar(select(ProposalDecision).where(ProposalDecision.proposal_id == row.id))
+            is not None
+        ):
+            raise BusinessError(
+                409, "VERSION_CONFLICT", "This message already created an order"
+            ) from None
+        raise
     job = db.scalar(select(Job).where(Job.event_id == row.event_id, Job.account_id == account_id))
     if job and job.state == "completed":
         job.error_code = "NEW_ORDER_REVIEWED"
@@ -225,14 +241,18 @@ def install(app, database, actor, detail, page):
                     Proposal.account_id == account.id,
                     Proposal.assignment == "needs_review",
                     Proposal.work_order_id.is_(None),
+                    Proposal.proposal["new_work_order"].as_string().is_not(None),
+                    ~select(ProposalDecision.event_id)
+                    .where(ProposalDecision.event_id == Proposal.event_id)
+                    .exists(),
                     Proposal.id > scan_id,
                 )
                 .order_by(Proposal.id)
-                .limit(batch_size + 1)
+                .limit(batch_size)
             )
             batch = list(db.scalars(query))
-            has_more = len(batch) > batch_size
-            for row in batch[:batch_size]:
+            has_more = len(batch) == batch_size
+            for row in batch:
                 scan_id = row.id
                 try:
                     current, refs = current_suggestion(db, account.id, row.id)

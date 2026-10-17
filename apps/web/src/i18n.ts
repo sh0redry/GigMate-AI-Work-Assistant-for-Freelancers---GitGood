@@ -68,8 +68,9 @@ export function t(source: string, ...values: unknown[]): string {
   let key = Object.hasOwn(english, source)
     ? source
     : (reverse.get(source) ?? source);
-  // Only UI-created notices/reviews enter t(); customer text never does.
-  // This lets an already formatted notice follow a later language change.
+  // Only standalone UI notices enter the reverse-template path. Business
+  // values are opaque substitution arguments; formatted review snapshots
+  // must be rendered directly and never passed through t() a second time.
   if (
     !values.length &&
     key === source &&

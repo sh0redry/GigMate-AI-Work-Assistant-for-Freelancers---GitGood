@@ -2,6 +2,14 @@
 
 This candidate follows main `14aa34e` (PR31/32/33 merged). It is a reviewable initial **text workflow**, not evidence that a real deployment, paid vendor or phone has passed acceptance. The original plan's broader media/Agent scope remains explicit below. [中文](../zh/bcd-product-delivery.md).
 
+## Authorised scope and capability meaning
+
+Kyrie authorised finishing D04 onward, completing related B/C/D work, preparing PR32's frontend once the server implementation passes review, and submitting a unified delivery PR. On 2026-10-17 Kyrie also explicitly requested configuring their own DeepSeek key for local use, with credentials kept outside Git. These are implementation/local-configuration authorisations; they do not constitute independent vendor-quality or phone acceptance, or authorise sending any particular customer message.
+
+`reviewed_llm` implements the optional text-call path authorised in this batch. The historical `llm` seam and media remain closed. The repository's example and Compose overlay still default to no live calls. Every developer operates their own local backend/worker and private `.env`; no shared team server is assumed. A configured key has not necessarily passed a paid request test.
+
+`manual_assignment`, `business_sending` and `business_loop_reviewed` advertise implemented frontend/API compatibility, not customer permissions or completed live acceptance. Assignment is covered by owned/current/allowlisted review-item checks; sending by the business bridge plus the separately authorised A gateway; the business loop by sourced, versioned order/task operations. The server enforces those checks independently of frontend flags. Setting a flag or calling an endpoint directly grants no send permission. The review name is retained for compatibility; true does not certify real-phone testing. Independent acceptance remains required below.
+
 ## What the merchant can do
 
 Connect and authorise a work chat; manually create an order from customer sources; review proposed changes; file ambiguous messages or dismiss them; defer a missing time/address; manage requirements/materials/commitments/questions; check hours, breaks, buffers and candidate slots; approve a reply, then explicitly submit its exact approved text through the existing sending gateway; inspect its owned receipt; manage tasks and the delivery checklist; finish/cancel/archive; view the internal calendar and export a current confirmed appointment as `.ics`.
@@ -31,12 +39,16 @@ Migration **0021_reviewed_product** adds the job submission fence and suggestion
 
 Pearl-white cards, mist-blue accent and limited glass navigation replace green styling. Chinese / English / Cantonese controls appear at login and in every workspace. Preference alone may persist in local storage. No translation service receives business text. Static UI dictionaries translate; customer content, saved order text and approved payloads do not. Language changes preserve component/input/session state.
 
+Review templates are translated once with opaque business values. The formatted snapshot and uncertain-operation recovery text render directly, without reverse-template translation. Recovery keeps its original review language; a fresh review uses the selected language. Follow-up input accepts Hong Kong dates including seconds/milliseconds, rejects invalid calendar values in the input handler, and never constructs a throwing date during render. Success notices clear on another operation, manual refresh, order selection or an error.
+
 Authenticated reads still reach the server. Session-memory snapshots, conditional ETags and structural sharing retain unchanged UI; 304 is accepted only with a matching local response. Auth/ownership checks precede ETag comparison; mutation, access denial, logout and account changes invalidate appropriate snapshots. No offline business authority, QR caching or chat service worker is added. DB reads are not eliminated. Vite development full-page reloads during source edits are separate from production polling.
 
 ## Verification and limits
 
-- Linux with isolated PostgreSQL, locked dependencies: **987 passed, 1 skipped**; some fixtures explicitly use SQLite. The no-lock-during-model test obtains the same account lock from another transaction during the provider call.
-- New product tests: **26 passed**; real subprocess + loopback-only fake HTTP vendor, actual sleeping-child termination, current/stale/paused/foreign sources, one-time suggestion consumption, task transactions, unknown-call recovery and sanitised startup failure. No real API key or paid vendor was used.
+- Review follow-up: Linux with isolated PostgreSQL, locked dependencies: **998 passed, 1 skipped**; some fixtures explicitly use SQLite. The no-lock-during-model test obtains the same account lock from another transaction during the provider call.
+- Product tests: **37 passed** under PostgreSQL, including real concurrent HTTP requests, signed fictional ingress and actual pause/resume routes, unique-decision rollback, bounded 101-row suggestion history, real subprocess + loopback fake HTTP vendor and unknown-call recovery. SQLite: **35 passed, 2 skipped**; concurrency explicitly requires PostgreSQL. No real API key or paid vendor was used in these tests.
+- Frontend: **175 passed**, including second-conversation quantity/deadline confirmation, mixed/revoked/newer/paused/stale source refusal, seconds/milliseconds input, invalid dates, exact review/recovery snapshots and success/error notices. TypeScript, formatting, contract generation and production bundle pass; the existing bundle-size advisory remains (~636 kB).
+- Before/after checks against `b466c52` reproduce date-render failure, reverse-translated review text, persistent success notices, missing recovery metrics and a duplicate-decision constraint returning 503 rather than a business conflict. Normal PostgreSQL HTTP creation was already protected by authentication/account locks: different keys give 201/409, same keys give the same 201 receipt. The new unique-constraint fence independently maps a losing decision insert to 409 and rolls back the whole order. The service's account lock now precedes receipt lookup too. Suggestion SQL excludes missing suggestion blocks and consumed events; limit=1 loads at most two Proposal objects, with bounded invalid-candidate scans and advancing cursors.
 - Owned PostgreSQL upgraded from 0020 to 0021; Alembic check: no new upgrade operations. Full migration regression is included above. Compose text overlay configuration validates with closed example settings.
 - Frontend/API/build/format and browser acceptance are recorded in [D acceptance](role-d-final-acceptance.md).
 

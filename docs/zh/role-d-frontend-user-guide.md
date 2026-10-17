@@ -2,6 +2,18 @@
 
 当前候选：2026-10-17，基于 main `14aa34e`。这份手册讲怎么使用；技术验收见[交付说明](bcd-product-delivery.md)。[English](../en/role-d-frontend-user-guide.md)。
 
+## 每次怎么在自己的电脑打开
+
+团队没有共享服务器也能本地使用：你的电脑同时运行网页、后端、后台处理程序和数据库。PR34 未合并前使用它的分支 `codex/d-api-cache-glass`；旧 main 里还没有 `infra/compose.text.yaml`。每个人的密钥放在自己电脑被 Git 忽略的 `.env`，不要复制别人的密钥或数据库。模型开关、单价等配置见[交付说明](bcd-product-delivery.md)。
+
+先打开 Docker Desktop，再在**这份分支的项目根目录**打开终端，运行：
+
+```text
+docker compose --env-file .env -f infra/compose.yaml -f infra/compose.text.yaml up --build -d --wait
+```
+
+然后打开 http://127.0.0.1:18080，用自己数据库初始化时设置的账号密码登录。后来修改 `.env` 不会重置已有密码。若自己的 WhatsApp 启动方式带了其他 WAHA 叠加文件，继续保留在同一条命令中；只有文字模型叠加文件不会自动安装或配对 WhatsApp。关闭时沿用相同参数，把最后部分改成 `down`，不加 `-v`，这样保留数据。修改 `.env` 后要重新 `up -d --wait`，只执行 `restart` 不会加载新配置。同一台电脑的两个 clone 可能共用 Compose 项目和数据卷，避免无意混用。
+
 ## 先认识五个概念
 
 - **工单**：一份工作的小档案，例如“陈小姐证件照”。一个聊天可以有多张工单。

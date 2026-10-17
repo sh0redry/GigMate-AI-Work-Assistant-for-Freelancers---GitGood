@@ -2,6 +2,18 @@
 
 Current candidate: 2026-10-17, based on main `14aa34e`. [中文](../zh/role-d-frontend-user-guide.md). Technical evidence: [BCD delivery](bcd-product-delivery.md).
 
+## Run on your own laptop
+
+The team does not need a shared server for local use: your laptop runs the web page, API, worker and database. While PR34 is unmerged, use its branch (`codex/d-api-cache-glass`), which includes `infra/compose.text.yaml`; an older main checkout does not include that file. Keep your own `.env` private and ignored, never copy another teammate's key or database. Configure optional model credentials/gates/pricing as described in [BCD delivery](bcd-product-delivery.md).
+
+Start Docker Desktop, open a terminal **at the root of that checkout**, then run:
+
+```text
+docker compose --env-file .env -f infra/compose.yaml -f infra/compose.text.yaml up --build -d --wait
+```
+
+Open http://127.0.0.1:18080. Use the account/password seeded in your own database; changing `.env` later does not reset an existing password. Keep existing WAHA overlays in the same Compose command if your local WhatsApp setup uses them; the text overlay alone does not install or pair WhatsApp. To stop the base/text stack, use the same options followed by `down`, without `-v`, to retain data. `restart` alone does not reload changed `.env` values; use `up -d --wait` again. Do not run two clones against the same Compose project/volume unintentionally.
+
 ## Five useful words
 
 An **order** is one job's notebook; a chat can contain several orders. A **proposal** is information awaiting review, not an already changed arrangement. **Customer confirmation** is the customer's agreement; your own sent message cannot replace it. **Merchant approval** records your decision; it does not prove a reply was sent. A **receipt** records an operation; accepted, delivered and unknown have different meanings.

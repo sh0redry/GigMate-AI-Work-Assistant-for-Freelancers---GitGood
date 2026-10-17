@@ -705,3 +705,231 @@ test("business sending resolves a different chat UUID from the owned conversatio
   assert.match(document.body.textContent, /关联回执/);
   assert.deepEqual(errors, []);
 });
+
+async function loopFixture({ field = "quantity", invalid = "" } = {}) {
+  const data = deliveryFixture();
+  const fallback = globalThis.fetch;
+  const primary = data.order.conversation_ids[0];
+  const second = "00000000-0000-4000-8000-000000000009";
+  const sourceId = "00000000-0000-4000-8000-000000000010";
+  data.order.conversation_ids.push(second);
+  const change = {
+    id: "00000000-0000-4000-8000-000000000011",
+    work_order_id: data.order.id,
+    field,
+    new_value:
+      field === "quantity"
+        ? "12"
+        : { kind: "date_only", date: "2026-12-01", timezone: "Asia/Hong_Kong" },
+    status: "proposed",
+    customer_confirmation: "ambiguous",
+    base_work_order_version: 3,
+    context_version: invalid === "stale" ? 8 : 9,
+    conflict_ids: [],
+    sources: [{ message_id: sourceId, message_revision: 1 }],
+  };
+  if (invalid === "mixed")
+    change.sources.push({
+      message_id: data.messages[0].id,
+      message_revision: 1,
+    });
+  const secondMessages = [
+    {
+      ...data.messages[0],
+      id: sourceId,
+      conversation_id: second,
+      revoked: invalid === "revoked",
+    },
+  ];
+  if (invalid === "revision")
+    secondMessages.push({ ...secondMessages[0], revision: 2 });
+  const calls = [],
+    writes = [];
+  let unavailable = false;
+  globalThis.fetch = async (url, options) => {
+    calls.push(url);
+    if (options.method === "POST") {
+      writes.push(JSON.parse(options.body));
+      data.order.version++;
+      return Response.json({ data: data.order });
+    }
+    if (unavailable && url.endsWith("/daily-summary"))
+      return Response.json({ error: { code: "UNAVAILABLE" } }, { status: 503 });
+    if (url.endsWith("/daily-summary"))
+      return Response.json({
+        data: {
+          date: "2026-11-01",
+          timezone: "Asia/Hong_Kong",
+          today: [],
+          waiting_for_customer: [],
+          due_soon: [],
+          needs_decision: [],
+          suggestions: [],
+        },
+      });
+    if (url.endsWith("/settings/schedule"))
+      return Response.json({ data: null });
+    if (url.endsWith("/work-orders/" + data.order.id))
+      return Response.json({ data: data.order });
+    if (url.endsWith("/checklist"))
+      return Response.json({
+        data: { work_order_id: data.order.id, items: [], ready: true },
+      });
+    if (url.endsWith("/schedule-check"))
+      return Response.json({
+        data: { work_order_id: data.order.id, risks: [], suggestions: [] },
+      });
+    if (url.includes("/changes?"))
+      return Response.json({ items: [change], next_cursor: null });
+    if (url.includes(`/conversations/${second}/messages?`))
+      return Response.json({ items: secondMessages, next_cursor: null });
+    if (url.endsWith(`/conversations/${second}`))
+      return invalid === "paused"
+        ? Response.json({ error: { code: "NOT_FOUND" } }, { status: 404 })
+        : Response.json({
+            data: {
+              id: second,
+              account_id: "synthetic-account",
+              context_version: 9,
+            },
+          });
+    if (url.includes("/actions?"))
+      return Response.json({ items: [], next_cursor: null });
+    return fallback(url, options);
+  };
+  const { BusinessLoopWorkspace } = await import(
+    pathToFileURL(join(directory, "BusinessLoopWorkspace.mjs"))
+  );
+  root = createRoot(document.getElementById("root"));
+  await act(async () =>
+    root.render(
+      createElement(BusinessLoopWorkspace, {
+        csrf: "csrf",
+        accountId: "synthetic-account",
+        features: {
+          business_loop_reviewed: true,
+          business_sending: false,
+          manual_assignment: false,
+        },
+        onSessionExpired: () => {},
+        onBusyChange: () => {},
+        onOpenOrder: () => {},
+      }),
+    ),
+  );
+  return {
+    ...data,
+    calls,
+    writes,
+    primary,
+    second,
+    offline: () => {
+      unavailable = true;
+    },
+  };
+}
+
+for (const field of ["quantity", "deadline"])
+  test(`business management confirms ${field} from the second linked conversation with its own version`, async () => {
+    const data = await loopFixture({ field });
+    assert.ok(
+      data.calls.some((url) => url.endsWith(`/conversations/${data.second}`)),
+    );
+    assert.ok(button("接受此提议"));
+    await act(async () => button("接受此提议").click());
+    assert.match(
+      document.querySelector('[aria-label="操作复核"]').textContent,
+      /会话 v9/,
+    );
+    await tick("我已核对内容、来源及当前版本");
+    await act(async () => button("确认保存").click());
+    assert.equal(data.writes.length, 1);
+    assert.equal(data.writes[0].expected_context_version, 9);
+    assert.equal(data.writes[0].expected_version, 3);
+    assert.match(document.body.textContent, /保存结果已确认/);
+    data.offline();
+    await act(async () => button("刷新业务管理").click());
+    assert.ok(document.querySelector('[role="alert"]'));
+    assert.doesNotMatch(document.body.textContent, /保存结果已确认/);
+  });
+
+for (const invalid of ["mixed", "revoked", "revision", "stale", "paused"])
+  test(`business management refuses ${invalid} second-conversation evidence`, async () => {
+    const data = await loopFixture({ invalid });
+    assert.equal(button("接受此提议"), undefined);
+    assert.deepEqual(data.writes, []);
+  });
+
+test("seconds in follow-up input do not crash the business page and invalid dates cannot dispatch", async () => {
+  const data = await loopFixture();
+  const selectSource = document.querySelector('[aria-label="业务操作原文"]');
+  await act(async () => {
+    selectSource.value = data.messages[0].id + ":1";
+    selectSource.dispatchEvent(new window.Event("change", { bubbles: true }));
+  });
+  const input = document.querySelector('input[type="datetime-local"]');
+  await fill(input, "2026-11-01T08:30:15.123");
+  assert.ok(button("核对延期跟进"));
+  await act(async () => button("核对延期跟进").click());
+  await tick("我已核对内容、来源及当前版本");
+  await act(async () => button("确认保存").click());
+  assert.equal(data.writes[0].until, "2026-11-01T00:30:15.123Z");
+  // Browsers normally sanitize invalid dates; exercise the handler's failure
+  // branch too rather than relying on a specific browser's input behavior.
+  await act(async () => {
+    Object.defineProperty(input, "value", {
+      configurable: true,
+      get: () => "2026-02-31T08:30",
+    });
+    input.dispatchEvent(new window.Event("input", { bubbles: true }));
+  });
+  assert.ok(document.querySelector('[aria-label="业务管理"]'));
+  assert.match(document.body.textContent, /跟进时间无效/);
+  assert.equal(button("核对延期跟进"), undefined);
+  assert.equal(data.writes.length, 1);
+});
+
+test("review and recovery render the exact formatted snapshot without translating customer-like UI templates", async () => {
+  const { LoopCommand, LoopRecovery } = await import(
+    pathToFileURL(join(directory, "LoopCommand.mjs"))
+  );
+  const review = "Content updated: 已确认 <img onerror=synthetic> {0}";
+  const intent = {
+    path: "/work-orders/00000000-0000-4000-8000-000000000003/defer",
+    body: {},
+    review,
+  };
+  const api = { pending: null, error: "" };
+  const props = {
+    api,
+    intent,
+    label: "review",
+    onDone: () => {},
+    onError: () => {},
+    onBusy: () => {},
+  };
+  root = createRoot(document.getElementById("root"));
+  await act(async () => root.render(createElement(LoopCommand, props)));
+  await act(async () => button("review").click());
+  assert.equal(document.querySelector('[role="region"] p').textContent, review);
+  for (const locale of ["en", "yue", "zh"]) {
+    await act(async () => {
+      setLocale(locale);
+      root.render(createElement(LoopCommand, props));
+    });
+    assert.equal(
+      document.querySelector('[role="region"] p').textContent,
+      review,
+    );
+  }
+  await act(async () =>
+    root.render(
+      createElement(LoopRecovery, {
+        ...props,
+        api: { pending: { intent, key: "synthetic" } },
+      }),
+    ),
+  );
+  assert.equal(document.querySelector('[role="region"] p').textContent, review);
+  assert.equal(document.querySelector("img"), null);
+});

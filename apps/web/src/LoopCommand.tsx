@@ -64,7 +64,8 @@ export function LoopCommand({
       {current && (
         <div className="review-sheet" role="region" aria-label={t("操作复核")}>
           <h3>{t("核对后保存")}</h3>
-          <p>{t(intent.review)}</p>
+          {/* Already formatted once; business values must never be parsed as UI templates. */}
+          <p>{intent.review}</p>
           <label className="inline-check">
             <input
               type="checkbox"
@@ -134,7 +135,7 @@ export function LoopRecovery({
       aria-label={t("原业务操作核对")}
     >
       <h2>{t("有一笔原操作等待核对")}</h2>
-      <p>{t(pending.intent.review)}</p>
+      <p>{pending.intent.review}</p>
       <small>
         {t("原编号")}
         {pending.key}

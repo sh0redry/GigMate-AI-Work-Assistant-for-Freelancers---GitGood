@@ -68,7 +68,7 @@ export function businessLoopApi(
     )
       throw new WorkspaceError(
         "FEATURE_UNAVAILABLE",
-        t("后端尚未完成此功能的交付与安全验收。"),
+        t("当前后端版本未提供此功能。"),
       );
   }
   function check() {

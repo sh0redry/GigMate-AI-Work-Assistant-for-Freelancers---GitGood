@@ -4,20 +4,30 @@ import copy
 import json
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
+from threading import Barrier
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import event as sqlalchemy_event
 from sqlalchemy import func, select
 from test_create_order import create, future
 from test_extraction import _build_reschedule_request
 from test_extraction_batch3 import _configure
+from test_waha_controls import ingress as ingress  # noqa: F401
+from test_waha_controls import path
+from test_waha_controls import setup as control_setup  # noqa: F401
+from test_waha_ingress import post, raw
 
 from gigmate.contracts import ChangeProposal
 from gigmate.db import (
     Account,
+    ActionRow,
     AuditRow,
+    CalendarRow,
+    CommandResult,
     ConversationRow,
     Inbox,
     Job,
@@ -65,6 +75,60 @@ def test_model_io_has_no_business_locks_and_revalidates_consent(signed_in):
         with factory() as db:
             assert db.scalar(select(Job)).error_code == "CONSENT_REVOKED"
             assert db.scalar(select(func.count()).select_from(Proposal)) == 0
+    finally:
+        _reset_provider_for_testing()
+
+
+@pytest.mark.parametrize("operation", ["unchanged", "pause", "pause-resume"])
+def test_inflight_text_respects_real_control_routes_and_retains_submission_fence(
+    request, operation
+):
+    setup = request.getfixturevalue("control_setup")
+    client, factory, headers, binding, _ = setup
+    incoming_setup = (client, factory, None, headers, binding, None)
+    response = post(incoming_setup, raw())
+    assert response.status_code == 200, response.text
+    observed = []
+
+    class DuringCall(DisabledProvider):
+        calls = 0
+
+        def propose(self, request):
+            self.calls += 1
+            for verb, version in (
+                []
+                if operation == "unchanged"
+                else [("pause", 0)] + ([("resume", 1)] if operation == "pause-resume" else [])
+            ):
+                response = client.post(
+                    path(setup, verb), json={"expected_version": version}, headers=headers
+                )
+                observed.append(response.status_code)
+            return super().propose(request)
+
+    selected = DuringCall()
+    _reset_provider_for_testing(selected)
+    try:
+        assert run_once(factory)
+        assert observed == (
+            [] if operation == "unchanged" else [200, 200] if operation == "pause-resume" else [200]
+        )
+        with factory() as db:
+            job = db.scalar(select(Job))
+            assert job.model_request_id
+            assert (
+                job.error_code
+                == {
+                    "unchanged": "EXTRACTION_NEEDS_REVIEW",
+                    "pause": "CONSENT_REVOKED",
+                    "pause-resume": "SOURCE_SUPERSEDED",
+                }[operation]
+            )
+            assert db.scalar(select(func.count()).select_from(Proposal)) == int(
+                operation == "unchanged"
+            )
+        assert not run_once(factory)
+        assert selected.calls == 1
     finally:
         _reset_provider_for_testing()
 
@@ -126,6 +190,7 @@ def test_abandoned_model_submission_never_reclaims_as_a_new_paid_call(signed_in)
     with factory() as db:
         job = db.scalar(select(Job))
         assert job.state == "completed" and job.error_code == "MODEL_OUTCOME_UNKNOWN"
+        assert job.processing_ms is not None and job.completion_latency_ms is not None
     assert not run_once(factory)
 
 
@@ -246,6 +311,217 @@ def test_suggestion_is_readonly_then_consumed_once_with_original_key_recovery(si
     with factory() as db:
         assert db.scalar(select(func.count()).select_from(WorkOrderRow)) == before + 1
         assert db.scalar(select(func.count()).select_from(ProposalDecision)) == 1
+
+
+@pytest.mark.parametrize("same_key", [False, True])
+def test_postgres_concurrent_suggestion_creation_is_atomic_and_idempotent(signed_in, same_key):
+    client, factory, engine, headers = signed_in
+    if engine.dialect.name != "postgresql":
+        pytest.skip("Concurrent account-lock acceptance requires PostgreSQL")
+    proposed, context = suggestion(factory)
+    barrier = Barrier(2)
+    seen_connections = set()
+    keys = [str(uuid4()), str(uuid4())]
+    if same_key:
+        keys[1] = keys[0]
+
+    def before_lock(conn, cursor, statement, parameters, execution_context, executemany):
+        if (
+            "accounts" in statement
+            and "FOR UPDATE" in statement
+            and id(conn) not in seen_connections
+        ):
+            seen_connections.add(id(conn))
+            # Both real HTTP requests reach the lock before either executes it.
+            barrier.wait(timeout=10)
+
+    with factory() as db:
+        before = db.scalar(select(func.count()).select_from(WorkOrderRow))
+    sqlalchemy_event.listen(engine, "before_cursor_execute", before_lock)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            responses = list(
+                executor.map(
+                    lambda key: create(
+                        client,
+                        headers,
+                        key=key,
+                        from_proposal_id=proposed,
+                        expected_context_version=context,
+                    ),
+                    keys,
+                )
+            )
+    finally:
+        sqlalchemy_event.remove(engine, "before_cursor_execute", before_lock)
+    assert sorted(response.status_code for response in responses) == (
+        [201, 201] if same_key else [201, 409]
+    ), [response.text for response in responses]
+    if same_key:
+        assert responses[0].json()["data"] == responses[1].json()["data"]
+    else:
+        rejected = next(response for response in responses if response.status_code == 409)
+        assert rejected.json()["error"]["code"] == "VERSION_CONFLICT"
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(WorkOrderRow)) == before + 1
+        assert db.scalar(select(func.count()).select_from(ProposalDecision)) == 1
+        assert db.scalar(select(func.count()).select_from(CommandResult)) == 1
+        assert (
+            db.scalar(
+                select(func.count())
+                .select_from(AuditRow)
+                .where(AuditRow.data["operation"].as_string() == "create_work_order")
+            )
+            == 1
+        )
+
+
+def test_suggestion_unique_fence_returns_409_and_rolls_back_losing_order(signed_in, monkeypatch):
+    from gigmate import product_commands
+
+    client, factory, _, headers = signed_in
+    proposed, context = suggestion(factory)
+    assert (
+        create(
+            client, headers, from_proposal_id=proposed, expected_context_version=context
+        ).status_code
+        == 201
+    )
+    with factory() as db:
+        models = [
+            WorkOrderRow,
+            CalendarRow,
+            TaskRow,
+            ActionRow,
+            AuditRow,
+            CommandResult,
+            ProposalDecision,
+        ]
+        before = {model: db.scalar(select(func.count()).select_from(model)) for model in models}
+
+    # Exercise the DB fence independently of the earlier read/lock guard.
+    monkeypatch.setattr(
+        product_commands,
+        "bind_suggestion",
+        lambda db, account_id, command: db.get(Proposal, proposed),
+    )
+    response = create(
+        client,
+        headers,
+        from_proposal_id=proposed,
+        expected_context_version=context,
+        schedule=future(),
+        address="Synthetic address",
+    )
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "VERSION_CONFLICT"
+    with factory() as db:
+        assert {
+            model: db.scalar(select(func.count()).select_from(model)) for model in models
+        } == before
+
+
+def history(factory, count=101):
+    proposed, _ = suggestion(factory)
+    with factory.begin() as db:
+        original = db.get(Proposal, proposed)
+        value = {
+            column.name: copy.deepcopy(getattr(original, column.name))
+            for column in Proposal.__table__.columns
+            if column.name != "id"
+        }
+        ids = [proposed]
+        for index in range(count - 1):
+            identity = uid(1000 + index)
+            db.add(Proposal(id=identity, **copy.deepcopy(value)))
+            ids.append(identity)
+    return sorted(ids)
+
+
+def test_suggestions_load_limit_plus_one_and_pages_never_repeat_or_omit(signed_in):
+    client, factory, _, _ = signed_in
+    expected = history(factory)
+    loaded = []
+
+    def load(row, context):
+        loaded.append(row.id)
+
+    sqlalchemy_event.listen(Proposal, "load", load)
+    try:
+        response = client.get("/api/v1/new-order-suggestions?limit=1")
+    finally:
+        sqlalchemy_event.remove(Proposal, "load", load)
+    assert response.status_code == 200, response.text
+    assert len(loaded) <= 2
+    page = response.json()
+    seen = [item["id"] for item in page["items"]]
+    cursors = set()
+    while page["next_cursor"]:
+        cursor = page["next_cursor"]
+        assert cursor not in cursors
+        cursors.add(cursor)
+        response = client.get(
+            "/api/v1/new-order-suggestions", params={"limit": 7, "cursor": cursor}
+        )
+        assert response.status_code == 200, response.text
+        page = response.json()
+        seen.extend(item["id"] for item in page["items"])
+    assert seen == expected
+
+
+@pytest.mark.parametrize("case", ["no_suggestion", "consumed", "stale"])
+def test_suggestions_skip_ineligible_history_with_bounded_scans(signed_in, case):
+    client, factory, _, _ = signed_in
+    identities = history(factory)
+    with factory.begin() as db:
+        for identity in identities:
+            row = db.get(Proposal, identity)
+            if case == "no_suggestion":
+                row.proposal = {**row.proposal, "new_work_order": None}
+            elif case == "stale":
+                row.context_version -= 1
+        if case == "consumed":
+            first = db.get(Proposal, identities[0])
+            db.add(
+                ProposalDecision(
+                    event_id=first.event_id,
+                    proposal_id=first.id,
+                    account_id=uid(1),
+                    work_order_id=uid(3),
+                )
+            )
+    loaded = []
+
+    def load(row, context):
+        loaded.append(row.id)
+
+    sqlalchemy_event.listen(Proposal, "load", load)
+    try:
+        response = client.get("/api/v1/new-order-suggestions?limit=1")
+    finally:
+        sqlalchemy_event.remove(Proposal, "load", load)
+    assert response.status_code == 200, response.text
+    assert response.json()["items"] == []
+    if case == "stale":
+        assert len(loaded) <= 10
+        assert response.json()["next_cursor"]
+        with factory.begin() as db:
+            last = db.get(Proposal, identities[-1])
+            last.context_version = db.get(ConversationRow, uid(2)).context_version
+        page = response.json()
+        seen = []
+        for _ in range(20):
+            if not page["next_cursor"]:
+                break
+            page = client.get(
+                "/api/v1/new-order-suggestions", params={"limit": 1, "cursor": page["next_cursor"]}
+            ).json()
+            seen.extend(item["id"] for item in page["items"])
+        assert seen == [identities[-1]]
+        assert page["next_cursor"] is None
+    else:
+        assert loaded == []
+        assert response.json()["next_cursor"] is None
 
 
 @pytest.mark.parametrize("case", ["foreign", "paused", "context", "source"])

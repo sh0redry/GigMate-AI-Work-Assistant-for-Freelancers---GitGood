@@ -33,6 +33,14 @@ export const taskStates = localized({
   completed: "已完成",
   cancelled: "已取消",
 });
+export const reviewReasons: Record<string, string> = localized({
+  LIVE_EXTRACTION_PENDING: "真实消息理解尚未启用",
+  MODEL_OUTCOME_UNKNOWN: "模型调用结果未知，保留原编号，不能自动重试",
+  EXTRACTION_NEEDS_REVIEW: "模型未能确定业务含义，需要人工核对",
+  ASSIGNMENT_NEEDS_REVIEW: "无法确定属于哪张工单",
+  PROCESSING_FAILED: "处理失败，需要核对原文",
+  RETRY_EXHAUSTED: "多次处理未完成，需要人工核对",
+});
 export const fieldNames: Record<Change["field"], string> = localized({
   schedule: "时间安排",
   address: "地址",
@@ -54,6 +62,21 @@ export function instant(value: string) {
       hour12: false,
     },
   );
+}
+// datetime-local can include seconds and milliseconds. Validate the complete
+// local value before appending a zone; Date alone silently normalizes Feb 31.
+export function hongKongDateTime(value: string): string | null {
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/,
+  );
+  if (!match || Number(match[1]) < 1) return null;
+  const local = `${value.slice(0, 16)}:${match[6] ?? "00"}.${(match[7] ?? "").padEnd(3, "0")}`;
+  const timestamp = Date.parse(`${local}+08:00`);
+  if (!Number.isFinite(timestamp)) return null;
+  const roundTrip = new Date(timestamp + 8 * 3600000)
+    .toISOString()
+    .slice(0, -1);
+  return roundTrip === local ? new Date(timestamp).toISOString() : null;
 }
 export function fieldValue(value: unknown): string {
   if (value === null || value === undefined) return t("未提供");
