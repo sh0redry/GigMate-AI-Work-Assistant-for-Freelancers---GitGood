@@ -1,52 +1,82 @@
 # Role B 抽取子系统
 
-## 真实文字模型与已核对媒体转工单依据 — 2026-10-17
+## 真实启用前评审修正第二轮（PR #31） — 2026-10-17
 
-本批关闭路线图第 3、4 行的启用门槛。上一次已打开 provider 接缝（见下方 2026-10-17 启用记录）；这里只增加拒绝逻辑，不增加任何权限。
+[PR #31](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/pull/31) 的五个评审线程在第一批修正之后仍未关闭：每一项都用合成数据、假传输与假时钟重新复现，证明第一批修正对评审者描述的反例并不充分。五项在此重新修正，**同样不翻接缝**：`LLMProvider._SKELETON_SEAM` 仍为 `True`、`gigmate.media.processor._ENABLED` 仍为 `False`，没有真实供应商请求、凭据、网络调用或客户消息。这一批只是正确性修正，不构成启用授权。
 
-### 私有配置与明确授权
+- **P2-1：标量 `httpx` 超时管不住单次尝试。** 第一轮把**剩余**预算交给每次尝试当超时，但 `httpx` 会把同一个超时值分别套到 connect / read / write / pool 上，于是「给 30 秒」的请求可以先花 30 秒连接、再花 30 秒读取；时钟只在两次尝试之间被查看，一次抽取仍然跑 60 秒，超过声明的 45 秒。现在 `_attempt_timeout()` 把剩余预算**分摊到各操作**（connect ≤ 5s、write ≤ 5s、pool ≤ 1s，read 取剩余并以 `_REQUEST_TIMEOUT_S` 封顶），单次尝试最多只能花掉剩余预算本身；read 预算不足 `_MIN_REQUEST_TIMEOUT_S = 1s` 的尝试根本不发出。用「花光所获预算」的假时钟实测：**20.0 秒**，即总预算本身——见下文，它已被压到 worker 30 秒租约之内（此前是 45 秒声明下实跑 60.0 秒）。
+- **P2-2：零预算仍会请求供应商。** 第一轮比较的是「单次尝试的有界最坏情况」与「预算的那一份」。若供应商单价为 0（`GIGMATE_LLM_COST_INPUT_USD_PER_1K=0` / `GIGMATE_LLM_COST_OUTPUT_USD_PER_1K=0`，例如本地模型），最坏情况同样是 `0`，而 `0 > 0` 为假，于是零预算下请求照样发出。现在 `_cost_plan` 在任何计价算术**之前**就拒绝非正预算（`llm:cost-budget-exceeded`）；`validate_provider_config()` 则在启动时把**负**预算报为 `llm:cost-budget-invalid`。
+- **P2-3：上下文版本上「相等」不等于「同一」。** 守卫原来只用 `!=` 比较模型回显的 `base_context_version`，但 Python 里 `7.0 == 7`、`True == 1`，非整型的回显因此被放行。现在模型给的值必须是与 `request.context_version` 相等的 `int`（且不是 `bool`），否则一律 `llm:response-provenance-failed:base_context_version`。
+- **P2-4：形状守卫补齐。** 原来只检查 `changes` / `sources`，`candidates`、`unresolved_questions` 以及建议块里的 `missing_fields` / `unresolved_questions` 仍未经校验就交给 Pydantic，形状错误会在模型版本的字段已被读取之后才以结构码暴露。现在守卫读到的每个集合都先做形状检查，各有稳定码（`…:candidates-shape`、`…:unresolved-questions-shape`、`…:missing-fields-shape`、`…:suggested-questions-shape`）。
+- **P2-5：日期守卫按**字段**判定，不只按值的形状。** 第一轮覆盖了 `kind: instant`，但 `FieldValue` 同样接受自由文本与数字，于是模型把「明天下午三点」（或没有时区的裸 `2026-10-18`）写进 `deadline` / `schedule` 变更时，依然产生了一个客户从未说过的日期，并被晋升为 `matched`。现在日期字段上的**任何非空值**都需要时间依据；只有缺失值（`None`，即「客户还没说」）豁免。新增回归覆盖 `instant`、依据缺失、`message_received_at` 无法解析或缺时区，以及一个真实相对日期（2026-10-07 `Asia/Hong_Kong` +「下星期四」→ `2026-10-15T07:00:00Z`）：有依据时接受，无依据时拒绝。
 
-真实文字抽取必须同时具备：`GIGMATE_LLM_LIVE=1`、`GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1`、DeepSeek key、支持 JSON 输出的模型、`GIGMATE_WORKSPACE_TIMEZONE`，以及至少一个每日预算上限。缺任何一项都在创建 HTTP 客户端前拒绝，内容不出进程、也不计费。`GIGMATE_LLM_LIVE_ACCOUNTS` 可把真实流量进一步收窄到指定账户，名单外账户得到 `llm:account-not-authorized`。凭据与 endpoint 只存在于 worker/服务端环境，不进入请求、提议、调用记录、API 响应或前端。
+验证证据（全部合成）：`apps/backend/tests/test_extraction_gates.py` **62 通过**（本轮之前 39），启用前套件（gates + batch2 + batch3 + batch3_provider + extraction）**169 通过**；后端全套 **829 通过／25 跳过／12 失败**，12 项失败是原生 macOS 上既有的 PDF 拒绝（`MEDIA_PDF_LIMIT_UNAVAILABLE`），未改动的 main 上同样失败。Ruff 检查／格式 **105 文件**、`scripts/export_contracts.py --check` 一致、`check_baseline.py` **84 Markdown／993 本地链接**、Alembic 唯一 head `0018_model_call_cost` 且 `alembic check` 干净、离线评测 **7 通过／0 失败**（prompt 1.2.0）。无新增迁移、契约或 API 表面：改动在 `gigmate.extraction.llm` 内部加回归测试。未验证：PostgreSQL 并发／行锁（未配 `TEST_DATABASE_URL`）、Linux 容器内 PDF 复跑，以及任何真实供应商行为 —— 特别是真实供应商是否尊重分摊后的超时，只有真实运行才能证明。
 
-### 预算
+## 真实启用前评审修正（PR #31） — 2026-10-16
 
-`gigmate.extraction.budget` 汇总该账户当天已提交的 `model_call_traces`（按行计数，不另设计数器，避免用量与证据不一致；本地 `deterministic`/`disabled` 不计数，其他供应商名一律计数），把计数附加到 `ExtractionRequest`。上限由 `GIGMATE_LLM_DAILY_CALL_BUDGET` 和/或 `GIGMATE_LLM_DAILY_TOKEN_BUDGET` 设置。未配置任何上限时，真实流量以 `llm:budget-not-configured` 拒绝；达到上限时以 `llm:budget-exhausted` 拒绝。两种拒绝都在 I/O 之前发生且记录零用量。供应商不返回 token 数时仍占用一次调用预算，沉默不能等于免费。provider 不读数据库，只比较 worker 附加的数字。
+独立评审在 `a4e6b8a` 上针对 [PR #31](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/pull/31) 提出五项 P2 问题，每一项都由评审者用合成数据、假传输与假时钟复现，不是静态推断。五项全部在此修正，**同样不翻接缝**：`LLMProvider._SKELETON_SEAM` 仍为 `True`、`gigmate.media.processor._ENABLED` 仍为 `False`，没有真实供应商请求、凭据、网络调用或客户消息。这一批只是正确性修正，不构成启用授权。
 
-### 时间基准
+- **P2-1：总时限落实到每次请求。** 原来每次尝试都拿固定的 30 秒单次超时，总预算只在失败后才检查，于是「30 秒超时 + 重试 30 秒」实际跑 60 秒，超过声明的 45 秒。现在每次尝试只继承**剩余**总预算作为自己的超时（`min(_REQUEST_TIMEOUT_S, remaining)`）；剩余不足 `_MIN_REQUEST_TIMEOUT_S = 1s` 的尝试根本不发出；超过 `_TOTAL_DEADLINE_S` 才返回的响应以稳定码 `llm:deadline-exceeded` 拒绝 —— worker 租约早已过期，迟到的成功毫无价值，且绝不重试。第二轮（见上）把这个标量超时改成了按操作分摊，因为 `httpx` 对**每个操作**各套一次超时值，单次尝试仍能把预算花两遍。
+- **P2-2：费用上限在花钱之前生效。** 原来的费用检查发生在钱已经花掉之后，只能拒绝提案而不能阻止支付；预算设为 0 时仍会发出一次调用。现在 `_cost_plan` 先算：预算按 `_MAX_RETRIES + 1` 次尝试分摊，单次尝试的有界最坏情况（估算的 prompt token + 配置的输出上限）必须装进自己那一份，否则以 `llm:cost-budget-exceeded` 拒绝且不发出；prompt 本身超过 `GIGMATE_LLM_MAX_INPUT_TOKENS` 时以 `llm:cost-input-too-large` 拒绝，而不是截断。请求体携带该输出上限作为 `max_tokens`，让供应商收到与预算同源的约束；非正的 token 上限在启动时报 `llm:cost-tokens-invalid`。调用后的检查保留为第二道防线：账单超出预算的响应仍然无法晋升提案。
+- **P2-3：上下文版本也由服务端绑定。** 出处守卫校验了 `base_work_order_version` 却没校验 `base_context_version`，后面的 `setdefault` 也覆盖不了模型自带的值，于是 `base_context_version=999` 对上 `context_version=7` 的响应仍能变成 `matched`，错误版本随后流入 `Proposal` / `RequirementChange`。现在值不一致即以 `llm:response-provenance-failed:base_context_version` 拒绝，之后再写入服务端自己的值。
+- **P2-4：遍历前先检查集合类型。** 出处守卫运行在 Pydantic 之前，直接遍历未校验的 `changes` / `sources`，于是 `changes: 17`、`changes: true` 这类合法 JSON 会从 `propose` 抛出未捕获的 `TypeError` —— worker 会把整个作业重试一遍并重复付费，而不是记录一个稳定 `needs_review`。现在这些形状返回 `llm:response-provenance-failed:changes-shape` / `:source-shape`（建议字段同理）。
+- **P2-5：时间依据守卫覆盖 `instant`。** 原检查只认 `timed` / `date_only`，`InstantDeadline`（`kind: instant`，即「明天交稿」的形状）—— 客户最常输入的相对日期 —— 可以带着模型捏造的时间戳直接穿过门槛四。现在所有含日期的契约 kind 都被守卫，old 与 new 值都检查。
 
-worker 把 inbox 消息的接收时间（UTC，`Z`）与 `GIGMATE_WORKSPACE_TIMEZONE` 附加到每个真实请求，并渲染进 user message；提示词只按该基准解析相对日期。两者缺失任一项即以 `llm:time-basis-missing` 拒绝。输出时间必须满足契约的 UTC-only 时间戳类型；带偏移或只有日期会校验失败并成为 `llm:response-schema-failed`，不会被悄悄当作本地时间重新解释。
+验证证据（全部合成）：五个反例现已成为回归测试。`apps/backend/tests/test_extraction_gates.py` **39 通过**（`a4e6b8a` 时为 27）、`test_extraction_batch2.py` **50 通过**（`a4e6b8a` 时为 40）；在当前工作树（同时含进行中的 batch 3 文件）测得启用前套件 **106 通过**。后端全套 **745 通过／25 跳过／12 失败**，12 项失败是原生 macOS 上既有的 PDF 拒绝（`MEDIA_PDF_LIMIT_UNAVAILABLE`），未改动的 main 上同样失败。Ruff 检查／格式 **100 文件**、`scripts/export_contracts.py --check` 一致、`check_baseline.py` **82 Markdown／967 本地链接**、Alembic 唯一 head `0018_model_call_cost` 且在 SQLite 上完成升级→回退→升级往返无漂移（`alembic check` 干净）、离线评测 **7 通过／0 失败**（prompt 1.2.0）。新增迁移、契约与 API 表面为零：改动全部在 `gigmate.extraction.llm` 内部，外加两个新的运维设置 `GIGMATE_LLM_MAX_*_TOKENS`。未验证：PostgreSQL 并发／行锁（未配 `TEST_DATABASE_URL`）、Linux 容器内 PDF 复跑，以及任何真实供应商行为。
 
-### 来源重绑定
+## 真实启用前评审修正：第二轮续篇 — `038ae3b` 上的评审意见 — 2026-10-17
 
-模型给出的 `conversation_id`、`base_context_version`、`work_order_id`、`base_work_order_version` 及每个变更的 `sources` 在校验前一律用服务端请求覆盖：
+独立评审在 `038ae3b` 上确认 P2-3、P2-4、P2-5 以及 P2-2 的「零预算」部分确实已修好，并指出四个尚未堵上的缺口。四项全部在此补全，**依旧不翻接缝**（`LLMProvider._SKELETON_SEAM` 仍为 `True`、`gigmate.media.processor._ENABLED` 仍为 `False`），没有真实供应商、凭据、网络调用或客户消息。
 
-* `conversation_id` 与 `base_context_version` 永远取请求值；
-* `work_order_id` 必须在 `candidate_work_order_ids` 内，只有一个候选时强制取该候选；
-* `base_work_order_version` 必须等于请求携带的工单版本；
-* 每条 `sources` 都替换为产生该请求的确切消息 id/修订号。
+- **P2-1（第二轮）：总时限要掐断传输，而不是只掐断等待。** 只约束 httpx 的各阶段超时仍挡不住持续分块返回的响应体：`client.post()` 会先把整个响应读完才再次看时钟，评审者用真实回环 HTTP 在 0.18 秒预算下测到约 0.36 秒。现在 `_call_chat_completion` 改用 `client.stream(...)` 逐块读取、在块之间重新核对墙钟，并在放弃前关闭流——关闭会拆掉连接，而不是「先返回、数据继续收」那种假中止。`_TOTAL_DEADLINE_S` 同时从 45 秒降到 20 秒：`gigmate.worker` 30 秒后就能收回作业，预算比租约长意味着第一个 worker 还在请求时第二个 worker 可能已经开工同一条抽取（`test_gate3_total_deadline_fits_inside_the_worker_lease` 断言这个关系，`_WORKER_LEASE_S` 记录租约值）。
+- **P2-2（第二轮）：token 上界不再可能低估。** `ceil(len / 3)` 是平均值而不是上界：真实分词器下每个 CJK 字符就是一个 token（三个字节），中文 prompt 因此只被算成约三分之一的最坏费用。`_estimate_tokens` 现在返回可证明的上界——UTF-8 字节数（字节级 BPE 中每个 token 至少覆盖一字节，因此字节数必然上界）——再加上 `_CHAT_FRAMING_TOKENS` 覆盖角色标记与分隔符这些同样计费的部分。分词器不保证该性质的模型（见 `_BYTE_LEVEL_BPE_MODELS`）以 `llm:cost-estimate-unsupported` 拒绝，而不是把平均值当作硬上限汇报；这样「费用硬上限」这道启用门槛维持未通过的真实状态。`GIGMATE_LLM_MAX_INPUT_TOKENS` 默认值改为 16000，因为它与该上界比较，而该上界约为真实 token 的 3–4 字节。
+- **P2-6：厂家信封先做类型检查再下标。** `{"choices": 17}` 和 `{"choices": [{"message": 17}]}` 都是合法 JSON，会直接从厂家边界抛出 `TypeError: 'int' object is not subscriptable`，worker 会把它当作作业失败重试且不落任何证据行——启用后就是重复付费。`_envelope_content` 逐层校验，`_MalformedVendorResponse` 把每种违规映射为带 request id 的稳定记录 `llm:response-malformed`。
+- **P2-7：不能约束金额的金额在启动时就被拒绝。** `Decimal` 接受 `NaN` 与 `Infinity`，所以 `GIGMATE_LLM_COST_BUDGET_USD=NaN` 能通过 `validate_provider_config()`，之后在已付费的比较里抛 `InvalidOperation`。`_money` 要求有限且非负：其余一律在启动时报 `llm:cost-budget-invalid` / `llm:cost-pricing-invalid`，并在发出任何请求之前拒绝调用。有限的零预算仍按原有方式在 `_cost_plan` 里拒绝。
 
-若响应指名候选集之外的工单、不同基础版本，或候选列表含未知工单，则记为 `llm:provenance-mismatch` 且不产生变更。消息身份不发给模型，因此模型无法选择归属。调用返回后 worker 会重新读取会话；若调用期间上下文已推进，提议仍保留为成本/证据，但不落地任何 `RequirementChange`，任务记录 `SOURCE_SUPERSEDED`。
+验证证据（全部合成）：新增 `apps/backend/tests/test_extraction_boundaries.py` **24 通过**，含 400 块的涓流响应体在 0.05 秒预算下一秒内被放弃且生产者生成器被关闭（评审的意见正是「返回了但传输仍在跑」不算中止）、五种畸形信封、CJK 上界、无上界分词器的拒绝，以及 NaN/Infinity/负数金额。改用流式读取后的既有提取套件，连同新增的边界用例：`test_extraction.py`、`test_extraction_batch2.py`、`test_extraction_batch3.py`、`test_extraction_batch3_provider.py`、`test_extraction_gates.py`、`test_extraction_boundaries.py` **194 通过**——这些用例的假客户端现在通过 `_StreamedResponse` 应答 `stream`，因为只答 `post` 的替身已经不能描述真实的 httpx 客户端。后端全套 **854 通过／25 跳过／12 失败**，12 项失败是原生 macOS 上既有的 PDF 拒绝，未改动的 main 上同样失败。Ruff 检查／格式 **104 文件**、`scripts/export_contracts.py --check` 一致、`check_baseline.py` **84 Markdown／995 本地链接**。未验证：PostgreSQL 并发／行锁、容器内 PDF 复跑、真实供应商行为，以及任何真实 token 计数——这个上界是从字节级 BPE 结构性证明的，不是对厂家回复实测出来的。
 
-### 超时、未知结果与重试
+## 真实启用前验收门槛已实现 — 2026-10-16
 
-只有可证明尚未开始工作的失败才重试：TCP 连接失败、`408`、`429`。读超时、提交后连接中断、`5xx` 及畸形 2xx 响应分别记为 `llm:result-unknown` / `llm:response-malformed`，`total_tokens` 记为 `NULL`，任务错误码为 `EXTRACTION_RESULT_UNKNOWN`，且绝不自动重发。提议始终只是提议：没有确认、批准或发送，因此未知结果不可能执行业务变更。
+下文["真实启用前验收门槛"](#真实启用前验收门槛)五项已全部落地，回归测试在 `apps/backend/tests/test_extraction_gates.py`。接缝仍关闭：`LLMProvider._SKELETON_SEAM` 仍为 `True`、`gigmate.media.processor._ENABLED` 仍为 `False`，本批次没有真实供应商请求、真实密钥或真实客户消息，**不构成启用授权**。
 
-诊断只保留稳定错误码与状态类别（`LLM HTTP call failed (status-401); endpoint and credential details are redacted.`）。供应商 URL、异常文本、请求头与密钥不落库、不打日志。
+- **门槛一：出处重绑定。** `_parse_response` 把 `conversation_id`、`work_order_id`（必须是 `candidate_work_order_ids` 成员）、`base_work_order_version`（必须等于 worker 解析到的版本）、`base_context_version`（P2-3 评审修正新增）以及每条 `sources[].message_id` / `message_revision` 重新绑定回本次实际发出的请求；不匹配返回 `needs_review`、备注 `llm:response-provenance-failed`，原因码 `llm:response-provenance-failed:<字段>`，绝不会变成 `matched`。遍历前先检查集合类型（P2-4），非列表的 `changes` / `sources` 是稳定拒绝，不再是未捕获的 `TypeError`。
+- **门槛二：vendor／endpoint 语义。** 每个已知 vendor 自带文档化默认端点（`deepseek` → `https://api.deepseek.com`，`openai` → `https://api.openai.com`）；`custom` 没有默认值，必须显式配置 `GIGMATE_LLM_ENDPOINT`。未知 vendor 以 `llm:vendor-unknown` 拒绝，非 URL 覆盖以 `llm:endpoint-invalid` 拒绝，覆盖值等于另一个 vendor 默认端点时以 `llm:vendor-endpoint-mismatch` 拒绝。
+- **门槛三：重试、预算与关联。** 单次抽取总耗时设上限（`_TOTAL_DEADLINE_S = 45s`），只有预算仍有剩余才重试；只对瞬时类重试（httpx 超时／连接错误／重置、HTTP `5xx`），`4xx`、解析与结构错误一律不重试。每次尝试都带同一个持久化 `X-Gigmate-Request-Id` 头，该 id 落库到 `model_call_traces.request_id`（迁移 `0017_model_call_request_id`），便于与供应商日志对齐。P2-1 评审修正让截止时间同时成为每次请求的预算：每次尝试只拿到**剩余**时间，不足 `_MIN_REQUEST_TIMEOUT_S = 1s` 的尝试不发出，截止后才到达的响应用 `llm:deadline-exceeded` 拒绝，不晋升。第二轮修正再把这个剩余预算分摊到 `httpx` 各操作（`_attempt_timeout`），单次尝试能花的是它们的**总和**而不是各自单独一份。
+- **门槛四：真实时间依据。** `ExtractionRequest` 增加服务端附上的 `message_received_at`（连接器发送时间，UTC `Z`）与 `workspace_timezone`（运维 IANA 配置，`GIGMATE_WORKSPACE_TIMEZONE`）。prompt（`role_b_extraction_v1.txt`，升到 **1.1.0**）要求模型只依据 `time_basis` 解析相对日期并输出 UTC `Z`；依据缺失或不合法时，provider 以 `llm:time-basis-missing` 拒绝任何含日期的变更，而不是猜一个日期；地址／摘要等非日期字段不受影响。P2-5 评审修正把「含日期」扩展到全部契约 kind —— `timed`、`date_only` **与** `instant`（`InstantDeadline`，即「明天交稿」的形状）—— old 与 new 值都要检查；第二轮修正让守卫按**字段**判定，`schedule` / `deadline` 上以自由文本或裸数字写出的日期同样需要依据。worker 在调用后还会重读会话上下文与工单版本，丢弃基于过期快照的结果；自身租约已过期的结果同样丢弃。
+- **门槛五：诊断脱敏。** 失败原因改为稳定码（`llm:http-failed:timeout`、`llm:http-failed:status-5xx`、`llm:response-malformed:json`、`llm:response-schema-failed:<字段路径>`、`llm:prompt-load-failed:…`）。异常类名、异常消息、端点主机、vendor 名称与密钥片段都不会进入 `refused_reason`。
 
-### 真实媒体识别
+启用前仍缺的不是代码：单独授权的真实凭据／live-origin 通道、真实负载下实测的延迟预算，以及把供应商 I/O 完全移出 worker 行锁（结构性改动，需与 A／C 达成一致）。验证证据记在 `docs/zh/progress.md`。
 
-媒体保留原有 `GIGMATE_MEDIA_LIVE` / `GIGMATE_MEDIA_ALLOW_LIVE_ORIGIN` 传输闸门，并新增两项显式授权：
+## 真实启用前第二批 — 费用边界、启动校验、注入回归 — 2026-10-16
 
-* `GIGMATE_MEDIA_MODALITIES` 列出允许发送真实字节的模态（`ocr`、`asr`、`pdf`、`text`）。为空时即使 live 开关打开也一律 `MEDIA_MODALITY_NOT_AUTHORIZED` 拒绝，验收 OCR 不会顺带打开语音转写或文档外发。
-* `GIGMATE_MEDIA_VISION_VENDORS` 列出实际验证过图片输入的供应商。OCR 发给其他供应商会在创建客户端前以 `MEDIA_VISION_VENDOR_UNVERIFIED` 拒绝；不假设 DeepSeek chat-completions 支持图片。
+本批次落地了剩余启用待办中的三项，**同样不翻接缝**：`LLMProvider._SKELETON_SEAM` 仍为 `True`、`gigmate.media.processor._ENABLED` 仍为 `False`，没有真实供应商请求、凭据或客户消息；新代码路径通过与五项门槛相同的「测试子类开闸」方式验证。回归测试在 `apps/backend/tests/test_extraction_batch2.py`。
 
-ASR 仍需 `GIGMATE_MEDIA_AUDIO_VENDOR`（OpenAI 兼容）；PDF/text 保留本地解析与上限检查。本批不引入新供应商，本环境也未做真实供应商调用。
+- **费用边界。** 每次调用按内置千 token 单价表（键为 `(vendor, model)`）计价，可用 `GIGMATE_LLM_COST_INPUT_USD_PER_1K` / `GIGMATE_LLM_COST_OUTPUT_USD_PER_1K` 覆盖。预算来自 `GIGMATE_LLM_COST_BUDGET_USD`（默认每次 0.10 美元）。P2-2 评审修正让它在花钱**之前**就成立：`_cost_plan` 把预算按 `_MAX_RETRIES + 1` 次尝试分摊，单次尝试的有界最坏情况（估算 prompt token + 配置的输出上限）必须装进自己那一份，否则以 `llm:cost-budget-exceeded` 拒绝且不发出；prompt 超过 `GIGMATE_LLM_MAX_INPUT_TOKENS` 时以 `llm:cost-input-too-large` 拒绝，而不是截断。请求体携带该输出上限作为 `max_tokens`（`GIGMATE_LLM_MAX_OUTPUT_TOKENS`），非正的 token 上限在启动时报 `llm:cost-tokens-invalid`。调用后的检查保留为第二道防线：计算费用超预算的响应仍以 `llm:cost-budget-exceeded` 拒绝；完全无法计价的调用则在发出**之前**就以 `llm:cost-pricing-missing`（模型未知且无覆盖）、`llm:cost-pricing-partial`（只配了两个覆盖之一）或 `llm:cost-pricing-invalid` 拒绝。供应商省略 `usage` 时不静默当免费：trace 记录 `llm:cost-usage-missing`（结构非法时 `llm:cost-usage-invalid`），`cost_usd` 保留为 null。`model_call_traces` 新增 `input_tokens`、`output_tokens`、`cost_usd`（迁移 `0018_model_call_cost`），运维可直接还原花费。调用后的检查仍放在 HTTP 与解析门槛**之后**，因为 `4xx` 响应没有 usage 数据，解析失败也不能计入预算；留给它抓的是无视 `max_tokens` 的供应商。
+- **Provider 配置启动校验。** `gigmate.extraction.llm.validate_provider_config()` 是纯审计函数，不取会话、不开 socket，worker 启动时经 `gigmate.worker.audit_provider_config()` 调用。报告项包括 `llm:vendor-unknown`、`llm:endpoint-invalid`、`llm:vendor-endpoint-mismatch`、`llm:endpoint-required`、`llm:prompt-path-invalid`、`workspace-timezone-invalid`、上述四个费用码，以及（仅 `GIGMATE_LLM_LIVE=1` 时）`llm:api-key-missing`。策略：活门打开时任何问题都让 worker 拒绝启动 —— 一个即将发出真实供应商调用的进程，不能带着已知错误的配置运行；活门关闭时同样的问题只记 warning，因为关闭的接缝本就拒绝所有调用。传入 `env` 映射即可让测试在不改动真实环境的前提下驱动审计。
+- **Prompt-injection 回归集。** `contracts/evaluation/injection.json` 提供九个合成案例，每个案例把一条含注入指令的客户消息与「被诱导的模型」会返回的 `compromised_response` 配对。由 `test_extraction_batch2.py::test_injection_regression_suite` 驱动，断言任何案例都不会产出 `matched` 提案，且各自命中预期稳定码：`llm:response-provenance-failed`（外来 `work_order_id` / `conversation_id`、过期 `base_work_order_version`、伪造的 source 消息）、`llm:response-schema-failed`（AI 把字段标为 `confirmed`、夹带额外键）与 `llm:time-basis-missing`（用模型自己的「现在」凭空造日期）。这是纯文字回归集；媒体附件（OCR／ASR／PDF）的同类套件仍是单独授权批次。
 
-### 附件成为工单依据
+启用前仍待：带独立评审的真实凭据／live-origin 通道、真实负载下的延迟预算、媒体附件注入套件，以及把供应商 I/O 移出 worker 行锁。
 
-`POST /api/v1/work-orders/{id}/evidence` 把一份已通过来源核对的附件保留为该工单依据。命令回显被核对的绑定（`attachment_id`、`expected_attachment_version`、`expected_context_version`、`expected_result_job_id`），服务端重新校验账户归属、连接/来源有效、授权、到期、核对记录及原始文件字节。附件所在会话必须已关联该工单，否则 `MEDIA_ORDER_LINK_REQUIRED`。结果比核对时更新会以 `MEDIA_RESULT_CHANGED` 拒绝；文件/版本/上下文变化以 `MEDIA_SOURCE_CHANGED` 拒绝。
+## 真实启用前第四批 — 媒体附件注入回归集 — 2026-10-16
 
-映射行（迁移 `0015_work_order_evidence`）快照附件版本、上下文版本、结果任务 id 与 SHA-256，并按 `(work_order_id, attachment_id, attachment_version)` 唯一，重复提交同一绑定是幂等的。后续变化不会改写历史：`GET /api/v1/work-orders/{id}/evidence` 在读取时计算 `stale` 与稳定的 `stale_reason`。该提升不写 `RequirementChange`、不确认客户事实、不授予批准或发送权限；它记录的是"该已核对文件支持此工单"的商家决定。商家批准仍需另行绑定收件人、内容、版本、到期与动作修订。
+附件内容由攻击者可控，因此媒体接缝获得与文字接缝同样的待遇。新增纯分类器 `gigmate.media.injection`，扫描一个媒体结果的每个不可信面 —— 商户/攻击者提供的 caption、OCR 文本或本地解析出的页面文本、ASR 转写文本，以及供应商自己的 `summary` / `suggestions` / `unresolved_questions` —— 对照一套收紧的双语模式（忽略先前指示、角色篡改、权力声索、绕过复核、提示词外泄、指令性动词）。命中记为稳定的 `media:instruction-text-detected:<field>` 标记，写入新的可选字段 `WahaMediaResult.injection_markers`（默认空；结果随既有 JSON 列落库，无需迁移），并以 `MEDIA_INJECTION_DETECTED` 只记录模式 id 与字段名，绝不记录载荷原文。
+
+检测是标记而非裁决：不阻断、不改写、不采信内容，也不授予或剥夺权限 —— `WahaMediaEvidence.business_confirmation_required` 仍是 `Literal[True]`，测试断言即使结果已被标记，把它改成 `False` 也会被拒绝。取舍是写明的：一个标记只是让人多看一眼，漏掉一条指令却会产出错误工单，因此偏向「宁可标」；正因这种偏向可能扰民，`contracts/evaluation/media_injection.json` 为每个攻击案例都配了干净的对照案例 —— 一旦普通商户内容被误标，套件即失败。九个合成案例覆盖图片 caption 与 OCR 文本、语音转写中的口头指令、PDF 隐藏文字层、既试图改写正文又向业务层夹带指令的 PDF 模型，以及藏在 `unresolved_questions` 里的指令。PDF 路径同时重新钉住「页文本始终来自本地解析」。
+
+启用前仍待办：真实媒体内容。这里没有见过任何真实图片、音频、PDF 或供应商响应 —— 字节是合成占位、载荷是脚本化的 —— 因此模式集在真实商户内容上的误报率未知，运维应先读标记再行动。PDF 端到端变体在原生 macOS 上是**跳过**而非通过：本地解析器以 `MEDIA_PDF_LIMIT_UNAVAILABLE` 拒绝，因此套件以解析器产出的数据结构驱动 `coerce_pdf_extraction`。
+
+## 真实启用前第三批 — 新建工单识别契约、未知结果处置、评测分类 — 2026-10-16
+
+再落地 issue #29 中 B 侧三项待办，**仍不翻接缝**（`_SKELETON_SEAM = True`、媒体 `_ENABLED = False`）。回归测试在 `apps/backend/tests/test_extraction_batch3.py`。
+
+- **`new_work_order` 识别契约。** `ChangeProposal` 新增可选 `new_work_order` 块（`NewWorkOrderSuggestion`）：`summary`、识别到的关键 `fields`（每项含值、绑定本次服务端发出消息 revision 的 `sources` 与 `reason`）、`missing_fields`、`unresolved_questions` 与 `confidence`。它只是识别输出 —— 不建单、不确认任何字段、不授予执行权；商户仍需手动建单，客户提出、客户确认与商户批准保持独立。契约禁止它与 `matched` 归类或非空的 `work_order_id` 同时出现，因此模型无法在改期旁边夹带一个新单。未知值保持缺失：客户没给的字段不进 `fields`（或值为 null）并列入 `missing_fields`。建议随既有提案 JSON 落库，无需迁移，也永远不会为它生成 `RequirementChange` 行。
+  **待 `llm.py` 落地：** 把出处重绑定（门槛一）扩展到建议字段 —— 引用商户从未见过的消息以 `llm:response-provenance-failed:suggested-source-message-id` 拒绝；并把时间依据门槛（门槛四）扩展到建议中的相对日期，与变更中的相对日期同样拒绝。两处防护已写好且本地通过，由 `test_extraction_batch3_provider.py` 与 `inj-010` 注入夹具钉住，但 `llm.py` 正被并发修改（review fix P2-1），因此本提交只落地契约、prompt、评测与文档；provider 侧那一半随 `llm.py` 在下一个提交落地。这就是 C 的 #26 手工建单流程可以消费的契约；`case-001` 与 `case-004` 现已钉住「当前确定性 provider 不产生误报建议」。
+- **文字提取的未知供应商结果。** 超时或无人应答的调用属于「未知」，不是静默失败。策略现已成文并由测试钉住：一次有界重试（`_MAX_RETRIES = 1`，且必须在 `_TOTAL_DEADLINE_S` 预算内），两次尝试携带**同一个**持久化 request id，然后产出 `needs_review` 提案、稳定拒绝码 `llm:http-failed:timeout`，并把 request id 存进 trace 行以便与供应商日志对账。之后不再重复提交；由于提取不写入任何客户可见状态，供应商侧即使重复完成也不会产生业务事实，作业保留给人工复核。媒体路径保持既有成文立场（`reconcile()` 返回 `None`），任何情况下都不靠盲目重发解决。
+- **评测分类输出。** `EvaluationCase` 新增 `expected_new_work_order`，`evaluate_case` 逐例输出 `actual_new_work_order`、`refused_reason` 与 `notes`，`scripts/run_evaluation.py` 新增 `classification` 块：按期望归类的通过／失败、提出新单建议的案例数、出现的拒绝码以及失败案例 id。这是 E 后续填入真实目标数据的结构；当前运行仍是合成数据，不构成生产准确率。
+
+prompt（`role_b_extraction_v1.txt`）升到 **1.2.0**：写明 `new_work_order` 输出块、「仅无候选工单时使用」的规则、来源绑定与「未知保持缺失」规则。
+
+启用前仍待：带独立评审的真实凭据／live-origin 通道、真实负载下的延迟预算、与 C 联合核验 revision/版本，以及把供应商 I/O 移出 worker 行锁。媒体附件注入套件已在上面的第四批落地，但该套件仍未见过真实媒体内容 —— 真实附件、真实供应商响应与误报率的实测仍是单独授权批次。
 
 ## PDF 资源隔离
 
@@ -66,7 +96,7 @@ PR #21 包含 PDF 分支的 `0d91ad1`。有文本层 PDF 在创建客户端前�
 
 取消、暂停/撤权及内容到期时，在途处理或未解决的核对保留附件/请求身份。晚到模型内容及 review 不会保存，重新授权也不恢复。原租约可记录确定返回或提交前明确拒绝，从而解除占用但不恢复内容；结果不确定则保留 result_unknown，阻止新请求。原租约有效时不能开始核对，核对只读；中止尚未开始的核对也保留原不确定状态。恢复授权不允许重发；来源变更/过期可能阻止自动核对，需要人工处理，没有新增强制清除或盲重发接口。
 
-该批次中模型保持 `_ENABLED=False`，已被上方 2026-10-17 小节取代；日期依据、预算、来源绑定与分模态授权在那一节实现。共享 DeepSeek 部署、真实视觉/语音凭据与能力、供应商验收仍需运营方自行验证。本次不实现扫描件 OCR 或 WhatsApp 发送。
+模型保持 `_ENABLED=False`。共享 DeepSeek 部署、真实视觉/语音凭据与能力、日期依据、提示注入及供应商验收仍是独立工作；本次不实现扫描件 OCR 或 WhatsApp 发送。
 
 ## 真实 PDF 解析器与两层提取 — 2026-10-12
 
@@ -119,18 +149,13 @@ Role B 拥有 AI 抽取流水线：Provider 接口、提示词/模型版本注�
   `evaluation_cases`（迁移 `0005_extraction_evidence`）。
 - 离线评测 `scripts/run_evaluation.py`，清单 `contracts/evaluation/manifest.json`。
 
-真实模型默认对接 DeepSeek，任何 OpenAI 兼容供应商（`deepseek` /
-`openai` / `custom`）都用同一套调用形态。接缝已经预留好，新增真实
-provider 时不必改 worker、合约或既有 Replay 逻辑。
-
-`llm` provider 现已**接通真实调用**：`LLMProvider._SKELETON_SEAM` 为
-`False`，`_invoke_model` 会发起真实的 OpenAI 兼容 chat-completions POST。
-是否到达供应商由 `GIGMATE_LLM_LIVE=1` 与非空 `GIGMATE_LLM_API_KEY` 决定，
-二者缺一则分别以 `llm:live-gate-off` / `llm:not-configured` 拒绝且不构造
-客户端。下文"真实启用前验收门槛"**尚未清空**——尤其是一次真实供应商
-请求都还没有发出，因此供应商/端点语义、真实编解码行为与 prompt 注入
-防护仍属未验证。已验证与未验证的实际证据见
-[实施状态](../en/implementation-status.md)。
+真实模型接入（Anthropic、OpenAI 或其他具体供应商）是后续单独授权批次。
+接缝已经预留好，新增真实 provider 时不必改 worker、合约或既有 Replay
+逻辑。本批次交付**未激活调用实现**的 `llm` provider：注册表选择、
+配置、prompt 版本与 OpenAI 兼容的 HTTP/解析调用形态都已接好，但常闭的
+`LLMProvider._SKELETON_SEAM` 标志把它们全部挡在网络之外；激活真实模型
+只需清空下文"真实启用前验收门槛"并翻转该标志（连同运维闸门），不改
+worker、合约或注册表。
 
 ## 边界
 
@@ -197,64 +222,59 @@ class Provider(Protocol):
 | --- | --- |
 | `GIGMATE_EXTRACTION_PROVIDER=deterministic`（默认） | 只识别两条合成样例的默认 provider。 |
 | `GIGMATE_EXTRACTION_PROVIDER=disabled` | 所有请求返回 `needs_review`，不写变更。 |
-| `GIGMATE_EXTRACTION_PROVIDER=llm` | 真实模型 provider（默认 DeepSeek）。配好 `GIGMATE_LLM_LIVE=1` 与 `GIGMATE_LLM_API_KEY` 才真正调用；否则返回带 `llm:live-gate-off` 或 `llm:not-configured` 的 `needs_review`。 |
+| `GIGMATE_EXTRACTION_PROVIDER=llm` | 未激活调用实现的真实模型接缝；`_SKELETON_SEAM=True` 期间始终返回带 `llm:seam-pending` 的 `needs_review`。 |
 | 未知名称 | 启动时直接报错，绝不悄悄回落。 |
 
 测试通过 `gigmate.extraction.registry._reset_provider_for_testing` 注入
 provider，不污染进程级缓存。
 
-### `llm` provider（DeepSeek / OpenAI 兼容）
+### `llm` provider 骨架
 
-`gigmate.extraction.llm.LLMProvider` 就是真实模型 provider。它同样遵守
-`ExtractionRequest.origin` 信任边界，读取 `gigmate/extraction/prompts/`
-下的版本化 prompt 文件，并把配置好的模型与 prompt 版本写入
-`ModelCallTrace`，便于人工核对为何被拒绝。
+`gigmate.extraction.llm.LLMProvider` 是后续单独授权真实模型批次的非发请求
+接缝。它同样遵守 `ExtractionRequest.origin` 信任边界，读取
+`gigmate/extraction/prompts/` 下的版本化 prompt 文件，并把配置好的模型
+与 prompt 版本写入 `ModelCallTrace`，便于人工核对为何被拒绝。
 
-`_invoke_model` 发起真实的 OpenAI 兼容 chat-completions POST（30 秒超时、
-重试 1 次），`_parse_response` 把 JSON 严格校验成 `ChangeProposal`。实现
-闸门 `LLMProvider._SKELETON_SEAM` 为 `False`，调用路径可达；
-`GIGMATE_LLM_LIVE` 与 `GIGMATE_LLM_API_KEY` 才是一个部署真正要开的闸门。
-模块只读 `GIGMATE_LLM_API_KEY`，刻意忽略 `OPENAI_API_KEY` /
-`ANTHROPIC_API_KEY`，让模型密钥继续留在运维显式控制之下。
+本批次刻意交付**未激活的调用实现**：`_invoke_model` 已能发起真实的
+OpenAI 兼容 chat-completions POST（30 秒超时、重试 1 次），`_parse_response`
+会把 JSON 严格校验成 `ChangeProposal`，但常闭类标志
+`LLMProvider._SKELETON_SEAM` 让所有请求都到不了网络，直到"真实启用前
+验收门槛"在各自授权批次清空。期间模块只读 `GIGMATE_LLM_API_KEY`，
+刻意忽略 `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`，让模型密钥继续留在运维
+显式控制之下。
 
-每个 outcome 都带 `usage`——供应商的 token 用量归一化为 `prompt_tokens` /
-`completion_tokens` / `total_tokens`（丢弃 DeepSeek 缓存计数等厂商专属字段）——
-`persist_proposal` 会把它写入 `model_call_traces.prompt_tokens` /
-`completion_tokens` / `total_tokens`（迁移 `0014_llm_usage`）。所有拒绝路径
-保持 `NULL`："没有请求到达供应商"与"这次调用免费"是两个不同的事实。
-
-配置（环境变量）：
+配置（环境变量，骨架阶段全部可选）：
 
 | 变量 | 用途 |
 | --- | --- |
 | `GIGMATE_LLM_PROVIDER` | 供应商名（`deepseek` / `openai` / `custom`），写入 `model_version`，并校验该 build 是否真正支持。 |
 | `GIGMATE_LLM_MODEL` | 模型标识（如 `deepseek-chat`、`gpt-4o-mini`）。未配置时记为 `skeleton:pending`。 |
 | `GIGMATE_LLM_API_KEY` | 仅服务端使用；provider 每次调用都重新读取，绝不存到实例上，也绝不写日志。 |
-| `GIGMATE_LLM_ENDPOINT` | 可选 base URL 覆盖。未设置时端点按 vendor 取：`deepseek` -> `https://api.deepseek.com`、`openai` -> `https://api.openai.com`、`custom` -> 以 `llm:not-configured` 拒绝（必须显式配置）。 |
+| `GIGMATE_LLM_ENDPOINT` | 可选 base URL 覆盖（默认 `https://api.deepseek.com`）。 |
 | `GIGMATE_LLM_PROMPT_PATH` | 可选 prompt 文件覆盖。 |
-| `GIGMATE_LLM_LIVE=1` | 显式运维闸门，真实调用必需。闸门关闭时 Provider 层直接拒绝所有调用并写 `llm:live-gate-off`（即便已配置供应商与模型），trace 中立即可见，绝不悄悄回落。 |
+| `GIGMATE_LLM_LIVE=1` | 显式运维闸门。`_SKELETON_SEAM` 翻开后还必须开它才能真的发起调用；在此之前骨架标志先拒绝。翻开之后，闸门关闭时 Provider 层仍直接拒绝所有调用并写 `llm:live-gate-off`（即便已配置供应商与模型），两种情形都在 trace 中可见，绝不悄悄回落。 |
 | `GIGMATE_LLM_ALLOW_LIVE_ORIGIN` | 显式允许 `request.origin == "live"` 进入模型的开关，默认关闭。 |
 
 #### 双闸门安全网
 
 调用 `_invoke_model` 前必须同时打开两道闸门：
 
-1. **类标志 `LLMProvider._SKELETON_SEAM`**——现为 `False`（接缝已实现）。
-   只要它是 `True`，无论环境变量如何配置、运维闸门开关与否，都直接返回
-   `llm:seam-pending`，连 HTTP 客户端都不会构造。这是防止"某个 build 的
-   `_invoke_model` 退化成桩却悄悄进入真实调用模式"的兜底。
-2. **`GIGMATE_LLM_LIVE=1`**——运维开关。没设这个变量时仍以
-   `llm:live-gate-off` 拒绝。
+1. **类标志 `LLMProvider._SKELETON_SEAM`**——本批次为 `True`。只要是
+   `True`，无论环境变量如何配置、运维闸门开关与否，都直接返回
+   `llm:seam-pending`，连 HTTP 客户端都不会构造。这是防止"下一批次只填
+   `_invoke_model` 就意外进入真实调用模式"的兜底。
+2. **`GIGMATE_LLM_LIVE=1`**——运维开关。即便类标志已翻为 `False`，
+   没设这个变量时仍以 `llm:live-gate-off` 拒绝。
 
-执行顺序：prompt 异常检查 → 实现闸门（仅当 `_SKELETON_SEAM` 回到 `True`
-时才出 `llm:seam-pending`）→ 配置完整性（vendor/model/key
+执行顺序：prompt 异常检查 → 骨架标志 → 配置完整性（vendor/model/key
 缺失或 vendor 未知 → `llm:not-configured`）→ live 闸门
 （`llm:live-gate-off`）→ 接线检查（vendor 已知、key 已设）→ live 来源
 gating 门（未开 `GIGMATE_LLM_ALLOW_LIVE_ORIGIN` 时
-`llm:origin-live-refused`）→ `_invoke_model`。两个方向都有测试固化：开通
-路径用假客户端（`test_llm_provider_live_gate_on_sends_fake_client_request`），
-关闭路径用测试子类
-（`test_llm_provider_implementation_gate_still_refuses_when_closed`）。
+`llm:origin-live-refused`）→ `_invoke_model`。骨架标志为 `True` 时所有
+调用都先以 `llm:seam-pending` 拒绝，配置错误的生产环境不可能发出真实
+网络请求。翻开骨架标志之后的 `llm:live-gate-off`、`llm:origin-live-refused`
+与假客户端请求形态，由仅在测试子类上翻转 `_SKELETON_SEAM=False` 的隔离
+测试固化；生产标志保持关闭。
 
 #### prompt 加载失败模式
 
@@ -280,10 +300,9 @@ UTF-8 原先会直接抛出 `ValidationError` / `UnicodeDecodeError` 进入 work
 
 评测清单里的 `case-008-llm-skeleton-needs-review` 在使用
 `--provider llm` 跑清单时通过；通用 needs_review 用例（3、4、5、6、7）
-在 `llm` 下同样通过。matched 用例（1、2）在没有真实 key 时于 `llm` 下
-预期失败——provider 以 `llm:not-configured`（或 key 在、闸门未开时的
-`llm:live-gate-off`）拒绝，永远得不到 matched；它们在默认 deterministic
-provider 下通过。用真实 DeepSeek key 跑清单仍未验证，见上文验收门槛。
+在 `llm` 下同样通过，因为骨架一律拒绝。matched 用例（1、2）在 `llm` 下
+预期失败——骨架没有真实模型可以调用；它们在默认 deterministic provider
+下通过。
 
 该开关同时作用于两条路径：Worker 的 WAHA 分支与 legacy Replay 入口
 `gigmate.understanding.extract` 都通过 `gigmate.extraction.provider()`
@@ -475,23 +494,24 @@ prompt 重试。
 .venv/bin/python -m alembic -c apps/backend/alembic.ini upgrade head
 .venv/bin/python -m alembic -c apps/backend/alembic.ini check
 .venv/bin/python -m pytest apps/backend/tests/test_media_processor.py apps/backend/tests -q --basetemp=local-data/pytest
+.venv/bin/python -m pytest apps/backend/tests/test_extraction_gates.py apps/backend/tests/test_extraction_batch2.py -q
 .venv/bin/python scripts/check_baseline.py
 ```
+
+最后一条 `pytest` 是真实启用前套件：五项门槛加第二批（费用边界、启动校验、注入回归）。两个文件都不打开接缝，因此均可离线运行、无需凭据。
 
 PostgreSQL 测试是有意义的运行；SQLite 不证明行锁，只验证条件兼容性。
 本批次不合成真实 WhatsApp 流量。
 
-## 真实启用前验收门槛（尚未清空）
+## 真实启用前验收门槛
 
-**2026-10-17 状态：实现闸门已翻开，但这些门槛一项都没清。**
-`LLMProvider._SKELETON_SEAM` 现为 `False`，媒体接缝标志也已打开，因此
-只要运维导出 `GIGMATE_LLM_LIVE=1` 和真实 key，真实调用路径就可达。这意味
-下列条目不再是"启用前的理论问题"，而是**当前代码里的实际风险**，每一项
-仍需各自授权批次与评审，之后才能把真实客户流量交给这个 provider。未配置
-key 的运维不受影响：provider 以 `llm:not-configured` / `llm:live-gate-off`
-拒绝，且不构造任何客户端。
+2026-10-16：下列门槛已实现并有回归测试，见上文[批次说明](#真实启用前验收门槛已实现--2026-10-16)。原文保留，便于评审对照原始要求并确认接缝没有被悄悄打开。
 
-下列验收门槛**均未清空**：
+本批次只交付**未激活的调用实现**：HTTP / 解析 / Schema 路径已经就位，
+但 `_SKELETON_SEAM = True` 且活门默认关，所有请求都不会触达网络。
+接缝、prompt 版本链、live-origin 守门已落地为可测试代码；下列验收门槛
+**不在本 PR 范围内**，必须在接缝打开、真实流量被允许经过真实模型 provider
+**之前**（每一项独立批次、独立评审）逐项完成：
 
 - **可信身份与出处不能交给模型决定。** 现行 `_parse_response` 只做
   结构校验，对 LLM 返回的 `work_order_id` / `base_work_order_version` /
@@ -506,16 +526,16 @@ key 的运维不受影响：provider 以 `llm:not-configured` / `llm:live-gate-o
   不一致必须以 `llm:response-schema-failed` + 稳定错误码上报，绝不能
   当作 `matched` 通过。这一项不需要再向模型多发任何 UUID，只需要更严的
   校验后处理。
-- **vendor 与 endpoint 语义必须显式。** —— **2026-10-17 已清空。**
-  `LLMProvider._resolve_endpoint()` 已把每个已知 vendor 与各自文档化的默认
-  endpoint 绑定（`deepseek` -> `https://api.deepseek.com`、
-  `openai` -> `https://api.openai.com`）；`custom` 未显式配置
-  `GIGMATE_LLM_ENDPOINT` 时以 `llm:not-configured` 拒绝；未知
-  `GIGMATE_LLM_PROVIDER` 此前即由 `_is_wired_for_live` 拒绝。不支持
-  `response_format=json_object` 的模型（`deepseek-reasoner`）在本地以
-  `llm:model-unsupported` 拒绝。只剩命名问题：如果 `openai` 指"任何 OpenAI
-  兼容协议"而非"OpenAI 这家供应商"，需要在配置面和文档里写清楚，避免评审者
-  按较窄含义误读。
+- **vendor 与 endpoint 语义必须显式。** 现行代码把
+  `GIGMATE_LLM_PROVIDER=openai`（或任何 vendor 名）一律视作"使用
+  DeepSeek 默认 endpoint，除非操作员另行设置 `GIGMATE_LLM_ENDPOINT`"。
+  接缝打开后这是脚枪：为一个 vendor 配置的 worker 可能静默调用另一个
+  vendor 的服务。启用前 provider 必须：
+  - 拒绝未知的 `GIGMATE_LLM_PROVIDER` 取值；
+  - 把每个已知 vendor 与各自文档化的默认 endpoint 绑定；
+  - vendor 为 `custom` 时强制要求 `GIGMATE_LLM_ENDPOINT`。
+  如果 `openai` 指"任何 OpenAI 兼容协议"而非"OpenAI 这家供应商"，需要
+  在配置面和文档里写清楚，避免评审者按较窄含义误读。
 - **重试必须与 worker 锁、租约一起设计。** 现行 `_call_chat_completion`
   对所有 `httpx.HTTPError` 及所有 `KeyError` / `IndexError` / `ValueError`
   各重试 1 次。30 秒超时 + 1 次重试，单次抽取可能持有同账号 / 同工单
@@ -547,28 +567,33 @@ key 的运维不受影响：provider 以 `llm:not-configured` / `llm:live-gate-o
   （例如 `llm:http-failed:timeout`），任何自由文本部分都必须脱敏
   endpoint、vendor、API key 前缀。
 
-上述门槛写在这里是为了让评审者看清：调用路径已经打开，而下面这些仍然
-未经验证。每一项都是独立批次、独立评审。
+上述门槛写在这里是为了让评审者确认本 PR 不会静默打开接缝；每一项都
+是独立批次、独立评审。
 
 ## 待办
 
-- 真实模型 provider 激活：实现闸门翻转（`LLMProvider._SKELETON_SEAM =
-  False`）与媒体接缝标志已完成，后续授权批次仍必须完成三件事——(a) 清空
-  上文"真实启用前验收门槛"（出处重绑定、vendor/endpoint 语义、重试与租约
-  设计、日期依据、诊断脱敏）；(b) 用真实 key 发出**至少一次真实供应商
-  调用**并留下证据（至今一次都没有）；(c) 把真实授权与 live-origin 通道
-  接入独立的授权审查（live-origin guard 现已可达；其
-  `GIGMATE_LLM_ALLOW_LIVE_ORIGIN` 开关由隔离测试固化，仍默认关闭）。
-  同时补上 prompt-injection 回归与延迟预算。接缝、prompt
-  版本兜底链、`llm:prompt-malformed` 与 `llm:seam-pending` trace 备注、
-  `case-008-llm-skeleton-needs-review` 评测用例，以及
-  `_prompt_load_error` 审计字段均已就位。
+- 真实模型 provider 激活：上文门槛已于 2026-10-16 实现；费用边界、启动
+  校验与文字注入回归集在同日的「真实启用前第二批」落地，`new_work_order`
+  识别契约、未知结果处置与评测分类输出在同日的第三批落地，因此下一单独授权
+  批次需要 (a) 把真实授权与 live-origin 通道接入独立的授权审查，并在真实
+  负载下实测延迟预算；(b) 把 `LLMProvider._SKELETON_SEAM` 翻为 `False`。
+  （当前 live-origin guard 已经在该 provider 中实现，但骨架标志为 `True`
+  时不可达；其 `GIGMATE_LLM_ALLOW_LIVE_ORIGIN` 开关由仅测试子类的隔离
+  测试固化）。接缝、prompt 版本兜底链、`llm:prompt-malformed` 与
+  `llm:seam-pending` trace 备注、`case-008-llm-skeleton-needs-review` 评测
+  用例，以及 `_prompt_load_error` 审计字段均已就位。
+- C 侧手工建单（C #26）现可消费第三批交付的 `new_work_order` 建议契约：
+  该块随提案 JSON 落库、与 `matched` 归类互斥、自身绝不建单。B 侧部分已完成；
+  接进商户「从会话建单」流程，以及模型回传 revision/版本的联合核验，仍等 C。
 - D 前端面向真实 provider 输出的 `pending_change_ids` 展示；当前
-  Replay 卡片已能呈现，但真实 provider 来回之前不更新前端。
+  Replay 卡片已能呈现，但真实 provider 来回之前不更新前端。`new_work_order`
+  建议同样需要自己的卡片（「识别到新单，仍缺 X」），理由相同。
 - 真实 provider 上线后细化 `unresolved_questions` 给商户的人工核对呈现。
 - 媒体侧的厂家 `reconcile()`：chat-completions 厂家一般不暴露基于
   request-id 的查找，当前实现返回 `None`，worker 需等待人工重试。
   后续批次可在接缝标志开启后追加厂家特定查找。
 - B 侧的 prompt-injection 回归套件（图像 OCR + 音频 ASR + PDF 解析）。
   当前处理器只信任捆绑的 prompt、对格式异常输入拒绝调用；后续授权
-  批次应加入对抗输入夹具。
+  批次应加入对抗输入夹具。文字套件已在「真实启用前第二批」
+  （`contracts/evaluation/injection.json`）落地，可作为范式复用，但媒体的
+  攻击面（图像中的对抗文字、音频播放注入、PDF 元数据）不同，需要独立夹具。

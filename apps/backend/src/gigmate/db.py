@@ -9,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     UniqueConstraint,
     create_engine,
@@ -256,6 +257,84 @@ class WahaMediaJob(Base):
     __table_args__ = (UniqueConstraint("connection_id", "request_key", name="uq_waha_media_key"),)
 
 
+class WahaSendRequestFence(Base):
+    __tablename__ = "waha_send_request_fences"
+    connection_id: Mapped[str] = mapped_column(ForeignKey("waha_connections.id"), primary_key=True)
+    request_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    cancelled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class WahaSendPermission(Base):
+    __tablename__ = "waha_send_permissions"
+    connection_id: Mapped[str] = mapped_column(ForeignKey("waha_connections.id"), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer)
+    enabled: Mapped[bool] = mapped_column(Boolean)
+    chat_ids: Mapped[list] = mapped_column(JSON)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WahaSendUpload(Base):
+    __tablename__ = "waha_send_uploads"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    connection_id: Mapped[str] = mapped_column(ForeignKey("waha_connections.id"), index=True)
+    filename: Mapped[str] = mapped_column(String(128))
+    mimetype: Mapped[str] = mapped_column(String(100))
+    blob_key: Mapped[str | None] = mapped_column(String(40))
+    sha256: Mapped[str] = mapped_column(String(64))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class WahaSendPolicy(Base):
+    __tablename__ = "waha_send_policies"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    connection_id: Mapped[str] = mapped_column(ForeignKey("waha_connections.id"), index=True)
+    chat_id: Mapped[str] = mapped_column(ForeignKey("waha_chats.id"))
+    version: Mapped[int] = mapped_column(Integer)
+    enabled: Mapped[bool] = mapped_column(Boolean)
+    payload: Mapped[dict] = mapped_column(JSON)
+    bindings: Mapped[dict] = mapped_column(JSON)
+    permission_version: Mapped[int] = mapped_column(Integer)
+    control_version: Mapped[int] = mapped_column(Integer)
+    approved_by: Mapped[str] = mapped_column(ForeignKey("accounts.id"))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    maximum_uses: Mapped[int] = mapped_column(Integer)
+    uses: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class WahaSendAction(Base):
+    """Immutable send snapshot and transactional outbox entry in one row."""
+
+    __tablename__ = "waha_send_actions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    connection_id: Mapped[str] = mapped_column(ForeignKey("waha_connections.id"), index=True)
+    chat_id: Mapped[str] = mapped_column(ForeignKey("waha_chats.id"), index=True)
+    request_key: Mapped[str] = mapped_column(String(128))
+    command: Mapped[dict] = mapped_column(JSON)
+    bindings: Mapped[dict] = mapped_column(JSON)
+    snapshot_hash: Mapped[str] = mapped_column(String(64))
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    state: Mapped[str] = mapped_column(String(24))
+    approved_by: Mapped[str | None] = mapped_column(ForeignKey("accounts.id"))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    dispatch_token: Mapped[str | None] = mapped_column(String(36))
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_token: Mapped[str | None] = mapped_column(String(36))
+    dispatch_key: Mapped[str | None] = mapped_column(String(36), unique=True)
+    provider_message_id: Mapped[str | None] = mapped_column(String(256))
+    delivery_rank: Mapped[int] = mapped_column(Integer, default=0)
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    unknown_review: Mapped[dict | None] = mapped_column(JSON)
+    __table_args__ = (
+        UniqueConstraint("connection_id", "request_key", name="uq_waha_send_request"),
+        UniqueConstraint("connection_id", "provider_message_id", name="uq_waha_send_message"),
+    )
+
+
 class WorkOrderEvidenceRow(Base):
     """Reviewed attachment kept as work-order evidence by a merchant.
 
@@ -360,6 +439,24 @@ class Job(Base):
     lease_recoveries: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
+class ScheduleSettingsRow(Base):
+    """Working hours, breaks, default duration, buffer and preparation lead time."""
+
+    __tablename__ = "schedule_settings"
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"), primary_key=True)
+    data: Mapped[dict] = mapped_column(JSON)
+
+
+class JobAssignment(Base):
+    """The merchant's decision of which work order an unassigned message belongs to."""
+
+    __tablename__ = "job_assignments"
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), primary_key=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"))
+    work_order_id: Mapped[str] = mapped_column(ForeignKey("work_orders.id"))
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class ChangeRow(Base):
     __tablename__ = "requirement_changes"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -409,6 +506,10 @@ class ActionRow(Base):
     """Merchant-reviewed outbound actions. P0 supports send_text drafts only."""
 
     __tablename__ = "approval_actions"
+    send_action_id: Mapped[str | None] = mapped_column(
+        ForeignKey("waha_send_actions.id", name="fk_approval_send_action", ondelete="SET NULL"),
+        nullable=True,
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"), index=True)
     work_order_id: Mapped[str] = mapped_column(ForeignKey("work_orders.id"), index=True)
@@ -422,6 +523,9 @@ class ActionRow(Base):
     note: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     data: Mapped[dict] = mapped_column(JSON)
+    __table_args__ = (
+        UniqueConstraint("send_action_id", name="uq_approval_actions_send_action_id"),
+    )
 
 
 class Proposal(Base):
@@ -454,12 +558,17 @@ class ModelCallTrace(Base):
     latency_ms: Mapped[int] = mapped_column(Integer)
     refused_reason: Mapped[str | None] = mapped_column(String(256))
     notes: Mapped[list] = mapped_column(JSON)
-    # Vendor token accounting. Null whenever no call reached the vendor
-    # (every refusal path) or the vendor reported nothing usable, so a
-    # refused call can never look like it was billed.
-    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Correlation id sent to the vendor with the call (Role B pre-activation
+    # gate 3). ``None`` when no vendor request was ever issued.
+    request_id: Mapped[str | None] = mapped_column(String(64))
+    # Pre-activation cost accounting (batch 2). All three columns are
+    # ``None`` while the seam is closed; the next authorized batch populates
+    # them whenever a real vendor call completes. ``cost_usd`` is a
+    # ``Numeric(12, 6)`` so six decimal places of a dollar are representable
+    # (a 1k-token call at the default prices stays well below 1 cent).
+    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_usd: Mapped[float | None] = mapped_column(Numeric(12, 6), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 

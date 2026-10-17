@@ -5,14 +5,19 @@ This module is the production-shaped B-side implementation loaded by
 points at :class:`MediaProcessorImpl`. It mirrors the two-gate safety pattern
 used by :class:`gigmate.extraction.llm.LLMProvider`:
 
-1. Module-level :data:`_ENABLED` flag. It is ``True``: the vendor adapters in
-   :mod:`gigmate.media.llm` are implemented, so this gate is open. While it is
-   ``False`` the processor refuses every call with
+1. Module-level :data:`_ENABLED` flag. It stays ``False`` in this batch: the
+   vendor adapters and the per-modality gates are implemented and unit-tested,
+   but no real OCR/ASR/PDF acceptance run has happened, so the seam is still
+   locked. While it is ``False`` the processor refuses every call with
    :class:`gigmate.media_processing.ProcessingUnavailable` *before* it reads
-   any environment variable, so flipping it back is the safe direction — the
-   operator switch alone is never enough to enable real calls.
-2. ``GIGMATE_MEDIA_LIVE=1`` operator switch. The processor refuses every call
-   unless this variable is exported, together with ``GIGMATE_MEDIA_API_KEY``.
+   any environment variable. The batch that completes live acceptance flips it
+   together with recorded evidence; the operator switch alone is never enough.
+2. ``GIGMATE_MEDIA_LIVE=1`` operator switch. Once unlocked, the processor
+   still refuses every call unless this variable is exported, together with
+   ``GIGMATE_MEDIA_API_KEY``.
+3. Per-modality authorization (``GIGMATE_MEDIA_MODALITIES``) and a vision
+   vendor allowlist (``GIGMATE_MEDIA_VISION_VENDORS``) run after the live
+   switch and before any client is built.
 
 The processor only returns :class:`WahaMediaResult` proposals. Merchant
 confirmation is enforced downstream by
@@ -58,11 +63,11 @@ from .routing import route
 
 log = logging.getLogger(__name__)
 
-# Two-gate safety flag. True because the vendor adapters in
-# :mod:`gigmate.media.llm` are implemented. Setting it back to False refuses
-# every call before reading any environment variable, which is the safe
-# direction; the operator switch alone is never sufficient to make a call.
-_ENABLED = True
+# Two-gate safety flag. Still False: the adapters and modality gates are
+# implemented, but no real OCR/ASR/PDF acceptance has been recorded, so every
+# call is refused before any environment variable is read. Unlocking is a
+# separate, evidenced step; the operator switch alone is never sufficient.
+_ENABLED = False
 
 
 class MediaProcessorImpl:
@@ -245,7 +250,11 @@ class MediaProcessorImpl:
             caption=request.caption,
         )
         return coerce_chat_response(
-            payload, prompt_version=prompt_version, vendor=self.name, model_version=model_version
+            payload,
+            prompt_version=prompt_version,
+            vendor=self.name,
+            model_version=model_version,
+            caption=request.caption,
         )
 
     def _process_pdf(
@@ -327,7 +336,11 @@ class MediaProcessorImpl:
             caption=request.caption,
         )
         return coerce_transcription_response(
-            payload, prompt_version=prompt_version, vendor=self.name, model_version=model_version
+            payload,
+            prompt_version=prompt_version,
+            vendor=self.name,
+            model_version=model_version,
+            caption=request.caption,
         )
 
     def _default_chat_model(self, vendor: str) -> str:

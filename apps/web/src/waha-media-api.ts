@@ -1,3 +1,4 @@
+import { apiBase } from "./environment.ts";
 import { ConnectionError } from "./connection-api";
 import type { components } from "./generated/api";
 
@@ -7,7 +8,7 @@ type Command = components["schemas"]["WahaMediaCommand"];
 type Capabilities = components["schemas"]["WahaMediaCapabilities"];
 
 export function mediaApi(connection: string, csrf: string) {
-  const base = `/api/v1/connectors/${encodeURIComponent(connection)}`;
+  const base = `${apiBase()}/connectors/${encodeURIComponent(connection)}`;
   const attempts = new Map<string, Command>();
   async function response(path: string, body?: object, key?: string) {
     let value: Response;

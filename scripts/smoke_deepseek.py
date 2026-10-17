@@ -9,18 +9,11 @@ vendor (DeepSeek by default) and inspect the raw response and the parsed
     export GIGMATE_LLM_MODEL=deepseek-chat
     export GIGMATE_LLM_API_KEY=sk-...
     export GIGMATE_LLM_LIVE=1
-    export GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1
-    export GIGMATE_WORKSPACE_TIMEZONE=Asia/Hong_Kong
-    export GIGMATE_LLM_DAILY_CALL_BUDGET=10
+    # Optional: allow real WhatsApp-style content (default: refuse).
+    # export GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1
     # Optional: point at a different OpenAI-compatible endpoint.
     # export GIGMATE_LLM_ENDPOINT=https://your-private-deployment.example.com
     python scripts/smoke_deepseek.py
-
-This is the operator's vendor-quality acceptance entry point: it uses the same
-live-origin request shape as the worker (time basis, workspace zone and budget
-counters attached), prints the parsed proposal, latency, notes and token usage,
-and exits non-zero on any infrastructure refusal. Token ``usage`` is the
-cheapest proof that a billed call actually happened.
 
 The script exits non-zero on any misconfiguration so it can be wired into
 operator-side alerting if needed. The CI suite uses ``mock httpx`` instead
@@ -62,16 +55,6 @@ _REQUIRED = ("GIGMATE_LLM_PROVIDER", "GIGMATE_LLM_MODEL", "GIGMATE_LLM_API_KEY")
 #                                  expected choices/message/content shape.
 # ``llm:response-schema-failed`` – the parsed JSON did not satisfy
 #                                  ChangeProposal.
-# ``llm:model-unsupported``      – the configured model does not support
-#                                  JSON output mode (e.g. deepseek-reasoner).
-# ``llm:time-basis-missing``     – no server message time / workspace zone.
-# ``llm:budget-not-configured``  – no daily call or token bound for live.
-# ``llm:budget-exhausted``       – the attached snapshot is already spent.
-# ``llm:account-not-authorized`` – account outside GIGMATE_LLM_LIVE_ACCOUNTS.
-# ``llm:result-unknown``         – read timeout / dropped connection; may
-#                                  have been charged and is not retried.
-# ``llm:provenance-mismatch``    – the response named an order or version
-#                                  that the request never offered.
 _INFRA_FAILURE_NOTES = frozenset(
     {
         "llm:seam-pending",
@@ -82,13 +65,22 @@ _INFRA_FAILURE_NOTES = frozenset(
         "llm:http-failed",
         "llm:response-malformed",
         "llm:response-schema-failed",
-        "llm:model-unsupported",
+        # Gate 2 (vendor/endpoint), gate 1 (provenance) and gate 4 (time
+        # basis) guards. None of them means the model was actually invoked.
+        "llm:vendor-unknown",
+        "llm:vendor-endpoint-mismatch",
+        "llm:endpoint-required",
+        "llm:endpoint-invalid",
+        "llm:response-provenance-failed",
         "llm:time-basis-missing",
-        "llm:budget-not-configured",
-        "llm:budget-exhausted",
-        "llm:account-not-authorized",
-        "llm:result-unknown",
-        "llm:provenance-mismatch",
+        # Batch 2 cost accounting. None of them means the model was actually
+        # invoked successfully: either the call was never priced (so never
+        # issued) or it came back over budget and was refused.
+        "llm:cost-budget-exceeded",
+        "llm:cost-budget-invalid",
+        "llm:cost-pricing-missing",
+        "llm:cost-pricing-partial",
+        "llm:cost-pricing-invalid",
     }
 )
 
@@ -109,35 +101,9 @@ def _check_env() -> None:
             "Re-run with GIGMATE_LLM_LIVE=1 to actually hit the model.\n"
         )
         sys.exit(2)
-    if os.environ.get("GIGMATE_LLM_ALLOW_LIVE_ORIGIN") != "1":
-        sys.stderr.write(
-            "GIGMATE_LLM_ALLOW_LIVE_ORIGIN=1 is not set. This script exercises "
-            "the live-origin path, which fails closed by default.\n"
-        )
-        sys.exit(2)
-    if not os.environ.get("GIGMATE_WORKSPACE_TIMEZONE"):
-        sys.stderr.write(
-            "GIGMATE_WORKSPACE_TIMEZONE is not set. Live extraction refuses "
-            "without a trusted time basis instead of guessing relative dates.\n"
-        )
-        sys.exit(2)
-    call_limit = os.environ.get("GIGMATE_LLM_DAILY_CALL_BUDGET")
-    token_limit = os.environ.get("GIGMATE_LLM_DAILY_TOKEN_BUDGET")
-    if not (call_limit or token_limit):
-        sys.stderr.write(
-            "Set GIGMATE_LLM_DAILY_CALL_BUDGET and/or "
-            "GIGMATE_LLM_DAILY_TOKEN_BUDGET. Live calls refuse to run "
-            "unmetered.\n"
-        )
-        sys.exit(2)
 
 
 def _build_request() -> ExtractionRequest:
-    from datetime import UTC, datetime
-
-    from gigmate.extraction.budget import limits_from_env
-
-    call_limit, token_limit = limits_from_env()
     return ExtractionRequest(
         account_id="00000000-0000-4000-8000-000000000001",
         conversation_id="00000000-0000-4000-8000-000000000002",
@@ -161,15 +127,12 @@ def _build_request() -> ExtractionRequest:
                 }
             },
         },
-        origin="live",
-        message_received_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        workspace_timezone=os.environ["GIGMATE_WORKSPACE_TIMEZONE"],
-        # The script has no database, so it honestly reports zero usage today;
-        # the worker replaces these with the account's committed trace sums.
-        budget_call_limit=call_limit,
-        budget_token_limit=token_limit,
-        budget_calls_used=0,
-        budget_tokens_used=0,
+        origin="synthetic",
+        # Gate 4: without both values the provider refuses schedule changes
+        # instead of converting relative dates against nothing.
+        message_received_at="2026-10-07T00:00:00Z",
+        workspace_timezone=os.environ.get("GIGMATE_WORKSPACE_TIMEZONE")
+        or "Asia/Hong_Kong",
     )
 
 
@@ -187,9 +150,14 @@ def main() -> int:
         "latency_ms": outcome.latency_ms,
         "notes": list(outcome.notes),
         "refused_reason": outcome.refused_reason,
-        # Token accounting is the cheapest proof that a real call happened:
-        # every refusal path leaves it None.
-        "usage": outcome.usage,
+        "request_id": outcome.request_id,
+        # Cost accounting (batch 2). None while the seam is closed or when
+        # the vendor omits its usage block; ``cost_note`` then explains why
+        # (llm:cost-usage-missing / llm:cost-pricing-missing).
+        "input_tokens": outcome.input_tokens,
+        "output_tokens": outcome.output_tokens,
+        "cost_usd": outcome.cost_usd,
+        "cost_note": outcome.cost_note,
         "unresolved_questions": list(outcome.proposal.unresolved_questions),
         "changes": [
             {

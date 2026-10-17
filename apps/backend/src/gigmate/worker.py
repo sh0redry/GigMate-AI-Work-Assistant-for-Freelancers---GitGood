@@ -5,12 +5,12 @@ import threading
 import time
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from gigmate.approvals import draft_for_change
-from gigmate.config import workspace_timezone
 from gigmate.contracts import RequirementChange
 from gigmate.db import (
     Account,
@@ -31,16 +31,37 @@ from gigmate.extraction import (
     persist_proposal,
     provider,
 )
-from gigmate.extraction.budget import snapshot as budget_snapshot
+from gigmate.extraction.llm import validate_provider_config
+from gigmate.planning import CLOSED
 from gigmate.understanding import extract
 from gigmate.waha_recovery import worker_heartbeat
 
 log = logging.getLogger("gigmate.worker")
 
 EXTRACTION_NEEDS_REVIEW = "EXTRACTION_NEEDS_REVIEW"
-EXTRACTION_RESULT_UNKNOWN = "EXTRACTION_RESULT_UNKNOWN"
 OWN_SEND_ECHO = "OWN_SEND_ECHO"
-_SOURCE_SUPERSEDED = "SOURCE_SUPERSEDED"
+
+
+def open_orders(db, conversation_id, job_id=None):
+    """Orders this conversation can still change: cancelled/completed ones are history.
+
+    When the merchant has filed this message to one order, only that order is
+    offered (if it is still open).
+    """
+    from gigmate.db import JobAssignment
+
+    chosen = db.get(JobAssignment, job_id) if job_id else None
+    return [
+        order.id
+        for order in db.scalars(
+            select(WorkOrderRow)
+            .join(ConversationOrder, ConversationOrder.work_order_id == WorkOrderRow.id)
+            .where(ConversationOrder.conversation_id == conversation_id)
+            .order_by(WorkOrderRow.id)
+        )
+        if order.data["status"] not in CLOSED
+        and (chosen is None or order.id == chosen.work_order_id)
+    ]
 
 
 def run_once(factory=Session):
@@ -113,37 +134,27 @@ def run_once(factory=Session):
                 or latest.data["revoked"]
             ):
                 job.state, job.error_code = "completed", "SOURCE_SUPERSEDED"
-            elif event["connector"] == "waha" and event["source"] == "api":
-                # Our own sent message echoed back: it advanced the context and
-                # superseded older drafts at ingestion, but it is not customer
-                # input, so it never drives extraction or new questions.
+            elif event["source"] == "api" and (
+                event["connector"] == "waha" or event["direction"] == "outgoing"
+            ):
+                # Ingress advances context and invalidates pending drafts; echoes
+                # never trigger extraction, another question or another send.
                 job.state, job.error_code = "completed", OWN_SEND_ECHO
             elif event["connector"] == "waha":
-                linked = list(
-                    db.scalars(
-                        select(ConversationOrder.work_order_id).where(
-                            ConversationOrder.conversation_id == conversation.id
-                        )
-                    )
-                )
-                matched, outcome_code = _route_through_provider(
+                linked = open_orders(db, conversation.id, job.id)
+                matched = _route_through_provider(
                     db,
                     account=account,
                     inbox=inbox,
                     event=event,
                     conversation=conversation,
                     linked=linked,
+                    job=job,
                 )
                 job.state = "completed"
-                job.error_code = None if matched else (outcome_code or EXTRACTION_NEEDS_REVIEW)
+                job.error_code = None if matched else EXTRACTION_NEEDS_REVIEW
             else:
-                linked = list(
-                    db.scalars(
-                        select(ConversationOrder.work_order_id).where(
-                            ConversationOrder.conversation_id == conversation.id
-                        )
-                    )
-                )
+                linked = open_orders(db, conversation.id, job.id)
                 if len(linked) != 1:
                     job.state, job.error_code = "completed", "ASSIGNMENT_NEEDS_REVIEW"
                 else:
@@ -218,17 +229,23 @@ def _route_through_provider(
     event: dict,
     conversation: ConversationRow,
     linked: list[str],
+    job: Job | None = None,
 ) -> bool:
     """Invoke the registered extraction provider and persist its evidence.
 
-    Returns ``(materialized, error_code)``. ``materialized`` is ``True`` only
-    when the proposal was matched and at least one ``RequirementChange`` row
-    was created; ``error_code`` distinguishes an unknown model outcome
-    (``EXTRACTION_RESULT_UNKNOWN``, never auto-retried and possibly charged)
-    and a context that advanced during the call (``SOURCE_SUPERSEDED``) from
-    an ordinary needs-review result. The WAHA branch always marks the request
-    ``origin="live"``, so the deterministic default provider still refuses
-    live content.
+    Returns ``True`` only when the proposal was matched and at least one
+    ``RequirementChange`` row was created. The WAHA branch always marks the
+    request ``origin="live"``; the deterministic default provider therefore
+    returns ``needs_review`` for live content even when the text equals a
+    synthetic fixture. A provider that wants to mark ``matched`` for live
+    content must be a separately authorized batch.
+
+    Pre-activation gate 3 also revalidates after the call: a model call can
+    take long enough for the conversation context or the work order version to
+    move on, or for this worker's lease to expire. In either case the result
+    describes a stale snapshot, so it is discarded instead of being promoted —
+    the job is retried against current data rather than writing outdated
+    business changes.
     """
     target_order_id: str | None = None
     base_snapshot = None
@@ -239,10 +256,6 @@ def _route_through_provider(
             target_order_id = target.id
             base_snapshot = target.data
             base_version = target.data.get("version")
-    received_at = inbox.received_at
-    if received_at.tzinfo is None:
-        received_at = received_at.replace(tzinfo=UTC)
-    budget = budget_snapshot(db, account.id)
     request = ExtractionRequest(
         account_id=account.id,
         conversation_id=conversation.id,
@@ -254,11 +267,24 @@ def _route_through_provider(
         base_work_order_version=base_version,
         base_work_order_snapshot=base_snapshot,
         origin="live",
-        message_received_at=received_at.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        workspace_timezone=workspace_timezone(),
-        **budget.as_request_fields(),
+        # Gate 4: the connector's own sending time plus the merchant's
+        # configured zone are the only date-grounding basis the provider gets.
+        # Both stay ``None`` when unavailable and the provider then refuses
+        # relative-date proposals instead of guessing.
+        message_received_at=event.get("occurred_at"),
+        workspace_timezone=_workspace_timezone(),
     )
     outcome = provider().propose(request)
+    if job is not None and job.lease_until is not None:
+        if job.lease_until.replace(tzinfo=UTC) <= datetime.now(UTC):
+            return False
+    db.refresh(conversation)
+    if conversation.context_version != request.context_version:
+        return False
+    if target_order_id is not None:
+        current = db.get(WorkOrderRow, target_order_id)
+        if current is None or current.data.get("version") != base_version:
+            return False
     proposal_row = persist_proposal(
         db,
         account_id=account.id,
@@ -267,13 +293,6 @@ def _route_through_provider(
         proposal=outcome.proposal,
         outcome=outcome,
     )
-    unknown = "llm:result-unknown" in outcome.notes
-    # Revalidate after the model call: a new message may have advanced the
-    # context while the request was in flight. The proposal is still kept as
-    # evidence (and cost accounting), but it must not materialize changes.
-    db.refresh(conversation)
-    if conversation.context_version != request.context_version:
-        return False, _SOURCE_SUPERSEDED
     if outcome.proposal.assignment.value == "matched" and target_order_id is not None:
         order = db.get(WorkOrderRow, target_order_id)
         new_ids = persist_changes_for(
@@ -296,10 +315,27 @@ def _route_through_provider(
                 # Role B's draft_text is a merchant-facing summary (prompt v1), not a
                 # customer reply, so the customer-facing body uses the role C template.
                 draft_for_change(db, account.id, order, conversation, change.data)
-            return True, None
-    if unknown:
-        return False, EXTRACTION_RESULT_UNKNOWN
-    return False, None
+            return True
+    return False
+
+
+def _workspace_timezone() -> str | None:
+    """The merchant's validated IANA zone used to ground relative dates.
+
+    Pre-activation gate 4. The zone is operator configuration, never taken
+    from the model or the message. An unknown or missing value yields
+    ``None``, which makes the provider refuse relative-date proposals instead
+    of silently anchoring them to a guessed zone.
+    """
+    raw = (os.environ.get("GIGMATE_WORKSPACE_TIMEZONE") or "").strip()
+    if not raw:
+        return None
+    try:
+        ZoneInfo(raw)
+    except (KeyError, ValueError, OSError):
+        log.error("workspace_timezone_invalid code=CONFIG_INVALID")
+        return None
+    return raw
 
 
 def complete_metrics(job, inbox, began):
@@ -335,8 +371,44 @@ def heartbeat_loop(stop, factory=Session, interval=10):
         stop.wait(interval)
 
 
+def audit_provider_config():
+    """Audit the extraction provider configuration once at worker boot.
+
+    Pre-activation batch 2. ``validate_provider_config`` is pure — it takes
+    no database session and issues no network call — so it is safe to run
+    before the poll loop starts. Three policies apply:
+
+    * no issues → log nothing (the default closed-seam deployment);
+    * any issue while ``GIGMATE_LLM_LIVE=1`` → refuse to start. A worker
+      that is *about* to issue real vendor calls must not run against a
+      configuration it already knows is broken, because the first failure
+      would be a real request with real money behind it;
+    * any issue while the live gate is off → warn only, because the
+      closed skeleton seam (``_SKELETON_SEAM``) refuses every call anyway.
+    """
+    issues = validate_provider_config()
+    if not issues:
+        return True
+    live = os.environ.get("GIGMATE_LLM_LIVE") == "1"
+    if live:
+        log.error("provider_config_invalid code=CONFIG_INVALID live=1 issues=%s", ",".join(issues))
+        return False
+    log.warning(
+        "provider_config_invalid code=CONFIG_INVALID live=0 issues=%s "
+        "(ignored: the skeleton seam refuses every call)",
+        ",".join(issues),
+    )
+    return True
+
+
 def main():
     logging.basicConfig(level=logging.INFO)
+    if not audit_provider_config():
+        # Fail fast rather than boot into a poll loop that would attempt
+        # real vendor calls against a configuration already known to be
+        # wrong. The seam check above is the same one the provider applies
+        # at call time; running it at boot simply surfaces it earlier.
+        return
     stop = threading.Event()
     pulse = threading.Thread(
         target=heartbeat_loop, args=(stop,), name="gigmate-heartbeat", daemon=True
@@ -366,6 +438,9 @@ def work_loop():
                 from gigmate.waha_media import run_once as media_once
 
                 media_once()
+                from gigmate.waha_send import run_once as send_once
+
+                send_once()
             except BusinessError as error:
                 log.error("media_poll_failed code=%s", error.code)
             except SQLAlchemyError:
@@ -395,9 +470,17 @@ def maintain(factory=Session):
         for identifier in identifiers:
             with factory.begin() as db:
                 purge_expired(db, identifier)
+        from gigmate.approvals import follow_up_unanswered
+
+        with factory.begin() as db:
+            follow_up_unanswered(db)
         from gigmate.waha_media import purge as purge_media
 
         purge_media(factory)
+        if os.environ.get("WAHA_SEND_ENABLED") == "true":
+            from gigmate.waha_send import purge as purge_sends
+
+            purge_sends(factory)
         return True
     except SQLAlchemyError:
         log.error("worker_maintenance_failed code=DATABASE_UNAVAILABLE")

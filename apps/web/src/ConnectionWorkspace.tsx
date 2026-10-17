@@ -3,7 +3,6 @@ import { ChatChoices } from "./ChatChoices";
 import { WahaMessages } from "./WahaMessages";
 import {
   ConnectionError,
-  demoConnectionApi,
   liveConnectionApi,
   type Choice,
   type Connector,
@@ -49,7 +48,7 @@ const errors: Record<string, string> = {
   WAHA_OPERATION_FAILED: "操作未完成，请检查接入服务并核对状态。",
   WAHA_CONTROL_DISABLED: "接入后端未配置，请先准备本地接入服务。",
   WAHA_CONTROL_CONFIG_INVALID: "接入配置不匹配，请检查后端私有配置。",
-  CONNECTOR_DISABLED: "尚未配置扫码服务，请按联调文档初始化本机环境。",
+  CONNECTOR_DISABLED: "扫码服务尚未配置，请联系维护者。",
   CONNECTOR_CONFIG_INVALID: "连接配置与账号不匹配，请联系接入负责人检查。",
   WAHA_RESOURCE_NOT_FOUND: "WhatsApp 会话尚未创建，请先准备本机服务后刷新。",
   WAHA_UNAVAILABLE: "WhatsApp 服务暂不可用，请检查服务后刷新。",
@@ -64,8 +63,7 @@ const errors: Record<string, string> = {
     "无法读取本机扫码服务，请检查 Docker 和本地环境后刷新。",
   LOCAL_PAIRING_BUSY: "正在获取本机二维码，请稍后刷新。",
   LOCAL_BINDING_MISMATCH: "当前连接与本机配置不匹配，请联系接入负责人检查。",
-  LOCAL_CONFIG_INVALID_OR_MISSING:
-    "本机扫码环境尚未配置，请按联调文档准备后刷新。",
+  LOCAL_CONFIG_INVALID_OR_MISSING: "扫码服务尚未准备好，请联系维护者后刷新。",
   CONSENT_REVOKED: "连接授权已暂停，二维码已隐藏。",
   LOCAL_PYTHON_UNAVAILABLE:
     "未找到项目 Python 环境，请按本地启动指南准备 .venv。",
@@ -97,21 +95,15 @@ const issueLabels: Record<string, string> = {
 };
 
 export function ConnectionWorkspace({
-  demo = false,
   csrf = "",
   onSessionExpired,
   onBusyChange,
 }: {
-  demo?: boolean;
   csrf?: string;
   onSessionExpired?: () => void;
   onBusyChange?: (busy: boolean) => void;
 }) {
-  const simulator = useMemo(() => (demo ? demoConnectionApi() : null), [demo]);
-  const api = useMemo(
-    () => simulator ?? liveConnectionApi(csrf),
-    [simulator, csrf],
-  );
+  const api = useMemo(() => liveConnectionApi(csrf), [csrf]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [statusLoaded, setStatusLoaded] = useState(false);
   const [statusFetchFailed, setStatusFetchFailed] = useState(false);
@@ -383,7 +375,6 @@ export function ConnectionWorkspace({
 
   useEffect(() => {
     if (
-      demo ||
       !pairing?.qr_available ||
       statusFetchFailed ||
       connector?.stale ||
@@ -406,7 +397,6 @@ export function ConnectionWorkspace({
       document.removeEventListener("visibilitychange", update);
     };
   }, [
-    demo,
     pairing?.qr_available,
     statusFetchFailed,
     connector?.stale,
@@ -450,11 +440,7 @@ export function ConnectionWorkspace({
       throw error;
     }
     await refreshStatus();
-    setNotice(
-      demo
-        ? "模拟重连完成。真实模式将自动显示新二维码。"
-        : "已请求重连。二维码准备好后会自动显示，请稍候。",
-    );
+    setNotice("已请求重连。二维码准备好后会自动显示，请稍候。");
   }
   async function clearRecovered() {
     const count = await api.reviewIssues(id, reviewSnapshot);
@@ -481,11 +467,7 @@ export function ConnectionWorkspace({
     setNextOffset(null);
     setLoaded(false);
     await refreshStatus();
-    setNotice(
-      demo
-        ? "已载入演示授权；取消勾选后保存即可模拟撤销。"
-        : "已载入服务端授权；取消勾选后保存即可撤销。",
-    );
+    setNotice("已载入已保存的授权；取消勾选后保存即可撤销。");
   }
   async function discover() {
     const stamp = epoch.current;
@@ -526,13 +508,9 @@ export function ConnectionWorkspace({
     setChoices(value.choices);
     await refreshStatus();
     setNotice(
-      demo
-        ? next.length
-          ? `已在演示中保存 ${value.selected.length} 个会话授权，自动回复未开启。`
-          : "已在演示中撤销全部会话授权。"
-        : next.length
-          ? `已保存 ${value.selected.length} 个会话授权，自动回复未开启。`
-          : "已撤销全部会话授权，后端将拒绝这些会话的后续消息。",
+      next.length
+        ? `已保存 ${value.selected.length} 个会话授权，自动回复未开启。`
+        : "已撤销全部会话授权，后端将拒绝这些会话的后续消息。",
     );
   }
 
@@ -543,60 +521,14 @@ export function ConnectionWorkspace({
     >
       <div className="connect-heading">
         <div>
-          <p className="eyebrow">D-01 · 连接与授权</p>
+          <p className="eyebrow">WhatsApp · 连接与授权</p>
           <h1>让工作消息，进入你的工作台。</h1>
           <p className="subtle">
             先连接 WhatsApp，再选择允许处理的会话。选择权始终在你手里。
           </p>
         </div>
-        <span className="connection-label">
-          {demo ? "合成演示" : "本地接入"}
-        </span>
+        <span className="connection-label">你的 WhatsApp 连接</span>
       </div>
-      {demo && (
-        <div className="demo-controls">
-          <span>演示模式 · 不连接真实账号、不发送消息</span>
-          <div>
-            <button
-              className="secondary"
-              disabled={busy}
-              onClick={() =>
-                void act(async () => {
-                  simulator?.connect(true);
-                  await refreshStatus();
-                  setNotice("模拟扫码成功。接下来载入并选择会话。");
-                })
-              }
-            >
-              模拟扫码成功
-            </button>
-            <button
-              className="secondary"
-              disabled={busy}
-              onClick={() =>
-                void act(async () => {
-                  simulator?.connect(false);
-                  await refreshStatus();
-                })
-              }
-            >
-              模拟断线
-            </button>
-            <button
-              className="secondary"
-              disabled={busy}
-              onClick={() =>
-                void act(async () => {
-                  simulator?.stale();
-                  await refreshStatus();
-                })
-              }
-            >
-              模拟状态过期
-            </button>
-          </div>
-        </div>
-      )}
       <ol className="connection-steps">
         <li className="active">
           <span>01</span>连接 WhatsApp
@@ -614,11 +546,9 @@ export function ConnectionWorkspace({
         aria-live="polite"
       >
         {notice ||
-          (demo
-            ? "演示数据仅保留在当前预览中；会话读取授权不会开启自动回复。"
-            : api.capabilities.pairing
-              ? "连接后载入聊天并明确保存处理授权；自动回复不会开启。"
-              : "当前可查看连接状态；扫码和会话授权功能待接入。")}
+          (api.capabilities.pairing
+            ? "连接后载入聊天并明确保存处理授权；自动回复不会开启。"
+            : "当前可查看连接状态；扫码和会话授权功能待接入。")}
       </div>
       {connectors.length > 1 && (
         <label>
@@ -664,7 +594,7 @@ export function ConnectionWorkspace({
           </h2>
           <p>
             {statusLoaded
-              ? "当前账号暂无连接记录。接入负责人配置完成后，刷新即可查看状态。也可进入「D-01 演示预览」体验扫码与会话选择界面。"
+              ? "当前账号暂无连接记录。接入负责人配置完成后，刷新即可查看状态。请联系接入负责人检查当前账号的配置。"
               : "正在向本地服务查询。连接失败时可刷新重试。"}
           </p>
           <button disabled={busy} onClick={() => void act(refreshStatus)}>
@@ -766,9 +696,7 @@ export function ConnectionWorkspace({
                           ? "请先确认连接状态"
                           : presentation.action === "restart"
                             ? "连接已断开，需要重新连接"
-                            : demo
-                              ? "扫码界面预览"
-                              : "等待获取二维码"}
+                            : "等待获取二维码"}
                     </strong>
                     <p>
                       {!connector.enabled
@@ -777,11 +705,9 @@ export function ConnectionWorkspace({
                           ? "刷新状态后再获取二维码，避免使用旧的扫码信息。"
                           : presentation.action === "restart"
                             ? "点击下方「重新连接并获取二维码」，无需运行命令。"
-                            : demo
-                              ? "此区域展示真实二维码的位置"
-                              : pairing?.qr_available
-                                ? "正在加载本机二维码，也可点击「获取二维码」重试"
-                                : "等待本机服务准备扫码，请刷新状态"}
+                            : pairing?.qr_available
+                              ? "正在加载本机二维码，也可点击「获取二维码」重试"
+                              : "等待本机服务准备扫码，请刷新状态"}
                     </p>
                   </>
                 )}
@@ -889,7 +815,7 @@ export function ConnectionWorkspace({
                 )}
                 {presentation.action === "qr" && (
                   <button
-                    disabled={busy || !api.capabilities.pairing || demo}
+                    disabled={busy || !api.capabilities.pairing}
                     onClick={() => void act(loadQr)}
                   >
                     {qr ? "刷新二维码" : "获取二维码"}
@@ -1082,8 +1008,8 @@ export function ConnectionWorkspace({
               </button>
               {selection && (
                 <small>
-                  {demo ? "演示版本" : "服务端版本"} {selection.control_version}{" "}
-                  · {selection.selected.length} 个已授权
+                  授权版本 {selection.control_version} ·{" "}
+                  {selection.selected.length} 个已授权
                 </small>
               )}
             </div>
@@ -1112,7 +1038,7 @@ export function ConnectionWorkspace({
                 <p>
                   {api.capabilities.selection
                     ? "先载入已有授权。连接后点击「发现最近会话」，勾选后明确保存。"
-                    : "目前无法查询或更改会话授权。可在演示预览中体验选择流程。"}
+                    : "目前无法查询或更改会话授权。请重新登录并检查接入服务。"}
                 </p>
                 {!api.capabilities.selection && (
                   <div className="connection-actions">
@@ -1146,7 +1072,6 @@ export function ConnectionWorkspace({
                   busy={busy}
                   canDiscover={!!canDiscover}
                   clock={clock}
-                  demo={demo}
                   onToggle={(key, checked) => {
                     setPicked((p) =>
                       checked ? [...p, key] : p.filter((k) => k !== key),
@@ -1172,13 +1097,7 @@ export function ConnectionWorkspace({
                   </button>
                 )}
                 <div className="authorization-summary">
-                  <strong>
-                    {dirty
-                      ? "有尚未保存的更改"
-                      : demo
-                        ? "授权已保存在当前演示中"
-                        : "授权已与服务端同步"}
-                  </strong>
+                  <strong>{dirty ? "有尚未保存的更改" : "授权已保存"}</strong>
                   <p>
                     授权仅用于读取和处理选中会话。不授权自动回复，不改变正式工单。
                   </p>
@@ -1221,7 +1140,7 @@ export function ConnectionWorkspace({
           </section>
         </div>
       )}
-      {!demo && id && (
+      {id && (
         <WahaMessages
           key={`${id}:${csrf}`}
           connection={id}

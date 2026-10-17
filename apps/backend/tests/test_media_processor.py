@@ -112,18 +112,21 @@ def make_input(
 # Two-gate safety
 
 
-def test_default_seam_flag_is_enabled(saved_env, saved_seam_flag):
-    """The seam is implemented, so the flag ships on.
+def test_default_seam_flag_stays_locked(saved_env, saved_seam_flag):
+    """The seam ships locked until real media acceptance is recorded.
 
-    The operator switch is now the only thing standing between configuration
-    and a vendor call: with ``GIGMATE_MEDIA_LIVE`` unset the processor still
-    refuses before building a client, so merely deploying this code cannot
-    start sending attachments anywhere.
+    The adapters and the per-modality gates exist, but unlocking is a separate,
+    evidenced step: with ``_ENABLED`` False the processor refuses before it
+    reads any environment variable, so deploying this code (even with the live
+    switch and every modality exported) cannot start sending attachments.
     """
 
-    assert _ENABLED is True
+    assert _ENABLED is False
     assert isinstance(build_processor(), MediaProcessorImpl)
-    with pytest.raises(ProcessingUnavailable, match="GIGMATE_MEDIA_LIVE"):
+    saved_env.setenv("GIGMATE_MEDIA_LIVE", "1")
+    saved_env.setenv("GIGMATE_MEDIA_API_KEY", "synthetic-key")
+    saved_env.setenv("GIGMATE_MEDIA_MODALITIES", "ocr,asr,pdf,text")
+    with pytest.raises(ProcessingUnavailable, match="_ENABLED"):
         MediaProcessorImpl().process(make_input())
 
 

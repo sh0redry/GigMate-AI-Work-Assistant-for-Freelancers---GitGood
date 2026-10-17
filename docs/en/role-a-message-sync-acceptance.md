@@ -1,5 +1,7 @@
 # WAHA message synchronization and metadata acceptance
 
+Current frontend routing (2026-10-16): use GIGMATE_REAL_API_URL and the root URL. The delivered UI has one backend and no environment switch/public test credentials. The disposable setup runner still uses its own loopback service; its fixtures are developer-only and the product no longer labels a separate test mode. Earlier dated screenshots/environment descriptions are historical. See [current user guide](role-d-frontend-user-guide.md).
+
 2026-10-09 · branch **Andy_WAHA_message_sync**, based on **ebf9398** (PR #11's existing integration). [Chinese](../zh/role-a-message-sync-acceptance.md). Implementation decisions: [ADR 0005](adr/0005-bounded-waha-observations.md).
 
 ## Delivered scope
@@ -51,7 +53,18 @@ Each task reads pages of at most 50 and caps at 100 pages. Offsets advance by re
 
 Keep private config, database and session volumes. Team installation: `python scripts/waha_team.py up`, then doctor. Legacy installation: use the same database/internal port/private Compose environment recorded in [previous acceptance](role-a-integration-acceptance.md), migrate head/check and rebuild ingress/worker/monitor before using the new page. Do not reprovision solely to upgrade; it can overwrite browser authorization. For this operator the preserved DB port is 16433, not the old 54329. If a legacy terminal already has the correct DATABASE_URL, explicitly run `python scripts/waha_team.py remember-database`; its ignored database.json contains credentials and must stay private. Never copy it to teammates. This helper does not start the database or adopt a different workspace.
 
-Open the live local workspace (normally 127.0.0.1:5173 with GIGMATE_API_URL pointing at ingress18702). Each teammate uses their own consenting account/chat. Test the whole batch once:
+From `apps/web`, select your actual ingress and the real environment (replace 18702 if your installation uses another port):
+
+```bash
+GIGMATE_REAL_API_URL=http://127.0.0.1:18702 npm run dev
+```
+
+```powershell
+$env:GIGMATE_REAL_API_URL = 'http://127.0.0.1:18702'
+npm run dev
+```
+
+Open the printed frontend URL (normally 127.0.0.1:5173), check **真实连接（本机开发）** and the configured API address. An isolated backend must be prepared separately on another port/database; address selection does not provision one. Each teammate uses their own consenting account/chat. Test the whole batch once:
 
 1. Discover/load pages and use search/direct/group/authorized filters. Save the intended test chat; check that selected authorization survives later pages.
 2. Open **消息时间线与同步**, choose that authorized chat and load its timeline. Verify a fresh create/edit/delete sequence updates revisions/tombstone after reloading. Existing text checkpoint/verify remains the text-revision check.

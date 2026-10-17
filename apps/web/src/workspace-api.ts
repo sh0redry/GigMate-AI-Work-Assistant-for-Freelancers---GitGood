@@ -1,3 +1,5 @@
+import type { OrderCommands } from "./order-command-api";
+import { apiBase } from "./environment.ts";
 import type { components } from "./generated/api";
 
 export type Order = components["schemas"]["WorkOrder"];
@@ -26,6 +28,7 @@ export function workspaceApi(
   csrf = "",
   fetcher: typeof fetch = fetch,
 ): RequestApi {
+  const base = apiBase();
   return async <T>(
     path: string,
     body?: unknown,
@@ -35,7 +38,7 @@ export function workspaceApi(
     let response: Response;
     let result;
     try {
-      response = await fetcher(`/api/v1${path}`, {
+      response = await fetcher(`${base}${path}`, {
         method: body === undefined ? "GET" : "POST",
         credentials: "same-origin",
         cache: "no-store",
@@ -73,8 +76,11 @@ export function workspaceApi(
         APPROVAL_STALE: "来源消息已变化，请刷新并重新核对。",
         SCHEDULE_CONFLICT: "该时段与其他预约冲突，不能确认，请刷新查看。",
         CONSENT_REVOKED: "当前处理授权已暂停，请联系接入负责人核对。",
-        CSRF_REJECTED: "登录验证已变化，请退出后重新登录。",
-        NOT_FOUND: "当前业务或对话不可用，请刷新并确认使用了回放环境。",
+        CSRF_REJECTED:
+          path === "/auth/login"
+            ? "当前环境尚未允许此网页地址登录，请联系负责配置的队友确认。"
+            : "登录验证已变化，请退出后重新登录。",
+        NOT_FOUND: "当前工单或会话不可用，请刷新并检查当前账号和会话授权。",
       };
       throw new WorkspaceError(
         code,
@@ -129,7 +135,7 @@ export async function allPages<T>(
   return items;
 }
 
-export type ReplaySnapshot = {
+export type BusinessSnapshot = {
   orders: Order[];
   tasks: Task[];
   calendar: Calendar[];
@@ -137,14 +143,17 @@ export type ReplaySnapshot = {
   changes: Change[];
   messages: Message[];
   contextVersion: number;
+  contexts?: Record<string, number>;
 };
-export type ReplayApi = {
-  load(selected: string, signal: AbortSignal): Promise<ReplaySnapshot>;
-  replay(scenario: "reschedule" | "available"): Promise<boolean>;
-  confirm(snapshot: ReplaySnapshot, change: Change): Promise<void>;
+export type BusinessApi = {
+  load(selected: string, signal: AbortSignal): Promise<BusinessSnapshot>;
+  confirm(snapshot: BusinessSnapshot, change: Change): Promise<void>;
 };
 
-export function replayApi(request: RequestApi): ReplayApi {
+export function businessApi(
+  request: RequestApi,
+  commands?: OrderCommands,
+): BusinessApi {
   return {
     async load(selected, signal) {
       const [orders, tasks, calendar] = await Promise.all([
@@ -169,17 +178,34 @@ export function replayApi(request: RequestApi): ReplayApi {
           "NO_CONVERSATION",
           "当前工单没有可核对的对话，请联系后端负责人。",
         );
-      const [changes, messages, info] = await Promise.all([
+      const [changes, timelines] = await Promise.all([
         allPages<Change>(request, `/work-orders/${order.id}/changes`, signal),
-        allPages<Message>(
-          request,
-          `/conversations/${conversation}/messages`,
-          signal,
-        ),
-        request<Detail<{ context_version: number }>>(
-          `/conversations/${conversation}`,
-          undefined,
-          signal,
+        Promise.all(
+          [...new Set(order.conversation_ids)].map(async (id) => {
+            const [messages, info] = await Promise.all([
+              allPages<Message>(
+                request,
+                `/conversations/${id}/messages`,
+                signal,
+              ),
+              request<Detail<components["schemas"]["Conversation"]>>(
+                `/conversations/${id}`,
+                undefined,
+                signal,
+              ),
+            ]);
+            if (
+              info.data.id !== id ||
+              !Number.isInteger(info.data.context_version) ||
+              info.data.context_version < 1 ||
+              messages.some((message) => message.conversation_id !== id)
+            )
+              throw new WorkspaceError(
+                "INVALID_RESPONSE",
+                "对话范围或版本无效，请刷新核对。",
+              );
+            return { id, messages, version: info.data.context_version };
+          }),
         ),
       ]);
       return {
@@ -188,19 +214,17 @@ export function replayApi(request: RequestApi): ReplayApi {
         calendar,
         selected: order.id,
         changes,
-        messages: messages.sort(
-          (a, b) =>
-            a.occurred_at.localeCompare(b.occurred_at) ||
-            a.id.localeCompare(b.id),
-        ),
-        contextVersion: info.data.context_version,
+        messages: timelines
+          .flatMap((t) => t.messages)
+          .sort(
+            (a, b) =>
+              a.occurred_at.localeCompare(b.occurred_at) ||
+              a.id.localeCompare(b.id) ||
+              a.revision - b.revision,
+          ),
+        contextVersion: timelines[0].version,
+        contexts: Object.fromEntries(timelines.map((t) => [t.id, t.version])),
       };
-    },
-    async replay(scenario) {
-      const result = await request<
-        Detail<components["schemas"]["ReplayResult"]>
-      >("/replay", { scenario });
-      return result.data.duplicate;
     },
     async confirm(snapshot, change) {
       const order = snapshot.orders.find((o) => o.id === snapshot.selected);
@@ -209,11 +233,63 @@ export function replayApi(request: RequestApi): ReplayApi {
           "VERSION_CONFLICT",
           "业务已切换，请刷新并重新核对。",
         );
-      await request(`/work-orders/${order.id}/changes/${change.id}/confirm`, {
+      const context = changeContext(snapshot, change);
+      if (!["schedule", "address"].includes(change.field))
+        throw new WorkspaceError(
+          "VALIDATION_FAILED",
+          "当前只能确认时间或地址提议。",
+        );
+      if (context === null)
+        throw new WorkspaceError(
+          "APPROVAL_STALE",
+          "来源对话或消息版本无法核对，请刷新并重新审核。",
+        );
+      const body = {
         expected_version: order.version,
-        expected_context_version: snapshot.contextVersion,
-        apply_calendar_update: true,
-      });
+        expected_context_version: context,
+        apply_calendar_update: change.field === "schedule",
+      };
+      if (commands)
+        await commands.submit({
+          kind: "confirm",
+          orderId: order.id,
+          changeId: change.id,
+          review: {
+            field: change.field as "schedule" | "address",
+            summary: order.summary,
+            oldValue: change.old_value,
+            newValue: change.new_value,
+            sources: change.sources,
+          },
+          body,
+        });
+      else
+        await request(
+          `/work-orders/${order.id}/changes/${change.id}/confirm`,
+          body,
+        );
     },
   };
+}
+
+// ChangeView does not expose conversation_id. Resolve it only from exact canonical
+// source revisions; never guess the first linked conversation for a multi-chat order.
+export function changeContext(
+  snapshot: BusinessSnapshot,
+  change: Change,
+): number | null {
+  if (!snapshot.contexts) return snapshot.contextVersion; // legacy single-chat snapshots
+  const ids = new Set<string>();
+  for (const source of change.sources) {
+    const message = snapshot.messages.find(
+      (m) =>
+        m.id === source.message_id &&
+        m.revision === source.message_revision &&
+        !m.revoked,
+    );
+    if (!message) return null;
+    ids.add(message.conversation_id);
+  }
+  if (ids.size !== 1) return null;
+  return snapshot.contexts[[...ids][0]] ?? null;
 }

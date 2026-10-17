@@ -118,6 +118,8 @@ def build_request_for(  # pragma: no cover - test helper only
     candidate_work_order_ids: Iterable[str] = (),
     base_work_order_version: int | None = None,
     base_work_order_snapshot: dict | None = None,
+    message_received_at: str | None = None,
+    workspace_timezone: str | None = None,
 ) -> ExtractionRequest:
     return ExtractionRequest(
         account_id=account_id,
@@ -129,6 +131,8 @@ def build_request_for(  # pragma: no cover - test helper only
         candidate_work_order_ids=tuple(candidate_work_order_ids),
         base_work_order_version=base_work_order_version,
         base_work_order_snapshot=base_work_order_snapshot,
+        message_received_at=message_received_at,
+        workspace_timezone=workspace_timezone,
     )
 
 
