@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 import type { Choice } from "./connection-api";
 
 export type ChatFilter = "all" | "direct" | "group" | "unknown" | "selected";
@@ -11,20 +12,34 @@ export function choiceKind(choice: Choice) {
 export function choiceDisplay(choice: Choice) {
   const kind = choiceKind(choice);
   const kindLabel = {
-    direct: "个人聊天",
-    group: "群聊",
-    unknown: "类型未提供",
+    direct: t("个人聊天"),
+    group: t("群聊"),
+    unknown: t("类型未提供"),
   }[kind];
   const label = choice.label.trim();
   const placeholder =
-    !label || ["Authorized conversation", "已授权会话"].includes(label);
+    !label || ["Authorized conversation", t("已授权会话")].includes(label);
   return {
     kind,
     kindLabel,
     label: placeholder
       ? choice.selected
-        ? `已授权${kind === "group" ? "群聊" : kind === "direct" ? "个人聊天" : "会话"}`
-        : `未命名${kind === "group" ? "群聊" : kind === "direct" ? "个人聊天" : "会话"}`
+        ? t(
+            "已授权{0}",
+            kind === "group"
+              ? t("群聊")
+              : kind === "direct"
+                ? t("个人聊天")
+                : t("会话"),
+          )
+        : t(
+            "未命名{0}",
+            kind === "group"
+              ? t("群聊")
+              : kind === "direct"
+                ? t("个人聊天")
+                : t("会话"),
+          )
       : label,
     numberOnly:
       !placeholder && kind === "direct" && /^\+?\d[\d\s().-]{5,}$/.test(label),

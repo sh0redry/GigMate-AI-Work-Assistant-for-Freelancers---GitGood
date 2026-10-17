@@ -1,3 +1,4 @@
+import copy
 import json
 import logging
 import os
@@ -82,6 +83,12 @@ def run_once(factory=Session):
         )
         if not job:
             return False
+        if job.state == "processing" and job.model_request_id:
+            # A crashed/expired submitted call may have incurred cost. Never replay it.
+            job.state, job.error_code = "completed", "MODEL_OUTCOME_UNKNOWN"
+            job.lease_owner, job.lease_until = None, None
+            job.completed_at = now
+            return True
         if job.attempts >= 3:
             job.state, job.error_code = "failed", "RETRY_EXHAUSTED"
             job.lease_owner, job.lease_until = None, None
@@ -97,6 +104,7 @@ def run_once(factory=Session):
         job.attempts += 1
         job_id, account_id = job.id, job.account_id
     began = time.monotonic()
+    deferred = None
     try:
         with factory.begin() as db:
             account = db.scalar(select(Account).where(Account.id == account_id).with_for_update())
@@ -142,17 +150,11 @@ def run_once(factory=Session):
                 job.state, job.error_code = "completed", OWN_SEND_ECHO
             elif event["connector"] == "waha":
                 linked = open_orders(db, conversation.id, job.id)
-                matched = _route_through_provider(
-                    db,
-                    account=account,
-                    inbox=inbox,
-                    event=event,
-                    conversation=conversation,
-                    linked=linked,
-                    job=job,
+                job.model_request_id = uuid4().hex
+                request = _extraction_request(
+                    db, account, event, conversation, linked, request_id=job.model_request_id
                 )
-                job.state = "completed"
-                job.error_code = None if matched else EXTRACTION_NEEDS_REVIEW
+                deferred = (request, copy.deepcopy(event), linked)
             else:
                 linked = open_orders(db, conversation.id, job.id)
                 if len(linked) != 1:
@@ -202,21 +204,101 @@ def run_once(factory=Session):
                         "completed",
                         None if proposal else "STUB_UNSUPPORTED_INPUT",
                     )
-            if job.lease_until.replace(tzinfo=UTC) <= datetime.now(UTC):
-                raise RuntimeError("LEASE_EXPIRED")
-            job.lease_owner, job.lease_until = None, None
-            complete_metrics(job, inbox, began)
+            if deferred is None:
+                if job.lease_until.replace(tzinfo=UTC) <= datetime.now(UTC):
+                    raise RuntimeError("LEASE_EXPIRED")
+                job.lease_owner, job.lease_until = None, None
+                complete_metrics(job, inbox, began)
+        if deferred is not None:
+            # No Session or database lock spans model/network I/O.
+            request, event, linked = deferred
+            outcome = provider().propose(request)
+            with factory.begin() as db:
+                account = db.scalar(
+                    select(Account).where(Account.id == account_id).with_for_update()
+                )
+                job = db.scalar(select(Job).where(Job.id == job_id).with_for_update())
+                if job.state != "processing" or job.lease_owner != owner:
+                    return True
+                inbox = db.get(Inbox, job.event_id)
+                conversation = db.get(ConversationRow, request.conversation_id)
+                latest = db.scalar(
+                    select(MessageRow)
+                    .where(
+                        MessageRow.id == request.message_id,
+                        MessageRow.account_id == account_id,
+                        MessageRow.conversation_id == request.conversation_id,
+                    )
+                    .order_by(MessageRow.revision.desc())
+                )
+                connection = (
+                    db.get(WahaConnection, inbox.connection_id) if inbox.connection_id else None
+                )
+                if (
+                    not account.active
+                    or not conversation.allowlisted
+                    or (connection and not connection.enabled)
+                ):
+                    job.state, job.error_code = "cancelled", "CONSENT_REVOKED"
+                elif job.lease_until is None or job.lease_until.replace(tzinfo=UTC) <= datetime.now(
+                    UTC
+                ):
+                    job.state, job.error_code = "completed", "MODEL_OUTCOME_UNKNOWN"
+                elif (
+                    latest is None
+                    or latest.revision != request.message_revision
+                    or latest.data["revoked"]
+                    or conversation.context_version != request.context_version
+                    or inbox.context_version != request.context_version
+                    or open_orders(db, conversation.id, job.id) != linked
+                ):
+                    job.state, job.error_code = "completed", "SOURCE_SUPERSEDED"
+                else:
+                    matched = _route_through_provider(
+                        db,
+                        account=account,
+                        inbox=inbox,
+                        event=event,
+                        conversation=conversation,
+                        linked=linked,
+                        job=job,
+                        prepared_request=request,
+                        prepared_outcome=outcome,
+                    )
+                    job.state = "completed"
+                    job.error_code = (
+                        "MODEL_OUTCOME_UNKNOWN"
+                        if (outcome.refused_reason or "").startswith(
+                            (
+                                "llm:result-unknown",
+                                "llm:http-failed:timeout",
+                                "llm:http-failed:transport",
+                                "llm:http-failed:status-5xx",
+                            )
+                        )
+                        else None
+                        if matched
+                        else EXTRACTION_NEEDS_REVIEW
+                    )
+                job.lease_owner, job.lease_until = None, None
+                complete_metrics(job, inbox, began)
     except Exception:
         # No raw message text or exception values enter logs.
         log.error("job_failed job_id=%s code=PROCESSING_FAILED", job_id)
         with factory.begin() as db:
             job = db.scalar(select(Job).where(Job.id == job_id).with_for_update())
             if job.lease_owner == owner:
-                job.state = "failed" if job.attempts >= 3 else "pending"
-                job.error_code = "PROCESSING_FAILED"
+                job.state = (
+                    "completed"
+                    if job.model_request_id
+                    else ("failed" if job.attempts >= 3 else "pending")
+                )
+                job.error_code = (
+                    "MODEL_OUTCOME_UNKNOWN" if job.model_request_id else "PROCESSING_FAILED"
+                )
                 job.available_at = datetime.now(UTC) + timedelta(seconds=2**job.attempts)
                 job.lease_owner, job.lease_until = None, None
-                if job.state == "failed":
+                if job.state in {"failed", "completed"}:
                     complete_metrics(job, db.get(Inbox, job.event_id), began)
     return True
 
@@ -230,6 +312,8 @@ def _route_through_provider(
     conversation: ConversationRow,
     linked: list[str],
     job: Job | None = None,
+    prepared_request=None,
+    prepared_outcome=None,
 ) -> bool:
     """Invoke the registered extraction provider and persist its evidence.
 
@@ -244,37 +328,15 @@ def _route_through_provider(
     take long enough for the conversation context or the work order version to
     move on, or for this worker's lease to expire. In either case the result
     describes a stale snapshot, so it is discarded instead of being promoted —
-    the job is retried against current data rather than writing outdated
-    business changes.
+    no stale business changes are written and the original call identity stays
+    available for review; paid calls are not automatically replayed.
     """
-    target_order_id: str | None = None
-    base_snapshot = None
-    base_version: int | None = None
-    if len(linked) == 1:
-        target = db.get(WorkOrderRow, linked[0])
-        if target is not None and target.account_id == account.id:
-            target_order_id = target.id
-            base_snapshot = target.data
-            base_version = target.data.get("version")
-    request = ExtractionRequest(
-        account_id=account.id,
-        conversation_id=conversation.id,
-        message_id=event["payload"]["message_id"],
-        message_revision=event["message_revision"],
-        message_text=event.get("payload", {}).get("text"),
-        context_version=conversation.context_version,
-        candidate_work_order_ids=tuple(linked),
-        base_work_order_version=base_version,
-        base_work_order_snapshot=base_snapshot,
-        origin="live",
-        # Gate 4: the connector's own sending time plus the merchant's
-        # configured zone are the only date-grounding basis the provider gets.
-        # Both stay ``None`` when unavailable and the provider then refuses
-        # relative-date proposals instead of guessing.
-        message_received_at=event.get("occurred_at"),
-        workspace_timezone=_workspace_timezone(),
+    request = prepared_request or _extraction_request(db, account, event, conversation, linked)
+    target_order_id = (
+        request.candidate_work_order_ids[0] if len(request.candidate_work_order_ids) == 1 else None
     )
-    outcome = provider().propose(request)
+    base_version = request.base_work_order_version
+    outcome = prepared_outcome or provider().propose(request)
     if job is not None and job.lease_until is not None:
         if job.lease_until.replace(tzinfo=UTC) <= datetime.now(UTC):
             return False
@@ -317,6 +379,35 @@ def _route_through_provider(
                 draft_for_change(db, account.id, order, conversation, change.data)
             return True
     return False
+
+
+def _extraction_request(db, account, event, conversation, linked, request_id=None):
+    base_snapshot = None
+    base_version: int | None = None
+    if len(linked) == 1:
+        target = db.get(WorkOrderRow, linked[0])
+        if target is not None and target.account_id == account.id:
+            base_snapshot = target.data
+            base_version = target.data.get("version")
+    return ExtractionRequest(
+        account_id=account.id,
+        conversation_id=conversation.id,
+        message_id=event["payload"]["message_id"],
+        message_revision=event["message_revision"],
+        message_text=event.get("payload", {}).get("text"),
+        context_version=conversation.context_version,
+        candidate_work_order_ids=tuple(linked),
+        base_work_order_version=base_version,
+        base_work_order_snapshot=copy.deepcopy(base_snapshot),
+        extra={"request_id": request_id} if request_id else {},
+        origin="live",
+        # Gate 4: the connector's own sending time plus the merchant's
+        # configured zone are the only date-grounding basis the provider gets.
+        # Both stay ``None`` when unavailable and the provider then refuses
+        # relative-date proposals instead of guessing.
+        message_received_at=event.get("occurred_at"),
+        workspace_timezone=_workspace_timezone(),
+    )
 
 
 def _workspace_timezone() -> str | None:
@@ -386,6 +477,22 @@ def audit_provider_config():
     * any issue while the live gate is off → warn only, because the
       closed skeleton seam (``_SKELETON_SEAM``) refuses every call anyway.
     """
+    from gigmate.extraction.registry import build_provider
+
+    try:
+        build_provider()
+    except (ValueError, RuntimeError):
+        log.error("provider_config_invalid code=EXTRACTION_PROVIDER_INVALID")
+        return False
+    if (
+        os.environ.get("GIGMATE_EXTRACTION_PROVIDER") == "reviewed_llm"
+        and os.environ.get("GIGMATE_LLM_LIVE") == "1"
+    ):
+        from gigmate.extraction.reviewed import configured_for_live
+
+        if not configured_for_live():
+            log.error("provider_config_invalid code=REVIEWED_LLM_CONFIG_INVALID")
+            return False
     issues = validate_provider_config()
     if not issues:
         return True
@@ -408,7 +515,7 @@ def main():
         # real vendor calls against a configuration already known to be
         # wrong. The seam check above is the same one the provider applies
         # at call time; running it at boot simply surfaces it earlier.
-        return
+        raise SystemExit(2)
     stop = threading.Event()
     pulse = threading.Thread(
         target=heartbeat_loop, args=(stop,), name="gigmate-heartbeat", daemon=True

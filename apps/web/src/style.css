@@ -1116,3 +1116,76 @@ footer {
   font-size: 12px;
   margin: -5px 0 18px;
 }
+
+.language-switch {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  order: 3;
+}
+.language-switch button {
+  padding: 6px 10px;
+  min-height: 32px;
+  font-size: 12px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  box-shadow: none;
+}
+.language-switch button[aria-pressed="true"] {
+  background: var(--accent);
+  color: white;
+}
+@media (max-width: 680px) {
+  .app-header {
+    flex-wrap: wrap;
+  }
+  .language-switch {
+    margin-left: auto;
+    order: 0;
+  }
+  .app-header .mode {
+    display: none;
+  }
+  .account-actions {
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .page-heading {
+    flex-wrap: wrap;
+  }
+  .page-heading > button {
+    max-width: 100%;
+  }
+  .app-header .brand {
+    order: -1;
+  }
+}
+
+/* Long English navigation labels must stay inside each mobile touch target. */
+@media (max-width: 760px) {
+  .workspace-navigation button,
+  .workspace-navigation .mobile-more {
+    white-space: normal;
+    line-height: 1.25;
+    min-height: 62px;
+  }
+  .nav-primary button > span,
+  .mobile-more > span {
+    max-width: 100%;
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+  .app-header {
+    overflow: hidden;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: rgba(255, 255, 255, 0.94);
+  }
+}

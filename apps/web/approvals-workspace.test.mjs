@@ -25,6 +25,8 @@ for (const name of [
   "read-cache",
   "useStableState",
   "workspace-api",
+  "i18n",
+  "locales",
   "work-order-view",
 ]) {
   const ext = name === "ApprovalsWorkspace" ? "tsx" : "ts";

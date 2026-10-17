@@ -257,6 +257,7 @@ def choices(db, row):
             result.append(
                 dict(
                     id=chat.id,
+                    conversation_id=chat.conversation_id,
                     label=labels.get(chat.provider_chat_id) or "Authorized conversation",
                     selected=True,
                     expires_at=None,

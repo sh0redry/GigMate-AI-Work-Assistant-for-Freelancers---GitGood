@@ -1,108 +1,49 @@
 # GigMate frontend user guide
 
-## Pearl and mist-blue appearance
+Current candidate: 2026-10-17, based on main `14aa34e`. [中文](../zh/role-d-frontend-user-guide.md). Technical evidence: [BCD delivery](bcd-product-delivery.md).
 
-The new interface uses a pearl-white/grey/blue palette, with translucent navigation and a solid reading surface. On phones, the bottom bar opens four main pages; “More” contains creation, review and help. Escape closes the extra menu. The current page and statuses have text as well as colour. Reduced-transparency/high-contrast preferences and browsers without backdrop blur use solid surfaces; reduced motion disables transitions. This is a web interpretation of glass materials, not native iOS optical rendering.
+## Five useful words
 
-## Refresh without losing your place
+An **order** is one job's notebook; a chat can contain several orders. A **proposal** is information awaiting review, not an already changed arrangement. **Customer confirmation** is the customer's agreement; your own sent message cannot replace it. **Merchant approval** records your decision; it does not prove a reply was sent. A **receipt** records an operation; accepted, delivered and unknown have different meanings.
 
-The business workspace revalidates every five seconds while visible. Equal JSON snapshots keep their references, content, focus and review checkbox. Initial loading is separate from background refresh. Temporary network errors retain a clearly marked old view; writes stay blocked where current verification is needed. Expired sessions or revoked access clear private content. Server version checks still decide every mutation. QR and file downloads are excluded from cached reads. No chats are saved for offline use.
+## Sign in, choose language, connect
 
-## API delivery update (2026-10-17)
+Use your configured GigMate account, separate from your WhatsApp phone account. The product has no public test password, replay entry or isolated-environment picker. Developers test in disposable environments before submitting changes.
 
-New-order and lifecycle operations now follow server capability flags; unsupported controls are hidden. The business-management extension is prepared for PR32 but stays absent until the server advertises completed security acceptance. See the [API inventory and release conditions](role-d-api-audit.md).
+The header offers **中文 / English / 粵語**. Switching keeps login, page and form input. It translates UI labels, not customer messages, saved business text or approved reply bodies. Only the preference is persisted; no business text goes to a translation service.
 
-Current delivery candidate · 2026-10-16. [中文手册](../zh/role-d-frontend-user-guide.md) · [Acceptance and limits](role-d-final-acceptance.md).
+Open **WhatsApp connection**, scan when needed, discover/select work chats and explicitly save processing permission. Reading/processing and sending are separate permissions. Pause, revoke and reconnect against the current state. If no connection exists, contact the integration maintainer instead of repeatedly scanning.
 
-## 1 Current pages and capability
+## Create the first order
 
-The candidate follows merged #26/#27/main `71de8d9`. There is one business service, blank login fields and no public password, sample-input button or environment switch. Old `/environments/...` bookmarks stop at an explicit retired-entry page; open `/` only after checking the configured service. Existing records and WhatsApp sessions are not deleted or converted.
+Choose **New order**, select an authorised conversation and read customer messages. Enter a summary. Keep unknown time/address missing; a date alone remains tentative. Values require selecting their current customer source messages. Confirm explicitly if another open order already exists in the chat.
 
-| Page | What you can do |
-| --- | --- |
-| Business | Search existing orders, read linked source revisions, accept supported time/date-only/address proposals and use reviewed status commands |
-| New order | Select an authorized conversation, fill missing/known details, choose customer evidence, review and save through the merged C contract |
-| Reply approvals | Review exact recipient/body/source/expiry/versions; approve, reject/cancel, reissue and inspect history |
-| Calendar and tasks | Month view, all-appointment list, date keyboard navigation, full-account tasks, owned confirmed appointment `.ics` downloads |
-| Manual review | Read processing diagnostics, distinguish historical rounds, inspect original conversation and open linked orders |
-| WhatsApp | Connect/authorize conversations, read messages and attachments, use the separate explicitly authorized sending gateway |
-| Features and help | See what is available and why a particular function remains disabled |
+Review the order, check the confirmation box, then save. **AI new-order suggestions** appear only when the backend has valid current suggestions. Selecting one fills the summary only. You still review sources, enter critical values and confirm creation. AI never silently creates a formal order. Manual creation works without a suggestion.
 
-A blank list is not an error and not proof that AI understood everything. Production onboarding, real model activation and the complete business send loop remain team dependencies.
+## Daily workflow
 
-## 2 Open the workspace
+1. **Workspace:** search orders, inspect current arrangements, source messages and proposed changes. Edited/revoked sources invalidate old evidence.
+2. **Business management:** review the summary; assign ambiguous messages, defer missing information, manage materials/commitments/questions, set hours/breaks and review other field proposals.
+3. **Reply approvals:** check recipient, exact full text, sources, versions and expiry. Approve or reject with a reason. Editing creates a new revision requiring fresh approval.
+4. **Business management → Edit replies & check sending:** choose the approved draft and exact connection, review and submit. Separately authorise that chat for sending first. Submission does not prove delivery; inspect its linked receipt.
+5. **Calendar & tasks:** month/agenda views and `.ics` export for current formal confirmed appointments with valid sources. Import into your own calendar. Rescheduling does not continuously sync and repeated import may duplicate entries.
+6. **Business management → Handle tasks:** review completion/cancellation. Finish prerequisites first. Task completion does not confirm a customer's time/address.
+7. **Delivery checklist:** resolve unfinished items, or explicitly acknowledge closing anyway. Finish/cancel and archive while retaining history.
 
-Use the GigMate account provided by the maintainer. It is separate from your WhatsApp account. Do not enter your phone password here. The delivery page never displays development credentials.
+The question helper supports today's/tomorrow's schedule, waiting customers and decisions. It reads owned records and links to orders; unsupported questions are not guessed.
 
-For local development, start your already-configured backend without resetting its database or session. In `apps/web`, macOS/Linux:
+## Interrupted or uncertain results
 
-```bash
-GIGMATE_REAL_API_URL=http://127.0.0.1:18702 npm run dev
-```
+Refresh reads status and does not approve/send again. Keep the original ID, body and versions when a submitted response is lost. Read current records, then explicitly check the original operation. No receipt does not prove no execution. Do not create another order or send to test success. Unknown model calls keep their request ID for operator checking; you can still handle work manually from customer sources.
 
-PowerShell:
+Definite initial checklist/dependency rejection leaves no partial write and permits a reviewed correction. Read disabled-button reasons rather than bypassing permission.
 
-```powershell
-$env:GIGMATE_REAL_API_URL = 'http://127.0.0.1:18702'
-npm run dev
-```
+## Refresh and cache
 
-Use your actual backend port and the printed frontend URL. The backend must allow that frontend origin. The old default-environment/isolated/alias variables no longer select a service. Delivery assets always request same-origin `/api/v1`; the development proxy forwards only the GigMate session cookie. Private provider configuration is never placed in the page. Test resources are prepared externally by developers, never selected in the product.
+The visible business page checks about every five seconds. Every read still authenticates with the server. Unchanged answers keep the same UI; changed branches update without clearing the page. An offline old view cannot authorise new confirmations. Logout/account changes clear session snapshots.
 
-### Frontend tests and building
+## Limits
 
-Use pinned Node 24.15.0/npm 11.12.1 and the project Python 3.12.10 environment. Each checkout needs `.venv/bin/python` (POSIX) or `.venv/Scripts/python.exe` (Windows); an explicit `GIGMATE_TEST_PYTHON` is also supported. Missing Python fails clearly instead of skipping tests.
+The optional text model needs explicit server configuration and consent. Without it, use the manual workflow. Live speech/image recognition, media-to-order promotion, freely generated Agent auto-replies, continuous external calendar sync and standalone exe/app installers are not delivered. Browser installation is a shortcut and still needs a running backend. Local synthetic tests do not replace real-phone/vendor/deployment acceptance.
 
-```bash
-npm ci
-npm run check:api
-npm run format:check
-npm run build
-```
-
-`build` runs tests and compiles. `bundle` only typechecks/compiles; the web container uses it after format checking, while CI performs the full pinned-Python tests before release. No test runtime is required in the served web container. A build is not a deployment.
-
-## 3 Connection and chat consent
-
-Open WhatsApp, follow connection status and select the chats you authorize. Reception and sending are separate permissions. The separate manual sender requires exact chat/content review; provider acceptance is not delivery/read proof. Unknown results preserve the original identity and require reconciliation, never a fresh resend. Attachment download/source review exists, but real model understanding and scanned-PDF OCR are not enabled by this frontend.
-
-## 4 Business workspace
-
-Check summary, status, time/address and exact source revision. A conversation can contain multiple orders. Missing values stay missing. A customer proposing a change, explicitly confirming it, and the merchant approving it are different facts.
-
-For a time or address proposal, compare the value and exact original message, then explicitly accept it. A date without a time remains tentative. If the customer has not confirmed a resolved value, accepting it saves the value as proposed: it is still waiting for the customer, rather than becoming a formal appointment. Unsupported fields, stale versions, changed sources and conflicts remain blocked.
-
-Start, wait for customer, complete and cancel now use C's merged commands. Review the effect and version before saving. Completed/cancelled orders are final; closing deals with generated tasks and unsent business drafts, retains history and does not recall an already dispatched WhatsApp request.
-
-A lost response preserves the original numbered command before any POST. Refresh and sign-in do not resend it. There are two explicit options: review and retry the exact original key/body/version, or use “只读核对已保存结果” to look up its immutable server receipt without executing anything. Only a matching completed receipt unlocks “结束已核对的原记录”, after a separate checkbox. Missing/unknown results retain the original record; never infer that a missing receipt means the request was not executed. Storage denial/cleanup failure blocks new writes until recovered. No password is journaled; temporary original content stays in tab session storage until verified completion.
-
-
-Calendar download also checks the actual latest customer messages behind the time and any confirmed location. If a message is edited, withdrawn, missing or no longer authorized, download stops and asks you to review the source. Your stored appointment/history remains; the program does not silently cancel it.
-
-## D-03: review a reply before approving it
-
-Review the complete body, recipient conversation, source revisions, expiry and bound/current work-order and conversation versions. Tick explicit consent after review. **已批准，尚未发送** means only that your decision was saved. This business approval is not automatically linked to a WhatsApp send. Do not paste an old approval into a sender and assume its versions remain valid.
-
-Reject/cancel requires a reason. Reissue creates a new pending draft, not a message. Missing-time/address and verification questions are described alongside conflict questions, including safely handled unfamiliar trigger formats. Full history retains closed records. Original-key approval recovery remains account-scoped; an unresolved legacy-entry record blocks new approvals instead of silently migrating it to a different service.
-
-## 5 New orders and manual review
-
-Choose an authorized conversation, enter a short summary, leave unknown time/address blank and choose the customer's latest unretracted original messages for any supplied values. Outgoing merchant messages are excluded as customer-confirmation evidence. Specific times use Hong Kong time; date-only values remain tentative. Another open order requires an explicit additional-order checkbox. Changing form/source data invalidates its review.
-
-Saving now uses the canonical generated CreateWorkOrderCommand from merged #26. The server capability enables manual creation, order status and address confirmation in this version; a missing/failed capability response still disables dependent operations. AI creation, assignment/deferred follow-up and C-to-A sending remain unavailable.
-
-Manual review shows safe owned/allowlisted job metadata and current original messages, not raw provider payloads. Historical rounds are labelled. Missing fields say whether customer input, clarification or merchant review is needed. Assignment/deferred-follow-up saving remains unavailable without B/C contracts. For media/partial results, use the WhatsApp attachment panel and its source review; this does not turn model output into a confirmed order.
-
-## 6 Internal calendar and phone export
-
-Month view starts on Monday. Choose a date; arrows move one day/week and Home/End move to the current week's ends. Today and previous/next month controls are available. All-appointments view and optional closed-order history help inspect other dates. Time is displayed in Hong Kong time; date-only entries keep their original date/timezone. Tasks are read-only because no manual completion/edit API exists.
-
-**加入我的日历 (.ics)** downloads one current formal timed appointment after a fresh server ownership/time/source check (later address/status-only versions remain valid). Tentative, stale, unavailable and closed-order records cannot export. The file contains the business title, UTC instants, original-timezone note and a confirmed address when present. Your calendar displays the same instants in its configured timezone. Keep the downloaded business file private.
-
-Open/import the file in your own calendar. Rescheduling does not automatically update phone/Google/Outlook calendars; reimport/update manually and check for duplicates. No Google login, subscription or two-way synchronization is implemented. Actual iPhone/Google/Outlook imports remain independent device acceptance.
-
-## 7 Installation, logout and troubleshooting
-
-A manifest and icon support installation/home-screen launch in compatible browsers over HTTPS or loopback. No service worker, offline business cache or background mutation is installed. Native exe/macOS bundles, signing, updates and fresh-device installation remain unimplemented. The API, worker, PostgreSQL and WAHA still need to run.
-
-Logout clears visible account data and credentials; unresolved original journals are retained by account for recovery. If login expires, log in again. For a failed capability read, dependent actions stay disabled. For conflicts/versions, refresh and re-review. For unknown writes, reconcile the saved original operation. Never reset a business database/session to repair a frontend problem.
+See [developer setup](getting-started.md), [Kyrie's beginner guide](kyrie-learning-guide.md) and [file atlas](kyrie-file-atlas.md).

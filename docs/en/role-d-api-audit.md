@@ -1,5 +1,10 @@
 # Frontend API audit (2026-10-17)
 
+## Current integration — 2026-10-17
+
+PR32 is merged in main `14aa34e`; the separate preview snapshot/generator/types are removed. All business clients now use canonical implemented OpenAPI. This candidate adds owned new-order suggestions, explicit suggestion consumption, task status and bounded read-only workspace queries; the reviewed text provider is opt-in. Chat choices now expose the owned conversation mapping. See [current delivery](bcd-product-delivery.md). The inventory below records the earlier preparation stage; its pending-route wording is historical.
+
+
 Audited main `e912977` and pending PR32 `d696735623b52e4d5135c40a62e6b0744cc31af2`. This is a route inventory, not proof of live-provider acceptance. A owns connections, synchronization, attachments and the sending gateway; C owns business commands, planning and approvals. B/E processing uses worker/provider contracts and has no independent product HTTP controls on this main. A defined schema alone does not establish a working feature.
 
 ## Implemented main
@@ -83,7 +88,7 @@ Audited main `e912977` and pending PR32 `d696735623b52e4d5135c40a62e6b0744cc31af
 
 ## Prepared PR32, disabled by default
 
-The separate [preview snapshot](../../contracts/business-loop-preview.openapi.json) contains 14 pending paths, recursively copied schema dependencies and the pinned source commit. It is not implemented OpenAPI and is never registered by the running backend. Main generated types still come solely from canonical main Pydantic models. Run `npm run generate:api` for both independently generated type files; `check:api` checks both.
+The historical preview snapshot (removed after PR32 merged) contains 14 pending paths, recursively copied schema dependencies and the pinned source commit. It is not implemented OpenAPI and is never registered by the running backend. Main generated types still come solely from canonical main Pydantic models. Run `npm run generate:api` for both independently generated type files; `check:api` checks both.
 
 Business management prepares daily summary, working hours/breaks/buffers, schedule checks, materials/commitments/questions and their tasks, deferrals, rejection and additional change fields, completion checklist/acknowledgement, archive, assignment/dismissal and reply edit/send. Mutations show a separate explicit review with source/version and preserve an account-scoped original request journal on uncertain outcomes. Schedule PUT recovery only reads back the exact next-version settings; it never blindly repeats PUT. Associated A receipts are read using the current owned connector route and checked against chat/order/body before display. Gateway cancellation/reconciliation remains in the existing sending page.
 

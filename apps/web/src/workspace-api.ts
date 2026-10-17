@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 import { sessionFetch } from "./read-cache.ts";
 import type { OrderCommands } from "./order-command-api";
 import { apiBase } from "./environment.ts";
@@ -61,8 +62,8 @@ export function workspaceApi(
       throw new WorkspaceError(
         "UNAVAILABLE",
         body === undefined
-          ? "暂时无法连接本地服务，请检查服务后刷新。"
-          : "暂时无法确认操作结果。请恢复服务并刷新核对，避免反复提交。",
+          ? t("暂时无法连接本地服务，请检查服务后刷新。")
+          : t("暂时无法确认操作结果。请恢复服务并刷新核对，避免反复提交。"),
       );
     }
     if (!response.ok) {
@@ -77,30 +78,30 @@ export function workspaceApi(
       const messages: Record<string, string> = {
         UNAUTHENTICATED:
           path === "/auth/login"
-            ? "账号或密码不正确，请重新输入。"
-            : "登录已过期，请重新登录。",
-        VERSION_CONFLICT: "业务或消息已更新，请刷新并重新核对当前提议。",
-        APPROVAL_STALE: "来源消息已变化，请刷新并重新核对。",
-        SCHEDULE_CONFLICT: "该时段与其他预约冲突，不能确认，请刷新查看。",
-        CONSENT_REVOKED: "当前处理授权已暂停，请联系接入负责人核对。",
+            ? t("账号或密码不正确，请重新输入。")
+            : t("登录已过期，请重新登录。"),
+        VERSION_CONFLICT: t("业务或消息已更新，请刷新并重新核对当前提议。"),
+        APPROVAL_STALE: t("来源消息已变化，请刷新并重新核对。"),
+        SCHEDULE_CONFLICT: t("该时段与其他预约冲突，不能确认，请刷新查看。"),
+        CONSENT_REVOKED: t("当前处理授权已暂停，请联系接入负责人核对。"),
         CSRF_REJECTED:
           path === "/auth/login"
-            ? "当前环境尚未允许此网页地址登录，请联系负责配置的队友确认。"
-            : "登录验证已变化，请退出后重新登录。",
-        NOT_FOUND: "当前工单或会话不可用，请刷新并检查当前账号和会话授权。",
+            ? t("当前环境尚未允许此网页地址登录，请联系负责配置的队友确认。")
+            : t("登录验证已变化，请退出后重新登录。"),
+        NOT_FOUND: t("当前工单或会话不可用，请刷新并检查当前账号和会话授权。"),
       };
       throw new WorkspaceError(
         code,
         messages[code] ??
           (body === undefined
-            ? "暂时无法读取数据，请检查本地服务后刷新。"
-            : "操作未能完成或结果暂无法确认，请刷新核对后再操作。"),
+            ? t("暂时无法读取数据，请检查本地服务后刷新。")
+            : t("操作未能完成或结果暂无法确认，请刷新核对后再操作。")),
       );
     }
     if (result === null)
       throw new WorkspaceError(
         "INVALID_RESPONSE",
-        "服务响应无效，请刷新核对当前状态。",
+        t("服务响应无效，请刷新核对当前状态。"),
       );
     return result as T;
   };
@@ -127,7 +128,7 @@ export async function allPages<T>(
     ) {
       throw new WorkspaceError(
         "INVALID_RESPONSE",
-        "列表数据无效，请刷新重试。",
+        t("列表数据无效，请刷新重试。"),
       );
     }
     items.push(...page.items);
@@ -135,7 +136,7 @@ export async function allPages<T>(
     if (cursor && seen.has(cursor))
       throw new WorkspaceError(
         "INVALID_RESPONSE",
-        "分页数据未能完整读取，请刷新重试。",
+        t("分页数据未能完整读取，请刷新重试。"),
       );
     if (cursor) seen.add(cursor);
   } while (cursor);
@@ -183,7 +184,7 @@ export function businessApi(
       if (!conversation)
         throw new WorkspaceError(
           "NO_CONVERSATION",
-          "当前工单没有可核对的对话，请联系后端负责人。",
+          t("当前工单没有可核对的对话，请联系后端负责人。"),
         );
       const [changes, timelines] = await Promise.all([
         allPages<Change>(request, `/work-orders/${order.id}/changes`, signal),
@@ -209,7 +210,7 @@ export function businessApi(
             )
               throw new WorkspaceError(
                 "INVALID_RESPONSE",
-                "对话范围或版本无效，请刷新核对。",
+                t("对话范围或版本无效，请刷新核对。"),
               );
             return { id, messages, version: info.data.context_version };
           }),
@@ -238,18 +239,18 @@ export function businessApi(
       if (!order || order.id !== change.work_order_id)
         throw new WorkspaceError(
           "VERSION_CONFLICT",
-          "业务已切换，请刷新并重新核对。",
+          t("业务已切换，请刷新并重新核对。"),
         );
       const context = changeContext(snapshot, change);
       if (!["schedule", "address"].includes(change.field))
         throw new WorkspaceError(
           "VALIDATION_FAILED",
-          "当前只能确认时间或地址提议。",
+          t("当前只能确认时间或地址提议。"),
         );
       if (context === null)
         throw new WorkspaceError(
           "APPROVAL_STALE",
-          "来源对话或消息版本无法核对，请刷新并重新审核。",
+          t("来源对话或消息版本无法核对，请刷新并重新审核。"),
         );
       const body = {
         expected_version: order.version,

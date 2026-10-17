@@ -1,3 +1,4 @@
+import { t, localized } from "./i18n.ts";
 import { privateReadDenied } from "./read-cache";
 import { useStableState as useState } from "./useStableState";
 import { useCallback, useEffect, useMemo, useRef } from "react";
@@ -11,7 +12,7 @@ import type { Choice, Issue } from "./connection-api";
 import { WahaMedia } from "./WahaMedia";
 import { WahaSend } from "./WahaSend";
 
-const labels: Record<string, string> = {
+const labels: Record<string, string> = localized({
   completed: "已处理",
   sent: "已发出",
   delivered: "已送达",
@@ -29,7 +30,7 @@ const labels: Record<string, string> = {
   needs_lookup: "待查询来源",
   snapshot_found: "找到快照，修订仍待核对",
   unavailable: "来源不可获取",
-};
+});
 
 export function WahaMessages({
   connection,
@@ -73,7 +74,7 @@ export function WahaMessages({
         setMessages([]);
         setCursor(null);
       }
-      const code = e instanceof Error ? e.message : "查询失败";
+      const code = e instanceof Error ? e.message : t("查询失败");
       setNotice(code);
       if (
         e &&
@@ -164,22 +165,24 @@ export function WahaMessages({
     await api.start(attempt.current.value, attempt.current.key);
     attempt.current = null;
     setConsent(false);
-    setNotice("同步已排队。历史快照不会自动创建工单或发送消息。");
+    setNotice(t("同步已排队。历史快照不会自动创建工单或发送消息。"));
     await refresh();
   }
   const waiting = jobs.some((j) => ["pending", "running"].includes(j.state));
   return (
     <section
       className="panel synchronization-panel"
-      aria-label="消息时间线与同步"
+      aria-label={t("消息时间线与同步")}
     >
-      <h2>消息时间线与同步</h2>
+      <h2>{t("消息时间线与同步")}</h2>
       <p>
-        查看已授权聊天的消息，或明确导入近期可获取记录。附件可在单独授权后读取；真实文字理解、语音识别和图片识别尚未启用，部分结果需要人工核对。
+        {t(
+          "查看已授权聊天，或明确导入近期记录。文字模型需服务端单独配置；语音与图片识别尚未启用，附件可单独授权预览。",
+        )}
       </p>
-      {notice && <p role="status">{notice}</p>}
+      {notice && <p role="status">{t(notice)}</p>}
       <label>
-        已授权聊天
+        {t("已授权聊天")}
         <select
           value={chat}
           onChange={(e) => {
@@ -191,10 +194,10 @@ export function WahaMessages({
             attempt.current = null;
           }}
         >
-          <option value="">请选择</option>
+          <option value="">{t("请选择")}</option>
           {chats.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.kind === "group" ? "群聊 · " : ""}
+              {c.kind === "group" ? t("群聊 · ") : ""}
               {c.label}
             </option>
           ))}
@@ -205,14 +208,14 @@ export function WahaMessages({
           disabled={!chat || busy}
           onClick={() => void action(() => load())}
         >
-          载入消息时间线
+          {t("载入消息时间线")}
         </button>
         <button
           className="secondary"
           disabled={readStale || busy}
           onClick={() => void refresh()}
         >
-          刷新同步状态
+          {t("刷新同步状态")}
         </button>
       </div>
       {messages.length > 0 && (
@@ -221,17 +224,19 @@ export function WahaMessages({
             <li key={m.id}>
               <small>
                 {new Date(m.occurred_at).toLocaleString()} ·{" "}
-                {m.origin === "history" ? "历史快照" : "实时接入"} ·{" "}
+                {m.origin === "history" ? t("历史快照") : t("实时接入")} ·{" "}
                 {m.evidence === "revision"
-                  ? `修订 ${m.revision}`
-                  : "非完整修订证据"}{" "}
-                · {m.direction === "incoming" ? "收到" : "自己发送"}
+                  ? t("修订 {0}", m.revision)
+                  : t("非完整修订证据")}{" "}
+                · {m.direction === "incoming" ? t("收到") : t("自己发送")}
               </small>
-              <p>{m.revoked ? "此消息已撤回" : (m.text ?? "无文字内容")}</p>
+              <p>
+                {m.revoked ? t("此消息已撤回") : (m.text ?? t("无文字内容"))}
+              </p>
               {m.kind !== "text" && (
                 <p>
-                  {m.kind} · {m.filename ?? m.mimetype ?? "类型待确认"} ·
-                  原文件通过下方授权入口读取
+                  {m.kind} · {m.filename ?? m.mimetype ?? t("类型待确认")}{" "}
+                  {t("· 原文件通过下方授权入口读取")}
                 </p>
               )}
               {m.kind !== "text" && !m.revoked && (
@@ -248,21 +253,30 @@ export function WahaMessages({
                 />
               )}
               {m.sender_id && (
-                <small>群成员标识：{m.sender_id.slice(-8)}</small>
+                <small>
+                  {t("群成员标识：")}
+                  {m.sender_id.slice(-8)}
+                </small>
               )}
               {m.reply_to_id && (
-                <small> · 引用已接入消息 {m.reply_to_id.slice(-8)}</small>
+                <small>
+                  {" "}
+                  {t("· 引用已接入消息")}
+                  {m.reply_to_id.slice(-8)}
+                </small>
               )}
               {m.processing_state && (
                 <small>
                   {" "}
-                  · 处理状态：{labels[m.processing_state] ?? m.processing_state}
+                  {t("· 处理状态：")}
+                  {labels[m.processing_state] ?? m.processing_state}
                 </small>
               )}
               {m.delivery_status && (
                 <small>
                   {" "}
-                  · 送达状态：{labels[m.delivery_status] ?? m.delivery_status}
+                  {t("· 送达状态：")}
+                  {labels[m.delivery_status] ?? m.delivery_status}
                 </small>
               )}
             </li>
@@ -274,7 +288,7 @@ export function WahaMessages({
           disabled={readStale || busy}
           onClick={() => void action(() => load(true))}
         >
-          加载更早消息
+          {t("加载更早消息")}
         </button>
       )}
       {chat && (
@@ -283,16 +297,16 @@ export function WahaMessages({
           connection={connection}
           csrf={csrf}
           chat={chat}
-          label={chats.find((c) => c.id === chat)?.label ?? "当前会话"}
+          label={chats.find((c) => c.id === chat)?.label ?? t("当前会话")}
           enabled={enabled}
           messages={messages}
           onSessionExpired={onSessionExpired}
         />
       )}
       <fieldset disabled={readStale || busy || !enabled || !chat || waiting}>
-        <legend>近期历史导入</legend>
+        <legend>{t("近期历史导入")}</legend>
         <label>
-          时间范围
+          {t("时间范围")}
           <select
             value={days}
             onChange={(e) => {
@@ -302,13 +316,14 @@ export function WahaMessages({
           >
             {[1, 3, 7, 14].map((d) => (
               <option key={d} value={d}>
-                近 {d} 天
+                {t("近")}
+                {d} {t("天")}
               </option>
             ))}
           </select>
         </label>
         <label>
-          查询记录上限
+          {t("查询记录上限")}
           <select
             value={maximum}
             onChange={(e) => {
@@ -329,26 +344,28 @@ export function WahaMessages({
             checked={consent}
             onChange={(e) => setConsent(e.target.checked)}
           />
-          我同意查询所选聊天在该范围内的记录
+          {t("我同意查询所选聊天在该范围内的记录")}
         </label>
         <button disabled={!consent} onClick={() => void action(() => start())}>
-          {attempt.current ? "重试原同步请求" : "开始历史同步"}
+          {attempt.current ? t("重试原同步请求") : t("开始历史同步")}
         </button>
       </fieldset>
-      {!enabled && <p>接收已暂停，同步也已暂停；已有消息仍可查看。</p>}
+      {!enabled && <p>{t("接收已暂停，同步也已暂停；已有消息仍可查看。")}</p>}
       <p className="subtle">
-        只同步 WAHA
-        当前可提供的记录，不保证完整历史。已记录的暂停/撤权时段会跳过，失败和缺口不会自动清除。
+        {t(
+          "只同步 WAHA 当前可提供的记录，不保证完整历史。已记录的暂停/撤权时段会跳过，失败和缺口不会自动清除。",
+        )}
       </p>
-      <h3>同步任务</h3>
+      <h3>{t("同步任务")}</h3>
       {jobs.length === 0 ? (
-        <p>暂无任务</p>
+        <p>{t("暂无任务")}</p>
       ) : (
         <ul>
           {jobs.map((j) => (
             <li key={j.id}>
-              {labels[j.state]} · 写入 {j.imported} · 已有 {j.duplicates} · 跳过{" "}
-              {j.skipped} · {labels[j.coverage]}
+              {labels[j.state]} {t("· 写入")}
+              {j.imported} {t("· 已有")}
+              {j.duplicates} {t("· 跳过")} {j.skipped} · {labels[j.coverage]}
               <button
                 className="secondary"
                 disabled={readStale || busy}
@@ -361,7 +378,7 @@ export function WahaMessages({
                   })
                 }
               >
-                读取此任务状态
+                {t("读取此任务状态")}
               </button>
               {j.error_code && ` · ${j.error_code}`}
               {j.state === "failed" &&
@@ -379,7 +396,7 @@ export function WahaMessages({
                       void action(() => start(undefined, undefined, j))
                     }
                   >
-                    重试此范围
+                    {t("重试此范围")}
                   </button>
                 )}
               {["pending", "running"].includes(j.state) && (
@@ -392,7 +409,7 @@ export function WahaMessages({
                     })
                   }
                 >
-                  取消同步
+                  {t("取消同步")}
                 </button>
               )}
             </li>
@@ -401,8 +418,8 @@ export function WahaMessages({
       )}
       {chat && consent && enabled && !waiting && (
         <>
-          <h3>缺口补查</h3>
-          <p>补查仅增加可获取快照，结果仍需本人核对。</p>
+          <h3>{t("缺口补查")}</h3>
+          <p>{t("补查仅增加可获取快照，结果仍需本人核对。")}</p>
           {issues
             .filter(
               (i) =>
@@ -417,14 +434,15 @@ export function WahaMessages({
                 disabled={readStale || busy}
                 onClick={() => void action(() => start(i))}
               >
-                补查 {new Date(i.started_at).toLocaleString()} 的故障时段
+                {t("补查")}
+                {new Date(i.started_at).toLocaleString()} {t("的故障时段")}
               </button>
             ))}
         </>
       )}
       {gaps.length > 0 && (
         <>
-          <h3>缺失来源</h3>
+          <h3>{t("缺失来源")}</h3>
           <ul>
             {gaps
               .filter((g) => g.chat_id === chat)
@@ -437,7 +455,7 @@ export function WahaMessages({
                     }
                     onClick={() => void action(() => start(undefined, g))}
                   >
-                    查询来源快照，不重建修订
+                    {t("查询来源快照，不重建修订")}
                   </button>
                 </li>
               ))}

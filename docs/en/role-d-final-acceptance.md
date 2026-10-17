@@ -1,5 +1,10 @@
 # D-04 through final web delivery: acceptance
 
+## Current candidate — 2026-10-17
+
+Supersedes the dated pending-integration descriptions below. [BCD delivery](bcd-product-delivery.md) records canonical PR32 integration, merchant-reviewed creation, task decisions, isolated opt-in text runtime, languages and remaining real-service gates. Base main: `14aa34e`. Browser tests use a new fictional local database and no connector worker. Frontend final evidence is appended below after checks.
+
+
 2026-10-16 · Kyrie · [中文](../zh/role-d-final-acceptance.md). Follows merged #26/#27/main `71de8d9`; responds to [Andy’s #29 guidance](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/issues/29), [creation #7](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/issues/7), [calendar #12](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/issues/12) and the nonblocking history concern [#28](https://github.com/sh0redry/GigMate-AI-Work-Assistant-for-Freelancers---GitGood/issues/28).
 
 ## Andy review follow-up — 2026-10-16
@@ -49,3 +54,7 @@ Final exact-head GitHub CI and independent reviewer acceptance are separate gate
 | E/device/release | Candidate checks and honest limitations | Same-final-head real end-to-end normal/failure flow, physical phone calendar imports, native browser/installation and accessibility acceptance |
 
 The capability endpoint exposes availability, not authorization; missing/invalid responses fail closed. Turning a gate on requires the accepted implementation and corresponding frontend contract/integration review. A frontend-ready PR is not completion of the team's live P0 loop. Issue #12 remains open for physical imports; #29 remains open for cross-role acceptance. Native exe/macOS packaging and external calendar synchronization remain separate work.
+
+## Final recorded checks — 2026-10-17
+
+Frontend **165 passed**, no skips/failures; API generation, Prettier, TypeScript and Vite production bundle pass. Browser acceptance used fictional data at desktop 1440×960 and mobile 390×844: Chinese/English/Cantonese switching, preserved input/session/raw text, owned workspace/management reads, bounded questions, real task completion and original-key receipt recovery. Mobile English labels wrap within their own touch targets; management and workspace have no horizontal overflow. Browser error log empty. Desktop glass and mobile readable-header fallback were inspected; no physical phone/assistive-technology or real vendor test is claimed. Production JS is approximately 634 kB / 199 kB gzip with a nonblocking Vite chunk-size advisory; no warning threshold was hidden. Backend and migration evidence is in [BCD delivery](bcd-product-delivery.md).

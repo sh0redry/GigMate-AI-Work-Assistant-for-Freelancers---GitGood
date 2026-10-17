@@ -168,3 +168,98 @@ test("storage unavailable blocks writes before dispatch", async () => {
   await assert.rejects(api.submit(intent));
   assert.equal(calls, 0);
 });
+
+test("task receipts use the exact task and work-order version, recover the original key without another task", async () => {
+  const disk = storage(),
+    calls = [];
+  let lost = true;
+  const fetcher = async (_url, opts) => {
+    calls.push(opts);
+    if (lost) throw Error("lost after server completion");
+    return Response.json({
+      data: {
+        id: order,
+        account_id: account,
+        work_order_id: account,
+        work_order_version: 4,
+        state: "completed",
+      },
+    });
+  };
+  const first = businessLoopApi("csrf", account, features, fetcher, disk);
+  const taskIntent = {
+    path: `/tasks/${order}/status`,
+    body: {
+      expected_version: 3,
+      expected_state: "pending",
+      state: "completed",
+    },
+    review: "Synthetic task decision",
+  };
+  await assert.rejects(first.submit(taskIntent));
+  lost = false;
+  const restored = businessLoopApi("csrf", account, features, fetcher, disk);
+  const receipt = await restored.retry();
+  assert.equal(receipt.state, "completed");
+  assert.equal(restored.pending, null);
+  assert.equal(
+    calls[1].headers["Idempotency-Key"],
+    calls[0].headers["Idempotency-Key"],
+  );
+  assert.equal(calls[1].body, calls[0].body);
+  for (const patch of [
+    { id: account },
+    { account_id: order },
+    { work_order_version: 3 },
+    { state: "pending" },
+  ]) {
+    const api = businessLoopApi(
+      "csrf",
+      account,
+      features,
+      async () =>
+        Response.json({
+          data: {
+            id: order,
+            account_id: account,
+            work_order_version: 4,
+            state: "completed",
+            ...patch,
+          },
+        }),
+      storage(),
+    );
+    await assert.rejects(
+      api.submit(taskIntent),
+      (e) => e.code === "RESULT_UNKNOWN",
+    );
+    assert.ok(api.pending);
+  }
+});
+
+test("definite initial checklist/dependency rejections permit a reviewed correction, but an unknown retry keeps the original journal", async () => {
+  for (const code of [
+    "CHECKLIST_OPEN",
+    "DEPENDENCY_OPEN",
+    "MODEL_OUTCOME_UNKNOWN",
+  ]) {
+    let lose = false;
+    const api = businessLoopApi(
+      "csrf",
+      account,
+      features,
+      async () => {
+        if (lose) throw Error("lost");
+        return Response.json({ error: { code } }, { status: 409 });
+      },
+      storage(),
+    );
+    await assert.rejects(api.submit(intent));
+    assert.equal(api.pending, null);
+    lose = true;
+    await assert.rejects(api.submit(intent));
+    lose = false;
+    await assert.rejects(api.retry());
+    assert.ok(api.pending);
+  }
+});

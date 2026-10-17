@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 import { useStableState as useState } from "./useStableState";
 import { orderCommands } from "./order-command-api";
 import { OrderLifecycle } from "./OrderLifecycle";
@@ -50,9 +51,9 @@ function Sources({
 }) {
   return (
     <small>
-      来源：
+      {t("来源：")}
       {!sources.length
-        ? "未提供原文依据"
+        ? t("未提供原文依据")
         : sources.map((source) => {
             const message = data.messages.find(
               (m) =>
@@ -70,7 +71,7 @@ function Sources({
                     {label}
                   </a>
                 ) : (
-                  `${label}（该版本未载入，需复核）`
+                  t("{0}（该版本未载入，需复核）", label)
                 )}
               </span>
             );
@@ -188,53 +189,79 @@ export function WorkOrderWorkspace({
         </p>
       )}
       {commands?.attempt && (
-        <section className="panel review-panel" aria-label="核对原操作">
-          <h2>有一项原操作尚待核对</h2>
+        <section className="panel review-panel" aria-label={t("核对原操作")}>
+          <h2>{t("有一项原操作尚待核对")}</h2>
           <p>
             {commands.attempt.intent.kind === "create"
-              ? "新建工单"
+              ? t("新建工单")
               : commands.attempt.intent.kind === "status"
-                ? "修改工单状态"
-                : `确认${commands.attempt.intent.review.field === "address" ? "地址" : "时间安排"}`}{" "}
-            · 请求编号 {commands.attempt.key}
+                ? t("修改工单状态")
+                : t(
+                    "确认{0}",
+                    commands.attempt.intent.review.field === "address"
+                      ? t("地址")
+                      : t("时间安排"),
+                  )}{" "}
+            {t("· 请求编号")}
+            {commands.attempt.key}
           </p>
           {commands.attempt.intent.kind === "create" ? (
             <>
-              <p>业务：{commands.attempt.intent.body.summary}</p>
-              <p>时间：{fieldValue(commands.attempt.intent.body.schedule)}</p>
-              <p>地址：{commands.attempt.intent.body.address ?? "未提供"}</p>
+              <p>
+                {t("业务：")}
+                {commands.attempt.intent.body.summary}
+              </p>
+              <p>
+                {t("时间：")}
+                {fieldValue(commands.attempt.intent.body.schedule)}
+              </p>
+              <p>
+                {t("地址：")}
+                {commands.attempt.intent.body.address ?? t("未提供")}
+              </p>
               <small>
-                会话 {commands.attempt.intent.body.conversation_id}；时间原文{" "}
+                {t("会话")}
+                {commands.attempt.intent.body.conversation_id}
+                {t("；时间原文")}{" "}
                 {commands.attempt.intent.body.schedule_sources.length}{" "}
-                条；地址原文{" "}
-                {commands.attempt.intent.body.address_sources.length} 条
+                {t("条；地址原文")}{" "}
+                {commands.attempt.intent.body.address_sources.length} {t("条")}
               </small>
             </>
           ) : commands.attempt.intent.kind === "status" ? (
             <p>
-              原工单版本 v{commands.attempt.intent.body.expected_version} →{" "}
+              {t("原工单版本 v")}
+              {commands.attempt.intent.body.expected_version} →{" "}
               {orderStates[commands.attempt.intent.body.status]}
             </p>
           ) : (
             <>
-              <p>业务：{commands.attempt.intent.review.summary}</p>
+              <p>
+                {t("业务：")}
+                {commands.attempt.intent.review.summary}
+              </p>
               <p>
                 {fieldValue(commands.attempt.intent.review.oldValue)} →{" "}
                 {fieldValue(commands.attempt.intent.review.newValue)}
               </p>
               <small>
-                原工单 v{commands.attempt.intent.body.expected_version}；原会话
-                v{commands.attempt.intent.body.expected_context_version}
+                {t("原工单 v")}
+                {commands.attempt.intent.body.expected_version}
+                {t("；原会话 v")}
+                {commands.attempt.intent.body.expected_context_version}
               </small>
               {commands.attempt.intent.review.sources.map((source) => (
                 <small key={source.message_id}>
-                  原文编号 {source.message_id} · r{source.message_revision}
+                  {t("原文编号")}
+                  {source.message_id} · r{source.message_revision}
                 </small>
               ))}
             </>
           )}
           <p>
-            读取、刷新和重新登录不会重发。只有明确核对后，才使用相同编号、原内容与原版本核对操作；服务端仍会拒绝旧来源或版本。
+            {t(
+              "读取、刷新和重新登录不会重发。只有明确核对后，才使用相同编号、原内容与原版本核对操作；服务端仍会拒绝旧来源或版本。",
+            )}
           </p>
           <label className="inline-check">
             <input
@@ -242,7 +269,7 @@ export function WorkOrderWorkspace({
               checked={recoverConsent}
               onChange={(e) => setRecoverConsent(e.target.checked)}
             />
-            我已核对原内容和当前状态，继续核对原编号操作
+            {t("我已核对原内容和当前状态，继续核对原编号操作")}
           </label>
           <button
             disabled={
@@ -262,7 +289,9 @@ export function WorkOrderWorkspace({
                 .retry()
                 .then(() => store.refresh())
                 .catch((e) => {
-                  setCommandError(e instanceof Error ? e.message : "核对失败");
+                  setCommandError(
+                    e instanceof Error ? e.message : t("核对失败"),
+                  );
                   if (e?.code === "UNAUTHENTICATED") onSessionExpired();
                 })
                 .finally(() => {
@@ -271,7 +300,7 @@ export function WorkOrderWorkspace({
                 });
             }}
           >
-            核对原编号操作
+            {t("核对原编号操作")}
           </button>
           <InspectOrderAttempt
             commands={commands}
@@ -283,7 +312,7 @@ export function WorkOrderWorkspace({
               void store.refresh();
             }}
             onError={(e) => {
-              setCommandError(e instanceof Error ? e.message : "核对失败");
+              setCommandError(e instanceof Error ? e.message : t("核对失败"));
               if ((e as { code?: string })?.code === "UNAUTHENTICATED")
                 onSessionExpired();
             }}
@@ -299,32 +328,39 @@ export function WorkOrderWorkspace({
         role="status"
         aria-live="polite"
       >
-        {state.error ||
-          state.notice ||
-          "顾客提议、顾客确认和商户确认分别显示。未知地址保持未提供。"}
-        {state.stale && data && <p>下面是上次读取的数据，当前不能据此确认。</p>}
+        {state.error
+          ? t(state.error)
+          : state.notice
+            ? t(state.notice)
+            : t("顾客提议、顾客确认和商户确认分别显示。未知地址保持未提供。")}
+        {state.stale && data && (
+          <p>{t("下面是上次读取的数据，当前不能据此确认。")}</p>
+        )}
       </div>
       <div className="replay-tools">
         <small>
           {state.loading
-            ? "正在读取最新数据…"
+            ? t("正在读取最新数据…")
             : state.updatedAt
-              ? `内容更新于：${instant(new Date(state.updatedAt).toISOString())}`
-              : "尚未读取数据"}
+              ? t(
+                  "内容更新于：{0}",
+                  instant(new Date(state.updatedAt).toISOString()),
+                )
+              : t("尚未读取数据")}
         </small>
         <button
           className="secondary"
           disabled={state.loading || state.mutating}
           onClick={() => void store.refresh()}
         >
-          刷新业务数据
+          {t("刷新业务数据")}
         </button>
       </div>
       <div className="grid" aria-busy={state.loading || state.mutating}>
         <aside className="panel">
-          <h2>工单列表</h2>
+          <h2>{t("工单列表")}</h2>
           <label>
-            搜索业务
+            {t("搜索业务")}
             <input
               type="search"
               value={search}
@@ -332,9 +368,9 @@ export function WorkOrderWorkspace({
             />
           </label>
           <label>
-            工单状态
+            {t("工单状态")}
             <select value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="all">全部状态</option>
+              <option value="all">{t("全部状态")}</option>
               {Object.entries(orderStates).map(([value, text]) => (
                 <option key={value} value={value}>
                   {text}
@@ -343,10 +379,14 @@ export function WorkOrderWorkspace({
             </select>
           </label>
           <small>
-            显示 {orders.length} / {data?.orders.length ?? 0} 张工单
+            {t("显示")}
+            {orders.length} / {data?.orders.length ?? 0} {t("张工单")}
           </small>
           {order && !orders.some((o) => o.id === order.id) && (
-            <p>筛选隐藏了当前工单；右侧仍显示「{order.summary}」。</p>
+            <p>
+              {t("筛选隐藏了当前工单；右侧仍显示「")}
+              {order.summary}」。
+            </p>
           )}
           {orders.map((item) => (
             <button
@@ -358,52 +398,75 @@ export function WorkOrderWorkspace({
             >
               <strong>{item.summary}</strong>
               <small>
-                版本 {item.version} · {orderStates[item.status]} ·{" "}
-                {item.conversation_ids.length} 个关联会话
+                {t("版本")}
+                {item.version} · {orderStates[item.status]} ·{" "}
+                {item.conversation_ids.length} {t("个关联会话")}
               </small>
             </button>
           ))}
           {data && !orders.length && (
             <p>
               {data.orders.length
-                ? "没有匹配的工单，调整搜索或状态筛选。"
-                : "当前还没有工单。先在「WhatsApp 连接」中授权会话，再到「新建工单」引用客户原文建单；自动建单尚未开放。"}
+                ? t("没有匹配的工单，调整搜索或状态筛选。")
+                : t(
+                    "当前还没有工单。先在「WhatsApp 连接」中授权会话，再到「新建工单」引用客户原文建单；自动建单尚未开放。",
+                  )}
             </p>
           )}
           {!data && (
             <p>
-              {state.loading ? "正在读取工单…" : "读取失败，请检查服务后刷新。"}
+              {state.loading
+                ? t("正在读取工单…")
+                : t("读取失败，请检查服务后刷新。")}
             </p>
           )}
         </aside>
-        <section className="panel" aria-label="工单详情">
-          <h2>工单详情</h2>
-          {detailReady && !order && <p>有工单后，可在此查看详情与来源消息。</p>}
-          {!detailReady && <p>正在核对选中工单，完成前不能确认。</p>}
+        <section className="panel" aria-label={t("工单详情")}>
+          <h2>{t("工单详情")}</h2>
+          {detailReady && !order && (
+            <p>{t("有工单后，可在此查看详情与来源消息。")}</p>
+          )}
+          {!detailReady && <p>{t("正在核对选中工单，完成前不能确认。")}</p>}
           {detailReady && order && data && (
             <>
               <div className="confirmed">
                 <h3>{order.summary}</h3>
                 <small>
-                  {orderStates[order.status]} · 版本 {order.version} · 更新于{" "}
-                  {instant(order.updated_at)}
+                  {orderStates[order.status]} {t("· 版本")}
+                  {order.version} {t("· 更新于")} {instant(order.updated_at)}
                 </small>
-                {(["schedule", "address"] as const).map((name) => (
-                  <div className="business-field" key={name}>
-                    <strong>
-                      {fieldNames[name]}：{fieldValue(order.fields[name].value)}
-                    </strong>
-                    <span
-                      className={`tag ${order.fields[name].status !== "confirmed" ? "warning" : ""}`}
-                    >
-                      {fieldStates[order.fields[name].status]}
-                    </span>
-                    <Sources sources={order.fields[name].sources} data={data} />
-                    {order.fields[name].interpretation && (
-                      <small>解释：{order.fields[name].interpretation}</small>
-                    )}
-                  </div>
-                ))}
+                {(
+                  [
+                    "schedule",
+                    "address",
+                    "specification",
+                    "quantity",
+                    "deadline",
+                  ] as const
+                )
+                  .flatMap((name) => {
+                    const field = order.fields[name];
+                    return field ? [{ name, field }] : [];
+                  })
+                  .map(({ name, field }) => (
+                    <div className="business-field" key={name}>
+                      <strong>
+                        {fieldNames[name]}：{fieldValue(field.value)}
+                      </strong>
+                      <span
+                        className={`tag ${field.status !== "confirmed" ? "warning" : ""}`}
+                      >
+                        {fieldStates[field.status]}
+                      </span>
+                      <Sources sources={field.sources} data={data} />
+                      {field.interpretation && (
+                        <small>
+                          {t("解释：")}
+                          {field.interpretation}
+                        </small>
+                      )}
+                    </div>
+                  ))}
               </div>
               {commands && (
                 <OrderLifecycle
@@ -415,7 +478,7 @@ export function WorkOrderWorkspace({
                   onDone={() => void store.refresh()}
                   onError={(e) => {
                     setCommandError(
-                      e instanceof Error ? e.message : "操作失败",
+                      e instanceof Error ? e.message : t("操作失败"),
                     );
                     if ((e as { code?: string })?.code === "UNAUTHENTICATED")
                       onSessionExpired();
@@ -425,24 +488,34 @@ export function WorkOrderWorkspace({
               <p className="availability-note">
                 {Object.entries(order.fields)
                   .filter(([, field]) => field.status !== "confirmed")
-                  .map(
-                    ([name, field]) =>
-                      `${name === "schedule" ? "时间" : "地址"}：${field.status === "missing" ? "等待客户提供" : field.status === "needs_review" ? "来源或含义需复核" : "等待客户核实与商户确认"}`,
+                  .map(([name, field]) =>
+                    t(
+                      "{0}：{1}",
+                      fieldNames[name as keyof typeof fieldNames] ?? name,
+                      field.status === "missing"
+                        ? t("等待客户提供")
+                        : field.status === "needs_review"
+                          ? t("来源或含义需复核")
+                          : t("等待客户核实与商户确认"),
+                    ),
                   )
                   .join("；") ||
-                  "当前已记录时间和地址的确认；请继续核对变更来源。"}{" "}
+                  t("当前已记录时间和地址的确认；请继续核对变更来源。")}{" "}
                 {!features.address_confirmation &&
-                  "当前后端未开放地址提议确认。"}
+                  t("当前后端未开放地址提议确认。")}
                 {loopReady(features)
-                  ? "需求、延期和交付检查请到业务管理。"
-                  : "人工归单与延期保存仍未开放。"}
+                  ? t("需求、延期和交付检查请到业务管理。")
+                  : t("人工归单与延期保存仍未开放。")}
               </p>
               <h2>
-                待核对变更 <span className="tag">{pending.length} 项提议</span>
+                {t("待核对变更")}
+                <span className="tag">
+                  {pending.length} {t("项提议")}
+                </span>
               </h2>
               {!changes.length && (
                 <p className="empty">
-                  暂无需要核对的变更。新的变更会显示在这里。
+                  {t("暂无需要核对的变更。新的变更会显示在这里。")}
                 </p>
               )}
               {changes.map((change) => {
@@ -455,27 +528,39 @@ export function WorkOrderWorkspace({
                 return (
                   <article className="change" key={change.id}>
                     <div className="row">
-                      <h3>{fieldNames[change.field]}变更</h3>
+                      <h3>
+                        {fieldNames[change.field]}
+                        {t("变更")}
+                      </h3>
                       <span
                         className={`tag ${display.warning ? "warning" : ""}`}
                       >
                         {display.label}
                       </span>
                     </div>
-                    <p>原值：{fieldValue(change.old_value)}</p>
                     <p>
-                      <strong>提议值：{fieldValue(change.new_value)}</strong>
+                      {t("原值：")}
+                      {fieldValue(change.old_value)}
+                    </p>
+                    <p>
+                      <strong>
+                        {t("提议值：")}
+                        {fieldValue(change.new_value)}
+                      </strong>
                     </p>
                     <small>
-                      {change.proposer === "customer" ? "顾客提出" : "商户提出"}{" "}
-                      · {customerStates[change.customer_confirmation]} ·
-                      工单基于 v{change.base_work_order_version} / 会话 v
+                      {change.proposer === "customer"
+                        ? t("顾客提出")
+                        : t("商户提出")}{" "}
+                      · {customerStates[change.customer_confirmation]}{" "}
+                      {t("· 工单基于 v")}
+                      {change.base_work_order_version} {t("/ 会话 v")}
                       {change.context_version}
                     </small>
                     <Sources sources={change.sources} data={data} />
                     {change.conflict_ids.length > 0 && (
                       <p>
-                        冲突安排：
+                        {t("冲突安排：")}
                         {change.conflict_ids
                           .map((id) => conflictLabel(data, id))
                           .join("、")}
@@ -483,9 +568,9 @@ export function WorkOrderWorkspace({
                     )}
                     <p>
                       {context === null
-                        ? "来源版本或归属无法完整核对，保持待复核。"
+                        ? t("来源版本或归属无法完整核对，保持待复核。")
                         : !["schedule", "address"].includes(change.field)
-                          ? "当前接口仅支持时间和地址确认，此字段保持待核对。"
+                          ? t("其他字段请到业务管理核对；此处确认时间和地址。")
                           : display.text}
                     </p>
                     {["schedule", "address"].includes(change.field) && (
@@ -500,8 +585,8 @@ export function WorkOrderWorkspace({
                         }}
                       >
                         {change.field === "address"
-                          ? "核对并确认地址"
-                          : "核对并确认安排"}
+                          ? t("核对并确认地址")
+                          : t("核对并确认安排")}
                       </button>
                     )}
                   </article>
@@ -511,9 +596,9 @@ export function WorkOrderWorkspace({
                 <section
                   className="change review-panel"
                   role="region"
-                  aria-label="确认安排复核"
+                  aria-label={t("确认安排复核")}
                 >
-                  <h3>复核本次业务更新</h3>
+                  <h3>{t("复核本次业务更新")}</h3>
                   {reviewCurrent && reviewed ? (
                     <>
                       <p>
@@ -522,12 +607,16 @@ export function WorkOrderWorkspace({
                       </p>
                       <Sources sources={reviewed.sources} data={data} />
                       <small>
-                        工单 v{order.version} · 来源会话 v{reviewedContext}
+                        {t("工单 v")}
+                        {order.version} {t("· 来源会话 v")}
+                        {reviewedContext}
                       </small>
                     </>
                   ) : (
                     <p>
-                      提议、工单或来源已变化，本次复核失效。关闭后重新核对。
+                      {t(
+                        "提议、工单或来源已变化，本次复核失效。关闭后重新核对。",
+                      )}
                     </p>
                   )}
                   <label className="inline-check">
@@ -539,7 +628,9 @@ export function WorkOrderWorkspace({
                       }
                       onChange={(e) => setConsent(e.target.checked)}
                     />
-                    我已核对原文，接受本次提议。仍未获客户确认的信息保持待确认；日历与准备待办按确认状态处理。
+                    {t(
+                      "我已核对原文，接受本次提议。仍未获客户确认的信息保持待确认；日历与准备待办按确认状态处理。",
+                    )}
                   </label>
                   <button
                     disabled={
@@ -556,7 +647,7 @@ export function WorkOrderWorkspace({
                       }
                     }}
                   >
-                    确认并同步安排
+                    {t("确认并同步安排")}
                   </button>{" "}
                   <button
                     className="secondary"
@@ -566,23 +657,25 @@ export function WorkOrderWorkspace({
                       setConsent(false);
                     }}
                   >
-                    关闭复核
+                    {t("关闭复核")}
                   </button>
                 </section>
               )}
-              <h2>关联会话与来源时间线</h2>
+              <h2>{t("关联会话与来源时间线")}</h2>
               <label>
-                显示会话
+                {t("显示会话")}
                 <select
                   value={conversation}
                   onChange={(e) => setConversation(e.target.value)}
                 >
                   <option value="all">
-                    全部关联会话（{order.conversation_ids.length}）
+                    {t("全部关联会话（")}
+                    {order.conversation_ids.length}）
                   </option>
                   {order.conversation_ids.map((id, index) => (
                     <option value={id} key={id}>
-                      会话 {index + 1} · {id.slice(-6)} · v
+                      {t("会话")}
+                      {index + 1} · {id.slice(-6)} · v
                       {data.contexts?.[id] ?? data.contextVersion}
                     </option>
                   ))}
@@ -601,34 +694,38 @@ export function WorkOrderWorkspace({
                     key={`${message.id}-${message.revision}`}
                   >
                     <small>
-                      {message.direction === "incoming" ? "顾客" : "商户"} ·{" "}
-                      {message.source} · 会话{" "}
+                      {message.direction === "incoming" ? t("顾客") : t("商户")}{" "}
+                      · {message.source} {t("· 会话")}{" "}
                       {message.conversation_id.slice(-6)} ·{" "}
                       {message.id.slice(-6)} · r{message.revision} ·{" "}
                       {instant(message.occurred_at)}
                     </small>
                     <p>
                       {message.revoked
-                        ? "消息已撤回，相关内容需复核"
-                        : (message.text ?? "没有可读取文字")}
+                        ? t("消息已撤回，相关内容需复核")
+                        : (message.text ?? t("没有可读取文字"))}
                     </p>
                   </div>
                 ))}
               {!data.messages.some(
                 (m) =>
                   conversation === "all" || m.conversation_id === conversation,
-              ) && <p>该范围暂无来源消息。</p>}
+              ) && <p>{t("该范围暂无来源消息。")}</p>}
               {conversation !== "all" && (
-                <small>来源链接可能指向隐藏会话；选择全部关联会话查看。</small>
+                <small>
+                  {t("来源链接可能指向隐藏会话；选择全部关联会话查看。")}
+                </small>
               )}
             </>
           )}
         </section>
         <aside className="panel">
-          <h2>个人日历</h2>
-          <small>账号全部安排；时刻按香港时区显示，全天日期保留原时区。</small>
+          <h2>{t("个人日历")}</h2>
+          <small>
+            {t("账号全部安排；时刻按香港时区显示，全天日期保留原时区。")}
+          </small>
           <label>
-            查看日期
+            {t("查看日期")}
             <input
               type="date"
               value={day}
@@ -637,68 +734,77 @@ export function WorkOrderWorkspace({
           </label>
           {day && (
             <button className="secondary" onClick={() => setDay("")}>
-              查看全部安排
+              {t("查看全部安排")}
             </button>
           )}
           {calendar.map((event) => (
             <div className="calendar" key={event.id}>
               <span>
-                {event.tentative ? "暂定" : "正式"} ·{" "}
+                {event.tentative ? t("暂定") : t("正式")} ·{" "}
                 {event.work_order_id === state.selected
-                  ? "当前工单"
-                  : "其他工单"}
+                  ? t("当前工单")
+                  : t("其他工单")}
               </span>
               <strong>
                 {data?.orders.find((o) => o.id === event.work_order_id)
-                  ?.summary ?? "未提供工单标题"}
+                  ?.summary ?? t("未提供工单标题")}
               </strong>
               <p>{fieldValue(event.schedule)}</p>
               <small>
-                工单 v{event.work_order_version} · 缓冲 {event.buffer_minutes}{" "}
-                分钟
+                {t("工单 v")}
+                {event.work_order_version} {t("· 缓冲")}
+                {event.buffer_minutes} {t("分钟")}
               </small>
             </div>
           ))}
-          {data && !calendar.length && <p>该范围暂无日历安排。</p>}
-          <h2>当前工单待办</h2>
+          {data && !calendar.length && <p>{t("该范围暂无日历安排。")}</p>}
+          <h2>{t("当前工单待办")}</h2>
           <label>
-            待办范围
+            {t("待办范围")}
             <select
               value={taskFilter}
               onChange={(e) => setTaskFilter(e.target.value)}
             >
-              <option value="active">待处理与受阻</option>
-              <option value="all">全部（含历史）</option>
+              <option value="active">{t("待处理与受阻")}</option>
+              <option value="all">{t("全部（含历史）")}</option>
             </select>
           </label>
           {tasks.map((task) => (
             <div className="task" key={task.id}>
               <strong>{task.title}</strong>
               <small>
-                {taskStates[task.state]} · 工单 v{task.work_order_version}
+                {taskStates[task.state]} {t("· 工单 v")}
+                {task.work_order_version}
               </small>
-              <small>截止：{fieldValue(task.due)}</small>
               <small>
-                依赖：
+                {t("截止：")}
+                {fieldValue(task.due)}
+              </small>
+              <small>
+                {t("依赖：")}
                 {task.depends_on.length
                   ? task.depends_on
                       .map(
                         (id) =>
                           data?.tasks.find((t) => t.id === id)?.title ??
-                          `${id.slice(-6)}（未载入）`,
+                          t("{0}（未载入）", id.slice(-6)),
                       )
                       .join("、")
-                  : "无"}
+                  : t("无")}
               </small>
               {data && <Sources sources={task.sources} data={data} />}
             </div>
           ))}
-          {detailReady && !tasks.length && <p>当前工单在该范围暂无待办。</p>}
+          {detailReady && !tasks.length && (
+            <p>{t("当前工单在该范围暂无待办。")}</p>
+          )}
           <small>
-            新建工单请到“新建工单”；支持的状态操作在工单详情核对。回复草稿请到“回复审批”，
+            {t(
+              "新建工单请到“新建工单”；支持的状态操作在工单详情核对。回复草稿请到“回复审批”，",
+            )}
             {loopReady(features) && features.business_sending
-              ? "已批准草稿可在业务管理核对后提交发送。"
-              : "业务审批尚未接通 WhatsApp 发送。"}
+              ? t("已批准草稿可在业务管理核对后提交发送。")
+              : t("业务审批尚未接通 WhatsApp 发送。")}
           </small>
         </aside>
       </div>

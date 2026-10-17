@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 import { privateReadDenied } from "./read-cache";
 import { useStableState as useState } from "./useStableState";
 import { useCallback, useEffect, useMemo, useRef } from "react";
@@ -37,6 +38,10 @@ export function OrderCreation({
   }, []);
   const api = useMemo(() => workspaceApi(csrf), [csrf]),
     commands = useMemo(() => orderCommands(csrf, accountId), [csrf, accountId]);
+  const [suggestions, setSuggestions] = useState<
+      components["schemas"]["NewOrderSuggestionView"][]
+    >([]),
+    [proposalId, setProposalId] = useState("");
   const [conversations, setConversations] = useState<Conversation[]>([]),
     [conversation, setConversation] = useState(""),
     [messages, setMessages] = useState<Message[]>([]),
@@ -59,7 +64,7 @@ export function OrderCreation({
     [refreshKey, setRefreshKey] = useState(0);
   const report = useCallback(
     (e: unknown) => {
-      setError(e instanceof Error ? e.message : "读取失败，请刷新。");
+      setError(e instanceof Error ? e.message : t("读取失败，请刷新。"));
       if ((e as { code?: string })?.code === "UNAUTHENTICATED")
         onSessionExpired();
     },
@@ -71,11 +76,19 @@ export function OrderCreation({
     setError("");
     void (async () => {
       try {
-        const [choices, allOrders] = await Promise.all([
+        const [choices, allOrders, proposed] = await Promise.all([
           allPages<Conversation>(api, "/conversations", abort.signal),
           allPages<Order>(api, "/work-orders", abort.signal),
+          features.business_loop_reviewed
+            ? allPages<components["schemas"]["NewOrderSuggestionView"]>(
+                api,
+                "/new-order-suggestions",
+                abort.signal,
+              )
+            : Promise.resolve([]),
         ]);
         if (abort.signal.aborted) return;
+        setSuggestions(proposed);
         setConversations(choices);
         setOrders(allOrders);
         if (conversation) {
@@ -97,7 +110,7 @@ export function OrderCreation({
             info.data.account_id !== accountId ||
             texts.some((m) => m.conversation_id !== conversation)
           )
-            throw new Error("会话归属无法核对，不能建单。");
+            throw new Error(t("会话归属无法核对，不能建单。"));
           setContext(info.data.context_version);
           setMessages(texts);
         }
@@ -140,27 +153,27 @@ export function OrderCreation({
       .filter((m): m is Message => !!m)
       .map((m) => ({ message_id: m.id, message_revision: m.revision }));
   const problem = loading
-    ? "正在核对会话与来源。"
+    ? t("正在核对会话与来源。")
     : !conversation || !context
-      ? "请选择可用的已授权会话。"
+      ? t("请选择可用的已授权会话。")
       : !summary.trim() || summary.trim().length > 120
-        ? "请填写 1–120 字的业务摘要。"
+        ? t("请填写 1–120 字的业务摘要。")
         : scheduleKind !== "missing" && !scheduleSources.length
-          ? "有时间时，必须选择客户说明时间的原文。"
+          ? t("有时间时，必须选择客户说明时间的原文。")
           : scheduleKind === "date_only" && !date
-            ? "请选择日期。"
+            ? t("请选择日期。")
             : scheduleKind === "timed" &&
                 (!start ||
                   !end ||
                   Date.parse(start + "+08:00") <= Date.now() ||
                   Date.parse(end + "+08:00") <= Date.parse(start + "+08:00"))
-              ? "请填写未来的开始时间和更晚的结束时间。"
+              ? t("请填写未来的开始时间和更晚的结束时间。")
               : address && !address.trim()
-                ? "地址不能只有空格。"
+                ? t("地址不能只有空格。")
                 : address.trim() && !addressSources.length
-                  ? "有地址时，必须选择客户说明地址的原文。"
+                  ? t("有地址时，必须选择客户说明地址的原文。")
                   : open.length && !additional
-                    ? "已有未结束工单；另开一单需要明确确认。"
+                    ? t("已有未结束工单；另开一单需要明确确认。")
                     : "";
   let body: CreateOrderInput | null = null;
   if (!problem)
@@ -182,6 +195,9 @@ export function OrderCreation({
       address: address.trim() || null,
       address_sources: address.trim() ? refs(addressSources) : [],
       confirm_additional_order: additional,
+      ...(proposalId
+        ? { from_proposal_id: proposalId, expected_context_version: context }
+        : {}),
     };
   const binding = JSON.stringify({ body, context, messages: eligible }),
     reviewCurrent = !!review && review === binding;
@@ -220,37 +236,103 @@ export function OrderCreation({
     setConsent(false);
   }
   return (
-    <section aria-label="从会话新建工单">
+    <section aria-label={t("从会话新建工单")}>
       <div className="page-heading">
         <div>
-          <p className="eyebrow">新客户到第一张工单</p>
-          <h1>从会话新建工单</h1>
-          <p>只引用客户原文；不知道的时间和地址保持未提供，不自动编造。</p>
+          <p className="eyebrow">{t("新客户到第一张工单")}</p>
+          <h1>{t("从会话新建工单")}</h1>
+          <p>
+            {t("只引用客户原文；不知道的时间和地址保持未提供，不自动编造。")}
+          </p>
         </div>
         <button
           className="secondary"
           disabled={loading || busy}
           onClick={() => setRefreshKey((v) => v + 1)}
         >
-          刷新会话与原文
+          {t("刷新会话与原文")}
         </button>
       </div>
       {!features.create_order && (
         <p className="notice warning">
-          当前连接的后端未开放建单功能。下面可以填写和核对，提交按钮保持关闭。
+          {t(
+            "当前连接的后端未开放建单功能。下面可以填写和核对，提交按钮保持关闭。",
+          )}
         </p>
       )}
       {error && (
         <p className="notice stale" role="alert">
-          {error}
+          {t(error)}
         </p>
       )}
-      {commands.error && <p role="alert">{commands.error}</p>}
+      {commands.error && <p role="alert">{t(commands.error)}</p>}
       {commands.attempt && (
         <p className="notice warning">
-          有尚待核对的原操作 {commands.attempt.key}
-          ，不能另开新请求。请到业务工作台核对原操作。
+          {t("有尚待核对的原操作")}
+          {commands.attempt.key}
+          {t("，不能另开新请求。请到业务工作台核对原操作。")}
         </p>
+      )}
+      {features.business_loop_reviewed && (
+        <section className="panel">
+          <h2>{t("AI 新单建议")}</h2>
+          <p>
+            {t(
+              "建议不会自动建单。选择后只预填摘要；时间、地址仍需逐项核对客户原文并明确填写。",
+            )}
+          </p>
+          {!suggestions.length && (
+            <p>{t("目前没有待核对的新单建议；你可以直接手动建单。")}</p>
+          )}
+          {suggestions.map((s) => (
+            <article key={s.id}>
+              <h3>{s.suggestion.summary}</h3>
+              {s.suggestion.fields.map((f, i) => (
+                <p key={i}>
+                  {f.field}：{fieldValue(f.value)} ·{" "}
+                  {f.sources
+                    .map(
+                      (ref) =>
+                        `${ref.message_id.slice(-6)} r${ref.message_revision}`,
+                    )
+                    .join(" / ")}
+                </p>
+              ))}
+              {s.suggestion.unresolved_questions.map((q, i) => (
+                <p key={i}>{q}</p>
+              ))}
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy || loading}
+                onClick={() => {
+                  setProposalId(s.id);
+                  setConversation(s.conversation_id);
+                  setSummary(s.suggestion.summary.slice(0, 120));
+                  setAddress("");
+                  setScheduleKind("missing");
+                  setStart("");
+                  setEnd("");
+                  setDate("");
+                  setAddressSources([]);
+                  setScheduleSources([]);
+                  setAdditional(false);
+                  setReview("");
+                  setConsent(false);
+                }}
+              >
+                {t("核对这份新单建议")}
+              </button>
+            </article>
+          ))}
+          {proposalId && (
+            <p role="status">
+              {t("已选择建议")}
+              {proposalId.slice(-6)}
+              {t("；提交时会重新核对来源与版本。")}
+            </p>
+          )}
+        </section>
       )}
       <div className="planning-grid">
         <form
@@ -264,11 +346,12 @@ export function OrderCreation({
           }}
         >
           <label>
-            已授权会话
+            {t("已授权会话")}
             <select
               value={conversation}
               disabled={busy || loading}
               onChange={(e) => {
+                setProposalId("");
                 setConversation(e.target.value);
                 setSummary("");
                 setAddress("");
@@ -278,21 +361,22 @@ export function OrderCreation({
                 setDate("");
               }}
             >
-              <option value="">请选择会话</option>
+              <option value="">{t("请选择会话")}</option>
               {conversations.map((c) => (
                 <option key={c.id} value={c.id}>
-                  会话 {c.id.slice(-6)} · 已关联 {c.work_order_ids.length}{" "}
-                  张工单
+                  {t("会话")}
+                  {c.id.slice(-6)} {t("· 已关联")}
+                  {c.work_order_ids.length} {t("张工单")}
                 </option>
               ))}
             </select>
           </label>
           {!loading && !conversations.length && (
-            <p>暂无已授权会话，请先在 WhatsApp 连接页选择聊天。</p>
+            <p>{t("暂无已授权会话，请先在 WhatsApp 连接页选择聊天。")}</p>
           )}
           {open.length > 0 && (
             <div className="notice">
-              <p>该会话已有未结束工单：</p>
+              <p>{t("该会话已有未结束工单：")}</p>
               {open.map((o) => (
                 <p key={o.id}>
                   {o.summary} · {orderStates[o.status]}{" "}
@@ -302,7 +386,7 @@ export function OrderCreation({
                     disabled={busy}
                     onClick={() => onOpenOrder(o.id)}
                   >
-                    查看已有工单
+                    {t("查看已有工单")}
                   </button>
                 </p>
               ))}
@@ -312,35 +396,35 @@ export function OrderCreation({
                   checked={additional}
                   onChange={(e) => setAdditional(e.target.checked)}
                 />
-                这是另一项业务，我确认另开一张工单
+                {t("这是另一项业务，我确认另开一张工单")}
               </label>
             </div>
           )}
           <label>
-            业务摘要
+            {t("业务摘要")}
             <input
               value={summary}
               maxLength={120}
               onChange={(e) => setSummary(e.target.value)}
-              placeholder="客户称呼和具体工作"
+              placeholder={t("客户称呼和具体工作")}
               disabled={busy}
             />
           </label>
           <label>
-            时间信息
+            {t("时间信息")}
             <select
               value={scheduleKind}
               onChange={(e) => setScheduleKind(e.target.value)}
               disabled={busy}
             >
-              <option value="missing">尚未提供</option>
-              <option value="date_only">只知道日期，时间待确认</option>
-              <option value="timed">具体开始和结束时间</option>
+              <option value="missing">{t("尚未提供")}</option>
+              <option value="date_only">{t("只知道日期，时间待确认")}</option>
+              <option value="timed">{t("具体开始和结束时间")}</option>
             </select>
           </label>
           {scheduleKind === "date_only" && (
             <label>
-              日期
+              {t("日期")}
               <input
                 type="date"
                 value={date}
@@ -351,7 +435,7 @@ export function OrderCreation({
           {scheduleKind === "timed" && (
             <>
               <label>
-                开始（香港时间）
+                {t("开始（香港时间）")}
                 <input
                   type="datetime-local"
                   value={start}
@@ -359,7 +443,7 @@ export function OrderCreation({
                 />
               </label>
               <label>
-                结束（香港时间）
+                {t("结束（香港时间）")}
                 <input
                   type="datetime-local"
                   value={end}
@@ -369,7 +453,7 @@ export function OrderCreation({
             </>
           )}
           <label>
-            客户提供的地址（可留空）
+            {t("客户提供的地址（可留空）")}
             <input
               value={address}
               maxLength={300}
@@ -378,7 +462,9 @@ export function OrderCreation({
             />
           </label>
           <p className="subtle">
-            仅日期仍属暂定。填了时间或地址，也必须核对客户在哪条消息中说明；商户自己的消息不能代替客户确认。
+            {t(
+              "仅日期仍属暂定。填了时间或地址，也必须核对客户在哪条消息中说明；商户自己的消息不能代替客户确认。",
+            )}
           </p>
           {problem && <p role="status">{problem}</p>}
           <button
@@ -386,24 +472,30 @@ export function OrderCreation({
               !!problem || busy || !!commands.error || !!commands.attempt
             }
           >
-            核对新工单
+            {t("核对新工单")}
           </button>
           {review && (
-            <section className="review-panel" aria-label="新工单复核">
-              <h2>核对后再保存</h2>
+            <section className="review-panel" aria-label={t("新工单复核")}>
+              <h2>{t("核对后再保存")}</h2>
               {reviewCurrent && body ? (
                 <>
                   <p>{body.summary}</p>
-                  <p>时间：{fieldValue(body.schedule)}</p>
-                  <p>地址：{body.address ?? "未提供，等待客户说明"}</p>
+                  <p>
+                    {t("时间：")}
+                    {fieldValue(body.schedule)}
+                  </p>
+                  <p>
+                    {t("地址：")}
+                    {body.address ?? t("未提供，等待客户说明")}
+                  </p>
                   <small>
-                    来源会话 v{context} · 时间原文{" "}
-                    {body.schedule_sources.length} 条 · 地址原文{" "}
-                    {body.address_sources.length} 条
+                    {t("来源会话 v")}
+                    {context} {t("· 时间原文")} {body.schedule_sources.length}{" "}
+                    {t("条 · 地址原文")} {body.address_sources.length} {t("条")}
                   </small>
                 </>
               ) : (
-                <p>内容或来源已变化，请重新核对。</p>
+                <p>{t("内容或来源已变化，请重新核对。")}</p>
               )}
               <label className="inline-check">
                 <input
@@ -412,7 +504,7 @@ export function OrderCreation({
                   disabled={!reviewCurrent || busy}
                   onChange={(e) => setConsent(e.target.checked)}
                 />
-                我已核对摘要、时间、地址和客户来源；缺项保持待确认
+                {t("我已核对摘要、时间、地址和客户来源；缺项保持待确认")}
               </label>
               <button
                 type="button"
@@ -421,21 +513,24 @@ export function OrderCreation({
                 }
                 onClick={() => void submit()}
               >
-                保存新工单
+                {t("保存新工单")}
               </button>
             </section>
           )}
         </form>
         <aside className="panel">
-          <h2>选择客户原文依据</h2>
+          <h2>{t("选择客户原文依据")}</h2>
           <small>
-            只显示本会话最新、未撤回且有文字的客户消息。历史快照和商户回显不能当成客户确认。
+            {t(
+              "只显示本会话最新、未撤回且有文字的客户消息。历史快照和商户回显不能当成客户确认。",
+            )}
           </small>
-          {loading && <p>正在读取…</p>}
+          {loading && <p>{t("正在读取…")}</p>}
           {eligible.map((m) => (
             <article className="message" key={m.id}>
               <small>
-                客户 · r{m.revision} · {m.occurred_at}
+                {t("客户 · r")}
+                {m.revision} · {m.occurred_at}
               </small>
               <p>{m.text}</p>
               {scheduleKind !== "missing" && (
@@ -445,7 +540,7 @@ export function OrderCreation({
                     checked={scheduleSources.includes(m.id)}
                     onChange={() => choose(m.id, "schedule")}
                   />
-                  作为时间依据
+                  {t("作为时间依据")}
                 </label>
               )}
               {address.trim() && (
@@ -455,14 +550,16 @@ export function OrderCreation({
                     checked={addressSources.includes(m.id)}
                     onChange={() => choose(m.id, "address")}
                   />
-                  作为地址依据
+                  {t("作为地址依据")}
                 </label>
               )}
             </article>
           ))}
           {!loading && !eligible.length && (
             <p>
-              没有可用客户原文。可先留空时间／地址，等待客户补充；不能猜测确认。
+              {t(
+                "没有可用客户原文。可先留空时间／地址，等待客户补充；不能猜测确认。",
+              )}
             </p>
           )}
         </aside>

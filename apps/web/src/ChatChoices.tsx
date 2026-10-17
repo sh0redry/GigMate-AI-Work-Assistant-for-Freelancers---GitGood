@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 import { useStableState as useState } from "./useStableState";
 import { useEffect } from "react";
 import type { Choice } from "./connection-api";
@@ -31,18 +32,18 @@ export function ChatChoices({
     <div className="chat-choices">
       <div className="chat-filters">
         <label>
-          搜索已载入会话
+          {t("搜索已载入会话")}
           <input
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
               setPage(1);
             }}
-            placeholder="会话名称或号码"
+            placeholder={t("会话名称或号码")}
           />
         </label>
         <label>
-          会话类型
+          {t("会话类型")}
           <select
             value={filter}
             onChange={(e) => {
@@ -50,20 +51,23 @@ export function ChatChoices({
               setPage(1);
             }}
           >
-            <option value="all">全部</option>
-            <option value="direct">个人聊天</option>
-            <option value="group">群聊</option>
-            <option value="selected">已授权</option>
-            <option value="unknown">类型未提供</option>
+            <option value="all">{t("全部")}</option>
+            <option value="direct">{t("个人聊天")}</option>
+            <option value="group">{t("群聊")}</option>
+            <option value="selected">{t("已授权")}</option>
+            <option value="unknown">{t("类型未提供")}</option>
           </select>
         </label>
       </div>
       <p className="subtle chat-metadata-help">
-        名称和类型由接入服务提供；仅提供号码时不会猜测昵称。可重新发现会话刷新名称。
+        {t(
+          "名称和类型由接入服务提供；仅提供号码时不会猜测昵称。可重新发现会话刷新名称。",
+        )}
       </p>
       <p className="chat-page-summary" aria-live="polite">
-        显示 {view.start}–{view.end} / {view.total} 个结果 · 已载入{" "}
-        {choices.length} 个会话 · 已勾选 {picked.length} 个（含其他页）
+        {t("显示")} {view.start}–{view.end} / {view.total}{" "}
+        {t("个结果 · 已载入")} {choices.length} {t("个会话 · 已勾选")}{" "}
+        {picked.length} {t("个（含其他页）")}
       </p>
       <div className="chat-choice-page">
         {view.items.map(
@@ -71,7 +75,12 @@ export function ChatChoices({
             <label className="chat-choice" key={c.id}>
               <input
                 type="checkbox"
-                aria-label={`${label} · ${kindLabel} · 会话 ${index + 1}`}
+                aria-label={t(
+                  "{0} · {1} · 会话 {2}",
+                  label,
+                  kindLabel,
+                  index + 1,
+                )}
                 checked={picked.includes(c.id)}
                 disabled={
                   busy ||
@@ -86,7 +95,11 @@ export function ChatChoices({
                 className={`chat-avatar ${kind === "group" ? "chat-avatar-group" : ""}`}
                 aria-hidden="true"
               >
-                {kind === "group" ? "群" : numberOnly ? "人" : [...label][0]}
+                {kind === "group"
+                  ? t("群")
+                  : numberOnly
+                    ? t("人")
+                    : [...label][0]}
               </span>
               <span className="chat-title">
                 <strong>{label}</strong>
@@ -94,10 +107,10 @@ export function ChatChoices({
                   <span className={`chat-kind chat-kind-${kind}`}>
                     {kindLabel}
                   </span>{" "}
-                  · {c.selected ? "已保存授权" : "尚未授权"}
-                  {numberOnly ? " · 未提供昵称" : ""}
+                  · {c.selected ? t("已保存授权") : t("尚未授权")}
+                  {numberOnly ? t(" · 未提供昵称") : ""}
                   {!c.selected && choiceExpired(c, clock)
-                    ? " · 选项已过期"
+                    ? t(" · 选项已过期")
                     : ""}
                 </small>
               </span>
@@ -106,13 +119,15 @@ export function ChatChoices({
         )}
         {!view.total && choices.length > 0 && (
           <p className="chat-no-results" role="status">
-            没有符合筛选条件的已载入会话。修改筛选，或载入更多会话；已勾选项仍保留。
+            {t(
+              "没有符合筛选条件的已载入会话。修改筛选，或载入更多会话；已勾选项仍保留。",
+            )}
           </p>
         )}
       </div>
-      <nav className="chat-pagination" aria-label="会话列表分页">
+      <nav className="chat-pagination" aria-label={t("会话列表分页")}>
         <label>
-          每页
+          {t("每页")}
           <select
             value={size}
             onChange={(e) => {
@@ -120,13 +135,14 @@ export function ChatChoices({
               setPage(1);
             }}
           >
-            <option value="8">8 个</option>
-            <option value="16">16 个</option>
-            <option value="24">24 个</option>
+            <option value="8">{t("8 个")}</option>
+            <option value="16">{t("16 个")}</option>
+            <option value="24">{t("24 个")}</option>
           </select>
         </label>
         <span>
-          第 {view.page} / {view.pages} 页
+          {t("第")}
+          {view.page} / {view.pages} {t("页")}
         </span>
         <div className="chat-page-buttons">
           <button
@@ -135,7 +151,7 @@ export function ChatChoices({
             disabled={view.page <= 1}
             onClick={() => setPage(view.page - 1)}
           >
-            上一页
+            {t("上一页")}
           </button>
           <button
             type="button"
@@ -143,7 +159,7 @@ export function ChatChoices({
             disabled={view.page >= view.pages}
             onClick={() => setPage(view.page + 1)}
           >
-            下一页
+            {t("下一页")}
           </button>
         </div>
       </nav>

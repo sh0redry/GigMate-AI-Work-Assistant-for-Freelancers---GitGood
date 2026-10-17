@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 import { sessionFetch } from "./read-cache.ts";
 import { apiBase } from "./environment.ts";
 import { ConnectionError } from "./connection-api";
@@ -35,19 +36,19 @@ export function synchronizationApi(connection: string, csrf: string) {
     } catch {
       throw new ConnectionError(
         body ? "SYNC_RESULT_UNCERTAIN" : "NETWORK_ERROR",
-        "查询失败，请刷新；同步请求重试须保留原请求。",
+        t("查询失败，请刷新；同步请求重试须保留原请求。"),
       );
     }
     const result = await response.json();
     if (response.status === 404 && !result.error)
       throw new ConnectionError(
         "SYNC_API_UNAVAILABLE",
-        "同步接口尚不可用，请先完成本批次后端迁移并重建服务。",
+        t("同步接口尚不可用，请先完成本批次后端迁移并重建服务。"),
       );
     if (!response.ok)
       throw new ConnectionError(
         result.error?.code ?? "HTTP_ERROR",
-        result.error?.message ?? "请求失败",
+        result.error?.message ?? t("请求失败"),
       );
     return result;
   }
@@ -87,7 +88,7 @@ export function synchronizationApi(connection: string, csrf: string) {
       )
         throw new ConnectionError(
           "IDEMPOTENCY_CONFLICT",
-          "原同步请求尚待核对，请保留原参数后重试。",
+          t("原同步请求尚待核对，请保留原参数后重试。"),
         );
       return (await request<{ data: SyncJob }>("/sync-jobs", command, key))
         .data;

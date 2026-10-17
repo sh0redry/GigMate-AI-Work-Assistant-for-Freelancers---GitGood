@@ -25,7 +25,6 @@ from gigmate.contracts import (
     ApprovalAction,
     ApproveActionCommand,
     ArchiveCommand,
-    AssignmentResult,
     AssignMessageCommand,
     CalendarEvent,
     ConfirmChangeCommand,
@@ -39,6 +38,7 @@ from gigmate.contracts import (
     DeliveryChecklist,
     Detail,
     EditActionCommand,
+    MessageAssignmentResult,
     Model,
     Page,
     RecoveryIssue,
@@ -465,7 +465,7 @@ def reject_order_change(
     )
 
 
-@app.post("/api/v1/review-items/{job_id}/assign", response_model=Detail[AssignmentResult])
+@app.post("/api/v1/review-items/{job_id}/assign", response_model=Detail[MessageAssignmentResult])
 def assign_review_item(
     job_id: UUID,
     command: AssignMessageCommand,
@@ -1621,3 +1621,8 @@ def replay_custom(
 
 install_sending(app, database, setup_actor, detail, page, sending_io_actor)
 install_workspace(app, database, actor, detail, page, conversation_info)
+
+
+from gigmate.product_commands import install as install_product  # noqa: E402
+
+install_product(app, database, actor, detail, page)

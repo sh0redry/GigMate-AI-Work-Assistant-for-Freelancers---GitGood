@@ -1178,7 +1178,7 @@ class LLMProvider:
             )
         # Gate 3: one stable id per call, sent to the vendor and persisted so
         # the trace can be correlated with the vendor's own request log.
-        request_id = uuid4().hex
+        request_id = request.extra.get("request_id") or uuid4().hex
         try:
             raw, usage = self._call_chat_completion(
                 endpoint=self._resolved_endpoint(),
@@ -1356,6 +1356,8 @@ class LLMProvider:
                         response.raise_for_status()
                         payload = bytearray()
                         for chunk in response.iter_bytes():
+                            if len(payload) + len(chunk) > 512 * 1024:
+                                raise _MalformedVendorResponse()
                             payload.extend(chunk)
                             if _now() - began > _TOTAL_DEADLINE_S:
                                 response.close()

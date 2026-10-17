@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 import { stableShare, privateReadDenied } from "./read-cache.ts";
 import {
   changeContext,
@@ -83,7 +84,9 @@ export class BusinessStore {
       mutating: false,
       stale: true,
       error:
-        error instanceof Error ? error.message : "数据读取失败，请刷新重试。",
+        error instanceof Error
+          ? error.message
+          : t("数据读取失败，请刷新重试。"),
     });
   }
   async refresh() {
@@ -144,7 +147,7 @@ export class BusinessStore {
     if (!this.ready()) {
       if (!this.state.mutating) {
         this.patch({
-          error: "请先刷新并核对最新数据，再执行操作。",
+          error: t("请先刷新并核对最新数据，再执行操作。"),
           stale: true,
         });
         void this.refresh();
@@ -170,7 +173,9 @@ export class BusinessStore {
         ) {
           this.patch({
             notice:
-              error instanceof Error ? error.message : "请重新核对当前提议。",
+              error instanceof Error
+                ? error.message
+                : t("请重新核对当前提议。"),
           });
           await this.refresh();
         }
@@ -191,7 +196,9 @@ export class BusinessStore {
       return Promise.resolve();
     return this.mutate(async () => {
       await this.api.confirm(data, change);
-      return "已保存本次提议；仍需客户核实的信息保持待确认，日历与待办按确认状态更新。";
+      return t(
+        "已保存本次提议；仍需客户核实的信息保持待确认，日历与待办按确认状态更新。",
+      );
     });
   }
 }
@@ -212,28 +219,32 @@ export function canConfirm(
 export function changePresentation(change: Change, current: boolean) {
   if (change.status === "confirmed")
     return {
-      label: "已确认",
+      label: t("已确认"),
       text:
         change.customer_confirmation === "confirmed"
-          ? "商户已接受此提议；日历与待办按工单的当前确认状态更新。"
-          : "商户已接受此值，仍等待客户核实；这不代表客户已经确认。",
+          ? t("商户已接受此提议；日历与待办按工单的当前确认状态更新。")
+          : t("商户已接受此值，仍等待客户核实；这不代表客户已经确认。"),
       warning: false,
     };
   if (change.status !== "proposed" || !current)
     return {
-      label: "已失效，需复核",
-      text: "业务或来源消息已经变化。这条历史提议不能再确认，请核对当前有效提议。",
+      label: t("已失效，需复核"),
+      text: t(
+        "业务或来源消息已经变化。这条历史提议不能再确认，请核对当前有效提议。",
+      ),
       warning: true,
     };
   if (change.conflict_ids.length)
     return {
-      label: "时间冲突",
-      text: "该时段与另一项已确认预约重叠，不能确认。",
+      label: t("时间冲突"),
+      text: t("该时段与另一项已确认预约重叠，不能确认。"),
       warning: true,
     };
   return {
-    label: "待商户确认",
-    text: "商户接受后会保存此值；仍需客户核实的内容保持待确认，日历与准备待办按确认状态处理。",
+    label: t("待商户确认"),
+    text: t(
+      "商户接受后会保存此值；仍需客户核实的内容保持待确认，日历与准备待办按确认状态处理。",
+    ),
     warning: false,
   };
 }

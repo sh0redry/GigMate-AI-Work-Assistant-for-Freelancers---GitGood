@@ -21,6 +21,7 @@ const components = [
   "App",
   "NavIcon",
   "BusinessLoopWorkspace",
+  "ProductTools",
   "BusinessLoopReview",
   "LoopCommand",
   "OrderLifecycle",
@@ -52,6 +53,8 @@ for (const name of [
   "read-cache",
   "useStableState",
   "workspace-api",
+  "i18n",
+  "locales",
   "work-order-view",
   "connection-api",
   "waha-live-api",
@@ -83,8 +86,10 @@ for (const name of [
   await writeFile(join(directory, name + ".mjs"), code);
 }
 const { App } = await import(pathToFileURL(join(directory, "App.mjs")));
+const { setLocale } = await import(pathToFileURL(join(directory, "i18n.mjs")));
 let root;
 afterEach(async () => {
+  await act(async () => setLocale("zh"));
   if (root) await act(async () => root.unmount());
   root = null;
   document.getElementById("root").replaceChildren();
@@ -266,7 +271,7 @@ test("delivery login and navigation contain no test environment or public creden
       (c) => !c.url.includes("/daily-summary") && !c.url.includes("/settings/"),
     ),
   );
-  assert.match(document.body.textContent, /C 业务审批与 A/);
+  assert.match(document.body.textContent, /未知结果先核查/);
   assert.ok(calls.every((c) => c.url.startsWith("/api/v1/")));
   assert.equal(calls.filter((c) => c.options.method === "POST").length, 1);
 });
@@ -548,4 +553,155 @@ test("leaving the calendar aborts a late private download before creating a save
   } finally {
     URL.createObjectURL = original;
   }
+});
+
+test("language switching keeps login input, authenticated page and raw customer content", async () => {
+  const data = deliveryFixture();
+  data.order.summary = "已确认"; // Intentionally equals a translated UI label.
+  data.messages[0].text = "业务工作台";
+  await mount();
+  await fill(
+    document.querySelector('input[autocomplete="username"]'),
+    "learner",
+  );
+  await fill(
+    document.querySelector('input[type="password"]'),
+    "synthetic-password",
+  );
+  const user = document.querySelector('input[autocomplete="username"]');
+  await act(async () => button("English").click());
+  assert.equal(document.documentElement.lang, "en-HK");
+  assert.equal(document.querySelector('input[autocomplete="username"]'), user);
+  assert.equal(user.value, "learner");
+  assert.equal(
+    document.querySelector('input[type="password"]').value,
+    "synthetic-password",
+  );
+  assert.ok(button("Open workspace"));
+  await act(async () =>
+    document
+      .querySelector("form")
+      .dispatchEvent(
+        new window.Event("submit", { bubbles: true, cancelable: true }),
+      ),
+  );
+  assert.ok(button("Workspace"));
+  assert.ok(document.body.textContent.includes("已确认"));
+  assert.ok(document.body.textContent.includes("业务工作台"));
+  const logins = data.calls.filter((c) => c.url.endsWith("/auth/login")).length;
+  await act(async () => button("粵語").click());
+  assert.equal(document.documentElement.lang, "yue-Hant-HK");
+  assert.ok(button("工作台"));
+  assert.ok(document.body.textContent.includes("已确认"));
+  assert.ok(document.body.textContent.includes("业务工作台"));
+  assert.equal(
+    data.calls.filter((c) => c.url.endsWith("/auth/login")).length,
+    logins,
+  );
+});
+
+test("business sending resolves a different chat UUID from the owned conversation and verifies the linked receipt", async () => {
+  const { BusinessLoopReview } = await import(
+    pathToFileURL(join(directory, "BusinessLoopReview.mjs"))
+  );
+  const account = "00000000-0000-4000-8000-000000000001",
+    conversation = "00000000-0000-4000-8000-000000000002",
+    chat = "00000000-0000-4000-8000-000000000003",
+    connection = "00000000-0000-4000-8000-000000000004",
+    order = "00000000-0000-4000-8000-000000000005",
+    actionId = "00000000-0000-4000-8000-000000000006",
+    sendId = "00000000-0000-4000-8000-000000000007";
+  const action = {
+    id: actionId,
+    account_id: account,
+    conversation_id: conversation,
+    work_order_id: order,
+    body: "已确认",
+    state: "approved",
+    revision: 2,
+    snapshot_hash: "sha256:synthetic",
+    expires_at: new Date(Date.now() + 60000).toISOString(),
+  };
+  globalThis.fetch = async (url) => {
+    if (url.includes("/actions?"))
+      return Response.json({ items: [action], next_cursor: null });
+    if (url.endsWith("/connectors"))
+      return Response.json({ data: [{ id: connection }] });
+    if (url.endsWith("/setup"))
+      return Response.json({
+        data: {
+          connection_id: connection,
+          control_version: 4,
+          enabled: true,
+          available: true,
+          provider_sample_stale: false,
+        },
+      });
+    if (url.endsWith("/sending/permission"))
+      return Response.json({
+        data: { version: 5, enabled: true, chat_ids: [chat], expires_at: null },
+      });
+    if (url.endsWith("/chats"))
+      return Response.json({
+        data: [{ id: chat, selected: true, conversation_id: conversation }],
+      });
+    if (url.endsWith("/sending/actions/" + sendId))
+      return Response.json({
+        data: {
+          id: sendId,
+          chat_id: chat,
+          work_order_id: order,
+          payload: { kind: "text", text: "已确认" },
+          state: "accepted",
+          delivery_status: "sent",
+        },
+      });
+    throw Error("Unexpected read " + url);
+  };
+  const errors = [],
+    submitted = [];
+  const api = {
+    pending: null,
+    error: "",
+    read: async () => ({ ...action }),
+    submit: async (value) => {
+      submitted.push(value);
+      return { ...action };
+    },
+  };
+  const props = {
+    api,
+    csrf: "csrf",
+    accountId: account,
+    features: {
+      business_loop_reviewed: true,
+      business_sending: true,
+      manual_assignment: false,
+    },
+    orders: [{ id: order, summary: "Synthetic order" }],
+    onDone: () => {},
+    onError: (e) => errors.push(e),
+    onBusy: () => {},
+  };
+  root = createRoot(document.getElementById("root"));
+  await act(async () => root.render(createElement(BusinessLoopReview, props)));
+  await select("业务草稿", actionId);
+  await select("发送连接", connection);
+  assert.ok(button("核对并提交业务发送"));
+  await act(async () => button("核对并提交业务发送").click());
+  await tick("我已核对内容、来源及当前版本");
+  await act(async () => button("确认保存").click());
+  assert.equal(submitted.length, 1);
+  assert.equal(submitted[0].body.connection_id, connection);
+  assert.equal(submitted[0].body.expected_permission_version, 5);
+  assert.ok(submitted[0].review.includes("已确认")); // Exact body is preserved.
+  action.state = "executing";
+  action.send_action_id = sendId;
+  await act(async () =>
+    root.render(
+      createElement(BusinessLoopReview, { ...props, api: { ...api } }),
+    ),
+  );
+  assert.match(document.body.textContent, /关联回执/);
+  assert.deepEqual(errors, []);
 });

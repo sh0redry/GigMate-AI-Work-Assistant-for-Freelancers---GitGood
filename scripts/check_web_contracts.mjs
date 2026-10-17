@@ -9,7 +9,7 @@ const web = join(root, "apps/web");
 const directory = mkdtempSync(join(web, ".contract-check-"));
 if (!directory.startsWith(web + "/") && !directory.startsWith(web + "\\")) throw new Error("Invalid temp path");
 try {
-  for (const [input,name] of [["openapi.json","api.d.ts"],["business-loop-preview.openapi.json","business-loop.d.ts"]]) {
+  for (const [input,name] of [["openapi.json","api.d.ts"]]) {
   const output = join(directory, name);
   const commands = [
     [join(web, "node_modules/openapi-typescript/bin/cli.js"), join(root, "contracts",input), "-o", output],

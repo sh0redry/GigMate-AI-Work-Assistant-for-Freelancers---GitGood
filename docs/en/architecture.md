@@ -26,7 +26,7 @@ flowchart TD
   Q --> DB
 ```
 
-Replay ingestion, durable worker, fixed extraction stub, internal confirmation, calendar/task updates and audit are implemented. Opt-in [WAHA reception/monitoring](role-a-stage3-acceptance.md) adds trusted persistent mappings, signed transactional input and scoped connection state; real content bypasses fictional extraction. The current [multi-type sending branch](role-a-waha-sending.md) adds a separate immutable approval/outbox gateway and exact merchant preauthorization under [ADR 0007](adr/0007-owned-waha-sending.md); physical/B/PostgreSQL acceptance is pending. General models and generic business action execution remain targets. PostgreSQL is the Compose runtime; SQLite is only a test fallback.
+Replay ingestion, durable worker, fixed extraction stub, internal confirmation, calendar/task updates and audit are implemented. Opt-in [WAHA reception/monitoring](role-a-stage3-acceptance.md) adds trusted persistent mappings, signed transactional input and scoped connection state; real content bypasses fictional extraction. The current [multi-type sending branch](role-a-waha-sending.md) adds a separate immutable approval/outbox gateway and exact merchant preauthorization under [ADR 0007](adr/0007-owned-waha-sending.md); physical/B/PostgreSQL acceptance is pending. The current BCD candidate adds an opt-in process-isolated text provider and the reviewed business-to-send bridge; media promotion and broader Agent execution remain targets. See [current delivery and acceptance limits](bcd-product-delivery.md). PostgreSQL is the Compose runtime; SQLite is only a test fallback.
 
 ## Modules
 
@@ -35,13 +35,13 @@ Replay ingestion, durable worker, fixed extraction stub, internal confirmation, 
 | identity | Authentication, consent, allowlists | Trusted account context |
 | messaging | Sessions, normalized events, messages | Accepted context revisions and source references |
 | understanding | Assignment candidates, extraction, drafts (Replay legacy) | Proposals only; no confirmed writes or external tools |
-| extraction | Provider interface, deterministic / disabled defaults, evaluation harness, persisted proposal evidence | Proposals and traces only; never execution authority. Real-model integration is a separately authorized batch. |
+| extraction | Provider interface, deterministic / disabled defaults, evaluation harness, persisted proposal evidence | Proposals and traces only; never execution authority. Optional reviewed text integration requires explicit server configuration; media remains closed. |
 | workorders | Work orders, changes, confirmation history | Versioned domain commands |
 | planning | Tasks, internal calendar, conflicts | Computed availability and approved formal writes |
 | actions | Approval snapshots, invalidation, outbox, reconciliation | Only external-write gateway |
 | audit | Actors, traces, deletion coverage | Traceability without full content in logs |
 
-Initial services are responsibility-named Python files under apps/backend/src/gigmate; split into packages when they grow. Do not create unused module packages. Services share deterministic rules. Manual work-order creation, time/address confirmation and lifecycle commands are implemented; general model understanding and business-action external execution remain pending. Any team member may contribute to any module. Rotating module contacts coordinate interfaces and handoffs, with no exclusive approval rights; see [equal collaboration](team-governance.md).
+Initial services are responsibility-named Python files under apps/backend/src/gigmate; split into packages when they grow. Do not create unused module packages. Services share deterministic rules. Manual creation, merchant-reviewed AI new-order suggestions, sourced confirmations, task decisions, lifecycle commands and exact business sending are implemented in the BCD candidate. Live deployment/phone/model quality acceptance remains separate. Any team member may contribute to any module. Rotating module contacts coordinate interfaces and handoffs, with no exclusive approval rights; see [equal collaboration](team-governance.md).
 
 ## Data and reliability
 

@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 import { sessionFetch } from "./read-cache.ts";
 import { ConnectionError } from "./connection-api";
 import { apiBase } from "./environment.ts";
@@ -77,7 +78,7 @@ export function sendingApi(connection: string, csrf: string) {
     } catch {
       throw new ConnectionError(
         body ? "SEND_REQUEST_UNKNOWN" : "NETWORK_ERROR",
-        "请求结果待核对，请刷新已有记录，不要另建发送任务。",
+        t("请求结果待核对，请刷新已有记录，不要另建发送任务。"),
       );
     }
     const data = await response.json().catch(() => null);
@@ -90,7 +91,7 @@ export function sendingApi(connection: string, csrf: string) {
             : body && response.status >= 500
               ? "SEND_REQUEST_UNKNOWN"
               : (data?.error?.code ?? "SEND_API_UNAVAILABLE"),
-        "发送操作未完成，请核对权限和已有记录。",
+        t("发送操作未完成，请核对权限和已有记录。"),
       );
     return data;
   }
@@ -104,7 +105,7 @@ export function sendingApi(connection: string, csrf: string) {
     if (!response.data)
       throw new ConnectionError(
         body ? "SEND_REQUEST_UNKNOWN" : "INVALID_RESPONSE",
-        "响应不完整，请核对已有记录。",
+        t("响应不完整，请核对已有记录。"),
       );
     return response.data;
   }
@@ -132,7 +133,7 @@ export function sendingApi(connection: string, csrf: string) {
     )
       throw new ConnectionError(
         "SEND_REQUEST_UNKNOWN",
-        "发送响应无法核对，请读取原请求记录。",
+        t("发送响应无法核对，请读取原请求记录。"),
       );
     return value;
   }

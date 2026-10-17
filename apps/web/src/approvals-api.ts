@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 import { sessionFetch } from "./read-cache.ts";
 import type { components } from "./generated/api";
 import { apiBase } from "./environment.ts";
@@ -51,7 +52,7 @@ const positive = (n: unknown) => Number.isInteger(n) && Number(n) > 0;
 function invalid(): never {
   throw new WorkspaceError(
     "INVALID_RESPONSE",
-    "审批数据不完整，请刷新；当前不能批准。",
+    t("审批数据不完整，请刷新；当前不能批准。"),
   );
 }
 function validAction(action: Action, accountId: string) {
@@ -142,7 +143,9 @@ export function approvalsApi(
     if (!storage) throw new Error();
   } catch {
     failStorage(
-      "浏览器不允许保存原请求记录；可以查看审批，但当前不能提交操作。请恢复存储后重新打开页面，不能推断旧请求未提交。",
+      t(
+        "浏览器不允许保存原请求记录；可以查看审批，但当前不能提交操作。请恢复存储后重新打开页面，不能推断旧请求未提交。",
+      ),
     );
   }
   let raw: string | null = null;
@@ -156,13 +159,17 @@ export function approvalsApi(
           ) !== null
         ) {
           failStorage(
-            "旧入口还有待核对的审批操作；记录已保留，不能搬运到当前服务重试。请让维护者先核对旧请求。",
+            t(
+              "旧入口还有待核对的审批操作；记录已保留，不能搬运到当前服务重试。请让维护者先核对旧请求。",
+            ),
           );
         }
       }
     } catch {
       failStorage(
-        "原请求记录无法读取；可以查看审批，但当前不能提交操作。请恢复存储后重新核对旧请求。",
+        t(
+          "原请求记录无法读取；可以查看审批，但当前不能提交操作。请恢复存储后重新核对旧请求。",
+        ),
       );
     }
   }
@@ -173,8 +180,9 @@ export function approvalsApi(
       attempt = value;
     }
   } catch {
-    storageError =
-      "原请求记录无法读取，请联系维护者核对；为避免重复批准，当前不能提交新操作。";
+    storageError = t(
+      "原请求记录无法读取，请联系维护者核对；为避免重复批准，当前不能提交新操作。",
+    );
   }
   function persist(value: Attempt) {
     try {
@@ -183,7 +191,9 @@ export function approvalsApi(
       attempt = value;
     } catch {
       failStorage(
-        "无法保存原请求记录；本次操作尚未提交，当前不能提交新操作。请恢复存储后重新打开审批页。",
+        t(
+          "无法保存原请求记录；本次操作尚未提交，当前不能提交新操作。请恢复存储后重新打开审批页。",
+        ),
       );
       throw new WorkspaceError("ATTEMPT_STORAGE_UNAVAILABLE", storageError);
     }
@@ -195,7 +205,9 @@ export function approvalsApi(
       const raw = storage.getItem(storageKey);
       if (raw !== null && raw !== JSON.stringify(attempt)) {
         failStorage(
-          "原请求记录已被另一页面更新，本页不会删除它。操作响应已返回，请重新打开审批页核对。",
+          t(
+            "原请求记录已被另一页面更新，本页不会删除它。操作响应已返回，请重新打开审批页核对。",
+          ),
         );
         return;
       }
@@ -205,7 +217,9 @@ export function approvalsApi(
       // The response was verified, but journal cleanup is not proof that the
       // old intent never committed. Retain it and block fresh submissions.
       failStorage(
-        "操作响应已返回，但原请求记录无法清理；记录仍保留，当前不能提交新操作。请恢复存储后重新打开审批页核对。",
+        t(
+          "操作响应已返回，但原请求记录无法清理；记录仍保留，当前不能提交新操作。请恢复存储后重新打开审批页核对。",
+        ),
       );
     }
   }
@@ -232,14 +246,14 @@ export function approvalsApi(
     } catch {
       throw new WorkspaceError(
         "RESULT_UNKNOWN",
-        "结果暂未确认。不要重新批准；刷新后核对，必要时使用原请求核对。",
+        t("结果暂未确认。不要重新批准；刷新后核对，必要时使用原请求核对。"),
       );
     }
     if (!response.ok) {
       if (response.status >= 500 || !result || !("error" in result))
         throw new WorkspaceError(
           "RESULT_UNKNOWN",
-          "结果暂未确认，请保留原请求并核对，不能直接重发。",
+          t("结果暂未确认，请保留原请求并核对，不能直接重发。"),
         );
       const code =
         response.status === 401
@@ -256,21 +270,23 @@ export function approvalsApi(
       throw new WorkspaceError(
         code,
         code === "UNAUTHENTICATED"
-          ? "登录已过期，请重新登录；原记录仍按账号与环境保存。"
-          : "后端拒绝了这次操作。请刷新后重新核对版本、来源、授权和当前状态。",
+          ? t("登录已过期，请重新登录；原记录仍按账号与环境保存。")
+          : t(
+              "后端拒绝了这次操作。请刷新后重新核对版本、来源、授权和当前状态。",
+            ),
       );
     }
     if (!result || !("data" in result))
       throw new WorkspaceError(
         "RESULT_UNKNOWN",
-        "响应不完整，暂时不能确认操作结果，请核对原请求。",
+        t("响应不完整，暂时不能确认操作结果，请核对原请求。"),
       );
     try {
       validAction(result.data, accountId);
     } catch {
       throw new WorkspaceError(
         "RESULT_UNKNOWN",
-        "响应不完整，暂时不能确认操作结果，请核对原请求。",
+        t("响应不完整，暂时不能确认操作结果，请核对原请求。"),
       );
     }
     if (
@@ -280,7 +296,7 @@ export function approvalsApi(
     )
       throw new WorkspaceError(
         "RESULT_UNKNOWN",
-        "操作响应不匹配，保留原请求等待核对。",
+        t("操作响应不匹配，保留原请求等待核对。"),
       );
     const expectedState =
       original.operation === "approve"
@@ -295,7 +311,7 @@ export function approvalsApi(
     )
       throw new WorkspaceError(
         "RESULT_UNKNOWN",
-        "结果状态或快照不匹配，原请求仍待核对。",
+        t("结果状态或快照不匹配，原请求仍待核对。"),
       );
     clear();
     return result.data;
@@ -393,8 +409,9 @@ export function approvalsApi(
           throw error;
         conversation = null;
         messages = [];
-        contextError =
-          "原文当前不可读取。可以拒绝／取消草稿，但不能批准或重新提问。";
+        contextError = t(
+          "原文当前不可读取。可以拒绝／取消草稿，但不能批准或重新提问。",
+        );
       }
       const index = actions.findIndex((a) => a.id === action.id);
       if (index >= 0) actions[index] = action;
@@ -418,7 +435,7 @@ export function approvalsApi(
       if (attempt || storageError)
         throw new WorkspaceError(
           attempt ? "UNRESOLVED_ATTEMPT" : storageErrorCode,
-          storageError || "先核对原请求，再提交新操作。",
+          storageError || t("先核对原请求，再提交新操作。"),
         );
       const snapshot = {
         expected_version: action.bound_work_order_version,
@@ -442,18 +459,20 @@ export function approvalsApi(
       if (!validAttempt(original))
         throw new WorkspaceError(
           "INVALID_COMMAND",
-          "请填写 1 至 500 字的拒绝／取消原因。",
+          t("请填写 1 至 500 字的拒绝／取消原因。"),
         );
       try {
         if (storage?.getItem(storageKey))
           throw new WorkspaceError(
             "UNRESOLVED_ATTEMPT",
-            "另一个页面已记录原请求，请重新打开审批页核对。",
+            t("另一个页面已记录原请求，请重新打开审批页核对。"),
           );
       } catch (error) {
         if (error instanceof WorkspaceError) throw error;
         failStorage(
-          "无法核对浏览器原请求记录；本次操作尚未提交，当前不能提交新操作。请恢复存储后重新打开页面。",
+          t(
+            "无法核对浏览器原请求记录；本次操作尚未提交，当前不能提交新操作。请恢复存储后重新打开页面。",
+          ),
         );
         throw new WorkspaceError("ATTEMPT_STORAGE_UNAVAILABLE", storageError);
       }
@@ -462,7 +481,10 @@ export function approvalsApi(
     },
     retryOriginal() {
       if (!attempt || storageError)
-        throw new WorkspaceError("NO_ORIGINAL_REQUEST", "没有可核对的原请求。");
+        throw new WorkspaceError(
+          "NO_ORIGINAL_REQUEST",
+          t("没有可核对的原请求。"),
+        );
       return dispatch(attempt, true);
     },
   };

@@ -25,6 +25,8 @@ const modules = [
   "ConnectionWorkspace",
   "ChatChoices",
   "WahaMessages",
+  "i18n",
+  "locales",
   "environment",
   "read-cache",
   "useStableState",

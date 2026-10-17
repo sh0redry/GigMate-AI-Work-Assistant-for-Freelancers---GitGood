@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 import { useStableState as useState } from "./useStableState";
 import { privateReadDenied } from "./read-cache.ts";
 import { useCallback, useEffect, useRef } from "react";
@@ -31,7 +32,7 @@ export function useWorkspaceData<T>(
           setData(null);
           hasData.current = false;
         }
-        setError(e instanceof Error ? e.message : "暂时无法读取，请刷新。");
+        setError(e instanceof Error ? e.message : t("暂时无法读取，请刷新。"));
         if ((e as { code?: string })?.code === "UNAUTHENTICATED") expired();
       }
     } finally {

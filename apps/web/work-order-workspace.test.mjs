@@ -26,6 +26,8 @@ for (const name of [
   "read-cache",
   "useStableState",
   "workspace-api",
+  "i18n",
+  "locales",
   "work-order-view",
 ]) {
   const source = await readFile(

@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 import { useStableState as useState } from "./useStableState";
 import type { LoopApi, LoopIntent } from "./business-loop-api";
 export function LoopCommand({
@@ -61,9 +62,9 @@ export function LoopCommand({
         {label}
       </button>
       {current && (
-        <div className="review-sheet" role="region" aria-label="操作复核">
-          <h3>核对后保存</h3>
-          <p>{intent.review}</p>
+        <div className="review-sheet" role="region" aria-label={t("操作复核")}>
+          <h3>{t("核对后保存")}</h3>
+          <p>{t(intent.review)}</p>
           <label className="inline-check">
             <input
               type="checkbox"
@@ -71,24 +72,24 @@ export function LoopCommand({
               onChange={(e) => setConsent(e.target.checked)}
               disabled={busy}
             />
-            我已核对内容、来源及当前版本，确认本次操作。
+            {t("我已核对内容、来源及当前版本，确认本次操作。")}
           </label>
           <button
             disabled={disabled || !consent || busy}
             onClick={() => void submit()}
           >
-            确认保存
+            {t("确认保存")}
           </button>
           <button
             className="secondary"
             disabled={busy}
             onClick={() => setReview(null)}
           >
-            返回修改
+            {t("返回修改")}
           </button>
         </div>
       )}
-      {api.error && <p role="alert">{api.error}</p>}
+      {api.error && <p role="alert">{t(api.error)}</p>}
     </div>
   );
 }
@@ -127,12 +128,21 @@ export function LoopRecovery({
     }
   }
   return (
-    <div className="notice stale" role="region" aria-label="原业务操作核对">
-      <h2>有一笔原操作等待核对</h2>
-      <p>{pending.intent.review}</p>
-      <small>原编号 {pending.key}</small>
+    <div
+      className="notice stale"
+      role="region"
+      aria-label={t("原业务操作核对")}
+    >
+      <h2>{t("有一笔原操作等待核对")}</h2>
+      <p>{t(pending.intent.review)}</p>
+      <small>
+        {t("原编号")}
+        {pending.key}
+      </small>
       <p>
-        先用页面刷新读取当前状态，再核对原内容。不会自动重发，也不会换编号提交新操作；排期设置仅查询保存结果。
+        {t(
+          "先用页面刷新读取当前状态，再核对原内容。不会自动重发，也不会换编号提交新操作；排期设置仅查询保存结果。",
+        )}
       </p>
       <label className="inline-check">
         <input
@@ -141,13 +151,13 @@ export function LoopRecovery({
           disabled={busy}
           onChange={(e) => setReview(e.target.checked ? binding : "")}
         />
-        我已读取当前状态并核对原操作，确认按原编号核查
+        {t("我已读取当前状态并核对原操作，确认按原编号核查")}
       </label>
       <button
         disabled={busy || review !== binding}
         onClick={() => void retry()}
       >
-        核对原业务操作
+        {t("核对原业务操作")}
       </button>
     </div>
   );

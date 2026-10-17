@@ -398,6 +398,7 @@ class Job(Base):
     available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     lease_owner: Mapped[str | None] = mapped_column(String(36))
+    model_request_id: Mapped[str | None] = mapped_column(String(64))
     error_code: Mapped[str | None] = mapped_column(String(64))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     processing_ms: Mapped[int | None] = mapped_column(Integer)
@@ -584,3 +585,19 @@ def make_engine(url=DATABASE_URL):
 
 engine = make_engine()
 Session = sessionmaker(engine, expire_on_commit=False)
+
+
+class ProposalDecision(Base):
+    """One explicit merchant creation from one received message, never AI authority."""
+
+    __tablename__ = "proposal_decisions"
+    event_id: Mapped[str] = mapped_column(
+        ForeignKey("inbox.id", ondelete="CASCADE"), primary_key=True
+    )
+    proposal_id: Mapped[str] = mapped_column(
+        ForeignKey("proposals.id", ondelete="CASCADE"), unique=True
+    )
+    account_id: Mapped[str] = mapped_column(
+        ForeignKey("accounts.id", ondelete="CASCADE"), index=True
+    )
+    work_order_id: Mapped[str] = mapped_column(ForeignKey("work_orders.id", ondelete="CASCADE"))

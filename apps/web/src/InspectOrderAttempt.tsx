@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 import { useStableState as useState } from "./useStableState";
 import { useEffect } from "react";
 import type { OrderCommands } from "./order-command-api";
@@ -29,7 +30,9 @@ export function InspectOrderAttempt({
   return (
     <div className="change">
       <p>
-        也可以只读核对服务端的原操作保存记录。此检查不会执行、重发或撤销操作；未找到记录时仍需保留原编号。
+        {t(
+          "也可以只读核对服务端的原操作保存记录。此检查不会执行、重发或撤销操作；未找到记录时仍需保留原编号。",
+        )}
       </p>
       <button
         className="secondary"
@@ -45,13 +48,16 @@ export function InspectOrderAttempt({
             .finally(() => onBusy(false));
         }}
       >
-        只读核对已保存结果
+        {t("只读核对已保存结果")}
       </button>
       {saved && (
         <>
           <p>
-            服务端已保存：「{saved.summary}」 · 当时版本 v{saved.version} ·{" "}
-            {orderStates[saved.status]}。结束后会刷新当前业务数据。
+            {t("服务端已保存：「")}
+            {saved.summary}
+            {t("」 · 当时版本 v")}
+            {saved.version} · {orderStates[saved.status]}
+            {t("。结束后会刷新当前业务数据。")}
           </p>
           <label className="inline-check">
             <input
@@ -60,7 +66,7 @@ export function InspectOrderAttempt({
               onChange={(e) => setConsent(e.target.checked)}
               disabled={busy || !ready}
             />
-            我已核对保存结果，结束这条原记录；这不会撤销或重新执行操作。
+            {t("我已核对保存结果，结束这条原记录；这不会撤销或重新执行操作。")}
           </label>
           <button
             disabled={!ready || busy || !consent || !!commands.error}
@@ -75,7 +81,7 @@ export function InspectOrderAttempt({
               }
             }}
           >
-            结束已核对的原记录
+            {t("结束已核对的原记录")}
           </button>
         </>
       )}

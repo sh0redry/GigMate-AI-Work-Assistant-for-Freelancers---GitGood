@@ -1,10 +1,13 @@
+import { t } from "./i18n.ts";
 import { sessionFetch } from "./read-cache.ts";
 import { apiBase } from "./environment.ts";
 import { WorkspaceError, type Order } from "./workspace-api.ts";
 import type { components } from "./generated/api";
+type Create = components["schemas"]["CreateWorkOrderCommand"];
 export type CreateOrderInput = Required<
-  components["schemas"]["CreateWorkOrderCommand"]
->;
+  Omit<Create, "from_proposal_id" | "expected_context_version">
+> &
+  Pick<Create, "from_proposal_id" | "expected_context_version">;
 export type OrderTarget =
   components["schemas"]["SetWorkOrderStatusCommand"]["status"];
 export type Intent =
@@ -116,8 +119,9 @@ export function orderCommands(
       attempt = value;
     }
   } catch {
-    error =
-      "浏览器无法保存或读取原操作。可以查看数据，暂不能提交；恢复存储后重新打开并核对。";
+    error = t(
+      "浏览器无法保存或读取原操作。可以查看数据，暂不能提交；恢复存储后重新打开并核对。",
+    );
   }
   function fail(code: string, message: string): never {
     throw new WorkspaceError(code, message);
@@ -130,7 +134,7 @@ export function orderCommands(
       )
         throw new Error();
     } catch {
-      error = "原操作记录不可用或已被另一页面改变，请恢复后重新打开核对。";
+      error = t("原操作记录不可用或已被另一页面改变，请恢复后重新打开核对。");
       fail("ATTEMPT_STORAGE_UNAVAILABLE", error);
     }
   }
@@ -140,8 +144,9 @@ export function orderCommands(
       storage!.removeItem(name);
       attempt = null;
     } catch {
-      error =
-        "操作响应已核对，但原记录清理失败。禁止新提交，请恢复存储后核对原编号。";
+      error = t(
+        "操作响应已核对，但原记录清理失败。禁止新提交，请恢复存储后核对原编号。",
+      );
       fail("ATTEMPT_STORAGE_UNAVAILABLE", error);
     }
   }
@@ -193,12 +198,14 @@ export function orderCommands(
         fail(
           code,
           code === "OPEN_ORDER_EXISTS"
-            ? "该会话已有未结束工单，请刷新查看；另开一单需要再次明确确认。"
+            ? t("该会话已有未结束工单，请刷新查看；另开一单需要再次明确确认。")
             : code === "SCHEDULE_CONFLICT"
-              ? "时间与已有预约冲突，请核对日历后修改。"
+              ? t("时间与已有预约冲突，请核对日历后修改。")
               : code === "UNAUTHENTICATED"
-                ? "登录已过期；原操作记录保留，请重新登录核对。"
-                : "操作未确认完成，请刷新；若保留了原编号，只能明确核对该原操作。",
+                ? t("登录已过期；原操作记录保留，请重新登录核对。")
+                : t(
+                    "操作未确认完成，请刷新；若保留了原编号，只能明确核对该原操作。",
+                  ),
         );
       }
       const order = value?.data as Order;
@@ -233,7 +240,7 @@ export function orderCommands(
       )
         fail(
           "RESULT_UNKNOWN",
-          "响应无法完整核对，原请求保留；请勿重复创建或确认。",
+          t("响应无法完整核对，原请求保留；请勿重复创建或确认。"),
         );
       clear();
       return order;
@@ -241,7 +248,9 @@ export function orderCommands(
       if (e instanceof WorkspaceError) throw e;
       fail(
         "RESULT_UNKNOWN",
-        "连接中断，无法确定是否已保存。原请求已保留，请恢复服务后核对，勿重复提交。",
+        t(
+          "连接中断，无法确定是否已保存。原请求已保留，请恢复服务后核对，勿重复提交。",
+        ),
       );
     } finally {
       busy = false;
@@ -258,31 +267,32 @@ export function orderCommands(
       if (error || attempt || busy)
         fail(
           "UNRESOLVED_ATTEMPT",
-          error || "先核对已有原操作，不能提交新操作。",
+          error || t("先核对已有原操作，不能提交新操作。"),
         );
       checkStorage();
       const next = {
         intent: structuredClone(intent),
         key: crypto.randomUUID(),
       };
-      if (!valid(next)) fail("VALIDATION_FAILED", "操作内容无效，请重新核对。");
+      if (!valid(next))
+        fail("VALIDATION_FAILED", t("操作内容无效，请重新核对。"));
       try {
         storage!.setItem(name, JSON.stringify(next));
         attempt = next;
       } catch {
-        error = "原操作无法安全保存，本次未提交。";
+        error = t("原操作无法安全保存，本次未提交。");
         fail("ATTEMPT_STORAGE_UNAVAILABLE", error);
       }
       return dispatch(false);
     },
     async retry() {
       if (error || busy || !attempt)
-        fail("UNRESOLVED_ATTEMPT", error || "没有可核对的原操作。");
+        fail("UNRESOLVED_ATTEMPT", error || t("没有可核对的原操作。"));
       return dispatch(true);
     },
     async inspect() {
       if (error || busy || !attempt)
-        fail("UNRESOLVED_ATTEMPT", error || "没有可核对的原操作。");
+        fail("UNRESOLVED_ATTEMPT", error || t("没有可核对的原操作。"));
       checkStorage();
       busy = true;
       inspectedKey = "";
@@ -314,7 +324,9 @@ export function orderCommands(
             response.status === 401
               ? "UNAUTHENTICATED"
               : (value?.error?.code ?? "RESULT_UNKNOWN"),
-            "尚未核对到原操作的已保存结果；记录保留。这不代表未执行，不能另开重复请求。",
+            t(
+              "尚未核对到原操作的已保存结果；记录保留。这不代表未执行，不能另开重复请求。",
+            ),
           );
         const order = value?.data as Order;
         if (
@@ -329,13 +341,19 @@ export function orderCommands(
             : order.id !== i.orderId ||
               order.version !== i.body.expected_version + 1)
         )
-          fail("RESULT_UNKNOWN", "保存结果的归属或版本无法核对，原记录保留。");
+          fail(
+            "RESULT_UNKNOWN",
+            t("保存结果的归属或版本无法核对，原记录保留。"),
+          );
         checkStorage();
         inspectedKey = saved.key;
         return order;
       } catch (e) {
         if (e instanceof WorkspaceError) throw e;
-        fail("RESULT_UNKNOWN", "暂时无法只读核对原操作；记录保留，没有重发。");
+        fail(
+          "RESULT_UNKNOWN",
+          t("暂时无法只读核对原操作；记录保留，没有重发。"),
+        );
       } finally {
         busy = false;
       }
@@ -344,7 +362,7 @@ export function orderCommands(
       if (error || busy || !attempt || inspectedKey !== attempt.key)
         fail(
           "UNRESOLVED_ATTEMPT",
-          "先只读核对到原操作的已保存结果，再结束记录。",
+          t("先只读核对到原操作的已保存结果，再结束记录。"),
         );
       clear();
       inspectedKey = "";

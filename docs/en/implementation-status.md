@@ -1,5 +1,10 @@
 # Implementation status and validation
 
+## Current BCD text-product candidate — 2026-10-17
+
+PR31/32/33 are merged; base main `14aa34e`. The API/cache/glass commits are followed by merchant-reviewed new-order suggestion consumption, task decisions, optional isolated text runtime, canonical business-loop clients and Chinese/English/Cantonese UI. Linux + isolated PostgreSQL: **987 passed, 1 skipped**; new product checks: **26 passed**, including a real child process against a loopback fake HTTP vendor. Alembic 0021 upgrade/check and closed Compose text overlay validation pass. No real vendor, phone or deployment acceptance was performed. See [current scope, evidence and limits](bcd-product-delivery.md); older dated statuses below are history.
+
+
 ## Delivery checklist, archiving and action paging (role C) — 2026-10-16
 
 方案 §4.6 (按已确认要求生成检查清单，提醒未完成事项，商户确认后关闭业务并归档) and Issue #28. `GET /work-orders/{id}/checklist` lists confirmed items to check and unfinished ones; completing with unfinished items returns 409 `CHECKLIST_OPEN` unless the merchant sets `acknowledge_open_items`. `POST /work-orders/{id}/archive` hides a closed order from the default list (`include_archived=true` shows it). `GET /actions` now reads keyset pages from the database in bounded batches instead of loading the whole history; filtering by computed state, `reissuable` and read-only expiry are unchanged. Evidence: `test_checklist.py` **3 passed**; new paging regression with 121 synthetic actions (no gaps or duplicates, expired shown without a write); approvals and sending suites 30 passed.

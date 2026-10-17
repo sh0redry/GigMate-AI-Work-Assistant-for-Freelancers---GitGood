@@ -1,239 +1,72 @@
 # Kyrie's GigMate learning guide: start from zero
 
-## Design tokens: one paint box for every room
+Updated 2026-10-17. [中文](../zh/kyrie-learning-guide.md). Learn the [user workflow](role-d-frontend-user-guide.md) first; you do not need to understand every technical word at once.
 
-`--accent`, `--ink` and `--line` in `style.css` name shared colours. Change the paint box once and connections, calendar and order cards stay consistent. `backdrop-filter` blurs what is behind the navigation; white content cards keep text readable. `@supports` is “if this browser knows the effect”; media queries choose narrow layouts and respect accessibility preferences. Layout changes do not grant business permissions.
+## Imagine a small shop
 
-## Cache: keep your notebook open
+D's frontend is the counter. C's business backend is the office that checks ownership and updates the notebook. B's AI is an assistant that organises messages and suggests, but cannot sign for the merchant or send messages independently. A's connector is the phone line. A worker is a background colleague who can process persisted work even after the page closes.
 
-Imagine leaving the current page of your notebook open while asking the office “has this changed?”. An ETag is the office’s fingerprint of the current answer. A 304 says “same answer”; a 200 brings the new answer. We still ask the office and it still checks who you are. The browser keeps the notebook only in this login’s memory, clears it on account changes and never treats an offline old page as permission to save. The backend still reads and authorizes before comparing; this reduces transfer and UI replacement, not all database work. `stableShare` reuses unchanged branches, like replacing one sticky note without tearing out the entire page.
+An API is a service window. Types describe its form; a server capability says whether the window is implemented. Account permission says whether you may use it. A drawn button proves neither.
 
-## Today: a menu is a promise
+## Manual, assisted and automatic
 
-An API is a service window: the frontend submits a form, the backend checks permission and saves it. A type describes the form; it does not prove that the window is open. A capability flag is a sign provided by the server. This version prepares the PR32 forms but waits for the server to say both “implemented” and “security accepted”. You cannot open that window from a browser switch. See the [actual route inventory](role-d-api-audit.md).
+Manual creation means you read the chat, enter values and confirm. AI assistance means the assistant prepares a suggestion, then you check and explicitly create the order. Automatic creation would let it write the formal notebook without you; this project does not allow AI to do that.
 
-## What changed after C #26/#27 merged (2026-10-16)
+Selecting a new-order suggestion fills only the summary. You still check and enter critical values. Keep unknown values blank. Customer proposal, customer confirmation and merchant approval are separate signatures.
 
-Think of a work order as a shared notebook: the customer says something, the program writes a suggestion, and you decide whether to accept it. Accepting an uncertain date saves your decision but still waits for the customer. A successful HTTP response therefore may contain a proposed field; it does not always mean confirmed.
+## A small vocabulary
 
-An idempotency key is the number on one operation receipt. If the reply is lost, keep that number. “Read saved result” only checks the server's receipt: it does not perform the operation again. A missing receipt does not prove nothing happened. Once an exact saved receipt is found, you can review it and explicitly finish the local record. That removes a reminder from this tab, not the server's business history.
-
-The generated API types now describe C's real create/status commands. We reuse those types rather than maintaining a second handwritten agreement. Manual creation, status and address confirmation work; real AI and automatic WhatsApp business sending still await B and A/C.
-
-
-**Current delivery candidate, 2026-10-16:** #26/#27 are merged in main `71de8d9`. D-04 through the final web delivery are developed on `codex/d-final-workspace`; a PR is still different from a deployment. There is one business service and no product environment switch or public test password. Read [the current guide](role-d-frontend-user-guide.md) and [acceptance](role-d-final-acceptance.md) before older teaching screenshots.
-
-## A new lesson: a grey button can be the correct result
-
-A page is like a restaurant menu; the backend is the kitchen. Drawing “create order” does not mean the kitchen can safely prepare it. Manual creation can now save through C’s merged service. Earlier versions kept Save grey while that service was missing; unsupported assignment and business sending still stay disabled. The server's capability response is the kitchen's availability card; it is not your permission to act. Connection and sending consent are still checked separately.
-
-A source revision is an edition number on a customer message. When the customer edits an address, the old edition cannot prove the new address. Choosing your own sent message cannot prove what the customer confirmed. The new-order page therefore offers only current incoming customer text as evidence.
-
-A calendar export is a copy of one appointment, like printing a ticket. Before printing, the server checks the real message’s latest edition: matching two old photocopies is insufficient. If the customer edits or withdraws the message, export stops for review; the original appointment is retained. Downloading it does not subscribe your phone to future changes. `.ics` is a standard file calendars can import; UTC records one precise instant and your phone chooses how to display it.
-
-An idempotency key is a numbered order slip. If a receipt is lost, keep the same slip and content; do not place another order. `order-command-api.ts` retains the slip and original reviewed change before sending. Reads never resend it. If the browser cannot keep the slip safely, the page lets you look but stops submission.
-
-Try: inspect one appointment, use keyboard arrows, export its file, then explain why a tentative appointment and an unavailable Save button stay blocked. Use only developer-prepared disposable fixtures for exercises; the delivered page has no test mode.
-
-Version 2.0 · 2026-10-12, Hong Kong time. For Kyrie, a first-year student learning programming and working on Role D.
-
-[完整中文教程](../zh/kyrie-learning-guide.md) · [File map](kyrie-file-atlas.md) · [Page instructions](role-d-frontend-user-guide.md)
-
-Learn one button before learning the whole repository. This revision explains a concrete problem before naming its technical mechanism, retains the seven original public GitHub screenshots, and moves advanced vocabulary to a lookup section. The Chinese guide provides the expanded, step-by-step lesson; this companion covers the same facts, rules and learning exercises.
-
-## 0 A manageable first session
-
-With 20 minutes, read the booking story and six terms, then do exercise A. Aim to explain something in your own words rather than finish every page.
-
-| Session | Observable outcome |
-| --- | --- |
-| Product | Explain why a customer proposal is different from merchant approval |
-| Files | Locate the button and the separate network request |
-| Code | Explain why paging preserves hidden checkbox selections |
-| A small change | Describe the effect, checks and remaining uncertainty |
-
-The ordinary main is `53991dc` with D-03 merged. The current delivery candidate is `codex/d-final-workspace`, located with `git worktree list`; its edits remain under PR review. Earlier version numbers/screenshots below are historical learning material, not the current capability list.
-
-Kyrie reports the team can now connect to WAHA. This is a team observation, not a new pairing test by this update. A working connection does not establish model extraction, order creation or message sending.
-
-## 1 A booking story
-
-You photograph a customer on Wednesday at 15:00. They ask to move to Thursday at 15:00, with the address to follow. Another job already occupies that time. GigMate should associate the message with the booking, flag the clash, keep the address missing, and wait for you to approve an available arrangement.
-
-Customer proposal means what they want; customer confirmation means they explicitly accept it; merchant confirmation means you authorize changing your formal arrangement. AI drafts do not grant approval. A work order is a business record card: what, when, original evidence and unresolved details. One chat can discuss several orders, and an order can involve several chats.
-
-The current candidate supports existing orders, concrete-time confirmation, local reply approvals, manual-review reads and calendar/task views plus one-appointment export. New-order/status saving, address/assignment, real models and business approval sending remain explicitly blocked dependencies.
-
-## 2 Six terms first
-
-| Term | Plain meaning | GigMate location |
+| Term | Everyday meaning | Why it matters |
 | --- | --- | --- |
-| Frontend | The page you see and operate | `apps/web` |
-| Backend | The program that receives requests and checks rules | `apps/backend` |
-| Database | Long-term saved facts | Orders, consent and tasks |
-| API | An agreed way for programs to ask and answer | Request the owned order list |
-| State | A value the program currently remembers | Selected order or saving-in-progress |
-| Component | A reusable part of a page | Chat choices or connection screen |
+| React component | A function drawing part of a page | Keeps login/calendar/order code manageable |
+| TypeScript type | Instructions for filling a form | Catches mixed-up values and identifiers |
+| Request / response | Submit a form / receive the office answer | The UI cannot declare its own save successful |
+| Transaction | Finish all related paperwork, or roll it all back | Avoid an updated order with an outdated calendar |
+| Source revision | Edition of a customer message | An edited address invalidates old evidence |
+| Version | Number of updates to an order | Prevent overwriting someone else's changes |
+| Context | Current round of the conversation | New messages can invalidate approval |
+| Idempotency key | One operation's receipt number | Check the same receipt after lost responses |
+| Receipt | Recorded processing result | No reply does not prove no execution |
+| Lease | Temporary assignment of work to one worker | Avoid two workers claiming the same job |
+| Lock | Temporarily reserve a database record | Protect checks and writes from races |
+| Migration | Add a column to an existing notebook | Upgrade structure without deleting data |
+| Commit | A labelled local save point | Explain and recover changes |
+| PR | Ask teammates to review commits | Different from merge and deployment |
 
-Saving authorization follows: collect all choices → request the backend → check account and version → save → read back. A green checkbox alone is not saved consent. WAHA connects WhatsApp; GigMate sign-in and phone pairing are separate operations.
+A chat ID and business conversation ID are like a phone number and a customer-file number. Use the server's mapping; similar-looking IDs are not interchangeable.
 
-```mermaid
-flowchart LR
-  A[Page: display and collect] --> B[Backend: check rules]
-  B --> C[(Database: save facts)]
-  C --> D[Worker: queued processing]
-  D --> C
-  C --> B
-  B --> A
-```
+## Why the page stops flashing
 
-The worker handles recorded pending work separately. Accepted input does not mean processing has completed.
+Keep the notebook open and ask “has it changed?”. An ETag is the answer's fingerprint. 304 means unchanged; 200 supplies a new answer. Every read still checks permission and reads the database. The cache mostly reduces transfer and UI replacement, not all database work.
 
-## 3 GitHub actions are different
+Session-memory snapshots are cleared on logout/account change. An offline old page cannot authorise a save. Structural sharing replaces changed sticky notes instead of tearing out the whole notebook.
 
-Git records versions; GitHub hosts collaboration.
+## Why models wait outside database locks
 
-| Action | Meaning |
-| --- | --- |
-| Edit | Change files on your computer |
-| Commit | Record selected changes as a local version |
-| Push | Upload commits for others to see |
-| PR | Ask for review and possible integration into a named target |
-| Merge | Integrate into the target branch |
-| Fetch | Update your remembered remote positions without replacing current files |
+Do not lock the office notebook while the assistant researches. Record the call ID, release locks, wait, then check ownership, consent, sources and versions again. Late/stale answers cannot become business updates.
 
-A branch names a development line. A worktree is another checkout directory for the same repository. This explains why D changes can exist while main has older files. D-02 is now being submitted for review; committing, pushing and opening a PR still do not merge it into main.
+A 20-second parent deadline ends the local child process. It does not prove the vendor never received the call or charged for it. Keep the ID and do not automatically call again. A loopback fake-vendor test does not prove real-model accuracy.
 
-The following screenshots are original public pages from **2026-10-11**. Counts and status are dated teaching observations.
+## Language and appearance
 
-![Code page](../learning-assets/github-code.jpg)
+`i18n.ts` stores the current UI language; `locales.ts` holds interface translations. These change counter labels, not customer text or approved bodies. Only a language preference persists; no text goes to translation websites.
 
-Check the branch before looking for a file. Selecting main on the website does not switch your local directory.
+CSS variables such as `--accent` are a shared paint box. Glass navigation has a solid fallback; white content cards stay readable. Respect reduced motion/transparency. Appearance never grants permission.
 
-![Issue page](../learning-assets/github-issue19.jpg)
+## Reading order
 
-An Issue records a task or problem. Find the steps, actual behavior and expected behavior; a proposed cause is not a proven cause.
+1. `apps/web/src/App.tsx`: login, navigation, language.
+2. `WorkOrderWorkspace.tsx` and `OrderCreation.tsx`: display and merchant review.
+3. `workspace-api.ts` and `order-command-api.ts`: requests and original receipts.
+4. `BusinessLoopWorkspace.tsx` and `ProductTools.tsx`: requirements, schedule, tasks and queries.
+5. `apps/backend/src/gigmate/contracts.py`: shared form rules; do not hand-edit generated files.
+6. `workorders.py` and `product_commands.py`: business checks and writes.
+7. `worker.py` and `extraction/reviewed.py`: background work and optional models. Credentials stay server-side.
 
-![PR list](../learning-assets/github-pulls.jpg)
+See the [file atlas](kyrie-file-atlas.md) and [developer setup](getting-started.md).
 
-Open is unresolved, Draft is preliminary, Merged entered its target, and Closed can mean closed without merge.
+## Fifteen minutes a day
 
-![Kyrie's merged PR16](../learning-assets/github-pr16.jpg)
+Trace one click from review to request to server to receipt. Then inspect why edited source messages invalidate approval. In a disposable environment, interrupt the service and recover the original operation without duplicating it. Switch languages and check input and customer text stay intact.
 
-Conversation holds discussion, Commits versions, Checks automated results, and Files changed the edits. #16 is a historical merged delivery.
-
-![Diff](../learning-assets/github-diff.jpg)
-
-Red removes, green adds. A large line count can include dependency records. Viewed means inspected, not approved.
-
-![Commit](../learning-assets/github-commit.jpg)
-
-The screenshot is `dcd7527`, not current D. A short identifier such as `4665692` locates a version; do not memorize it.
-
-![Actions](../learning-assets/github-actions.jpg)
-
-Open the failed job and its first failing step. A green check establishes only the checks run, not all devices or all possible behavior.
-
-Read-only commands, from the repository directory:
-
-```bash
-git status --short
-git branch --show-current
-git diff
-git worktree list
-```
-
-They answer: what changed, which branch, how it changed, and which directories exist. New untracked file contents do not appear in ordinary diff: locate them through status. `git diff --staged` shows the next commit's selected edits. Do not use destructive reset/clean or delete database volumes as a refresh operation.
-
-## 4 Follow a small piece of code
-
-Read main.tsx (starts the page), then App.tsx in the D directory (login and navigation), chat-choices.ts (filter/page calculation), ChatChoices.tsx (checkbox rows), WorkOrderWorkspace.tsx (review/calendar/tasks), workspace-api.ts (requests), waha-live-api.ts (authorization/control requests), and finally the long ConnectionWorkspace.tsx. Check the directory first; names can exist in several versions.
-
-Teaching example only; do not overwrite project files:
-
-```tsx
-function Choice() {
-  const [picked, setPicked] = useState(false);
-  return (
-    <button onClick={() => setPicked(!picked)}>
-      {picked ? "Selected" : "Not selected"}
-    </button>
-  );
-}
-```
-
-`useState(false)` initially remembers no selection; `setPicked` requests an update. `onClick` runs when clicked; `!` reverses the boolean; `condition ? A : B` chooses text. React redraws from the new value. This changes browser memory, not the database. `return` provides the result, `import` uses another file's feature, and `export` makes it available. TypeScript catches some data mistakes before running, not server-side permission violations.
-
-17 chats at 8 per page need 3 pages: 1–8, 9–16, then 17. Array positions start at zero, so page two uses `slice(8,16)`. `filter` keeps matching items, `map` transforms each, `find` locates one, and `slice` takes a portion. Search uses already loaded choices; it does not discover phone chats. `choices` is the whole loaded catalog; `picked` is the whole intended selection. Saving after choosing A on page one and B on page two must send both.
-
-## 5 Trace schedule confirmation
-
-Read order/proposal/source → compare in the review panel → check explicit consent → send the observed versions → backend checks account, consent, source changes and conflict → update order/calendar/preparation tasks together → reread.
-
-A version is a change marker: if you read v3 but another window saved v4, your v3 command must be rejected rather than overwrite it. Each message has a revision too; sources identify the exact message and revision. D-02 reads all linked chats and blocks confirmation when source context is ambiguous, missing or revoked.
-
-Busy prevents duplicate commands; stale reads prevent approving obsolete information; changed proposals invalidate old consent; clashes prevent overlapping arrangements; unknown addresses remain missing; expired new chat choices require rediscovery. The backend checks again regardless of disabled buttons.
-
-Timeout does not establish failure: a request might succeed while its answer is lost. Read/reconcile before another command. PR21 illustrates this distinction: cancelling result use does not prove external processing stopped. Losing its request record permits duplicate submission. That reproduction used a synthetic processor, not real billing.
-
-## 6 Tools: remember their job
-
-HTML structures the page; CSS arranges it; JavaScript implements interaction; TypeScript adds data checks and TSX permits page markup. React organizes components. Vite serves development pages and builds distributable files. Node runs frontend tooling; npm installs/runs it. FastAPI defines backend APIs; Uvicorn runs the service. PostgreSQL stores facts. Docker provides prepared service environments and Compose starts a group. pytest/Node test check behavior, while Prettier/Ruff check formatting and some code issues.
-
-Learn JavaScript conditions, arrays and functions before React state/events. Backend tool names can wait until you trace a cross-layer flow.
-
-## 7 Run and troubleshoot
-
-Use the [page guide](role-d-frontend-user-guide.md) and [backend setup](getting-started.md). Choose your owned WAHA environment or an isolated test environment; never seed/reset a real installation for a lesson.
-
-In the selected checkout:
-
-```bash
-cd apps/web
-npm ci
-npm run dev
-```
-
-`cd` changes directory, `ci` installs locked dependencies, and `dev` keeps a development service running. Use pinned Node 24.15.x/npm 11.12.x. For the default team backend, macOS/Linux:
-
-```bash
-GIGMATE_REAL_API_URL=http://127.0.0.1:18702 npm run dev
-```
-
-The delivery frontend has one configured backend. Test fixtures run outside the product; never point a disposable test command at an existing business database. Opening a page does not start its backend or update Git.
-
-After edits, in apps/web:
-
-```bash
-npm run check:api
-npm run format:check
-npm run build
-```
-
-These check API descriptions, formatting, then tests/types/build. Output `dist` is not deployment. From root, `.venv/bin/python scripts/check_baseline.py` checks documents/examples; `.venv` is the project Python environment, with Windows commands in setup docs.
-
-Network in browser developer tools shows a request. Check destination, status and error; do not publish cookies/passwords/QR/customer text. Login failures require checking the GigMate account, password and backend. Empty orders can be truthful: connection alone creates none. 401 usually requires sign-in; 403 needs permission/validation investigation; 409 needs reread/review; timeout requires checking the outcome. Missing nicknames are not invented. Narrow overflow needs checking CSS/long text. Report version/environment, one action, actual result and expected result.
-
-## 8 Four exercises and answers
-
-A: Run branch/worktree read-only commands. Answer: D and main are separate checkout/development positions, so unmerged code can differ.
-
-B: Hand-calculate 17/8 page three, then filter to two results. Answer: one result on page three, then clamp to page one; keep the full selection.
-
-C: Read the cross-page save test in connection-workspace.test.mjs. Answer: saving only visible rows can revoke hidden selected chats. Real components with fake responses do not prove phone pairing.
-
-D: Explain one help-text change in the correct D directory, inspect diff, run relevant checks. Answer: specify who sees it and what becomes clearer; passing build does not implement order creation. Do not casually change real consent/permission/save rules.
-
-## 9 Vocabulary to look up later
-
-Props are a child component's inputs; Hooks are React tools; DOM is the browser's drawn element tree; JSON is a textual data format; cookies/session maintain login. CSRF prevents another site abusing that login but does not replace ownership checks. IDs distinguish records even if names duplicate. A contract agrees fields/rules, generated files are tool outputs, persistence survives program restart, stale means insufficiently fresh. A race can let slow A arrive after newer B, so A must not replace B. Idempotency uses the same command identity/content without treating it as new; it is not permission for every resend. Fixtures are prepared test data, mocks simulated answers, regression tests protect a previous fix, CI automated checks, ADR recorded design reasons, proxy request forwarding.
-
-Later backend lessons: a transaction groups related writes; a lease limits a worker's ownership in time; an outbox records future send work reliably. These mechanisms are not proof sending is implemented. contracts.py → export_contracts.py → domain schema/OpenAPI → generated/api.d.ts is the generation chain. Do not manually edit those three outputs; event/AI schemas are separate. SQLite tests do not prove PostgreSQL locking.
-
-## 10 Learn with AI
-
-Ask for a life example, inputs/result/caller, 10–20 lines at a time, plain meanings before terminology, and a prediction question before its answer. Then explain who a change affects and what proves it. Write three sentences after each session: the problem, rule, and verification. An unfamiliar word can be the whole next lesson.
-
-## 11 Evidence and limits
-
-Sources are local main `bbb0074`, D-02 `4665692`, this cleanup's source and the original learning materials. The preceding D-02 batch had 65 frontend tests; current checks after adding login/navigation regressions are recorded in [implementation status](implementation-status.md), not counted from old results. No new real-phone/model/send acceptance is claimed. Version 1.1 is backed up locally under ignored `local-data/kyrie-learning/before-product-cleanup-20261012/`. The seven screenshots remain original dated public images; [provenance](../learning-assets/README.md). Read the page guide for operation and the map for file lookup.
+Use fictional data, never real chats, keys, QR codes or session files in learning artifacts. [Current delivery](bcd-product-delivery.md) separates implemented code from independent acceptance.
