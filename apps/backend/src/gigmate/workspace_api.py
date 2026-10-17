@@ -23,6 +23,7 @@ from gigmate.db import (
     Inbox,
     Job,
     MessageRow,
+    ProposalDecision,
     WorkOrderRow,
 )
 from gigmate.errors import BusinessError
@@ -153,6 +154,9 @@ def install(app, database, actor, detail, page, conversation_info):
                 Job.account_id == account.id,
                 Inbox.account_id == account.id,
                 Job.error_code.in_(codes),
+                ~select(ProposalDecision.event_id)
+                .where(ProposalDecision.event_id == Job.event_id)
+                .exists(),
             )
         ):
             conversation_id = inbox.payload.get("conversation_id")

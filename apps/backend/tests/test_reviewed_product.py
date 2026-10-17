@@ -469,7 +469,8 @@ def test_postgres_suggestion_creation_racing_review_keeps_one_decision(signed_in
 
 
 @pytest.mark.parametrize("decision", ["dismiss", "assign"])
-def test_suggestion_creation_prevents_later_review_decision(signed_in, decision):
+@pytest.mark.parametrize("reset_code", [None, "EXTRACTION_NEEDS_REVIEW", "ASSIGNMENT_NEEDS_REVIEW"])
+def test_suggestion_creation_prevents_later_review_decision(signed_in, decision, reset_code):
     client, factory, _, headers = signed_in
     proposed, context = suggestion(factory)
     with factory.begin() as db:
@@ -481,6 +482,13 @@ def test_suggestion_creation_prevents_later_review_decision(signed_in, decision)
     args = {"from_proposal_id": proposed, "expected_context_version": context}
     response = create(client, headers, key=key, **args)
     assert response.status_code == 201, response.text
+    with factory.begin() as db:
+        if reset_code is not None:
+            db.get(Job, job_id).error_code = reset_code
+        before = {
+            model: db.scalar(select(func.count()).select_from(model))
+            for model in (AuditRow, CommandResult, ProposalDecision, WorkOrderRow)
+        }
     body = {"action": decision, "expected_context_version": context}
     if decision == "assign":
         body["work_order_id"] = uid(3)
@@ -490,10 +498,15 @@ def test_suggestion_creation_prevents_later_review_decision(signed_in, decision)
         headers={**headers, "Idempotency-Key": str(uuid4())},
     )
     assert rejected.status_code == 409, rejected.text
+    assert rejected.json()["error"]["code"] == "VERSION_CONFLICT"
+    assert client.get("/api/v1/review-items").json()["items"] == []
     assert create(client, headers, key=key, **args).json()["data"] == response.json()["data"]
     with factory() as db:
-        assert db.get(Job, job_id).error_code == "NEW_ORDER_REVIEWED"
+        assert db.get(Job, job_id).error_code == (reset_code or "NEW_ORDER_REVIEWED")
         assert db.get(JobAssignment, job_id) is None
+        assert {
+            model: db.scalar(select(func.count()).select_from(model)) for model in before
+        } == before
 
 
 @pytest.mark.parametrize("same_key", [False, True])

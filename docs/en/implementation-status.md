@@ -1,5 +1,9 @@
 # Implementation status and validation
 
+## PR36 review hardening: durable decision guard — 2026-10-17
+
+The C review approved the original change and suggested checking the durable `ProposalDecision` in the reverse direction too. `assign_message` now rejects an event already consumed for order creation even if its job error is later reset to either reviewable code. The review queue excludes these decided events as well. Existing command receipts remain recoverable before the guard. Four additional regression cases first reproduced incorrect 200 responses; after the fix, both assign and dismiss return 409 without changing jobs, assignments, audit rows or command results. SQLite product/assignment checks: **53 passed / 4 PostgreSQL-only skips**; Linux with isolated PostgreSQL: **57 passed**. Ruff check/format, contract export and baseline pass. No schema, migration or frontend changes; no vendor or connector calls.
+
 ## Follow-up: suggestion creation versus message review — 2026-10-17
 
 From merged PR34/main `c516656`, reproduce the C review's two missing sequences: dismiss then create-from-suggestion and assign/reprocess then create-from-suggestion both incorrectly returned 201. Listing and creation now share one eligibility query: the event's owned job must be completed with a reviewable error and have no assignment. Ignored/assigned events disappear from suggestions and stale direct submissions return 409, including after assignment reprocessing returns the job to reviewable. The opposite order remains blocked by `NEW_ORDER_REVIEWED`; successful original-key retries still return their receipts. The existing account lock serializes competing HTTP decisions. No migration/API shape change. Correct the assignment docstring and API guidance to distinguish ordinary manual creation from consuming a suggestion.
