@@ -31,6 +31,7 @@ from gigmate.db import (
     ConversationRow,
     Inbox,
     Job,
+    JobAssignment,
     MessageRow,
     Proposal,
     ProposalDecision,
@@ -290,6 +291,8 @@ def suggestion(factory):
             proposal=ChangeProposal.model_validate_json(json.dumps(value)),
             outcome=outcome,
         )
+        job = db.scalar(select(Job).where(Job.event_id == inbox.id))
+        job.state, job.error_code = "completed", "EXTRACTION_NEEDS_REVIEW"
         return row.id, context
 
 
@@ -311,6 +314,199 @@ def test_suggestion_is_readonly_then_consumed_once_with_original_key_recovery(si
     with factory() as db:
         assert db.scalar(select(func.count()).select_from(WorkOrderRow)) == before + 1
         assert db.scalar(select(func.count()).select_from(ProposalDecision)) == 1
+
+
+@pytest.mark.parametrize(
+    "decision,reprocess", [("dismiss", False), ("assign", False), ("assign", True)]
+)
+def test_review_decision_prevents_later_suggestion_creation(signed_in, decision, reprocess):
+    client, factory, _, headers = signed_in
+    proposed, context = suggestion(factory)
+    with factory.begin() as db:
+        row = db.get(Proposal, proposed)
+        job = db.scalar(select(Job).where(Job.event_id == row.event_id))
+        job.state, job.error_code = "completed", "EXTRACTION_NEEDS_REVIEW"
+        job_id = job.id
+    assert proposed in {
+        item["id"] for item in client.get("/api/v1/new-order-suggestions").json()["items"]
+    }
+    assert job_id in {item["id"] for item in client.get("/api/v1/review-items").json()["items"]}
+    key = str(uuid4())
+    body = {"action": decision, "expected_context_version": context}
+    if decision == "assign":
+        body["work_order_id"] = uid(3)
+    path = f"/api/v1/review-items/{job_id}/assign"
+    response = client.post(path, json=body, headers={**headers, "Idempotency-Key": key})
+    assert response.status_code == 200, response.text
+    assert (
+        client.post(path, json=body, headers={**headers, "Idempotency-Key": key}).json()["data"]
+        == response.json()["data"]
+    )
+    # A completed re-extraction can become reviewable again; its retained
+    # assignment must still prevent the original event becoming a new order.
+    if reprocess:
+        _reset_provider_for_testing(DisabledProvider())
+        try:
+            assert run_once(factory)
+        finally:
+            _reset_provider_for_testing()
+        with factory() as db:
+            job = db.get(Job, job_id)
+            assert (job.state, job.error_code) == ("completed", "EXTRACTION_NEEDS_REVIEW")
+            assert db.get(JobAssignment, job_id).work_order_id == uid(3)
+    models = [
+        WorkOrderRow,
+        CalendarRow,
+        TaskRow,
+        ActionRow,
+        AuditRow,
+        CommandResult,
+        ProposalDecision,
+    ]
+    with factory() as db:
+        before = {model: db.scalar(select(func.count()).select_from(model)) for model in models}
+    response = create(client, headers, from_proposal_id=proposed, expected_context_version=context)
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "VERSION_CONFLICT"
+    assert client.get("/api/v1/new-order-suggestions").json()["items"] == []
+    with factory() as db:
+        assert {
+            model: db.scalar(select(func.count()).select_from(model)) for model in models
+        } == before
+
+
+@pytest.mark.parametrize(
+    "state,code",
+    [
+        (None, None),
+        ("pending", None),
+        ("processing", None),
+        ("failed", "PROCESSING_FAILED"),
+        ("completed", "MODEL_OUTCOME_UNKNOWN"),
+        ("completed", None),
+    ],
+)
+def test_suggestion_requires_a_reviewable_completed_job(signed_in, state, code):
+    client, factory, _, headers = signed_in
+    proposed, context = suggestion(factory)
+    with factory.begin() as db:
+        row = db.get(Proposal, proposed)
+        job = db.scalar(select(Job).where(Job.event_id == row.event_id))
+        if state is None:
+            db.delete(job)
+        else:
+            job.state, job.error_code = state, code
+        before = db.scalar(select(func.count()).select_from(WorkOrderRow))
+    assert client.get("/api/v1/new-order-suggestions").json()["items"] == []
+    response = create(client, headers, from_proposal_id=proposed, expected_context_version=context)
+    assert response.status_code == 409, response.text
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(WorkOrderRow)) == before
+        assert not list(db.scalars(select(ProposalDecision)))
+
+
+@pytest.mark.parametrize("decision", ["dismiss", "assign"])
+def test_postgres_suggestion_creation_racing_review_keeps_one_decision(signed_in, decision):
+    client, factory, engine, headers = signed_in
+    if engine.dialect.name != "postgresql":
+        pytest.skip("Competing decision locks require PostgreSQL")
+    proposed, context = suggestion(factory)
+    with factory() as db:
+        row = db.get(Proposal, proposed)
+        job_id = db.scalar(select(Job.id).where(Job.event_id == row.event_id))
+        before = db.scalar(select(func.count()).select_from(WorkOrderRow))
+    barrier, seen_connections = Barrier(2), set()
+
+    def before_lock(conn, cursor, statement, parameters, execution_context, executemany):
+        if (
+            "accounts" in statement
+            and "FOR UPDATE" in statement
+            and id(conn) not in seen_connections
+        ):
+            seen_connections.add(id(conn))
+            barrier.wait(timeout=10)
+
+    def decide():
+        body = {"action": decision, "expected_context_version": context}
+        if decision == "assign":
+            body["work_order_id"] = uid(3)
+        return client.post(
+            f"/api/v1/review-items/{job_id}/assign",
+            json=body,
+            headers={**headers, "Idempotency-Key": str(uuid4())},
+        )
+
+    sqlalchemy_event.listen(engine, "before_cursor_execute", before_lock)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            creating = executor.submit(
+                create, client, headers, from_proposal_id=proposed, expected_context_version=context
+            )
+            deciding = executor.submit(decide)
+            created, reviewed = creating.result(timeout=15), deciding.result(timeout=15)
+    finally:
+        sqlalchemy_event.remove(engine, "before_cursor_execute", before_lock)
+    assert (created.status_code, reviewed.status_code) in {(201, 409), (409, 200)}, (
+        created.text,
+        reviewed.text,
+    )
+    new_order = created.status_code == 201
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(WorkOrderRow)) == before + int(new_order)
+        assert db.scalar(select(func.count()).select_from(ProposalDecision)) == int(new_order)
+        assert db.scalar(select(func.count()).select_from(CommandResult)) == 1
+        assert (db.get(JobAssignment, job_id) is not None) == (
+            decision == "assign" and not new_order
+        )
+        job = db.get(Job, job_id)
+        assert (job.state, job.error_code) == (
+            ("completed", "NEW_ORDER_REVIEWED")
+            if new_order
+            else ("pending", None)
+            if decision == "assign"
+            else ("completed", "DISMISSED_BY_MERCHANT")
+        )
+
+
+@pytest.mark.parametrize("decision", ["dismiss", "assign"])
+@pytest.mark.parametrize("reset_code", [None, "EXTRACTION_NEEDS_REVIEW", "ASSIGNMENT_NEEDS_REVIEW"])
+def test_suggestion_creation_prevents_later_review_decision(signed_in, decision, reset_code):
+    client, factory, _, headers = signed_in
+    proposed, context = suggestion(factory)
+    with factory.begin() as db:
+        row = db.get(Proposal, proposed)
+        job = db.scalar(select(Job).where(Job.event_id == row.event_id))
+        job.state, job.error_code = "completed", "EXTRACTION_NEEDS_REVIEW"
+        job_id = job.id
+    key = str(uuid4())
+    args = {"from_proposal_id": proposed, "expected_context_version": context}
+    response = create(client, headers, key=key, **args)
+    assert response.status_code == 201, response.text
+    with factory.begin() as db:
+        if reset_code is not None:
+            db.get(Job, job_id).error_code = reset_code
+        before = {
+            model: db.scalar(select(func.count()).select_from(model))
+            for model in (AuditRow, CommandResult, ProposalDecision, WorkOrderRow)
+        }
+    body = {"action": decision, "expected_context_version": context}
+    if decision == "assign":
+        body["work_order_id"] = uid(3)
+    rejected = client.post(
+        f"/api/v1/review-items/{job_id}/assign",
+        json=body,
+        headers={**headers, "Idempotency-Key": str(uuid4())},
+    )
+    assert rejected.status_code == 409, rejected.text
+    assert rejected.json()["error"]["code"] == "VERSION_CONFLICT"
+    assert client.get("/api/v1/review-items").json()["items"] == []
+    assert create(client, headers, key=key, **args).json()["data"] == response.json()["data"]
+    with factory() as db:
+        assert db.get(Job, job_id).error_code == (reset_code or "NEW_ORDER_REVIEWED")
+        assert db.get(JobAssignment, job_id) is None
+        assert {
+            model: db.scalar(select(func.count()).select_from(model)) for model in before
+        } == before
 
 
 @pytest.mark.parametrize("same_key", [False, True])
