@@ -652,13 +652,16 @@ def assign_message(db, account, job_id, command, key, request_id):
 
     ``assign`` records the chosen open order and queues the message again so
     it is understood against that one order only; the result is an ordinary
-    proposal for the merchant to confirm, never a direct change. To split a
-    new job off, the merchant first creates the order (POST /work-orders) and
-    then assigns the message to it. ``dismiss`` marks it as not business.
+    proposal for the merchant to confirm, never a direct change. ``dismiss``
+    marks it as not business. Consuming a new-order suggestion is an
+    alternative final decision for that event: it cannot subsequently be
+    assigned or dismissed, and a filed/dismissed event cannot create an order
+    from its suggestion. Manual creation without a suggestion is a separate
+    operation and does not itself file a message.
     Only the conversation's newest message can be filed, because proposals
     are always bound to the current context.
     """
-    from gigmate.db import Inbox, Job, JobAssignment
+    from gigmate.db import Inbox, Job, JobAssignment, ProposalDecision
 
     scope = f"assign:{job_id}"
     digest, cached = command_cache(db, account.id, scope, key, command.model_dump())
@@ -669,6 +672,8 @@ def assign_message(db, account, job_id, command, key, request_id):
     )
     if job is None:
         raise BusinessError(404, "NOT_FOUND", "Review item not found")
+    if db.get(ProposalDecision, job.event_id) is not None:
+        raise BusinessError(409, "VERSION_CONFLICT", "This message already created a work order")
     if job.error_code == "MODEL_OUTCOME_UNKNOWN" and command.action == "assign":
         raise BusinessError(
             409, "MODEL_OUTCOME_UNKNOWN", "Check the original model request; do not submit it again"

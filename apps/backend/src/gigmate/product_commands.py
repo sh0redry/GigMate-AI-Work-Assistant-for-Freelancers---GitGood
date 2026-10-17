@@ -23,6 +23,7 @@ from gigmate.db import (
     ConversationRow,
     Inbox,
     Job,
+    JobAssignment,
     MessageRow,
     Proposal,
     ProposalDecision,
@@ -30,6 +31,7 @@ from gigmate.db import (
 )
 from gigmate.errors import BusinessError
 from gigmate.workorders import (
+    REVIEWABLE,
     audit_row,
     authorized_order_conversation,
     command_cache,
@@ -39,6 +41,17 @@ from gigmate.workorders import (
     save_result,
     validate,
 )
+
+
+def available_suggestion_job(account_id, event_id):
+    """One unhandled review decision, shared by listing and creation checks."""
+    return select(Job).where(
+        Job.account_id == account_id,
+        Job.event_id == event_id,
+        Job.state == "completed",
+        Job.error_code.in_(REVIEWABLE),
+        ~select(JobAssignment.job_id).where(JobAssignment.job_id == Job.id).exists(),
+    )
 
 
 def current_suggestion(db, account_id, proposal_id):
@@ -54,6 +67,8 @@ def current_suggestion(db, account_id, proposal_id):
         raise BusinessError(409, "VERSION_CONFLICT", "No new-order suggestion is available")
     if db.get(ProposalDecision, row.event_id) is not None:
         raise BusinessError(409, "VERSION_CONFLICT", "This message already created an order")
+    if db.scalar(available_suggestion_job(account_id, row.event_id)) is None:
+        raise BusinessError(409, "VERSION_CONFLICT", "This message no longer needs a decision")
     payload = inbox.payload
     if (
         payload.get("conversation_id") != conversation.id
@@ -241,6 +256,7 @@ def install(app, database, actor, detail, page):
                     Proposal.account_id == account.id,
                     Proposal.assignment == "needs_review",
                     Proposal.work_order_id.is_(None),
+                    available_suggestion_job(account.id, Proposal.event_id).exists(),
                     Proposal.proposal["new_work_order"].as_string().is_not(None),
                     ~select(ProposalDecision.event_id)
                     .where(ProposalDecision.event_id == Proposal.event_id)
