@@ -21,6 +21,7 @@ from gigmate.db import (
     AgentDraftRow,
     ConversationOrder,
     ConversationRow,
+    Inbox,
     Proposal,
     WorkOrderRow,
 )
@@ -53,11 +54,26 @@ def proposal(signed_in):
         if link is None:
             db.add(ConversationOrder(conversation_id=uid(2), work_order_id=ORDER))
             db.flush()
+        # PostgreSQL enforces the foreign keys SQLite ignores, so the event has
+        # to exist before the proposal that cites it.
+        event_id = str(uuid4())
+        if db.get(Inbox, event_id) is None:
+            db.add(
+                Inbox(
+                    id=event_id,
+                    account_id=uid(1),
+                    payload={"id": event_id},
+                    digest="synthetic-digest",
+                    context_version=conversation.context_version,
+                    received_at=datetime.now(UTC),
+                )
+            )
+            db.flush()
         row = Proposal(
             id=str(uuid4()),
             account_id=uid(1),
             conversation_id=uid(2),
-            event_id=str(uuid4()),
+            event_id=event_id,
             work_order_id=ORDER,
             assignment="matched",
             context_version=conversation.context_version,

@@ -8,8 +8,8 @@ draft can never be consumed twice or duplicated by a retried request.
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0022_agent_drafts"
-down_revision = "0021_work_order_evidence"
+revision = "0023_agent_drafts"
+down_revision = "0022_work_order_evidence"
 branch_labels = None
 depends_on = None
 

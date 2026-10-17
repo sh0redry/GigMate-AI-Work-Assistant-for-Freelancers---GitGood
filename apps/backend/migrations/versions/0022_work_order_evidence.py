@@ -8,7 +8,7 @@ binding idempotent instead of duplicating evidence.
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0021_work_order_evidence"
+revision = "0022_work_order_evidence"
 down_revision = "0020_business_model_heads"
 branch_labels = None
 depends_on = None
