@@ -6,6 +6,8 @@ Status controls now name the action they perform (start work, mark waiting for c
 
 The changes heading counts awaited proposals and the total recorded changes, so a confirmed change no longer appears beside "0 proposals". The approvals list no longer prints "no drafts for this filter" while a selected draft is deliberately retained outside that filter.
 
+The review queue grouped four different missing fields under one "address" label, printing the same line four times per order. Each missing field now uses its own name (address, specification, quantity, deadline).
+
 Evidence: frontend **176 passed**, including a new regression that action labels never repeat a state name; TypeScript and Prettier pass. No API, contract, migration or backend change. These are implementation checks, not teammate or device acceptance.
 
 ## PR35/main integration — 2026-10-17
