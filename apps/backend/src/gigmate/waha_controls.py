@@ -10,6 +10,7 @@ from uuid import uuid4, uuid5
 
 from sqlalchemy import delete, select, text
 
+from gigmate.conversation_views import conversation_label
 from gigmate.db import (
     Account,
     ConversationRow,
@@ -249,7 +250,6 @@ def choices(db, row):
             )
         )
     )
-    labels = {item.provider_chat_id: item.label for item in candidates}
     for chat in db.scalars(select(WahaChat).where(WahaChat.connection_id == row.id)):
         conv = db.get(ConversationRow, chat.conversation_id)
         if conv.allowlisted:
@@ -258,7 +258,7 @@ def choices(db, row):
                 dict(
                     id=chat.id,
                     conversation_id=chat.conversation_id,
-                    label=labels.get(chat.provider_chat_id) or "Authorized conversation",
+                    label=conversation_label(db, row.account_id, chat.conversation_id),
                     selected=True,
                     expires_at=None,
                     kind="group" if chat.provider_chat_id.endswith("@g.us") else "direct",
@@ -297,11 +297,15 @@ def select_chats(db, row, command):
         )
     }
     selected = set()
+    selected_names = {}
     for identifier in command.selected_ids:
         item = existing.get(identifier) or candidates.get(identifier)
         if not item:
             fail("CHAT_CHOICE_EXPIRED_OR_UNAVAILABLE", 422)
         selected.add(item.provider_chat_id)
+        selected_names[item.provider_chat_id] = (
+            item.display_name if isinstance(item, WahaChat) else item.label
+        )
     peers = {item.provider_chat_id: item for item in existing.values()}
     conversations = {}
     for peer, chat in peers.items():
@@ -317,6 +321,8 @@ def select_chats(db, row, command):
     for peer, chat in peers.items():
         conv = conversations[peer]
         allow = peer in selected
+        if allow and selected_names.get(peer):
+            chat.display_name = selected_names[peer]
         if conv.allowlisted != allow:
             from gigmate.waha_sync import authorization_changed
 
@@ -338,6 +344,7 @@ def select_chats(db, row, command):
                 id=str(uuid5(IDENTITY_NAMESPACE, "chat:" + identifier)),
                 connection_id=row.id,
                 provider_chat_id=peer,
+                display_name=selected_names.get(peer),
                 conversation_id=identifier,
             )
         )
@@ -534,6 +541,14 @@ def run_once(factory=Session, *, make_client=client_for):
                     )
                 )
                 for chat in discovered:
+                    mapped = db.scalar(
+                        select(WahaChat).where(
+                            WahaChat.connection_id == row.id,
+                            WahaChat.provider_chat_id == chat["id"],
+                        )
+                    )
+                    if mapped is not None:
+                        mapped.display_name = chat["name"]
                     current = db.scalar(
                         select(WahaCandidate).where(
                             WahaCandidate.connection_id == row.id,

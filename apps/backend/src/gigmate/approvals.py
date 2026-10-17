@@ -14,7 +14,15 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, select
 
 from gigmate.contracts import ApprovalAction, AuditLog, WorkOrder
-from gigmate.db import ActionRow, AuditRow, ChangeRow, ConversationRow, MessageRow, WorkOrderRow
+from gigmate.db import (
+    ActionRow,
+    AuditRow,
+    ChangeRow,
+    ConversationOrder,
+    ConversationRow,
+    MessageRow,
+    WorkOrderRow,
+)
 from gigmate.errors import BusinessError
 from gigmate.planning import conflicts
 from gigmate.workorders import command_cache, owned, save_result, validate
@@ -271,12 +279,20 @@ def ask_open_items(db, account_id, order, conversation, round_of=None):
     trigger = open_items_trigger(order, conversation, items, round_of)
     if db.scalar(select(ActionRow.id).where(ActionRow.trigger == trigger)):
         return None
-    sources = []
+    sources = list(order.data.get("source_messages") or [])
     for field in order.data["fields"].values():
         for source in field["sources"]:
             if source not in sources:
                 sources.append(source)
-    sources = sources or latest_message_source(db, account_id, conversation.id)
+    if not sources:
+        # Legacy single-order records may use the chat's newest source. Once
+        # multiple orders share a chat, never borrow another job's message.
+        linked = db.scalar(
+            select(func.count())
+            .select_from(ConversationOrder)
+            .where(ConversationOrder.conversation_id == conversation.id)
+        )
+        sources = latest_message_source(db, account_id, conversation.id) if linked == 1 else []
     if not sources:
         return None
     cancel_pending(db, account_id, work_order_id=order.id, reason="superseded")

@@ -19,6 +19,7 @@ const routes = [
   /^\/work-orders\/[a-f0-9-]{36}\/changes\/[a-f0-9-]{36}\/(confirm|reject)$/i,
   /^\/actions\/[a-f0-9-]{36}\/(edit|send|cancel)$/i,
   /^\/review-items\/[a-f0-9-]{36}\/assign$/i,
+  /^\/review-items\/[a-f0-9-]{36}\/reanalyze$/i,
   /^\/settings\/schedule$/,
   /^\/tasks\/[a-f0-9-]{36}\/status$/i,
 ];
@@ -152,6 +153,7 @@ export function businessLoopApi(
           "SEND_NOT_AUTHORIZED",
           "SEND_CHAT_NOT_LINKED",
           "SEND_REQUEST_KEY_TAKEN",
+          "FEATURE_UNAVAILABLE",
         ].includes(value?.error?.code)
       ) {
         check();
@@ -197,18 +199,26 @@ export function businessLoopApi(
             ? data.account_id === account &&
               data.id === parts[2] &&
               Number.isInteger(data.revision)
-            : parts[1] === "review-items"
-              ? data.job_id === parts[2] &&
+            : parts[1] === "review-items" && parts[3] === "reanalyze"
+              ? data.source_job_id === parts[2] &&
                 data.conversation_id &&
-                data.action === (saved.intent.body as { action: string }).action
-              : parts[1] === "tasks"
-                ? data.account_id === account &&
-                  data.id === parts[2] &&
-                  data.work_order_version ===
-                    (expected.expected_version ?? -1) + 1 &&
-                  data.state === (saved.intent.body as { state: string }).state
-                : Number.isInteger(data.version) &&
-                  data.version === (expected.expected_version ?? -1) + 1;
+                data.context_version ===
+                  (saved.intent.body as { expected_context_version: number })
+                    .expected_context_version
+              : parts[1] === "review-items"
+                ? data.job_id === parts[2] &&
+                  data.conversation_id &&
+                  data.action ===
+                    (saved.intent.body as { action: string }).action
+                : parts[1] === "tasks"
+                  ? data.account_id === account &&
+                    data.id === parts[2] &&
+                    data.work_order_version ===
+                      (expected.expected_version ?? -1) + 1 &&
+                    data.state ===
+                      (saved.intent.body as { state: string }).state
+                  : Number.isInteger(data.version) &&
+                    data.version === (expected.expected_version ?? -1) + 1;
       if (!validScope)
         throw new WorkspaceError(
           "RESULT_UNKNOWN",

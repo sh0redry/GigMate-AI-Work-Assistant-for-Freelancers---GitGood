@@ -13,7 +13,13 @@ import {
   type Change,
 } from "./workspace-api";
 import type { components } from "./generated/api";
-import { fieldNames, fieldValue, reviewReasons } from "./work-order-view";
+import {
+  fieldNames,
+  fieldValue,
+  reviewReasons,
+  instant,
+  visibleFields,
+} from "./work-order-view";
 type ReviewItem = components["schemas"]["ReviewItem"];
 export function ReviewWorkspace({
   csrf,
@@ -32,7 +38,7 @@ export function ReviewWorkspace({
   accountId: string;
   features: Features;
   onBusyChange: (busy: boolean) => void;
-  onCreate: (conversationId: string) => void;
+  onCreate: (conversationId: string, messageId?: string) => void;
 }) {
   const api = useMemo(() => workspaceApi(csrf), [csrf]);
   const commands = useMemo(
@@ -220,8 +226,8 @@ export function ReviewWorkspace({
                   : (reviewReasons[item.reason] ?? t("需要人工核对"))}
               </h3>
               <small>
-                {t("会话")}
-                {item.conversation_id.slice(-6)} {t("· 记录 v")}
+                {item.conversation_label || t("客户会话")} ·{" "}
+                {instant(item.observed_at)} {t("· 记录 v")}
                 {item.context_version} {t("/ 当前 v")}
                 {item.current_context_version}
                 {item.context_version !== item.current_context_version
@@ -252,23 +258,53 @@ export function ReviewWorkspace({
             <section className="review-panel">
               <h3>
                 {t("来源会话")}
-                {selected.conversation_id.slice(-6)}
+                {selected.conversation_label || t("客户会话")}
               </h3>
               {contextError && <p role="alert">{contextError}</p>}
-              {messages.map((m) => (
-                <article className="message" key={m.id}>
-                  <small>
-                    {m.direction === "incoming" ? t("客户") : t("商户")} · r
-                    {m.revision}
-                    {m.id === selected.message_id ? t(" · 触发消息") : ""}
-                  </small>
-                  <p>
-                    {m.revoked
-                      ? t("已撤回，不可用于确认")
-                      : (m.text ?? t("无可读取文字，请核对附件"))}
-                  </p>
-                </article>
-              ))}
+              {[...messages]
+                .filter((m) => m.id === selected.message_id)
+                .sort(
+                  (a, b) =>
+                    Date.parse(a.occurred_at) - Date.parse(b.occurred_at) ||
+                    a.id.localeCompare(b.id),
+                )
+                .map((m) => (
+                  <article className="message" key={m.id}>
+                    <small>
+                      {m.direction === "incoming" ? t("客户") : t("商户")} · r
+                      {m.revision}
+                      {" · "}
+                      {instant(m.occurred_at)}
+                      {m.id === selected.message_id ? t(" · 触发消息") : ""}
+                    </small>
+                    <p>
+                      {m.revoked
+                        ? t("已撤回，不可用于确认")
+                        : (m.text ?? t("无可读取文字，请核对附件"))}
+                    </p>
+                  </article>
+                ))}
+              <details className="quiet">
+                <summary>
+                  {t("查看同一聊天的其他消息（可能属于别的工单）")}
+                </summary>
+                {[...messages]
+                  .filter((m) => m.id !== selected.message_id)
+                  .sort(
+                    (a, b) =>
+                      Date.parse(a.occurred_at) - Date.parse(b.occurred_at) ||
+                      a.id.localeCompare(b.id),
+                  )
+                  .map((m) => (
+                    <article className="message" key={m.id}>
+                      <small>
+                        {m.direction === "incoming" ? t("客户") : t("商户")} ·{" "}
+                        {instant(m.occurred_at)}
+                      </small>
+                      <p>{m.revoked ? t("已撤回，不可用于确认") : m.text}</p>
+                    </article>
+                  ))}
+              </details>
               {!messages.length && !contextError && (
                 <p>{t("尚无可读取原文。")}</p>
               )}
@@ -292,7 +328,12 @@ export function ReviewWorkspace({
               {features.create_order && !contextError && context > 0 && (
                 <button
                   className="secondary"
-                  onClick={() => onCreate(selected.conversation_id)}
+                  onClick={() =>
+                    onCreate(
+                      selected.conversation_id,
+                      selected.message_id ?? undefined,
+                    )
+                  }
                 >
                   {t("为这条会话新建工单")}
                 </button>
@@ -300,6 +341,27 @@ export function ReviewWorkspace({
               {features.manual_assignment && loopReady(features) && (
                 <div className="review-decisions">
                   <h3>{t("处理这条消息")}</h3>
+                  {features.automatic_understanding &&
+                    context > 0 &&
+                    !contextError &&
+                    selected.state === "completed" &&
+                    selected.reason !== "MODEL_OUTCOME_UNKNOWN" && (
+                      <LoopCommand
+                        key={selected.id + ":reanalyze"}
+                        api={commands}
+                        label={t("按最新原文重新分析")}
+                        onDone={done}
+                        onError={report}
+                        onBusy={onBusyChange}
+                        intent={{
+                          path: `/review-items/${selected.id}/reanalyze`,
+                          body: { expected_context_version: context },
+                          review: t(
+                            "将按最新授权重新分析这条消息，可能产生模型费用；只生成待核对建议，不确认工单，也不发送消息。",
+                          ),
+                        }}
+                      />
+                    )}
                   <p>
                     {t(
                       "归单会重新生成待核对提议；忽略只表示这条消息无需处理。手动建单不会自动清除此复核事项。",
@@ -392,7 +454,9 @@ export function ReviewWorkspace({
             .filter((o) => !["completed", "cancelled"].includes(o.status))
             .filter(
               (o) =>
-                Object.values(o.fields).some((f) => f.status !== "confirmed") ||
+                visibleFields(o).some(
+                  (key) => o.fields[key]?.status !== "confirmed",
+                ) ||
                 changes.some(
                   (c) =>
                     c.work_order_id === o.id &&
@@ -403,7 +467,11 @@ export function ReviewWorkspace({
               <article className="review-item" key={o.id}>
                 <h3>{o.summary}</h3>
                 {Object.entries(o.fields)
-                  .filter(([, f]) => f.status !== "confirmed")
+                  .filter(
+                    ([key, f]) =>
+                      f.status !== "confirmed" &&
+                      visibleFields(o).includes(key as keyof Order["fields"]),
+                  )
                   .map(([key, f]) => (
                     <p key={key}>
                       {fieldNames[key as keyof typeof fieldNames] ?? key}：

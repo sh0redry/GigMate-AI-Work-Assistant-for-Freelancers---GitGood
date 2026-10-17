@@ -167,7 +167,7 @@ function BusinessLoopContent({
             const [ms, info] = await Promise.all([
               allPages<Message>(
                 request,
-                `/conversations/${conversation}/messages`,
+                `/conversations/${conversation}/messages?work_order_id=${id}`,
                 abort.signal,
               ),
               request<Detail<components["schemas"]["Conversation"]>>(
@@ -180,7 +180,7 @@ function BusinessLoopContent({
               info.data.id !== conversation ||
               info.data.account_id !== accountId ||
               !Number.isInteger(info.data.context_version) ||
-              info.data.context_version < 1 ||
+              info.data.context_version < 0 ||
               ms.some((message) => message.conversation_id !== conversation)
             )
               throw Error(t("对话范围或版本无效，请刷新核对。"));
@@ -203,7 +203,7 @@ function BusinessLoopContent({
             .flatMap((timeline) => timeline.messages)
             .sort(
               (a, b) =>
-                a.occurred_at.localeCompare(b.occurred_at) ||
+                Date.parse(a.occurred_at) - Date.parse(b.occurred_at) ||
                 a.id.localeCompare(b.id) ||
                 a.revision - b.revision,
             ),

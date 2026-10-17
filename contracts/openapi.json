@@ -839,6 +839,18 @@
             ],
             "title": "Rejection Reason"
           },
+          "source_job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Job Id"
+          },
           "sources": {
             "items": {
               "$ref": "#/components/schemas/SourceRef"
@@ -1349,9 +1361,20 @@
             "type": "string"
           },
           "context_version": {
-            "minimum": 1.0,
+            "minimum": 0.0,
             "title": "Context Version",
             "type": "integer"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
           },
           "id": {
             "format": "uuid",
@@ -1542,6 +1565,14 @@
               "$ref": "#/components/schemas/SourceRef"
             },
             "title": "Schedule Sources",
+            "type": "array"
+          },
+          "source_messages": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            },
+            "title": "Source Messages",
             "type": "array"
           },
           "summary": {
@@ -1934,6 +1965,25 @@
           "request_id"
         ],
         "title": "Detail[MessageAssignmentResult]",
+        "type": "object"
+      },
+      "Detail_ReanalysisResult_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ReanalysisResult"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[ReanalysisResult]",
         "type": "object"
       },
       "Detail_ReplayResult_": {
@@ -2654,6 +2704,17 @@
             "format": "uuid",
             "title": "Conversation Id",
             "type": "string"
+          },
+          "conversation_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Label"
           },
           "created_at": {
             "format": "date-time",
@@ -3583,6 +3644,66 @@
         "title": "ProvenancedField",
         "type": "object"
       },
+      "ReanalysisResult": {
+        "additionalProperties": false,
+        "properties": {
+          "context_version": {
+            "minimum": 1.0,
+            "title": "Context Version",
+            "type": "integer"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "source_job_id": {
+            "format": "uuid",
+            "title": "Source Job Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_job_id",
+          "job_id",
+          "conversation_id",
+          "context_version",
+          "state"
+        ],
+        "title": "ReanalysisResult",
+        "type": "object"
+      },
+      "ReanalyzeMessageCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_context_version": {
+            "minimum": 1.0,
+            "title": "Expected Context Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_context_version"
+        ],
+        "title": "ReanalyzeMessageCommand",
+        "type": "object"
+      },
       "RecoveryIssue": {
         "additionalProperties": false,
         "properties": {
@@ -3890,6 +4011,17 @@
             "format": "uuid",
             "title": "Conversation Id",
             "type": "string"
+          },
+          "conversation_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Label"
           },
           "current_context_version": {
             "minimum": 1.0,
@@ -7191,6 +7323,14 @@
               "$ref": "#/components/schemas/RequirementItem"
             },
             "title": "Requirements",
+            "type": "array"
+          },
+          "source_messages": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            },
+            "title": "Source Messages",
             "type": "array"
           },
           "status": {
@@ -11027,6 +11167,23 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "work_order_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Order Id"
+            }
           }
         ],
         "responses": {
@@ -11457,6 +11614,65 @@
           }
         },
         "summary": "Assign Review Item"
+      }
+    },
+    "/api/v1/review-items/{job_id}/reanalyze": {
+      "post": {
+        "operationId": "reanalyze_api_v1_review_items__job_id__reanalyze_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReanalyzeMessageCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_ReanalysisResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reanalyze"
       }
     },
     "/api/v1/settings/schedule": {

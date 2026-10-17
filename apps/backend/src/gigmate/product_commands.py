@@ -2,8 +2,10 @@
 
 import base64
 import copy
+import hashlib
+import json
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends, Header, Query, Request
@@ -14,12 +16,16 @@ from gigmate.contracts import (
     Detail,
     NewOrderSuggestionView,
     Page,
+    ReanalysisResult,
+    ReanalyzeMessageCommand,
     SetTaskStatusCommand,
     Task,
     WorkspaceQuery,
     WorkspaceQueryResult,
 )
+from gigmate.conversation_views import conversation_label
 from gigmate.db import (
+    Account,
     ConversationRow,
     Inbox,
     Job,
@@ -28,6 +34,7 @@ from gigmate.db import (
     Proposal,
     ProposalDecision,
     TaskRow,
+    WahaConnection,
 )
 from gigmate.errors import BusinessError
 from gigmate.workorders import (
@@ -65,14 +72,14 @@ def current_suggestion(db, account_id, proposal_id):
     suggestion = row.proposal.get("new_work_order")
     if not suggestion or row.assignment != "needs_review" or row.work_order_id is not None:
         raise BusinessError(409, "VERSION_CONFLICT", "No new-order suggestion is available")
-    if db.get(ProposalDecision, row.event_id) is not None:
+    if db.get(ProposalDecision, inbox.payload.get("reanalysis_of", row.event_id)) is not None:
         raise BusinessError(409, "VERSION_CONFLICT", "This message already created an order")
     if db.scalar(available_suggestion_job(account_id, row.event_id)) is None:
         raise BusinessError(409, "VERSION_CONFLICT", "This message no longer needs a decision")
     payload = inbox.payload
     if (
         payload.get("conversation_id") != conversation.id
-        or inbox.context_version != row.context_version
+        or inbox.context_version > row.context_version
     ):
         raise BusinessError(409, "APPROVAL_STALE", "Suggestion event changed")
     refs = [
@@ -119,13 +126,15 @@ def bind_suggestion(db, account_id, command):
 def consume_suggestion(db, account_id, row, work_order_id):
     if row is None:
         return
+    inbox = owned(db, Inbox, row.event_id, account_id)
+    origin = inbox.payload.get("reanalysis_of", row.event_id)
     try:
         # The caller holds the account lock; keep the unique constraint as a
         # final fence, returning a business conflict if another writer won.
         with db.begin_nested():
             db.add(
                 ProposalDecision(
-                    event_id=row.event_id,
+                    event_id=origin,
                     proposal_id=row.id,
                     account_id=account_id,
                     work_order_id=work_order_id,
@@ -134,7 +143,7 @@ def consume_suggestion(db, account_id, row, work_order_id):
             db.flush()
     except IntegrityError:
         if (
-            db.get(ProposalDecision, row.event_id) is not None
+            db.get(ProposalDecision, origin) is not None
             or db.scalar(select(ProposalDecision).where(ProposalDecision.proposal_id == row.id))
             is not None
         ):
@@ -145,6 +154,132 @@ def consume_suggestion(db, account_id, row, work_order_id):
     job = db.scalar(select(Job).where(Job.event_id == row.event_id, Job.account_id == account_id))
     if job and job.state == "completed":
         job.error_code = "NEW_ORDER_REVIEWED"
+
+
+def reanalyze_message(db, account, job_id, command, key, request_id):
+    """An explicit, fenced new analysis; never a blind retry or a confirmed write."""
+    db.scalar(select(Account).where(Account.id == account.id).with_for_update())
+    scope = f"reanalyze:{job_id}"
+    digest, cached = command_cache(db, account.id, scope, key, command.model_dump())
+    if cached:
+        return cached.data
+    old = owned(db, Job, job_id, account.id)
+    inbox = owned(db, Inbox, old.event_id, account.id)
+    conversation = owned(db, ConversationRow, inbox.payload["conversation_id"], account.id)
+    db.refresh(conversation, with_for_update=True)
+    origin = inbox.payload.get("reanalysis_of", inbox.id)
+    if not conversation.allowlisted:
+        raise BusinessError(403, "CONSENT_REVOKED", "Conversation processing is paused")
+    if command.expected_context_version != conversation.context_version:
+        raise BusinessError(409, "VERSION_CONFLICT", "Read the current conversation first")
+    if old.state != "completed" or old.error_code == "MODEL_OUTCOME_UNKNOWN":
+        raise BusinessError(
+            409, "MODEL_OUTCOME_UNKNOWN", "Do not retry an unfinished or unknown model call"
+        )
+    if old.error_code in {"OWN_SEND_ECHO", "NEW_ORDER_REVIEWED", "DISMISSED_BY_MERCHANT"} or db.get(
+        ProposalDecision, origin
+    ):
+        raise BusinessError(409, "VERSION_CONFLICT", "This message has already been decided")
+    message_id = inbox.payload["payload"]["message_id"]
+    latest = db.scalar(
+        select(MessageRow)
+        .where(
+            MessageRow.id == message_id,
+            MessageRow.account_id == account.id,
+            MessageRow.conversation_id == conversation.id,
+        )
+        .order_by(MessageRow.revision.desc())
+    )
+    if latest is None or latest.data["revoked"] or latest.data["direction"] != "incoming":
+        raise BusinessError(409, "APPROVAL_STALE", "Source is not an available customer message")
+    connection = db.get(WahaConnection, inbox.connection_id) if inbox.connection_id else None
+    if (
+        inbox.payload.get("connector") != "waha"
+        or connection is None
+        or not connection.enabled
+        or connection.account_id != account.id
+    ):
+        raise BusinessError(409, "CONSENT_REVOKED", "Active owned connector required")
+    from gigmate.extraction.reviewed import configured_for_live
+
+    if not configured_for_live():
+        raise BusinessError(409, "FEATURE_UNAVAILABLE", "Text understanding is not configured")
+    identifier = str(
+        uuid5(
+            NAMESPACE_URL,
+            f"gigmate:reanalyze:{origin}:{conversation.context_version}:{latest.revision}",
+        )
+    )
+    queued = db.scalar(select(Job).where(Job.event_id == identifier, Job.account_id == account.id))
+    if queued is None:
+        related = db.execute(
+            select(Job, Inbox)
+            .join(Inbox, Inbox.id == Job.event_id)
+            .where(Job.account_id == account.id)
+        )
+        for related_job, related_inbox in related:
+            if related_inbox.payload.get("reanalysis_of", related_inbox.id) == origin and (
+                related_job.state in {"pending", "processing"}
+                or related_job.error_code == "MODEL_OUTCOME_UNKNOWN"
+            ):
+                raise BusinessError(
+                    409,
+                    "MODEL_OUTCOME_UNKNOWN",
+                    "Resolve the existing analysis before requesting another",
+                )
+        now = datetime.now(UTC)
+        event = copy.deepcopy(inbox.payload)
+        event.update(event_id=identifier, message_revision=latest.revision, reanalysis_of=origin)
+        event["payload"] = {**event["payload"], "text": latest.data["text"]}
+        event["occurred_at"] = latest.data["occurred_at"]
+        db.add(
+            Inbox(
+                id=identifier,
+                account_id=account.id,
+                payload=event,
+                digest=hashlib.sha256(json.dumps(event, sort_keys=True).encode()).hexdigest(),
+                context_version=conversation.context_version,
+                received_at=now,
+                connection_id=connection.id,
+            )
+        )
+        db.flush()
+        queued = Job(
+            id=identifier,
+            event_id=identifier,
+            account_id=account.id,
+            state="pending",
+            available_at=now,
+        )
+        db.add(queued)
+        original_job = db.scalar(
+            select(Job).where(Job.account_id == account.id, Job.event_id == origin)
+        )
+        assignment = db.get(JobAssignment, old.id) or (
+            db.get(JobAssignment, original_job.id) if original_job else None
+        )
+        if assignment is not None:
+            db.flush()
+            db.add(
+                JobAssignment(
+                    job_id=queued.id,
+                    account_id=account.id,
+                    work_order_id=assignment.work_order_id,
+                    decided_at=now,
+                )
+            )
+        db.add(audit_row(account.id, queued.id, "reanalyze_message", request_id))
+        old.error_code = "SOURCE_REANALYZED"
+        db.flush()
+    result = {
+        "source_job_id": job_id,
+        "job_id": queued.id,
+        "conversation_id": conversation.id,
+        "context_version": conversation.context_version,
+        "state": queued.state,
+    }
+    save_result(db, account.id, scope, key, digest, result)
+    return result
 
 
 def task_status(db, account, task_id, command, key, request_id):
@@ -227,6 +362,22 @@ def query_workspace(db, account_id, question, now=None):
 
 
 def install(app, database, actor, detail, page):
+    @app.post("/api/v1/review-items/{job_id}/reanalyze", response_model=Detail[ReanalysisResult])
+    def reanalyze(
+        job_id: UUID,
+        command: ReanalyzeMessageCommand,
+        request: Request,
+        idempotency_key: str = Header(alias="Idempotency-Key"),
+        account=Depends(actor),
+        db=Depends(database),
+    ):
+        return detail(
+            request,
+            reanalyze_message(
+                db, account, str(job_id), command, idempotency_key, request.state.request_id
+            ),
+        )
+
     @app.get("/api/v1/new-order-suggestions", response_model=Page[NewOrderSuggestionView])
     def suggestions(
         request: Request,
@@ -278,6 +429,9 @@ def install(app, database, actor, detail, page):
                     {
                         "id": current.id,
                         "conversation_id": current.conversation_id,
+                        "conversation_label": conversation_label(
+                            db, account.id, current.conversation_id
+                        ),
                         "context_version": current.context_version,
                         "suggestion": current.proposal["new_work_order"],
                         "sources": refs,

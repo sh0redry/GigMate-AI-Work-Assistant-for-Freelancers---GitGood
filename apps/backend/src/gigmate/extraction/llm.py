@@ -1439,10 +1439,15 @@ class LLMProvider:
         return json.dumps(
             {
                 "message_text": request.message_text,
+                "message_id": request.message_id,
+                "message_revision": request.message_revision,
+                "conversation_id": request.conversation_id,
                 "context_version": request.context_version,
                 "candidate_work_order_ids": list(request.candidate_work_order_ids),
                 "base_work_order_version": request.base_work_order_version,
                 "base_work_order_snapshot": request.base_work_order_snapshot,
+                "candidate_orders": request.extra.get("candidate_orders", []),
+                "recent_messages": request.extra.get("recent_messages", []),
                 # Gate 4: the only reliable basis for relative dates. ``null``
                 # means the model must not resolve them at all.
                 "time_basis": basis,
@@ -1489,7 +1494,11 @@ class LLMProvider:
             chosen = data.get("work_order_id")
             if chosen not in request.candidate_work_order_ids:
                 return "llm:response-provenance-failed:work_order_id", rebound
-            if data.get("base_work_order_version") != request.base_work_order_version:
+            versions = {
+                item["id"]: item["version"] for item in request.extra.get("candidate_orders", [])
+            }
+            expected_version = versions.get(chosen, request.base_work_order_version)
+            if data.get("base_work_order_version") != expected_version:
                 return "llm:response-provenance-failed:base_work_order_version", rebound
         # P2-3: the context version is server-owned; a different value is a
         # mismatch, not something to overwrite silently. Round 2 also refuses
@@ -1526,6 +1535,22 @@ class LLMProvider:
                 # fail the whole proposal with ``source-message-id``. Writing
                 # the server's own value is stricter than trusting the echo and
                 # keeps the proposal usable; a missing source is still refused.
+                allowed = {
+                    m["id"]: m["revision"]
+                    for m in request.extra.get("recent_messages", [])
+                    if m.get("direction") == "incoming"
+                }
+                if (
+                    isinstance(source.get("message_id"), str)
+                    and source.get("message_id") in allowed
+                    and source.get("message_revision") == allowed[source["message_id"]]
+                ):
+                    continue
+                if (
+                    len(request.extra.get("recent_messages", [])) > 1
+                    and source.get("message_id") != request.message_id
+                ):
+                    return "llm:response-provenance-failed:source-message-id", rebound
                 if source.get("message_id") != request.message_id:
                     rebound = True
                 source["message_id"] = request.message_id
@@ -1562,6 +1587,22 @@ class LLMProvider:
                 for source in sources or []:
                     if not isinstance(source, dict):
                         return "llm:response-provenance-failed:suggested-source-shape", rebound
+                    allowed = {
+                        m["id"]: m["revision"]
+                        for m in request.extra.get("recent_messages", [])
+                        if m.get("direction") == "incoming"
+                    }
+                    if (
+                        isinstance(source.get("message_id"), str)
+                        and source.get("message_id") in allowed
+                        and source.get("message_revision") == allowed[source["message_id"]]
+                    ):
+                        continue
+                    if (
+                        len(request.extra.get("recent_messages", [])) > 1
+                        and source.get("message_id") != request.message_id
+                    ):
+                        return "llm:response-provenance-failed:suggested-source-message-id", rebound
                     if source.get("message_id") != request.message_id:
                         rebound = True
                     source["message_id"] = request.message_id
@@ -1697,7 +1738,7 @@ class LLMProvider:
             if not data.get("unresolved_questions") and not data.get("new_work_order"):
                 reason_text = data.get("reason")
                 data["unresolved_questions"] = [
-                    str(reason_text) if reason_text else "LLM requested review"
+                    str(reason_text) if reason_text else "请核对这条消息的业务含义。"
                 ]
             data.setdefault("work_order_id", None)
             data.setdefault("base_work_order_version", None)
@@ -1731,6 +1772,11 @@ class LLMProvider:
         # the provenance guard (which has already refused a mismatching value)
         # and never left to whatever the model echoed back.
         data["base_context_version"] = request.context_version
+        from .normalization import retain_valid_fields
+
+        field_notes = retain_valid_fields(
+            data, time_basis_available=self._time_basis(request)[0] is not None
+        )
         try:
             proposal = ChangeProposal.model_validate(data)
         except ValidationError as exc:
@@ -1769,7 +1815,7 @@ class LLMProvider:
         # Observability, not trust: when the vendor echoed the wrong source
         # identifier the proposal still carries the server's value, and the
         # trace says so instead of hiding the correction.
-        outcome_notes = ("llm:source-rebound",) if rebound else ()
+        outcome_notes = (*(("llm:source-rebound",) if rebound else ()), *field_notes)
         if proposal.assignment.value == "matched":
             return ExtractionOutcome(
                 provider_name=self.name,

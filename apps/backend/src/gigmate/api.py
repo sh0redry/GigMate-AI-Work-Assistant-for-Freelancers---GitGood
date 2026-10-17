@@ -145,6 +145,7 @@ class ReplayResult(Model):
 
 
 class ChangeView(RequirementChange):
+    source_job_id: Annotated[UUID, Field(strict=False)] | None = None
     context_version: int
     conflict_ids: list[str]
 
@@ -398,6 +399,8 @@ def changes(
             ChangeRow.account_id == account.id, ChangeRow.work_order_id == str(order_id)
         )
     )
+    from gigmate.conversation_views import change_source_job
+
     return page(
         request,
         rows,
@@ -406,6 +409,7 @@ def changes(
         lambda row: {
             **row.data,
             "context_version": row.context_version,
+            "source_job_id": change_source_job(db, account.id, row),
             "conflict_ids": (
                 conflicts(db, account.id, str(order_id), row.data["new_value"])
                 if row.data["field"] == "schedule"
@@ -918,12 +922,15 @@ def conversation_info(
         .join(WahaConnection)
         .where(WahaChat.conversation_id == row.id, WahaConnection.account_id == account.id)
     )
+    from gigmate.conversation_views import conversation_label
+
     return detail(
         request,
         {
             "id": row.id,
             "account_id": account.id,
             "provider_conversation_id": chat.provider_chat_id if chat else f"synthetic:{row.id}",
+            "display_name": conversation_label(db, account.id, row.id),
             "context_version": row.context_version,
             "work_order_ids": ids,
         },
@@ -938,18 +945,29 @@ def messages(
     request: Request,
     cursor: str | None = None,
     limit: int = Query(20, ge=1, le=100),
+    work_order_id: UUID | None = None,
     account=Depends(actor),
     db=Depends(database),
 ):
     conversation = owned(db, ConversationRow, str(conversation_id), account.id)
     if not conversation.allowlisted:
         raise BusinessError(404, "NOT_FOUND", "Conversation not found")
+    allowed_ids = None
+    if work_order_id is not None:
+        from gigmate.conversation_views import order_message_ids
+
+        order = owned(db, WorkOrderRow, str(work_order_id), account.id)
+        if db.get(ConversationOrder, (conversation.id, order.id)) is None:
+            raise BusinessError(404, "NOT_FOUND", "Order is not linked to this conversation")
+        allowed_ids = order_message_ids(db, account.id, order)
     latest = {}
     for row in db.scalars(
         select(MessageRow)
         .where(MessageRow.account_id == account.id, MessageRow.conversation_id == conversation.id)
         .order_by(MessageRow.revision)
     ):
+        if allowed_ids is not None and row.id not in allowed_ids:
+            continue
         latest[row.id] = row
     return page(request, latest.values(), cursor, limit)
 

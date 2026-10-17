@@ -11,6 +11,7 @@ import { CalendarWorkspace } from "./CalendarWorkspace";
 import { OrderCreation } from "./OrderCreation";
 import { ReviewWorkspace } from "./ReviewWorkspace";
 import { DeliveryGuide } from "./DeliveryGuide";
+import { Onboarding } from "./Onboarding";
 import { workspaceApi, type Detail, type Login } from "./workspace-api";
 import { clearConnectionAttempts } from "./connection-api";
 import { unavailableFeatures, loopReady, type Features } from "./features";
@@ -39,6 +40,7 @@ export function App() {
   const [view, setView] = useState<View>("business"),
     [selectedOrder, setSelectedOrder] = useState(""),
     [createConversation, setCreateConversation] = useState(""),
+    [createMessage, setCreateMessage] = useState(""),
     [sendAction, setSendAction] = useState(""),
     [login, setLogin] = useState<Login | null>(null),
     [username, setUsername] = useState(""),
@@ -58,6 +60,7 @@ export function App() {
     setMoreOpen(false);
     setSelectedOrder("");
     setCreateConversation("");
+    setCreateMessage("");
     setBusy(false);
     setFeatures(unavailableFeatures);
     setNotice(message);
@@ -105,7 +108,10 @@ export function App() {
   }, [login, expireSession]);
   function navigate(next: View) {
     if (busy) return;
-    if (next === "create") setCreateConversation("");
+    if (next === "create") {
+      setCreateConversation("");
+      setCreateMessage("");
+    }
     if (next !== "management") setSendAction("");
     setNotice("");
     setView(next);
@@ -350,6 +356,11 @@ export function App() {
             tabIndex={-1}
             className="workspace-content"
           >
+            <Onboarding
+              accountId={login.account_id}
+              busy={busy}
+              onOpen={navigate}
+            />
             {featureError && (
               <p className="notice stale" role="status">
                 {t(
@@ -383,6 +394,7 @@ export function App() {
                   }}
                   onConnect={() => navigate("connect")}
                   onOpenApprovals={() => navigate("approvals")}
+                  onCreate={() => navigate("create")}
                 />
               </>
             )}
@@ -394,6 +406,7 @@ export function App() {
                 onBusyChange={setBusy}
                 onOpenOrder={openOrder}
                 initialConversation={createConversation}
+                initialMessage={createMessage}
               />
             )}
             {view === "approvals" && (
@@ -417,9 +430,10 @@ export function App() {
                 accountId={login.account_id}
                 features={features}
                 onBusyChange={setBusy}
-                onCreate={(id) => {
+                onCreate={(id, message) => {
                   navigate("create");
                   setCreateConversation(id);
+                  setCreateMessage(message ?? "");
                 }}
                 onOpenOrder={openOrder}
                 onConnect={() => navigate("connect")}

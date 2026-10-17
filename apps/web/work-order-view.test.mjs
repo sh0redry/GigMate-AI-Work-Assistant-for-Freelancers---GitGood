@@ -99,7 +99,9 @@ test("every linked conversation/page is loaded and confirmation uses the source 
   await api.confirm(data, change);
   assert.equal(sent.at(-1).body.expected_context_version, 9);
   assert.ok(
-    sent.some((v) => v.path.includes("c2/messages?limit=100&cursor=next")),
+    sent.some((v) =>
+      v.path.includes("c2/messages?work_order_id=order&limit=100&cursor=next"),
+    ),
   );
 });
 test("missing, revoked or mixed-conversation sources fail closed before confirmation POST", async () => {
@@ -251,4 +253,33 @@ test("status buttons name the action, not the state they produce", () => {
   }
   assert.equal(orderActionLabels.cancelled, "取消工单");
   assert.equal(orderActionLabels.completed, "完成工单");
+});
+
+test("optional missing fields stay hidden until this order actually contains a value", async () => {
+  const { visibleFields, conversationLabel } =
+    await import("./src/work-order-view.ts");
+  const order = {
+    fields: {
+      schedule: { status: "missing", value: null },
+      address: { status: "missing", value: null },
+      specification: { status: "missing", value: null },
+      quantity: { status: "missing", value: null },
+      deadline: { status: "missing", value: null },
+    },
+  };
+  assert.deepEqual(visibleFields(order), ["schedule", "address"]);
+  order.fields.specification = { status: "proposed", value: "合成规格" };
+  assert.deepEqual(visibleFields(order), [
+    "schedule",
+    "address",
+    "specification",
+  ]);
+  assert.equal(
+    conversationLabel({ provider_conversation_id: "85200000000@c.us" }),
+    "+85200000000",
+  );
+  assert.equal(
+    conversationLabel({ provider_conversation_id: "opaque@lid" }),
+    "客户会话",
+  );
 });

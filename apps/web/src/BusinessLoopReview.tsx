@@ -13,7 +13,7 @@ import {
 } from "./workspace-api";
 import type { Features } from "./features";
 import type { components } from "./generated/api";
-import { instant, reviewReasons } from "./work-order-view";
+import { instant, reviewReasons, conversationLabel } from "./work-order-view";
 const sendStates: Record<string, string> = localized({
   queued: "已批准，排队中",
   preparing: "连接检查中",
@@ -65,6 +65,7 @@ export function BusinessLoopReview({
     >(null),
     [chatId, setChatId] = useState(""),
     [receipt, setReceipt] = useState<Model["WahaSendActionView"] | null>(null);
+  const [conversationName, setConversationName] = useState("");
   const [tick, setTick] = useState(0),
     [checked, setChecked] = useState(0);
   const done = () => {
@@ -157,6 +158,18 @@ export function BusinessLoopReview({
           if (a.signal.aborted) return;
           setAction(v);
           setBody(v.body);
+          const recipient = await request<Detail<Model["Conversation"]>>(
+            `/conversations/${v.conversation_id}`,
+            undefined,
+            a.signal,
+          );
+          if (a.signal.aborted) return;
+          if (
+            recipient.data.account_id !== accountId ||
+            recipient.data.id !== v.conversation_id
+          )
+            throw Error(t("来源范围无法核对"));
+          setConversationName(conversationLabel(recipient.data));
           setChecked(Date.now());
           if (connection && features.business_sending) {
             const prefix = `/connectors/${connection}`;
@@ -245,8 +258,7 @@ export function BusinessLoopReview({
                 .filter((q) => q.context_version === q.current_context_version)
                 .map((q) => (
                   <option key={q.id} value={q.id}>
-                    {t("会话")}
-                    {q.conversation_id.slice(-6)} ·{" "}
+                    {q.conversation_label || t("客户会话")} ·{" "}
                     {reviewReasons[q.reason] ?? t("需要人工核对")}
                   </option>
                 ))}
@@ -357,7 +369,7 @@ export function BusinessLoopReview({
           <>
             <p>
               {t("收件会话")}
-              {action.conversation_id.slice(-6)} {t("· 有效至")}{" "}
+              {conversationName || t("客户会话")} {t("· 有效至")}{" "}
               {instant(action.expires_at)}
             </p>
             <p className="reply-body">{action.body}</p>
@@ -384,7 +396,7 @@ export function BusinessLoopReview({
                       } satisfies Loop["EditActionCommand"],
                       review: t(
                         "修改发给会话 {0} 的第 {1} 版草稿，新正文：“{2}”。保存后生成新版本，仍需另行批准，不会发送。",
-                        action.conversation_id.slice(-6),
+                        conversationName || t("客户会话"),
                         action.revision,
                         body.trim(),
                       ),
@@ -441,7 +453,7 @@ export function BusinessLoopReview({
                           "把已批准草稿 r{0} 交给连接 {1}，收件会话 {2}，完整正文：“{3}”。连接 v{4}／发送授权 v{5}。提交不代表客户收到；结果未知时先核对，禁止另建发送。",
                           action.revision,
                           connection.slice(-6),
-                          action.conversation_id.slice(-6),
+                          conversationName || t("客户会话"),
                           action.body,
                           setup.control_version,
                           permission.version,

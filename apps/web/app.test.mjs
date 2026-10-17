@@ -19,6 +19,7 @@ const directory = await mkdtemp(join(tmpdir(), "gigmate-app-dom-"));
 const require = createRequire(import.meta.url);
 const components = [
   "App",
+  "Onboarding",
   "NavIcon",
   "BusinessLoopWorkspace",
   "ProductTools",
@@ -624,6 +625,14 @@ test("business sending resolves a different chat UUID from the owned conversatio
     expires_at: new Date(Date.now() + 60000).toISOString(),
   };
   globalThis.fetch = async (url) => {
+    if (url.endsWith("/conversations/" + conversation))
+      return Response.json({
+        data: {
+          id: conversation,
+          account_id: account,
+          display_name: "+85200000000",
+        },
+      });
     if (url.includes("/actions?"))
       return Response.json({ items: [action], next_cursor: null });
     if (url.includes("/connectors?"))
@@ -964,6 +973,14 @@ test("business replies load paginated connections and prepare exact authorised s
     const parsed = new URL(url, "http://localhost");
     const path = parsed.pathname.replace(/^.*\/api\/v1/, "");
     reads.push(path + parsed.search);
+    if (path === "/conversations/" + conversationId)
+      return Response.json({
+        data: {
+          id: conversationId,
+          account_id: accountId,
+          display_name: "+85200000000",
+        },
+      });
     if (path === "/actions")
       return Response.json({ items: [draft], next_cursor: null });
     if (path === "/connectors")
@@ -1212,4 +1229,104 @@ test("unknown model outcome keeps manual creation available but blocks reassignm
     data.order.conversation_ids[0],
   );
   assert.equal(data.writes.length, 0);
+});
+
+test("new users get a non-mutating tutorial, completion is remembered and help reopens it", async () => {
+  window.localStorage.clear();
+  const calls = fixture();
+  await mount();
+  await login();
+  assert.ok(document.querySelector('[role="dialog"][aria-label="新手教程"]'));
+  assert.match(document.body.textContent, /先选择允许处理的聊天/);
+  await act(async () => button("下一步").click());
+  assert.match(document.body.textContent, /一件业务建一张工单/);
+  await act(async () => button("跳过教程").click());
+  assert.equal(document.querySelector('[role="dialog"]'), null);
+  await act(async () => button("退出").click());
+  await login();
+  assert.equal(document.querySelector('[role="dialog"]'), null);
+  await act(async () => button("新手教程").click());
+  assert.ok(document.querySelector('[role="dialog"]'));
+  assert.ok(
+    calls
+      .filter((c) => c.options.method === "POST")
+      .every((c) => /\/auth\//.test(c.url)),
+  );
+  window.localStorage.clear();
+});
+
+test("manual review shows a phone and ordered source times, never the opaque conversation suffix", async () => {
+  const data = reviewDecisionFixture();
+  const fallback = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    const response = await fallback(url, opts);
+    if (url.includes("/review-items?")) {
+      const body = await response.json();
+      body.items = body.items.map((i) => ({
+        ...i,
+        conversation_label: "+85200000000",
+      }));
+      return Response.json(body);
+    }
+    return response;
+  };
+  await mount();
+  await login();
+  await act(async () => button("人工复核").click());
+  assert.match(document.body.textContent, /\+85200000000/);
+  assert.doesNotMatch(document.body.textContent, /会话000002/);
+  await act(async () => button("查看这条会话原文").click());
+  const source = [...document.querySelectorAll(".review-panel .message small")];
+  assert.ok(source.length);
+  assert.ok(source.every((node) => /2026/.test(node.textContent)));
+  assert.equal(data.writes.length, 0);
+});
+
+test("the guide exposes feature shortcuts without team issues or repository links", async () => {
+  fixture();
+  await mount();
+  await login();
+  await act(async () => button("功能与使用说明").click());
+  assert.equal(
+    [...document.querySelectorAll("main a")].some((a) =>
+      /github\.com/.test(a.href),
+    ),
+    false,
+  );
+  assert.doesNotMatch(
+    document.querySelector("main").textContent,
+    /查看团队进度|安全验收/,
+  );
+});
+
+test("stale message reanalysis requires consent and carries the current context to the existing command journal", async () => {
+  reviewDecisionFixture({ stale: true });
+  const fallback = globalThis.fetch;
+  const writes = [];
+  globalThis.fetch = async (url, options) => {
+    if (url.endsWith("/reanalyze")) {
+      const body = JSON.parse(options.body);
+      writes.push(body);
+      return Response.json({
+        data: {
+          source_job_id: "00000000-0000-4000-8000-000000000099",
+          job_id: "00000000-0000-4000-8000-000000000098",
+          conversation_id: "00000000-0000-4000-8000-000000000002",
+          context_version: 4,
+          state: "pending",
+        },
+      });
+    }
+    return fallback(url, options);
+  };
+  await mount();
+  await login();
+  await act(async () => button("人工复核").click());
+  await act(async () => button("查看这条会话原文").click());
+  await act(async () => button("按最新原文重新分析").click());
+  assert.equal(writes.length, 0);
+  assert.equal(button("确认保存").disabled, true);
+  await tick("我已核对内容、来源及当前版本");
+  await act(async () => button("确认保存").click());
+  assert.deepEqual(writes, [{ expected_context_version: 4 }]);
 });

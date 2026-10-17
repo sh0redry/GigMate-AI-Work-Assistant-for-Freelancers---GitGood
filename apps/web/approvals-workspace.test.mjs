@@ -19,6 +19,7 @@ const directory = await mkdtemp(join(tmpdir(), "gigmate-d03-dom-"));
 const require = createRequire(import.meta.url);
 for (const name of [
   "ApprovalsWorkspace",
+  "ReplyPanel",
   "approvals-api",
   "approval-view",
   "environment",
@@ -29,7 +30,9 @@ for (const name of [
   "locales",
   "work-order-view",
 ]) {
-  const ext = name === "ApprovalsWorkspace" ? "tsx" : "ts";
+  const ext = ["ApprovalsWorkspace", "ReplyPanel"].includes(name)
+    ? "tsx"
+    : "ts";
   const source = await readFile(
     new URL(`./src/${name}.${ext}`, import.meta.url),
     "utf8",
@@ -244,3 +247,45 @@ test("unchanged refresh keeps focus and the enabled action without a loading fla
   assert.doesNotMatch(document.body.textContent, /正在读取审批数据/);
   assert.equal(f.data.writes.length, 0);
 });
+
+for (const state of ["pending_approval", "approved"])
+  test(`inline reply panel cancels a ${state} draft without sending`, async () => {
+    const { ReplyPanel } = await import(
+      pathToFileURL(join(directory, "ReplyPanel.mjs"))
+    );
+    const f = fixture();
+    f.data.actions[0] = {
+      ...f.data.actions[0],
+      state,
+      approved_by: state === "approved" ? accountId : null,
+      approved_at: state === "approved" ? "2026-10-13T01:00:00Z" : null,
+    };
+    const original = globalThis.fetch;
+    globalThis.fetch = f.fetcher;
+    try {
+      root = createRoot(document.getElementById("root"));
+      await act(async () =>
+        root.render(
+          createElement(ReplyPanel, {
+            csrf: "csrf",
+            accountId,
+            orderId: "order",
+            orderSummary: "合成业务",
+            features: { business_sending: true },
+            refreshKey: 1,
+            onSessionExpired() {},
+          }),
+        ),
+      );
+      assert.ok(button("取消草稿"));
+      await click("取消草稿");
+      assert.deepEqual(
+        f.data.writes.map((w) => w.operation),
+        [state === "approved" ? "cancel" : "reject"],
+      );
+      assert.equal(f.data.actions[0].state, "cancelled");
+      assert.equal(f.data.actions[0].delivery_status, "not_submitted");
+    } finally {
+      globalThis.fetch = original;
+    }
+  });

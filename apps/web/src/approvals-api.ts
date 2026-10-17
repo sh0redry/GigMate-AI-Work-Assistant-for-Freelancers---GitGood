@@ -389,7 +389,7 @@ export function approvalsApi(
           invalid();
         messages = await allPages<Message>(
           request,
-          `/conversations/${encodeURIComponent(action.conversation_id)}/messages`,
+          `/conversations/${encodeURIComponent(action.conversation_id)}/messages?work_order_id=${action.work_order_id}`,
           signal,
         );
         if (

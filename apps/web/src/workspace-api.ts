@@ -157,6 +157,7 @@ export type BusinessSnapshot = {
   messages: Message[];
   contextVersion: number;
   contexts?: Record<string, number>;
+  conversationLabels?: Record<string, string>;
 };
 export type BusinessApi = {
   load(selected: string, signal: AbortSignal): Promise<BusinessSnapshot>;
@@ -198,7 +199,7 @@ export function businessApi(
             const [messages, info] = await Promise.all([
               allPages<Message>(
                 request,
-                `/conversations/${id}/messages`,
+                `/conversations/${id}/messages?work_order_id=${order.id}`,
                 signal,
               ),
               request<Detail<components["schemas"]["Conversation"]>>(
@@ -210,14 +211,19 @@ export function businessApi(
             if (
               info.data.id !== id ||
               !Number.isInteger(info.data.context_version) ||
-              info.data.context_version < 1 ||
+              info.data.context_version < 0 ||
               messages.some((message) => message.conversation_id !== id)
             )
               throw new WorkspaceError(
                 "INVALID_RESPONSE",
                 t("对话范围或版本无效，请刷新核对。"),
               );
-            return { id, messages, version: info.data.context_version };
+            return {
+              id,
+              messages,
+              version: info.data.context_version,
+              label: info.data.display_name,
+            };
           }),
         ),
       ]);
@@ -231,12 +237,15 @@ export function businessApi(
           .flatMap((t) => t.messages)
           .sort(
             (a, b) =>
-              a.occurred_at.localeCompare(b.occurred_at) ||
+              Date.parse(a.occurred_at) - Date.parse(b.occurred_at) ||
               a.id.localeCompare(b.id) ||
               a.revision - b.revision,
           ),
         contextVersion: timelines[0].version,
         contexts: Object.fromEntries(timelines.map((t) => [t.id, t.version])),
+        conversationLabels: Object.fromEntries(
+          timelines.map((t) => [t.id, t.label || ""]),
+        ),
       };
     },
     async confirm(snapshot, change) {

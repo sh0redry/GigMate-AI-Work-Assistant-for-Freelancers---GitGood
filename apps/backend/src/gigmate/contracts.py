@@ -66,6 +66,7 @@ class WorkspaceCapabilities(Model):
 
 
 class ReviewItem(Model):
+    conversation_label: str | None = None
     model_request_id: str | None = None
     id: Id
     conversation_id: Id
@@ -433,6 +434,7 @@ class WorkOrder(Model):
     account_id: Id
     conversation_ids: Annotated[list[Id], Field(min_length=1)]
     summary: Text
+    source_messages: list[SourceRef] = []
     status: Annotated[WorkOrderStatus, Field(strict=False)]
     version: Positive
     fields: WorkOrderFields
@@ -659,7 +661,8 @@ class Conversation(Model):
     id: Id
     account_id: Id
     provider_conversation_id: Text
-    context_version: Positive
+    display_name: str | None = None
+    context_version: NonNegative
     work_order_ids: list[Id]
 
 
@@ -965,6 +968,7 @@ class EvaluationRun(Model):
 
 
 class CreateWorkOrderCommand(Model):
+    source_messages: list[SourceRef] = []
     conversation_id: Id
     summary: Annotated[str, Field(min_length=1, max_length=120)]
     schedule: TimedSchedule | DateOnly | None = None
@@ -1027,6 +1031,18 @@ class AssignMessageCommand(Model):
         if (self.action == "assign") != (self.work_order_id is not None):
             raise ValueError("Assign needs a work order; dismiss takes none")
         return self
+
+
+class ReanalyzeMessageCommand(Model):
+    expected_context_version: Positive
+
+
+class ReanalysisResult(Model):
+    source_job_id: Id
+    job_id: Id
+    conversation_id: Id
+    context_version: Positive
+    state: Literal["pending", "processing", "completed", "failed", "cancelled"]
 
 
 class MessageAssignmentResult(Model):
@@ -1482,6 +1498,7 @@ class SetTaskStatusCommand(Model):
 
 
 class NewOrderSuggestionView(Model):
+    conversation_label: str | None = None
     id: Id
     conversation_id: Id
     context_version: Positive

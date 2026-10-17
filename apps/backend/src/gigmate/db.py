@@ -94,6 +94,7 @@ class WahaConnection(Base):
 
 class WahaChat(Base):
     __tablename__ = "waha_chats"
+    display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     connection_id: Mapped[str] = mapped_column(ForeignKey("waha_connections.id"), index=True)
     provider_chat_id: Mapped[str] = mapped_column(String(256))

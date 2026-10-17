@@ -23,6 +23,15 @@ from gigmate.db import (
 )
 from gigmate.planning import CLOSED
 
+FIELD_NAMES = {
+    "schedule": "时间安排",
+    "address": "地址",
+    "summary": "业务内容",
+    "specification": "规格",
+    "quantity": "数量",
+    "deadline": "截止时间",
+}
+
 SOON = timedelta(hours=48)
 
 
@@ -202,7 +211,7 @@ def build(db, account_id, day=None, now=None):
             decide.append(
                 {
                     "kind": "review_proposal",
-                    "title": f"{order.data['summary']}：客人提出新的{change.data['field']}，要确认吗？",
+                    "title": f"{order.data['summary']}：客人提出新的{FIELD_NAMES.get(change.data['field'], '内容')}，要确认吗？",
                     "work_order_id": order.id,
                     "change_id": change.id,
                 }

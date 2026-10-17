@@ -1127,9 +1127,21 @@
           "type": "string"
         },
         "context_version": {
-          "minimum": 1,
+          "minimum": 0,
           "title": "Context Version",
           "type": "integer"
+        },
+        "display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Display Name"
         },
         "id": {
           "format": "uuid",
@@ -1324,6 +1336,14 @@
             "$ref": "#/$defs/SourceRef"
           },
           "title": "Schedule Sources",
+          "type": "array"
+        },
+        "source_messages": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Source Messages",
           "type": "array"
         },
         "summary": {
@@ -1817,6 +1837,18 @@
           "format": "uuid",
           "title": "Conversation Id",
           "type": "string"
+        },
+        "conversation_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Conversation Label"
         },
         "created_at": {
           "format": "date-time",
@@ -2637,6 +2669,18 @@
           "format": "uuid",
           "title": "Conversation Id",
           "type": "string"
+        },
+        "conversation_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Conversation Label"
         },
         "current_context_version": {
           "minimum": 1,
@@ -5809,6 +5853,14 @@
             "$ref": "#/$defs/RequirementItem"
           },
           "title": "Requirements",
+          "type": "array"
+        },
+        "source_messages": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Source Messages",
           "type": "array"
         },
         "status": {

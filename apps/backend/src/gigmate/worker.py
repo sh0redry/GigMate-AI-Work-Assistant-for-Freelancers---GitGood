@@ -23,7 +23,9 @@ from gigmate.db import (
     Job,
     MessageRow,
     Session,
+    WahaChat,
     WahaConnection,
+    WahaExclusion,
     WorkOrderRow,
 )
 from gigmate.errors import BusinessError
@@ -54,6 +56,7 @@ def open_orders(db, conversation_id, job_id=None):
     from gigmate.db import JobAssignment
 
     chosen = db.get(JobAssignment, job_id) if job_id else None
+    owner = db.get(ConversationRow, conversation_id)
     return [
         order.id
         for order in db.scalars(
@@ -62,7 +65,9 @@ def open_orders(db, conversation_id, job_id=None):
             .where(ConversationOrder.conversation_id == conversation_id)
             .order_by(WorkOrderRow.id)
         )
-        if order.data["status"] not in CLOSED
+        if owner is not None
+        and order.account_id == owner.account_id
+        and order.data["status"] not in CLOSED
         and (chosen is None or order.id == chosen.work_order_id)
     ]
 
@@ -139,7 +144,13 @@ def run_once(factory=Session):
             ):
                 job.state, job.error_code = "cancelled", "CONSENT_REVOKED"
             elif (
-                inbox.context_version != conversation.context_version
+                (
+                    inbox.context_version != conversation.context_version
+                    and (
+                        event["connector"] != "waha"
+                        or authorization_changed_since(db, inbox, conversation)
+                    )
+                )
                 or latest.revision != event["message_revision"]
                 or latest.data["revoked"]
             ):
@@ -257,7 +268,7 @@ def run_once(factory=Session):
                     or latest.revision != request.message_revision
                     or latest.data["revoked"]
                     or conversation.context_version != request.context_version
-                    or inbox.context_version != request.context_version
+                    or inbox.context_version > request.context_version
                     or open_orders(db, conversation.id, job.id) != linked
                     or inbox.connection_id != submitted_connection_id
                     or (
@@ -355,17 +366,26 @@ def _route_through_provider(
     available for review; paid calls are not automatically replayed.
     """
     request = prepared_request or _extraction_request(db, account, event, conversation, linked)
-    target_order_id = (
-        request.candidate_work_order_ids[0] if len(request.candidate_work_order_ids) == 1 else None
-    )
-    base_version = request.base_work_order_version
     outcome = review_schedule_shapes(prepared_outcome or provider().propose(request))
+    target_order_id = (
+        outcome.proposal.work_order_id if outcome.proposal.assignment.value == "matched" else None
+    )
+    base_version = outcome.proposal.base_work_order_version
+    if target_order_id is not None and target_order_id not in request.candidate_work_order_ids:
+        return False
     if job is not None and job.lease_until is not None:
         if job.lease_until.replace(tzinfo=UTC) <= datetime.now(UTC):
             return False
     db.refresh(conversation)
     if conversation.context_version != request.context_version:
         return False
+    snapshots = request.extra.get("candidate_orders") or (
+        [request.base_work_order_snapshot] if request.base_work_order_snapshot else []
+    )
+    for snapshot in snapshots:
+        current_candidate = db.get(WorkOrderRow, snapshot["id"])
+        if current_candidate is None or current_candidate.data["version"] != snapshot["version"]:
+            return False
     if target_order_id is not None:
         current = db.get(WorkOrderRow, target_order_id)
         if current is None or current.data.get("version") != base_version:
@@ -412,6 +432,18 @@ def _extraction_request(db, account, event, conversation, linked, request_id=Non
         if target is not None and target.account_id == account.id:
             base_snapshot = target.data
             base_version = target.data.get("version")
+    candidates = [db.get(WorkOrderRow, identifier) for identifier in linked]
+    latest = {}
+    for row in db.scalars(
+        select(MessageRow)
+        .where(MessageRow.account_id == account.id, MessageRow.conversation_id == conversation.id)
+        .order_by(MessageRow.revision)
+    ):
+        latest[row.id] = row
+    history = sorted(
+        (row for row in latest.values() if not row.data["revoked"] and row.data.get("text")),
+        key=lambda row: (datetime.fromisoformat(row.data["occurred_at"]), row.id),
+    )[-12:]
     return ExtractionRequest(
         account_id=account.id,
         conversation_id=conversation.id,
@@ -422,7 +454,29 @@ def _extraction_request(db, account, event, conversation, linked, request_id=Non
         candidate_work_order_ids=tuple(linked),
         base_work_order_version=base_version,
         base_work_order_snapshot=copy.deepcopy(base_snapshot),
-        extra={"request_id": request_id} if request_id else {},
+        extra={
+            "request_id": request_id,
+            "candidate_orders": [
+                {
+                    "id": row.id,
+                    "version": row.data["version"],
+                    "summary": row.data.get("summary", ""),
+                    "fields": row.data.get("fields", {}),
+                }
+                for row in candidates
+                if row and row.account_id == account.id
+            ],
+            "recent_messages": [
+                {
+                    "id": row.id,
+                    "revision": row.revision,
+                    "text": row.data["text"],
+                    "direction": row.data["direction"],
+                    "occurred_at": row.data["occurred_at"],
+                }
+                for row in history
+            ],
+        },
         origin="live",
         # Gate 4: the connector's own sending time plus the merchant's
         # configured zone are the only date-grounding basis the provider gets.
@@ -618,6 +672,37 @@ def maintain(factory=Session):
     except (BusinessError, OSError):
         log.error("worker_maintenance_failed code=MEDIA_STORAGE_UNAVAILABLE")
         return False
+
+
+def authorization_changed_since(db, inbox, conversation):
+    """Only message arrivals may be re-contextualised automatically before a call.
+
+    A denial/pause interval since acceptance requires an explicit reanalysis.
+    No already submitted call is retried through this path.
+    """
+    if inbox.connection_id is None:
+        return False
+    chat = db.scalar(
+        select(WahaChat).where(
+            WahaChat.conversation_id == conversation.id,
+            WahaChat.connection_id == inbox.connection_id,
+        )
+    )
+    return (
+        db.scalar(
+            select(WahaExclusion.id)
+            .where(
+                WahaExclusion.connection_id == inbox.connection_id,
+                or_(
+                    WahaExclusion.chat_id.is_(None),
+                    WahaExclusion.chat_id == (chat.id if chat else None),
+                ),
+                WahaExclusion.started_at >= inbox.received_at,
+            )
+            .limit(1)
+        )
+        is not None
+    )
 
 
 if __name__ == "__main__":

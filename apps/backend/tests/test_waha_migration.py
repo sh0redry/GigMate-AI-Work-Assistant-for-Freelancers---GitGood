@@ -235,7 +235,7 @@ def test_media_evidence_upgrade_does_not_invent_old_sending_times(migration_data
     from sqlalchemy import MetaData, Table, select
     from sqlalchemy.orm import sessionmaker
 
-    from gigmate.db import Account, ConversationRow, WahaChat, WahaConnection
+    from gigmate.db import Account, ConversationRow, WahaConnection
     from gigmate.seed import seed
 
     root = Path(__file__).resolve().parents[3]
@@ -259,6 +259,7 @@ def test_media_evidence_upgrade_does_not_invent_old_sending_times(migration_data
     factory = sessionmaker(engine)
     seed(factory)
     connection_id, chat_id, snapshot_id, asset_id, job_id = [str(uuid4()) for _ in range(5)]
+    historical_chats = Table("waha_chats", MetaData(), autoload_with=engine)
     with factory.begin() as db:
         account = db.scalar(select(Account).where(Account.username == "merchant"))
         conversation = db.scalar(
@@ -274,8 +275,8 @@ def test_media_evidence_upgrade_does_not_invent_old_sending_times(migration_data
             )
         )
         db.flush()
-        db.add(
-            WahaChat(
+        db.execute(
+            historical_chats.insert().values(
                 id=chat_id,
                 connection_id=connection_id,
                 conversation_id=conversation.id,

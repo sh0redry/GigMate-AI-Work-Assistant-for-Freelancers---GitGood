@@ -48,10 +48,7 @@ def review_schedule_shapes(outcome: ExtractionOutcome) -> ExtractionOutcome:
         changes.append(change)
     if not incomplete:
         return outcome
-    question = (
-        "Review the appointment time and provide any missing end time or duration; "
-        "a partial time cannot be synchronized to the calendar."
-    )
+    question = "请核对时间并补充结束时间或时长；不完整的时间不能加入日历。"
     questions = list(outcome.proposal.unresolved_questions)
     if question not in questions:
         questions.append(question)

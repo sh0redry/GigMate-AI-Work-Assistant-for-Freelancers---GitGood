@@ -69,3 +69,15 @@ The usage guide now shows **Available now**, **Not enabled on this service**, or
 In **Manual review**, select **View this conversation's source** first. The page reads the current conversation version and source messages, then offers assignment to an open order in that same conversation, or an explicit dismissal. Both actions require a review and consent before submitting the existing assignment API. Stale records cannot be submitted; unknown model outcomes cannot be reassigned. Requests with uncertain results retain their original identity and a recovery entry.
 
 **Create an order for this conversation** opens the existing creation flow with that conversation selected. It does not automatically create an order or mark a review item resolved. Fields and customer sources still need review. Manual creation and dismissing a review item are separate decisions. Old address proposals remain blocked after conversation, permission, or order changes; this update does not add a regeneration API.
+
+## Message sources, partial recognition and first-use help
+
+Use **Getting started** to open the five-step tutorial. It also appears on the first login for each account in this browser; finishing or skipping is remembered locally. It never grants access, creates an order or sends a message.
+
+One customer can have several orders. New-order suggestions can appear even when another order is open. Select a suggestion to prefill the recognised address and complete time range, then check the source and explicitly confirm creation. Unknown fields stay blank. Select **This message belongs to this job** for manually created orders; unrelated messages do not belong in their source history. Optional specification, quantity and deadline appear only when information exists. **Cancel draft** rejects an unapproved reply or cancels an approved reply that has not been submitted; it cannot retract a delivered message.
+
+The review page shows the triggering message and its Hong Kong time. Other messages are under a separate disclosure, since they may belong to different jobs. Contacts display phone numbers when supplied, or group/contact names. An opaque provider identity does not reveal a phone number; the app will not invent one. Cached names survive discovery expiry.
+
+**Reanalyse current source** queues a new understanding request after explicit review; model charges may apply. It does not confirm the old proposal, send a reply or retry an unknown model outcome. Review the newly generated proposal after refreshing. A valid new-order suggestion appears in **New order**, rather than being labelled a generic model failure. Incomplete times still require an end time/duration before becoming calendar appointments.
+
+Feature help contains product instructions and current capabilities, not team progress or repository links. Internal identifiers remain part of authenticated API bindings; they are not customer-facing conversation names. Existing customer text, manually entered names and historical business records are not silently translated or rewritten.

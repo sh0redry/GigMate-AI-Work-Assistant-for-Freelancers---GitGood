@@ -330,7 +330,8 @@ def test_review_decision_prevents_later_suggestion_creation(signed_in, decision,
     assert proposed in {
         item["id"] for item in client.get("/api/v1/new-order-suggestions").json()["items"]
     }
-    assert job_id in {item["id"] for item in client.get("/api/v1/review-items").json()["items"]}
+    # A usable suggestion is presented in the creation queue, not as model failure.
+    assert job_id not in {item["id"] for item in client.get("/api/v1/review-items").json()["items"]}
     key = str(uuid4())
     body = {"action": decision, "expected_context_version": context}
     if decision == "assign":

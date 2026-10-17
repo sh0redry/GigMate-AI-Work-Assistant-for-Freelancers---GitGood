@@ -3,6 +3,8 @@ import { useStableState as useState } from "./useStableState";
 import { orderCommands } from "./order-command-api";
 import { OrderLifecycle } from "./OrderLifecycle";
 import { InspectOrderAttempt } from "./InspectOrderAttempt";
+import { businessLoopApi } from "./business-loop-api";
+import { LoopCommand, LoopRecovery } from "./LoopCommand";
 import { ReplyPanel } from "./ReplyPanel";
 import { unavailableFeatures, type Features } from "./features";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
@@ -10,6 +12,7 @@ import { canConfirm, BusinessStore } from "./business-store";
 import {
   changeContext,
   businessApi,
+  allPages,
   workspaceApi,
   type Change,
   type BusinessSnapshot,
@@ -26,6 +29,7 @@ import {
   onDay,
   orderStates,
   reviewBinding,
+  visibleFields,
 } from "./work-order-view";
 
 type Props = {
@@ -38,6 +42,7 @@ type Props = {
   onOpenSend?: (actionId: string) => void;
   onConnect?: () => void;
   onOpenApprovals?: () => void;
+  onCreate?: () => void;
   request?: RequestApi;
 };
 function snippet(text: string | null | undefined) {
@@ -90,6 +95,7 @@ export function WorkOrderWorkspace({
   onOpenSend,
   onConnect,
   onOpenApprovals,
+  onCreate,
   request,
 }: Props) {
   const commands = useMemo(
@@ -108,6 +114,23 @@ export function WorkOrderWorkspace({
     [csrf, onSessionExpired, request, commands],
   );
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  const reanalysis = useMemo(
+    () => businessLoopApi(csrf, accountId ?? "", features),
+    [csrf, accountId, features],
+  );
+  const [reanalysisError, setReanalysisError] = useState("");
+  const [reanalysisNotice, setReanalysisNotice] = useState("");
+  const [suggestionCount, setSuggestionCount] = useState(0);
+  useEffect(() => {
+    const abort = new AbortController();
+    if (features.create_order && features.automatic_understanding)
+      void allPages(workspaceApi(csrf), "/new-order-suggestions", abort.signal)
+        .then((values) => {
+          if (!abort.signal.aborted) setSuggestionCount(values.length);
+        })
+        .catch(() => {});
+    return () => abort.abort();
+  }, [csrf, features, state.updatedAt]);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [conversation, setConversation] = useState("all");
@@ -183,7 +206,7 @@ export function WorkOrderWorkspace({
       })
     : [];
   const missing = order
-    ? fieldOrder
+    ? visibleFields(order)
         .filter(
           (name) =>
             !order.fields[name] || order.fields[name]?.status === "missing",
@@ -210,6 +233,22 @@ export function WorkOrderWorkspace({
     });
   return (
     <>
+      {suggestionCount > 0 && onCreate && (
+        <div className="notice" role="status">
+          {t("发现 {0} 项新业务建议，核对后可以建单。", suggestionCount)}{" "}
+          <button onClick={onCreate}>{t("查看建单建议")}</button>
+        </div>
+      )}
+      {reanalysisError && <p role="alert">{reanalysisError}</p>}
+      {reanalysisNotice && <p role="status">{reanalysisNotice}</p>}
+      <LoopRecovery
+        api={reanalysis}
+        onDone={() => void store.refresh()}
+        onError={(e) =>
+          setReanalysisError(e instanceof Error ? e.message : t("读取失败"))
+        }
+        onBusy={setCommandBusy}
+      />
       {(commands?.error || commandError) && (
         <p role="alert" className="notice stale">
           {commands?.error || commandError}
@@ -248,7 +287,9 @@ export function WorkOrderWorkspace({
               </p>
               <small>
                 {t("会话")}
-                {commands.attempt.intent.body.conversation_id}
+                {data?.conversationLabels?.[
+                  commands.attempt.intent.body.conversation_id
+                ] || t("客户会话")}
                 {t("；时间原文")}{" "}
                 {commands.attempt.intent.body.schedule_sources.length}{" "}
                 {t("条；地址原文")}{" "}
@@ -529,6 +570,38 @@ export function WorkOrderWorkspace({
                                 : t("请稍等，正在同步最新内容。")}
                         </p>
                       )}
+                      {!current &&
+                        openOrder &&
+                        change.source_job_id &&
+                        context !== null &&
+                        features.automatic_understanding &&
+                        features.business_loop_reviewed && (
+                          <LoopCommand
+                            api={reanalysis}
+                            label={t("按最新原文重新分析")}
+                            disabled={!ready || commandBusy}
+                            onBusy={setCommandBusy}
+                            onError={(e) =>
+                              setReanalysisError(
+                                e instanceof Error ? e.message : t("读取失败"),
+                              )
+                            }
+                            onDone={() => {
+                              setReanalysisError("");
+                              setReanalysisNotice(
+                                t("新分析任务已排队，请稍后刷新查看提议。"),
+                              );
+                              void store.refresh();
+                            }}
+                            intent={{
+                              path: `/review-items/${change.source_job_id}/reanalyze`,
+                              body: { expected_context_version: context },
+                              review: t(
+                                "将按最新授权重新分析这条消息，可能产生模型费用；只生成待核对建议，不确认工单，也不发送消息。",
+                              ),
+                            }}
+                          />
+                        )}
                       {!["schedule", "address"].includes(change.field) && (
                         <p className="subtle">
                           {t("这类内容请到「业务管理」的需求与交付里确认。")}
@@ -649,9 +722,9 @@ export function WorkOrderWorkspace({
                       onChange={(e) => setConversation(e.target.value)}
                     >
                       <option value="all">{t("全部")}</option>
-                      {order.conversation_ids.map((id, index) => (
+                      {order.conversation_ids.map((id) => (
                         <option value={id} key={id}>
-                          {t("聊天 {0}", index + 1)}
+                          {data.conversationLabels?.[id] || t("客户会话")}
                         </option>
                       ))}
                     </select>

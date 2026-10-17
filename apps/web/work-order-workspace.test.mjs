@@ -17,6 +17,8 @@ const directory = await mkdtemp(join(tmpdir(), "gigmate-d02-dom-"));
 const require = createRequire(import.meta.url);
 for (const name of [
   "WorkOrderWorkspace",
+  "business-loop-api",
+  "LoopCommand",
   "OrderLifecycle",
   "InspectOrderAttempt",
   "ReplyPanel",
@@ -35,7 +37,7 @@ for (const name of [
 ]) {
   const source = await readFile(
     new URL(
-      `./src/${name}.${["WorkOrderWorkspace", "OrderLifecycle", "InspectOrderAttempt", "ReplyPanel"].includes(name) ? "tsx" : "ts"}`,
+      `./src/${name}.${["WorkOrderWorkspace", "OrderLifecycle", "InspectOrderAttempt", "ReplyPanel", "LoopCommand"].includes(name) ? "tsx" : "ts"}`,
       import.meta.url,
     ),
     "utf8",
@@ -46,6 +48,7 @@ for (const name of [
         name +
         ([
           "WorkOrderWorkspace",
+          "LoopCommand",
           "OrderLifecycle",
           "InspectOrderAttempt",
           "ReplyPanel",

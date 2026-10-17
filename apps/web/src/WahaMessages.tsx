@@ -1,4 +1,4 @@
-import { t, localized } from "./i18n.ts";
+import { t, localized, getLocale } from "./i18n.ts";
 import { privateReadDenied } from "./read-cache";
 import { useStableState as useState } from "./useStableState";
 import { useCallback, useEffect, useMemo, useRef } from "react";
@@ -220,67 +220,90 @@ export function WahaMessages({
       </div>
       {messages.length > 0 && (
         <ol className="message-timeline">
-          {messages.map((m) => (
-            <li key={m.id}>
-              <small>
-                {new Date(m.occurred_at).toLocaleString()} ·{" "}
-                {m.origin === "history" ? t("历史快照") : t("实时接入")} ·{" "}
-                {m.evidence === "revision"
-                  ? t("修订 {0}", m.revision)
-                  : t("非完整修订证据")}{" "}
-                · {m.direction === "incoming" ? t("收到") : t("自己发送")}
-              </small>
-              <p>
-                {m.revoked ? t("此消息已撤回") : (m.text ?? t("无文字内容"))}
-              </p>
-              {m.kind !== "text" && (
+          {[...messages]
+            .sort(
+              (a, b) =>
+                Date.parse(a.occurred_at) - Date.parse(b.occurred_at) ||
+                a.id.localeCompare(b.id),
+            )
+            .map((m) => (
+              <li key={m.id}>
+                <small>
+                  {new Date(m.occurred_at).toLocaleString(
+                    getLocale() === "en"
+                      ? "en-HK"
+                      : getLocale() === "yue"
+                        ? "zh-HK"
+                        : "zh-CN",
+                    { timeZone: "Asia/Hong_Kong", hour12: false },
+                  )}{" "}
+                  · {m.origin === "history" ? t("历史快照") : t("实时接入")} ·{" "}
+                  {m.evidence === "revision"
+                    ? t("修订 {0}", m.revision)
+                    : t("非完整修订证据")}{" "}
+                  · {m.direction === "incoming" ? t("收到") : t("自己发送")}
+                </small>
                 <p>
-                  {m.kind} · {m.filename ?? m.mimetype ?? t("类型待确认")}{" "}
-                  {t("· 原文件通过下方授权入口读取")}
+                  {m.revoked ? t("此消息已撤回") : (m.text ?? t("无文字内容"))}
                 </p>
-              )}
-              {m.kind !== "text" && !m.revoked && (
-                <WahaMedia
-                  key={`${m.id}:${m.occurred_at}`}
-                  connection={connection}
-                  csrf={csrf}
-                  snapshot={m.id}
-                  mimetype={
-                    m.mimetype?.split(";")[0].trim().toLowerCase() ?? null
-                  }
-                  enabled={enabled}
-                  onSessionExpired={onSessionExpired}
-                />
-              )}
-              {m.sender_id && (
-                <small>
-                  {t("群成员标识：")}
-                  {m.sender_id.slice(-8)}
-                </small>
-              )}
-              {m.reply_to_id && (
-                <small>
-                  {" "}
-                  {t("· 引用已接入消息")}
-                  {m.reply_to_id.slice(-8)}
-                </small>
-              )}
-              {m.processing_state && (
-                <small>
-                  {" "}
-                  {t("· 处理状态：")}
-                  {labels[m.processing_state] ?? m.processing_state}
-                </small>
-              )}
-              {m.delivery_status && (
-                <small>
-                  {" "}
-                  {t("· 送达状态：")}
-                  {labels[m.delivery_status] ?? m.delivery_status}
-                </small>
-              )}
-            </li>
-          ))}
+                {m.kind !== "text" && (
+                  <p>
+                    {(
+                      {
+                        text: t("文字"),
+                        image: t("图片"),
+                        audio: t("音频"),
+                        ptt: t("语音"),
+                        video: t("视频"),
+                        document: t("文件"),
+                      } as Record<string, string>
+                    )[m.kind] || t("附件")}{" "}
+                    · {m.filename ?? m.mimetype ?? t("类型待确认")}{" "}
+                    {t("· 原文件通过下方授权入口读取")}
+                  </p>
+                )}
+                {m.kind !== "text" && !m.revoked && (
+                  <WahaMedia
+                    key={`${m.id}:${m.occurred_at}`}
+                    connection={connection}
+                    csrf={csrf}
+                    snapshot={m.id}
+                    mimetype={
+                      m.mimetype?.split(";")[0].trim().toLowerCase() ?? null
+                    }
+                    enabled={enabled}
+                    onSessionExpired={onSessionExpired}
+                  />
+                )}
+                {m.sender_id && (
+                  <small>
+                    {t("群成员标识：")}
+                    {m.sender_id.slice(-8)}
+                  </small>
+                )}
+                {m.reply_to_id && (
+                  <small>
+                    {" "}
+                    {t("· 引用已接入消息")}
+                    {m.reply_to_id.slice(-8)}
+                  </small>
+                )}
+                {m.processing_state && (
+                  <small>
+                    {" "}
+                    {t("· 处理状态：")}
+                    {labels[m.processing_state] ?? t("待核查")}
+                  </small>
+                )}
+                {m.delivery_status && (
+                  <small>
+                    {" "}
+                    {t("· 送达状态：")}
+                    {labels[m.delivery_status] ?? t("待核查")}
+                  </small>
+                )}
+              </li>
+            ))}
         </ol>
       )}
       {cursor && (

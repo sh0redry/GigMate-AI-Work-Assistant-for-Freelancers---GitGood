@@ -194,3 +194,24 @@ export function conflictLabel(data: BusinessSnapshot, calendarId: string) {
     ? order.summary
     : t("未提供标题（日历 {0}）", calendarId.slice(-6));
 }
+
+export function conversationLabel(value?: {
+  display_name?: string | null;
+  provider_conversation_id?: string;
+}) {
+  if (value?.display_name) return value.display_name;
+  const match = value?.provider_conversation_id?.match(
+    /^(\d+)@(?:c\.us|s\.whatsapp\.net)$/,
+  );
+  return match ? "+" + match[1] : t("客户会话");
+}
+export function visibleFields(order: Order) {
+  return (
+    ["schedule", "address", "specification", "quantity", "deadline"] as const
+  ).filter(
+    (key) =>
+      ["schedule", "address"].includes(key) ||
+      (order.fields[key]?.status !== "missing" &&
+        order.fields[key]?.value != null),
+  );
+}

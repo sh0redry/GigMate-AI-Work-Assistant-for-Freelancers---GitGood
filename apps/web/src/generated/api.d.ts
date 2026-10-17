@@ -1162,6 +1162,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/review-items/{job_id}/reanalyze": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Reanalyze */
+    post: operations["reanalyze_api_v1_review_items__job_id__reanalyze_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/settings/schedule": {
     parameters: {
       query?: never;
@@ -1879,6 +1896,8 @@ export interface components {
       proposer: "customer" | "merchant";
       /** Rejection Reason */
       rejection_reason?: string | null;
+      /** Source Job Id */
+      source_job_id?: string | null;
       /** Sources */
       sources: components["schemas"]["SourceRef"][];
       status: components["schemas"]["ChangeStatus"];
@@ -2051,6 +2070,8 @@ export interface components {
       account_id: string;
       /** Context Version */
       context_version: number;
+      /** Display Name */
+      display_name?: string | null;
       /**
        * Id
        * Format: uuid
@@ -2135,6 +2156,11 @@ export interface components {
        * @default []
        */
       schedule_sources: components["schemas"]["SourceRef"][];
+      /**
+       * Source Messages
+       * @default []
+       */
+      source_messages: components["schemas"]["SourceRef"][];
       /** Summary */
       summary: string;
     };
@@ -2307,6 +2333,15 @@ export interface components {
     /** Detail[MessageAssignmentResult] */
     Detail_MessageAssignmentResult_: {
       data: components["schemas"]["MessageAssignmentResult"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[ReanalysisResult] */
+    Detail_ReanalysisResult_: {
+      data: components["schemas"]["ReanalysisResult"];
       /**
        * Request Id
        * Format: uuid
@@ -2642,6 +2677,8 @@ export interface components {
        * Format: uuid
        */
       conversation_id: string;
+      /** Conversation Label */
+      conversation_label?: string | null;
       /**
        * Created At
        * Format: date-time
@@ -2970,6 +3007,36 @@ export interface components {
         | components["schemas"]["InstantDeadline"]
         | null;
     } & (unknown & unknown);
+    /** ReanalysisResult */
+    ReanalysisResult: {
+      /** Context Version */
+      context_version: number;
+      /**
+       * Conversation Id
+       * Format: uuid
+       */
+      conversation_id: string;
+      /**
+       * Job Id
+       * Format: uuid
+       */
+      job_id: string;
+      /**
+       * Source Job Id
+       * Format: uuid
+       */
+      source_job_id: string;
+      /**
+       * State
+       * @enum {string}
+       */
+      state: "pending" | "processing" | "completed" | "failed" | "cancelled";
+    };
+    /** ReanalyzeMessageCommand */
+    ReanalyzeMessageCommand: {
+      /** Expected Context Version */
+      expected_context_version: number;
+    };
     /** RecoveryIssue */
     RecoveryIssue: {
       /** Acknowledged At */
@@ -3091,6 +3158,8 @@ export interface components {
        * Format: uuid
        */
       conversation_id: string;
+      /** Conversation Label */
+      conversation_label?: string | null;
       /** Current Context Version */
       current_context_version: number;
       /**
@@ -4381,6 +4450,11 @@ export interface components {
        * @default []
        */
       requirements: components["schemas"]["RequirementItem"][];
+      /**
+       * Source Messages
+       * @default []
+       */
+      source_messages: components["schemas"]["SourceRef"][];
       status: components["schemas"]["WorkOrderStatus"];
       /** Summary */
       summary: string;
@@ -6671,6 +6745,7 @@ export interface operations {
       query?: {
         cursor?: string | null;
         limit?: number;
+        work_order_id?: string | null;
       };
       header?: never;
       path: {
@@ -6953,6 +7028,43 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Detail_MessageAssignmentResult_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  reanalyze_api_v1_review_items__job_id__reanalyze_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        job_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReanalyzeMessageCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_ReanalysisResult_"];
         };
       };
       /** @description Validation Error */

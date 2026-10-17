@@ -1,10 +1,5 @@
 import { t } from "./i18n.ts";
-import {
-  featureDescriptions,
-  featureLink,
-  loopReady,
-  type Features,
-} from "./features";
+import { featureDescriptions, loopReady, type Features } from "./features";
 export function DeliveryGuide({
   features,
   error,
@@ -98,13 +93,6 @@ export function DeliveryGuide({
                   {t("打开此功能")}
                 </button>
               )}
-              <a
-                href={featureLink(key as keyof Features)}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {t("查看团队进度")}
-              </a>
             </article>
           );
         })}

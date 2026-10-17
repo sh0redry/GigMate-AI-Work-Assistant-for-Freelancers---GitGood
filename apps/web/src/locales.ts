@@ -1,5 +1,45 @@
 // UI copy only. Customer content and approved payloads are never translated.
 export const english: Record<string, string> = {
+  "查看同一聊天的其他消息（可能属于别的工单）":
+    "Other messages in this chat (may belong to other orders)",
+  客户会话: "Customer conversation",
+  先选择允许处理的聊天: "Choose the conversations to process",
+  "到 WhatsApp 连接页连接账号，只勾选业务客户，再保存会话授权；读取聊天不等于允许发送。":
+    "Connect WhatsApp, select only business conversations, and save processing permission. Reading permission does not authorise sending.",
+  一件业务建一张工单: "One order for each separate job",
+  "到新建工单查看 AI 建议，也可手动建单。同一客户的另一件事可以另建单；不知道的字段留空。":
+    "Review AI suggestions in New order, or create an order manually. Separate work from the same customer can have its own order. Leave unknown fields blank.",
+  "核对原文，再确认安排": "Check the source before confirming",
+  "在业务工作台核对地址和完整时段。客人提出、客人确认和你的确认是不同步骤；过期提议要重新分析。":
+    "Review the address and complete time range in the workspace. A customer request, customer confirmation and your approval are separate. Reanalyse stale proposals.",
+  "回复先批准，再明确发送": "Approve the reply, then choose to send",
+  "查看收件人和完整草稿。不想发可以取消草稿；批准不会立即发送，还要明确提交发送。":
+    "Check the recipient and full draft. Cancel drafts you do not want. Approval does not send immediately; sending is a separate action.",
+  查看日历和待办: "Check your calendar and tasks",
+  "正式安排会进入日历。缺结束时间不会编造时长；可导出已确认安排，或到人工复核处理仍不清楚的消息。":
+    "Confirmed appointments appear in the calendar. Missing end times are not invented. Export confirmed events, or resolve unclear messages in Manual review.",
+  新手教程: "Getting started",
+  "第 {0} / {1} 步": "Step {0} of {1}",
+  打开本步页面: "Open this page",
+  上一步: "Previous step",
+  完成教程: "Finish tutorial",
+  跳过教程: "Skip tutorial",
+  "教程只介绍操作，不会授权聊天、创建工单或发送消息。":
+    "The tutorial only explains the steps. It does not grant access, create orders or send messages.",
+  "客户原文 {0} 条": "{0} customer source messages",
+  这条消息属于本次业务: "This message belongs to this job",
+  取消草稿: "Cancel draft",
+  按最新原文重新分析: "Reanalyse current source",
+  "将按最新授权重新分析这条消息，可能产生模型费用；只生成待核对建议，不确认工单，也不发送消息。":
+    "Reanalyse this message under current permissions. Model charges may apply. This only creates proposals for review; it does not confirm orders or send messages.",
+  待核查: "Needs checking",
+  "发现 {0} 项新业务建议，核对后可以建单。":
+    "{0} new job suggestions are ready to review before creating orders.",
+  查看建单建议: "Review new order suggestions",
+  读取失败: "Unable to read",
+  "新分析任务已排队，请稍后刷新查看提议。":
+    "A new analysis is queued. Refresh shortly to review its proposals.",
+
   "读取期间登录、授权或数据发生变化，请刷新并核对会话授权。":
     "Your session, permissions, or data changed during this read. Refresh and check conversation permissions.",
   "聊天、授权或工单已变化，这条旧提议不能直接确认。":
@@ -1046,6 +1086,9 @@ export const english: Record<string, string> = {
     "Look up source snapshot without reconstructing revisions",
   "文字 / 链接": "Text / link",
   图片: "Image",
+  音频: "Audio",
+  语音: "Voice note",
+  视频: "Video",
   文件: "File",
   普通音频附件: "Audio attachment",
   "语音消息（Ogg/Opus）": "Voice note (Ogg/Opus)",
@@ -1785,6 +1828,46 @@ export const english: Record<string, string> = {
   "{0} 开始": "starts {0}",
 };
 export const cantonese: Record<string, string> = {
+  "查看同一聊天的其他消息（可能属于别的工单）":
+    "查看同一對話嘅其他訊息（可能屬於其他工單）",
+  客户会话: "客戶對話",
+  先选择允许处理的聊天: "先揀可以處理嘅對話",
+  "到 WhatsApp 连接页连接账号，只勾选业务客户，再保存会话授权；读取聊天不等于允许发送。":
+    "去 WhatsApp 連接頁連接帳號，只揀業務客戶，再儲存對話授權；可以讀取唔代表可以發送。",
+  一件业务建一张工单: "每件業務開一張工單",
+  "到新建工单查看 AI 建议，也可手动建单。同一客户的另一件事可以另建单；不知道的字段留空。":
+    "去新建工單睇 AI 建議，亦可以手動建單。同一客戶另一件事可以另開工單；未知嘅欄位留空。",
+  "核对原文，再确认安排": "核對原文，再確認安排",
+  "在业务工作台核对地址和完整时段。客人提出、客人确认和你的确认是不同步骤；过期提议要重新分析。":
+    "喺工作台核對地址同完整時段。客人提出、客人確認同你確認係唔同步驟；過時提議要重新分析。",
+  "回复先批准，再明确发送": "先批准回覆，再明確發送",
+  "查看收件人和完整草稿。不想发可以取消草稿；批准不会立即发送，还要明确提交发送。":
+    "睇清楚收件人同完整草稿。唔想發可以取消；批准唔會即刻發送，仲要明確提交。",
+  查看日历和待办: "睇日曆同待辦",
+  "正式安排会进入日历。缺结束时间不会编造时长；可导出已确认安排，或到人工复核处理仍不清楚的消息。":
+    "正式安排會入日曆。冇結束時間唔會估時長；可以匯出已確認安排，或者去人工覆核處理未清楚嘅訊息。",
+  新手教程: "新手教學",
+  "第 {0} / {1} 步": "第 {0} / {1} 步",
+  打开本步页面: "開啟呢一步嘅頁面",
+  上一步: "上一步",
+  完成教程: "完成教學",
+  跳过教程: "跳過教學",
+  "教程只介绍操作，不会授权聊天、创建工单或发送消息。":
+    "教學只介紹操作，唔會授權對話、建立工單或者發訊息。",
+  "客户原文 {0} 条": "客戶原文 {0} 條",
+  这条消息属于本次业务: "呢條訊息屬於呢次業務",
+  取消草稿: "取消草稿",
+  按最新原文重新分析: "按最新原文重新分析",
+  "将按最新授权重新分析这条消息，可能产生模型费用；只生成待核对建议，不确认工单，也不发送消息。":
+    "會按最新授權重新分析呢條訊息，可能產生模型費用；只會產生待核對建議，唔會確認工單或者發訊息。",
+  待核查: "待核查",
+  "发现 {0} 项新业务建议，核对后可以建单。":
+    "發現 {0} 項新業務建議，核對後可以建單。",
+  查看建单建议: "查看建單建議",
+  读取失败: "讀取失敗",
+  "新分析任务已排队，请稍后刷新查看提议。":
+    "新分析已排隊，請稍後重新整理睇提議。",
+
   "读取期间登录、授权或数据发生变化，请刷新并核对会话授权。":
     "讀取期間登入、授權或者資料有變，請重新整理同核對對話授權。",
   "聊天、授权或工单已变化，这条旧提议不能直接确认。":
@@ -2785,6 +2868,9 @@ export const cantonese: Record<string, string> = {
   "查询来源快照，不重建修订": "查詢來源快照，不重建修訂",
   "文字 / 链接": "文字 / 鏈接",
   图片: "圖片",
+  音频: "音頻",
+  语音: "語音",
+  视频: "影片",
   文件: "文件",
   普通音频附件: "普通音頻附件",
   "语音消息（Ogg/Opus）": "語音消息（Ogg/Opus）",

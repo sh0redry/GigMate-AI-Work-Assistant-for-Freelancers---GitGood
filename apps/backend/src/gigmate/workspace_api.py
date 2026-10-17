@@ -16,6 +16,7 @@ from gigmate.contracts import (
     WorkOrder,
     WorkspaceCapabilities,
 )
+from gigmate.conversation_views import conversation_label
 from gigmate.db import (
     CalendarRow,
     ConversationOrder,
@@ -23,6 +24,7 @@ from gigmate.db import (
     Inbox,
     Job,
     MessageRow,
+    Proposal,
     ProposalDecision,
     WorkOrderRow,
 )
@@ -162,13 +164,32 @@ def install(app, database, actor, detail, page, conversation_info):
             conversation_id = inbox.payload.get("conversation_id")
             if conversation_id not in allowed:
                 continue
+            proposal = db.scalar(
+                select(Proposal)
+                .where(Proposal.event_id == inbox.id, Proposal.account_id == account.id)
+                .order_by(Proposal.created_at.desc())
+            )
+            if proposal is not None and proposal.proposal.get("new_work_order"):
+                from gigmate.product_commands import current_suggestion
+
+                try:
+                    current_suggestion(db, account.id, proposal.id)
+                except BusinessError:
+                    pass
+                else:
+                    # Recognition succeeded: it belongs in new-order suggestions,
+                    # not a generic model-failure queue.
+                    continue
             rows.append(job)
             shown[job.id] = {
                 "id": job.id,
                 "model_request_id": job.model_request_id,
                 "conversation_id": conversation_id,
+                "conversation_label": conversation_label(db, account.id, conversation_id),
                 "message_id": inbox.payload.get("payload", {}).get("message_id"),
-                "context_version": inbox.context_version,
+                "context_version": proposal.context_version
+                if proposal is not None
+                else inbox.context_version,
                 "current_context_version": allowed[conversation_id],
                 "reason": job.error_code,
                 "state": job.state,

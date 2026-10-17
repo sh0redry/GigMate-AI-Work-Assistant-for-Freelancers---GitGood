@@ -82,3 +82,9 @@ See the [file atlas](kyrie-file-atlas.md) and [developer setup](getting-started.
 Trace one click from review to request to server to receipt. Then inspect why edited source messages invalidate approval. In a disposable environment, interrupt the service and recover the original operation without duplicating it. Switch languages and check input and customer text stay intact.
 
 Use fictional data, never real chats, keys, QR codes or session files in learning artifacts. [Current delivery](bcd-product-delivery.md) separates implemented code from independent acceptance.
+
+## Why one bad field no longer discards a whole job
+
+Think of the AI result as a form. If it recognises the job and address but writes the time in the wrong shape, keep the job and address and leave time blank. First check that the whole form belongs to your account and quotes real source messages; those security checks cannot be skipped. Then validate each field separately. A valid JSON response does not prove that the model understood the business correctly.
+
+A conversation version is a bookmark for the state you reviewed. Removing and restoring permission changes that bookmark. Old proposals stay blocked; the new reanalysis button reads the current source and requests a new proposal. It never pretends that the old approval is valid again. Two clicks for the same source/version queue one task, rather than charging for two model calls.

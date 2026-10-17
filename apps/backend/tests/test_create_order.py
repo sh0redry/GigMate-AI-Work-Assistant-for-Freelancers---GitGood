@@ -43,6 +43,7 @@ def create(client, headers, key=None, **fields):
     body = {
         "conversation_id": CONVERSATION,
         "summary": "陈小姐证件照拍摄",
+        "source_messages": SAID,
         "confirm_additional_order": True,
         **fields,
     }

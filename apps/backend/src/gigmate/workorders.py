@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
-from gigmate.contracts import AuditLog, CalendarEvent, Task, WorkOrder
+from gigmate.contracts import AuditLog, CalendarEvent, RequirementChange, Task, WorkOrder
 from gigmate.db import (
     Account,
     ActionRow,
@@ -422,6 +422,12 @@ def create(db, account, command, key, request_id):
 
     schedule_sources = checked(command.schedule_sources, "time", command.schedule is not None)
     address_sources = checked(command.address_sources, "address", command.address is not None)
+    source_messages = checked(command.source_messages, "source", bool(command.source_messages))
+    if suggestion is not None:
+        from gigmate.product_commands import current_suggestion
+
+        _, refs = current_suggestion(db, account.id, suggestion.id)
+        source_messages.extend(refs)
     schedule = command.schedule.model_dump(mode="json") if command.schedule else None
     timed = schedule is not None and schedule["kind"] == "timed"
     if timed:
@@ -442,6 +448,9 @@ def create(db, account, command, key, request_id):
         "account_id": account.id,
         "conversation_ids": [conversation.id],
         "summary": command.summary.strip(),
+        "source_messages": list(
+            {(ref["message_id"], ref["message_revision"]): ref for ref in source_messages}.values()
+        ),
         "status": "pending_confirmation",
         "version": 1,
         "fields": {
@@ -472,12 +481,53 @@ def create(db, account, command, key, request_id):
     }
     if not value["summary"]:
         raise BusinessError(422, "VALIDATION_FAILED", "Describe the job in the summary")
+    suggested_details = []
+    if suggestion is not None:
+        for field in suggestion.proposal["new_work_order"]["fields"]:
+            name = field["field"]
+            if name not in {"quantity", "specification", "deadline"} or field["value"] is None:
+                continue
+            from gigmate.contracts import SourceRef
+
+            refs = checked([SourceRef.model_validate(ref) for ref in field["sources"]], name, True)
+            value["fields"][name] = {
+                "value": field["value"],
+                "status": "proposed",
+                "sources": refs,
+                "interpretation": field["reason"],
+            }
+            change = RequirementChange(
+                id=str(uuid4()),
+                account_id=account.id,
+                work_order_id=order_id,
+                field=name,
+                old_value=None,
+                new_value=field["value"],
+                status="proposed",
+                customer_confirmation="pending",
+                proposer="customer",
+                sources=refs,
+                base_work_order_version=1,
+            )
+            suggested_details.append(change)
+            value["pending_change_ids"].append(change.id)
     # Confirmed only when both key items are: a timed schedule and an address.
     if key_items_confirmed(value):
         value["status"] = "confirmed"
     value = validate(WorkOrder, value)
     db.add(WorkOrderRow(id=order_id, account_id=account.id, data=value))
     db.flush()
+    for change in suggested_details:
+        db.add(
+            ChangeRow(
+                id=change.id,
+                account_id=account.id,
+                conversation_id=conversation.id,
+                work_order_id=order_id,
+                context_version=conversation.context_version,
+                data=change.model_dump(mode="json"),
+            )
+        )
     db.add(ConversationOrder(conversation_id=conversation.id, work_order_id=order_id))
     if schedule is not None:
         # A merchant-confirmed time blocks the slot even while the address is missing.
@@ -658,8 +708,9 @@ def assign_message(db, account, job_id, command, key, request_id):
     assigned or dismissed, and a filed/dismissed event cannot create an order
     from its suggestion. Manual creation without a suggestion is a separate
     operation and does not itself file a message.
-    Only the conversation's newest message can be filed, because proposals
-    are always bound to the current context.
+    A decision needs a proposal interpreted against the current context (or
+    the original current event) and the unchanged source revision. Other
+    messages in this chat are separate decisions, not an order boundary.
     """
     from gigmate.db import Inbox, Job, JobAssignment, ProposalDecision
 
@@ -672,7 +723,9 @@ def assign_message(db, account, job_id, command, key, request_id):
     )
     if job is None:
         raise BusinessError(404, "NOT_FOUND", "Review item not found")
-    if db.get(ProposalDecision, job.event_id) is not None:
+    original_inbox = db.get(Inbox, job.event_id)
+    origin = original_inbox.payload.get("reanalysis_of", job.event_id)
+    if db.get(ProposalDecision, origin) is not None:
         raise BusinessError(409, "VERSION_CONFLICT", "This message already created a work order")
     if job.error_code == "MODEL_OUTCOME_UNKNOWN" and command.action == "assign":
         raise BusinessError(
@@ -684,15 +737,41 @@ def assign_message(db, account, job_id, command, key, request_id):
     conversation = owned(db, ConversationRow, inbox.payload.get("conversation_id"), account.id)
     if not conversation.allowlisted:
         raise BusinessError(403, "CONSENT_REVOKED", "Conversation processing is paused")
+    from gigmate.db import Proposal
+
+    proposal = db.scalar(
+        select(Proposal)
+        .where(Proposal.event_id == inbox.id, Proposal.account_id == account.id)
+        .order_by(Proposal.created_at.desc())
+    )
+    effective_context = proposal.context_version if proposal is not None else inbox.context_version
+    latest_source = db.scalar(
+        select(MessageRow)
+        .where(
+            MessageRow.id == inbox.payload["payload"]["message_id"],
+            MessageRow.account_id == account.id,
+            MessageRow.conversation_id == conversation.id,
+        )
+        .order_by(MessageRow.revision.desc())
+    )
     if (
         command.expected_context_version != conversation.context_version
-        or inbox.context_version != conversation.context_version
+        or effective_context != conversation.context_version
+        or latest_source is None
+        or latest_source.revision != inbox.payload["message_revision"]
+        or latest_source.data["revoked"]
     ):
         raise BusinessError(
             409, "VERSION_CONFLICT", "Newer messages arrived; decide on the newest one"
         )
     if command.action == "dismiss":
         job.error_code = "DISMISSED_BY_MERCHANT"
+        if origin != job.event_id:
+            parent = db.scalar(
+                select(Job).where(Job.event_id == origin, Job.account_id == account.id)
+            )
+            if parent is not None:
+                parent.error_code = "DISMISSED_BY_MERCHANT"
     else:
         order = owned(db, WorkOrderRow, command.work_order_id, account.id)
         if not db.get(ConversationOrder, (conversation.id, order.id)):
@@ -712,6 +791,26 @@ def assign_message(db, account, job_id, command, key, request_id):
                 )
             )
         job.state, job.error_code, job.attempts = "pending", None, 0
+        if origin != job.event_id:
+            parent = db.scalar(
+                select(Job).where(Job.event_id == origin, Job.account_id == account.id)
+            )
+            if parent is not None:
+                parent_assignment = db.get(JobAssignment, parent.id)
+                if parent_assignment is not None:
+                    parent_assignment.work_order_id, parent_assignment.decided_at = (
+                        order.id,
+                        datetime.now(UTC),
+                    )
+                else:
+                    db.add(
+                        JobAssignment(
+                            job_id=parent.id,
+                            account_id=account.id,
+                            work_order_id=order.id,
+                            decided_at=datetime.now(UTC),
+                        )
+                    )
         job.available_at, job.completed_at = datetime.now(UTC), None
     audit = audit_row(account.id, job.id, f"{command.action}_message", request_id)
     audit.data = {**audit.data, "entity_type": "message_job"}

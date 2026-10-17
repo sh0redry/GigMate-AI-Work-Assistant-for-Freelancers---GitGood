@@ -110,7 +110,7 @@ export function ReplyPanel({
   const attempt = api.attempt();
   const problem =
     action.state === "pending_approval" ? approveProblem(data, Date.now()) : "";
-  async function act(operation: "approve" | "reject") {
+  async function act(operation: "approve" | "reject" | "cancel") {
     if (!data?.action || busy) return;
     setBusy(true);
     setError("");
@@ -120,7 +120,7 @@ export function ReplyPanel({
         data.action,
         operation,
         data.conversation?.context_version ?? data.action.bound_context_version,
-        operation === "reject" ? t("商户选择不发送这条回复") : "",
+        operation !== "approve" ? t("商户选择不发送这条回复") : "",
       );
       if (!alive.current) return;
       setNotice(
@@ -193,7 +193,7 @@ export function ReplyPanel({
               disabled={busy}
               onClick={() => void act("reject")}
             >
-              {t("不发这条")}
+              {t("取消草稿")}
             </button>
           </div>
           {problem ? (
@@ -206,6 +206,13 @@ export function ReplyPanel({
         </>
       ) : !submitted ? (
         <div className="reply-actions">
+          <button
+            className="secondary"
+            disabled={busy}
+            onClick={() => void act("cancel")}
+          >
+            {t("取消草稿")}
+          </button>
           {features.business_sending && onOpenSend ? (
             <button onClick={() => onOpenSend(action.id)}>
               {t("发送给客人")}

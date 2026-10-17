@@ -12,7 +12,13 @@ import {
 import type { components } from "./generated/api";
 import type { Features } from "./features";
 import { orderCommands, type CreateOrderInput } from "./order-command-api";
-import { fieldValue, orderStates } from "./work-order-view";
+import {
+  fieldValue,
+  fieldNames,
+  orderStates,
+  conversationLabel,
+  instant,
+} from "./work-order-view";
 type Conversation = components["schemas"]["Conversation"];
 export function OrderCreation({
   csrf,
@@ -22,6 +28,7 @@ export function OrderCreation({
   onBusyChange,
   onOpenOrder,
   initialConversation = "",
+  initialMessage = "",
 }: {
   csrf: string;
   accountId: string;
@@ -30,6 +37,7 @@ export function OrderCreation({
   onBusyChange: (b: boolean) => void;
   onOpenOrder: (id: string) => void;
   initialConversation?: string;
+  initialMessage?: string;
 }) {
   const active = useRef(true);
   useEffect(() => {
@@ -45,10 +53,13 @@ export function OrderCreation({
     >([]),
     [proposalId, setProposalId] = useState("");
   const [conversations, setConversations] = useState<Conversation[]>([]),
+    [sourceMessages, setSourceMessages] = useState<string[]>(
+      initialMessage ? [initialMessage] : [],
+    ),
     [conversation, setConversation] = useState(initialConversation),
     [messages, setMessages] = useState<Message[]>([]),
     [orders, setOrders] = useState<Order[]>([]),
-    [context, setContext] = useState(0),
+    [context, setContext] = useState(-1),
     [summary, setSummary] = useState(""),
     [scheduleKind, setScheduleKind] = useState("missing"),
     [date, setDate] = useState(""),
@@ -124,7 +135,7 @@ export function OrderCreation({
             setConversations([]);
             setOrders([]);
             setMessages([]);
-            setContext(0);
+            setContext(-1);
           }
           report(e);
         }
@@ -144,6 +155,11 @@ export function OrderCreation({
         (other) => other.id === m.id && other.revision > m.revision,
       ),
   );
+  eligible.sort(
+    (a, b) =>
+      Date.parse(a.occurred_at) - Date.parse(b.occurred_at) ||
+      a.id.localeCompare(b.id),
+  );
   const open = orders.filter(
     (o) =>
       o.conversation_ids.includes(conversation) &&
@@ -156,7 +172,7 @@ export function OrderCreation({
       .map((m) => ({ message_id: m.id, message_revision: m.revision }));
   const problem = loading
     ? t("正在核对会话与来源。")
-    : !conversation || !context
+    : !conversation || context < 0
       ? t("请选择可用的已授权会话。")
       : !summary.trim() || summary.trim().length > 120
         ? t("请填写 1–120 字的业务摘要。")
@@ -181,6 +197,7 @@ export function OrderCreation({
   if (!problem)
     body = {
       conversation_id: conversation,
+      source_messages: refs(sourceMessages),
       summary: summary.trim(),
       schedule:
         scheduleKind === "missing"
@@ -291,13 +308,8 @@ export function OrderCreation({
               <h3>{s.suggestion.summary}</h3>
               {s.suggestion.fields.map((f, i) => (
                 <p key={i}>
-                  {f.field}：{fieldValue(f.value)} ·{" "}
-                  {f.sources
-                    .map(
-                      (ref) =>
-                        `${ref.message_id.slice(-6)} r${ref.message_revision}`,
-                    )
-                    .join(" / ")}
+                  {fieldNames[f.field]}：{fieldValue(f.value)} ·{" "}
+                  {t("客户原文 {0} 条", f.sources.length)}
                 </p>
               ))}
               {s.suggestion.unresolved_questions.map((q, i) => (
@@ -310,6 +322,7 @@ export function OrderCreation({
                 onClick={() => {
                   setProposalId(s.id);
                   setConversation(s.conversation_id);
+                  setSourceMessages(s.sources.map((ref) => ref.message_id));
                   setSummary(s.suggestion.summary.slice(0, 120));
                   setAddress("");
                   setScheduleKind("missing");
@@ -318,6 +331,51 @@ export function OrderCreation({
                   setDate("");
                   setAddressSources([]);
                   setScheduleSources([]);
+                  for (const field of s.suggestion.fields) {
+                    if (
+                      field.field === "address" &&
+                      typeof field.value === "string"
+                    ) {
+                      setAddress(field.value);
+                      setAddressSources(
+                        field.sources.map((ref) => ref.message_id),
+                      );
+                    }
+                    if (
+                      field.field === "schedule" &&
+                      field.value &&
+                      typeof field.value === "object" &&
+                      "kind" in field.value
+                    ) {
+                      const value = field.value;
+                      if (value.kind === "date_only") {
+                        setScheduleKind("date_only");
+                        setDate(value.date);
+                        setScheduleSources(
+                          field.sources.map((ref) => ref.message_id),
+                        );
+                      } else if (value.kind === "timed") {
+                        const input = (at: string) =>
+                          new Date(at)
+                            .toLocaleString("sv-SE", {
+                              timeZone: "Asia/Hong_Kong",
+                              year: "numeric",
+                              month: "2-digit",
+                              day: "2-digit",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: false,
+                            })
+                            .replace(" ", "T");
+                        setScheduleKind("timed");
+                        setStart(input(value.start_at));
+                        setEnd(input(value.end_at));
+                        setScheduleSources(
+                          field.sources.map((ref) => ref.message_id),
+                        );
+                      }
+                    }
+                  }
                   setAdditional(false);
                   setReview("");
                   setConsent(false);
@@ -355,6 +413,7 @@ export function OrderCreation({
               onChange={(e) => {
                 setProposalId("");
                 setConversation(e.target.value);
+                setSourceMessages([]);
                 setSummary("");
                 setAddress("");
                 setScheduleKind("missing");
@@ -366,8 +425,7 @@ export function OrderCreation({
               <option value="">{t("请选择会话")}</option>
               {conversations.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {t("会话")}
-                  {c.id.slice(-6)} {t("· 已关联")}
+                  {conversationLabel(c)} {t("· 已关联")}
                   {c.work_order_ids.length} {t("张工单")}
                 </option>
               ))}
@@ -532,9 +590,23 @@ export function OrderCreation({
             <article className="message" key={m.id}>
               <small>
                 {t("客户 · r")}
-                {m.revision} · {m.occurred_at}
+                {m.revision} · {instant(m.occurred_at)}
               </small>
               <p>{m.text}</p>
+              <label className="inline-check">
+                <input
+                  type="checkbox"
+                  checked={sourceMessages.includes(m.id)}
+                  onChange={() =>
+                    setSourceMessages((values) =>
+                      values.includes(m.id)
+                        ? values.filter((id) => id !== m.id)
+                        : [...values, m.id],
+                    )
+                  }
+                />
+                {t("这条消息属于本次业务")}
+              </label>
               {scheduleKind !== "missing" && (
                 <label className="inline-check">
                   <input
