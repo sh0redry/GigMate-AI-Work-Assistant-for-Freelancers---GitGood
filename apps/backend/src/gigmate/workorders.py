@@ -652,9 +652,12 @@ def assign_message(db, account, job_id, command, key, request_id):
 
     ``assign`` records the chosen open order and queues the message again so
     it is understood against that one order only; the result is an ordinary
-    proposal for the merchant to confirm, never a direct change. To split a
-    new job off, the merchant first creates the order (POST /work-orders) and
-    then assigns the message to it. ``dismiss`` marks it as not business.
+    proposal for the merchant to confirm, never a direct change. ``dismiss``
+    marks it as not business. Consuming a new-order suggestion is an
+    alternative final decision for that event: it cannot subsequently be
+    assigned or dismissed, and a filed/dismissed event cannot create an order
+    from its suggestion. Manual creation without a suggestion is a separate
+    operation and does not itself file a message.
     Only the conversation's newest message can be filed, because proposals
     are always bound to the current context.
     """
