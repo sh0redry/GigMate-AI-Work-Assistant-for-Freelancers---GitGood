@@ -8,16 +8,25 @@ const LEGACY_PROJECTS = new Set([
   "gigmate-waha-recovery",
 ]);
 const OWNER = "org.gitgood.gigmate.desktop";
+const activeChildren = new Set();
+let cancelling = false;
 function localDockerHost(host) {
   return (
     !host || host.startsWith("unix:///") || host.startsWith("npipe:////./pipe/")
   );
 }
-function run(binary, args, { input, timeout = 1800000 } = {}) {
+function run(
+  binary,
+  args,
+  { input, timeout = 1800000, allowAfterCancel = false } = {},
+) {
+  if (cancelling && !allowAfterCancel)
+    return Promise.reject(new Error("APP_STOPPING"));
   return new Promise((resolve, reject) => {
     const child = spawn(binary, args, {
       shell: false,
       windowsHide: true,
+      detached: process.platform !== "win32",
       env: {
         ...process.env,
         PATH:
@@ -27,6 +36,7 @@ function run(binary, args, { input, timeout = 1800000 } = {}) {
       },
       stdio: ["pipe", "pipe", "pipe"],
     });
+    activeChildren.add(child);
     let stdout = "",
       size = 0,
       finished = false;
@@ -37,7 +47,7 @@ function run(binary, args, { input, timeout = 1800000 } = {}) {
       }
     };
     const timer = setTimeout(() => {
-      child.kill();
+      killTree(child);
       fail();
     }, timeout);
     child.on("error", () => {
@@ -51,6 +61,7 @@ function run(binary, args, { input, timeout = 1800000 } = {}) {
     // Never return Docker/pip stderr: it can include private configuration.
     child.stderr.resume();
     child.on("close", (code) => {
+      activeChildren.delete(child);
       clearTimeout(timer);
       if (finished) return;
       finished = true;
@@ -357,18 +368,77 @@ async function startRuntime({
     throw new Error("INVALID_LOCAL_BACKEND_PORT");
   return {
     backend: "http://" + port,
-    stop: () =>
-      run(docker, [
-        ...base,
-        "stop",
-        "worker",
-        "monitor",
-        "ingress",
-        "waha",
-        "db",
-      ]),
+    stop: () => stopRuntime(docker, profile, privateDir),
   };
 }
+
+function killTree(child) {
+  if (!child.pid) return;
+  if (process.platform === "win32") {
+    const killer = spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+      shell: false,
+      windowsHide: true,
+      stdio: "ignore",
+    });
+    killer.on("error", () => {
+      try {
+        child.kill();
+      } catch {}
+    });
+  } else {
+    try {
+      process.kill(-child.pid, "SIGTERM");
+    } catch {
+      try {
+        child.kill();
+      } catch {}
+    }
+  }
+}
+async function cancelActiveCommands() {
+  cancelling = true;
+  await Promise.all(
+    [...activeChildren].map(
+      (child) =>
+        new Promise((resolve) => {
+          const timer = setTimeout(resolve, 2000);
+          child.once("close", () => {
+            clearTimeout(timer);
+            resolve();
+          });
+          killTree(child);
+        }),
+    ),
+  );
+}
+async function stopRuntime(docker, profile, privateDir) {
+  const file = path.join(privateDir, "compose.json");
+  try {
+    await fs.access(file);
+  } catch {
+    return;
+  }
+  return run(
+    docker,
+    [
+      "compose",
+      "--project-name",
+      projectFor(profile),
+      "-f",
+      file,
+      "stop",
+      "--timeout",
+      "10",
+      "worker",
+      "monitor",
+      "ingress",
+      "waha",
+      "db",
+    ],
+    { timeout: 45000, allowAfterCancel: true },
+  );
+}
+
 module.exports = {
   OWNER,
   LEGACY_PROJECTS,
@@ -383,4 +453,6 @@ module.exports = {
   isOwnedResource,
   cleanOwnedDocker,
   startRuntime,
+  cancelActiveCommands,
+  stopRuntime,
 };

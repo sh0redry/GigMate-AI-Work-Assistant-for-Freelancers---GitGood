@@ -111,3 +111,30 @@ test("clean installation deletes inspected GigMate resources and preserves unrel
     false,
   );
 });
+
+test("closing during startup cancels only owned command trees and still permits cleanup", async () => {
+  const runtime = require("./runtime.cjs");
+  const operation = runtime.run(process.execPath, [
+    "-e",
+    "setInterval(()=>{},1000)",
+  ]);
+  const rejected = assert.rejects(
+    operation,
+    /LOCAL_SERVICE_COMMAND_FAILED|APP_STOPPING/,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  await runtime.cancelActiveCommands();
+  await rejected;
+  await assert.rejects(
+    runtime.run(process.execPath, ["-e", "process.exit(0)"]),
+    /APP_STOPPING/,
+  );
+  assert.equal(
+    await runtime.run(
+      process.execPath,
+      ["-e", "process.stdout.write('cleanup-ready')"],
+      { allowAfterCancel: true },
+    ),
+    "cleanup-ready",
+  );
+});

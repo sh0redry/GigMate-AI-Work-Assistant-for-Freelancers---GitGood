@@ -169,3 +169,50 @@ def test_manual_time_updates_calendar(signed_in):
         event = db.scalar(select(CalendarRow).where(CalendarRow.work_order_id == uid(3)))
         assert event.data["schedule"] == schedule
         assert event.data["sources"] == body["sources"]
+
+
+def test_authorized_chat_without_messages_is_readable(signed_in):
+    client, factory, _, _ = signed_in
+    chat = str(uuid4())
+    with factory.begin() as db:
+        db.add(ConversationRow(id=chat, account_id=uid(1), allowlisted=True, context_version=0))
+    response = client.get(f"/api/v1/conversations/{chat}")
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["context_version"] == 0
+
+
+@pytest.mark.parametrize("old_status", ["proposed", "needs_review"])
+def test_manual_correction_replaces_old_same_field_proposals(signed_in, old_status):
+    client, factory, _, headers = signed_in
+    body = current(factory)
+    old_id = str(uuid4())
+    with factory.begin() as db:
+        order = db.get(WorkOrderRow, uid(3))
+        db.add(
+            ChangeRow(
+                id=old_id,
+                account_id=uid(1),
+                work_order_id=uid(3),
+                conversation_id=uid(2),
+                context_version=body["expected_context_version"],
+                data={
+                    "id": old_id,
+                    "account_id": uid(1),
+                    "work_order_id": uid(3),
+                    "field": "address",
+                    "old_value": None,
+                    "new_value": "合成旧地址",
+                    "status": old_status,
+                    "customer_confirmation": "not_requested",
+                    "proposer": "customer",
+                    "sources": body["sources"],
+                    "base_work_order_version": order.data["version"],
+                },
+            )
+        )
+        order.data = {**order.data, "pending_change_ids": [old_id]}
+    response = post(client, headers, body)
+    assert response.status_code == 200, response.text
+    assert old_id not in response.json()["data"]["pending_change_ids"]
+    with factory() as db:
+        assert db.get(ChangeRow, old_id).data["status"] == "rejected"

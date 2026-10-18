@@ -661,7 +661,7 @@ class Conversation(Model):
     id: Id
     account_id: Id
     provider_conversation_id: Text
-    context_version: Positive
+    context_version: NonNegative
     work_order_ids: list[Id]
 
 

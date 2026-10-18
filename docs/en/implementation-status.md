@@ -1237,3 +1237,12 @@ Completed checks: 193 frontend tests passed (including new manual correction and
 
 
 Local macOS arm64 DMG/zip built successfully and the native main/sandboxed renderer launched to the initial setup without submitting setup or deleting data. The first GitHub native packaging attempt hit an electron-builder update-channel auto-discovery error when a GitHub token was present during compilation. Auto-update publishing is now explicitly disabled; only the separate artifact-upload step receives the GitHub token. Native builds are rerun from the corrected source tag.
+
+
+Fresh-install follow-up: newly authorized chats legitimately have context version zero. Their read contract and frontend read/create readiness now accept zero rather than reporting unavailable data. Manual corrections also explicitly supersede earlier proposals for the same field, preserving history and removing obsolete next-action cards. Added three backend regressions. The earlier full PostgreSQL count predates this follow-up; final targeted checks are recorded separately.
+
+
+Desktop lifecycle follow-up: closing the workbench now quits its hidden setup window and stops only its own stack. Closing during startup cancels owned CLI process trees, prevents later startup commands, and still permits a scoped cleanup command. Added a cancellation regression; no Docker daemon or unrelated process is stopped.
+
+
+Final fresh-install/correction validation: **1124 PostgreSQL tests passed, 27 skipped**, temporary database removed; **195 frontend tests** and **5 desktop lifecycle/cleanup tests** passed. Ruff, generated contracts/API types, formatting, production build, baseline and diff checks pass. Final native artifacts use the follow-up source tag; distribution and platform acceptance details remain in the release notes.

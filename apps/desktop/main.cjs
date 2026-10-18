@@ -19,6 +19,7 @@ app.enableSandbox();
 let setupWindow,
   businessWindow,
   services,
+  managedDocker,
   server,
   origin,
   backend,
@@ -290,6 +291,10 @@ async function openBusiness() {
       partition: "persist:gigmate-" + profile.id,
     },
   });
+  businessWindow.on("closed", () => {
+    businessWindow = null;
+    if (!quitting) app.quit();
+  });
   businessWindow.webContents.on("will-navigate", (event, url) => {
     if (new URL(url).origin !== origin) event.preventDefault();
   });
@@ -321,6 +326,7 @@ async function start(options = {}) {
   try {
     progress("正在检查 Docker 和本机环境…");
     const docker = await readyDocker();
+    managedDocker = docker;
     if (needsReset) {
       if (!options.cleanInstall) throw new Error("INVALID_SETTINGS");
       if (
@@ -464,7 +470,19 @@ if (!app.requestSingleInstanceLock()) {
     if (quitting) return;
     event.preventDefault();
     quitting = true;
-    void Promise.resolve(services?.stop())
+    void runtime
+      .cancelActiveCommands()
+      .then(() =>
+        services
+          ? services.stop()
+          : managedDocker && profile
+            ? runtime.stopRuntime(
+                managedDocker,
+                profile,
+                path.join(dataRoot(), "runtime"),
+              )
+            : undefined,
+      )
       .catch(() => {})
       .finally(() => {
         server?.close();

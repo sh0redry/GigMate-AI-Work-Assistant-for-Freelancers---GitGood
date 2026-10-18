@@ -1127,7 +1127,7 @@
           "type": "string"
         },
         "context_version": {
-          "minimum": 1,
+          "minimum": 0,
           "title": "Context Version",
           "type": "integer"
         },

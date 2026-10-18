@@ -86,6 +86,33 @@ def correct_field(db, account, order_id, command, key, request_id):
             },
         ),
     )
+    # A reviewed manual correction supersedes earlier proposals for this one
+    # field. Keep their source history, but do not leave a disabled old card as
+    # the next required action. Other fields still need separate review.
+    superseded = []
+    for earlier in db.scalars(
+        select(ChangeRow).where(
+            ChangeRow.work_order_id == order.id, ChangeRow.account_id == account.id
+        )
+    ):
+        if earlier.data["field"] == field and earlier.data["status"] in {
+            "proposed",
+            "needs_review",
+        }:
+            earlier.data = {
+                **earlier.data,
+                "status": "rejected",
+                "rejection_reason": "Merchant replaced this field after reviewing its source",
+            }
+            superseded.append(earlier.id)
+    order.data = {
+        **order.data,
+        "pending_change_ids": [
+            identifier
+            for identifier in order.data["pending_change_ids"]
+            if identifier not in superseded
+        ],
+    }
     db.add(change)
     db.flush()
     # Retire only non-dispatched drafts. Submitted/unknown sends keep their

@@ -210,7 +210,7 @@ export function businessApi(
             if (
               info.data.id !== id ||
               !Number.isInteger(info.data.context_version) ||
-              info.data.context_version < 1 ||
+              info.data.context_version < 0 ||
               messages.some((message) => message.conversation_id !== id)
             )
               throw new WorkspaceError(
