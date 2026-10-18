@@ -79,4 +79,4 @@ Windows 运行 `.venv/Scripts/python.exe scripts/start_product.py`。然后打�
 
 ## 2026-10-18 desktop follow-up
 
-桌面自动启动与手动补字段已实现为候选交付；[安装说明](desktop-installation.md)解释 Docker 首次安装、明确的清理范围、平时启动不清空、密钥与未签名分发的边界。
+桌面自动启动与手动补字段已实现为候选交付；[安装说明](desktop-installation.md)解释 Docker 首次安装、安装／重装保留数据、独立选择旧资源清理、密钥与未签名分发的边界。

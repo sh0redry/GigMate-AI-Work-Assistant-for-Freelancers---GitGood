@@ -4,9 +4,6 @@ const {
   localDockerHost,
   newProfile,
   composeDocument,
-  cleanOwnedDocker,
-  OWNER,
-  isOwnedResource,
   projectFor,
 } = require("./runtime.cjs");
 test("only local Unix sockets and local Windows named pipes may be managed", () => {
@@ -60,58 +57,6 @@ test("fresh profiles have independent credentials and empty isolated volumes", (
   );
   assert.equal(doc.services.worker.command.at(-1), "gigmate.worker");
 });
-test("an unlabelled similarly named project is not a deletion target", () => {
-  assert.equal(
-    isOwnedResource({
-      "com.docker.compose.project": "gigmate-customer-project",
-    }),
-    false,
-  );
-  assert.equal(
-    isOwnedResource({ "com.docker.compose.project": "gigmate-waha-a02" }),
-    true,
-  );
-  assert.equal(isOwnedResource({ [OWNER]: "true" }), true);
-});
-test("clean installation deletes inspected GigMate resources and preserves unrelated data", async () => {
-  const deleted = [];
-  const execute = async (_, args) => {
-    if (args[0] === "ps") return "ours\nlegacy\nunrelated\n";
-    if (args[0] === "inspect") {
-      const labels =
-        args[1] === "ours"
-          ? { [OWNER]: "true" }
-          : args[1] === "legacy"
-            ? { "com.docker.compose.project": "gigmate-waha-a02" }
-            : { "com.docker.compose.project": "customer-database" };
-      return JSON.stringify([{ Config: { Labels: labels } }]);
-    }
-    if (args[0] === "volume" && args[1] === "ls")
-      return "ours-data\nother-data\n";
-    if (args[0] === "volume" && args[1] === "inspect")
-      return JSON.stringify([
-        {
-          Labels:
-            args[2] === "ours-data"
-              ? { [OWNER]: "true" }
-              : { "com.docker.compose.project": "customer-database" },
-        },
-      ]);
-    deleted.push(args);
-    return "";
-  };
-  await cleanOwnedDocker("synthetic-docker", { execute });
-  assert.deepEqual(deleted, [
-    ["rm", "-f", "ours"],
-    ["rm", "-f", "legacy"],
-    ["volume", "rm", "ours-data"],
-  ]);
-  assert.equal(
-    deleted.some((args) => args.includes("prune")),
-    false,
-  );
-});
-
 test("closing during startup cancels only owned command trees and still permits cleanup", async () => {
   const runtime = require("./runtime.cjs");
   const operation = runtime.run(process.execPath, [
@@ -161,7 +106,14 @@ test("omitting an optional model key keeps live AI off while retaining worker re
   );
   assert.ok(doc.services.worker.healthcheck);
   const enabled = composeDocument(
-    { ...empty, modelKey: "sk-synthetic-no-real-key" },
+    {
+      ...empty,
+      modelKey: "sk-synthetic-no-real-key",
+      aiEnabled: true,
+      inputPrice: "0.001",
+      outputPrice: "0.002",
+      budget: "0.10",
+    },
     "/synthetic-runtime",
     "http://127.0.0.1:27880",
   );

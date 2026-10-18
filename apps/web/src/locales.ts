@@ -1,5 +1,7 @@
 // UI copy only. Customer content and approved payloads are never translated.
 export const english: Record<string, string> = {
+  "工单记录需要维护者核查，本次没有保存；请勿反复提交。":
+    "This order needs maintainer review. Nothing was saved; do not repeatedly submit.",
   "如果客户已经提供信息，可在下方手动补充／修改字段。":
     "If the customer already supplied the details, use Add or correct fields below.",
   "真实语音与图片识别、媒体结果转工单、自由 Agent 自动回复和外部日历持续同步尚未交付。文字业务可通过 AI 提议或手动核对处理。":
@@ -1850,6 +1852,8 @@ export const english: Record<string, string> = {
   "{0} 开始": "starts {0}",
 };
 export const cantonese: Record<string, string> = {
+  "工单记录需要维护者核查，本次没有保存；请勿反复提交。":
+    "工作單記錄需要維護者核查，今次冇儲存，請唔好重複提交。",
   "如果客户已经提供信息，可在下方手动补充／修改字段。":
     "如果客人已經提供資料，可喺下方手動補充／修改欄位。",
   "真实语音与图片识别、媒体结果转工单、自由 Agent 自动回复和外部日历持续同步尚未交付。文字业务可通过 AI 提议或手动核对处理。":

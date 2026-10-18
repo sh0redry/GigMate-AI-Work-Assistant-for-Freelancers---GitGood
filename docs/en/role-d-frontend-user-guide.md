@@ -73,4 +73,4 @@ In **Manual review**, select **View this conversation's source** first. The page
 
 ## 2026-10-18 desktop follow-up
 
-Desktop automatic-start and manual correction are now implemented candidates. See [installation and reset scope](desktop-installation.md) for Docker setup, first-install deletion, normal restart persistence, secrets and unsigned-distribution limits.
+Desktop automatic-start and manual correction are now implemented candidates. See [installation, data retention and optional maintenance](desktop-installation.md) for Docker setup, non-destructive installation/reinstall, explicit old-resource cleanup, secrets and unsigned-distribution limits.

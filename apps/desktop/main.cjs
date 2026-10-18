@@ -6,7 +6,6 @@ const {
   shell,
   Menu,
   dialog,
-  session,
 } = require("electron");
 const fs = require("node:fs/promises"),
   path = require("node:path"),
@@ -14,6 +13,13 @@ const fs = require("node:fs/promises"),
   crypto = require("node:crypto");
 const { pathToFileURL } = require("node:url");
 const runtime = require("./runtime.cjs");
+const {
+  needsSetup,
+  validateProfile,
+  aiReady,
+  updateAI,
+} = require("./settings.cjs");
+const { CSP, listenLoopback } = require("./web-security.cjs");
 app.setName("GigMate");
 app.enableSandbox();
 let setupWindow,
@@ -25,6 +31,8 @@ let setupWindow,
   backend,
   profile,
   record,
+  cleanupReview,
+  maintenanceBusy = false,
   starting = false,
   quitting = false,
   needsReset = true;
@@ -46,6 +54,8 @@ const errors = {
   SECRET_STORE_UNAVAILABLE: "系统钥匙串暂不可用，请解锁系统登录钥匙串后重试。",
   INVALID_SETTINGS:
     "请设置账号和至少 12 位密码；填写 API Key 后还需明确同意启用 AI。",
+  CLEANUP_PLAN_CHANGED: "资源已变化或清单已过期，请重新查看清理清单。",
+  CLEANUP_SELECTION_INVALID: "请重新选择清单内的资源并输入删除确认文字。",
 };
 function progress(message) {
   if (setupWindow && !setupWindow.isDestroyed())
@@ -55,11 +65,7 @@ async function fingerprint() {
   const install = JSON.parse(
     await fs.readFile(path.join(resources, "install.json"), "utf8"),
   );
-  const stat = await fs.stat(app.getPath("exe"));
-  return crypto
-    .createHash("sha256")
-    .update(`${install.buildId}:${Math.trunc(stat.birthtimeMs)}`)
-    .digest("hex");
+  return install.buildId; // Provenance only; never a reset/deletion trigger.
 }
 async function readRecord() {
   try {
@@ -75,8 +81,8 @@ function secretStore() {
 }
 function decode(record) {
   secretStore();
-  return JSON.parse(
-    safeStorage.decryptString(Buffer.from(record.secret, "base64")),
+  return validateProfile(
+    JSON.parse(safeStorage.decryptString(Buffer.from(record.secret, "base64"))),
   );
 }
 async function saveProfile() {
@@ -255,19 +261,20 @@ async function serveWeb() {
         "Cache-Control": "no-store",
         "X-Content-Type-Options": "nosniff",
         "Referrer-Policy": "same-origin",
-        "Content-Security-Policy":
-          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'",
+        "Content-Security-Policy": CSP,
       });
       res.end(bytes);
     } catch {
       res.writeHead(500).end();
     }
   });
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(profile.webPort || 0, "127.0.0.1", resolve);
-  });
-  profile.webPort = server.address().port;
+  try {
+    profile.webPort = await listenLoopback(server, profile.webPort || 0);
+  } catch (error) {
+    server.close();
+    server = undefined;
+    throw error;
+  }
   origin = `http://127.0.0.1:${profile.webPort}`;
   await saveProfile();
 }
@@ -305,22 +312,8 @@ async function openBusiness() {
   await businessWindow.loadURL(origin);
   setupWindow?.hide();
 }
-async function cleanupFiles() {
-  for (const name of ["runtime", "browser-session", "Partitions"]) {
-    const target = path.join(dataRoot(), name);
-    try {
-      if ((await fs.lstat(target)).isSymbolicLink())
-        throw new Error("UNSAFE_PRIVATE_PATH");
-    } catch (error) {
-      if (error.code !== "ENOENT") throw error;
-    }
-    await fs.rm(target, { recursive: true, force: true });
-  }
-  // Fresh session partition prevents old browser cookies, caches and approvals
-  // from being reused. Repository folders and unrelated user data are not read.
-  await session.defaultSession.clearStorageData();
-}
 async function start(options = {}) {
+  if (maintenanceBusy) throw new Error("MAINTENANCE_BUSY");
   if (starting) return;
   starting = true;
   try {
@@ -328,7 +321,6 @@ async function start(options = {}) {
     const docker = await readyDocker();
     managedDocker = docker;
     if (needsReset) {
-      if (!options.cleanInstall) throw new Error("INVALID_SETTINGS");
       if (
         typeof options.username !== "string" ||
         !options.username.trim() ||
@@ -338,35 +330,23 @@ async function start(options = {}) {
         options.password.length > 128 ||
         typeof options.modelKey !== "string" ||
         options.modelKey.length > 512 ||
-        /[\r\n\0]/.test(options.modelKey) ||
-        (options.modelKey && !options.aiConsent)
+        /[\r\n\0]/.test(options.modelKey)
       )
         throw new Error("INVALID_SETTINGS");
-      progress("正在清理已标识的 GigMate 旧容器、数据库和 WhatsApp 会话…");
-      await runtime.cleanOwnedDocker(docker);
-      await cleanupFiles();
       profile = runtime.newProfile({
         ...options,
         username: options.username.trim(),
       });
       await saveProfile();
       needsReset = false;
-      await fs.rm(path.join(dataRoot(), "reset-on-next-start"), {
-        force: true,
-      });
     } else {
       if (!profile) profile = decode(record);
-      if (typeof options.modelKey === "string" && options.modelKey) {
-        if (
-          !options.aiConsent ||
-          options.modelKey.length > 512 ||
-          /[\r\n\0]/.test(options.modelKey)
-        )
-          throw new Error("INVALID_SETTINGS");
-        profile.modelKey = options.modelKey;
-        await saveProfile();
-      }
+      profile = updateAI({ ...profile }, options);
+      await saveProfile();
     }
+    backend = undefined; // Old services must not be routed during reconfiguration.
+    if (profile.aiEnabled && !aiReady(profile))
+      progress("AI 配置不完整或价格无效，本次关闭 AI，继续启动手动工作台。");
     await serveWeb();
     services = await runtime.startRuntime({
       docker,
@@ -379,7 +359,11 @@ async function start(options = {}) {
     backend = services.backend;
     delete profile.password;
     await saveProfile();
-    progress("启动完成。请用刚设置的账号登录，再连接并授权 WhatsApp。");
+    progress(
+      aiReady(profile)
+        ? "启动完成。AI 已配置；请登录并授权聊天。"
+        : "启动完成。AI 未启用（需 Key、明确授权及有效美元价格），可手动处理业务。",
+    );
     await openBusiness();
   } catch (error) {
     progress(
@@ -389,6 +373,15 @@ async function start(options = {}) {
     throw new Error(errors[error.message] || "STARTUP_FAILED");
   } finally {
     starting = false;
+  }
+}
+async function maintenance(operation) {
+  if (starting || maintenanceBusy) throw new Error("MAINTENANCE_BUSY");
+  maintenanceBusy = true;
+  try {
+    return await operation();
+  } finally {
+    maintenanceBusy = false;
   }
 }
 if (!app.requestSingleInstanceLock()) {
@@ -406,11 +399,7 @@ if (!app.requestSingleInstanceLock()) {
     .whenReady()
     .then(async () => {
       record = await readRecord();
-      needsReset = !record || record.fingerprint !== (await fingerprint());
-      try {
-        await fs.access(path.join(dataRoot(), "reset-on-next-start"));
-        needsReset = true;
-      } catch {}
+      needsReset = needsSetup(record);
       if (!needsReset) profile = decode(record);
       ipcMain.handle("gigmate:status", (event) => {
         trustedSetup(event);
@@ -418,11 +407,54 @@ if (!app.requestSingleInstanceLock()) {
           needsReset,
           username: profile?.username || "merchant",
           keyConfigured: !!profile?.modelKey,
+          aiEnabled: aiReady(profile || {}),
+          inputPrice: profile?.inputPrice || "",
+          outputPrice: profile?.outputPrice || "",
+          budget: profile?.budget || "0.10",
         };
       });
       ipcMain.handle("gigmate:start", (event, options) => {
         trustedSetup(event);
         return start(options);
+      });
+      ipcMain.handle("gigmate:cleanup-plan", async (event, includeLegacy) => {
+        trustedSetup(event);
+        return maintenance(async () => {
+          const docker = await readyDocker();
+          const entries = await runtime.planCleanup(
+            docker,
+            profile ? runtime.projectFor(profile) : "",
+            { includeLegacy: includeLegacy === true },
+          );
+          cleanupReview = {
+            token: crypto.randomUUID(),
+            expires: Date.now() + 120000,
+            entries,
+          };
+          return cleanupReview;
+        });
+      });
+      ipcMain.handle("gigmate:cleanup", async (event, options) => {
+        trustedSetup(event);
+        return maintenance(async () => {
+          const review = cleanupReview;
+          cleanupReview = undefined; // Single-use, including uncertain failures.
+          if (
+            starting ||
+            !review ||
+            review.expires < Date.now() ||
+            options?.token !== review.token ||
+            options.confirmation !== "删除所选数据"
+          )
+            throw new Error("CLEANUP_PLAN_CHANGED");
+          const docker = await readyDocker();
+          await runtime.executeCleanup(
+            docker,
+            review.entries,
+            options.selected,
+          );
+          return true;
+        });
       });
       ipcMain.handle("gigmate:install-docker", async (event) => {
         trustedSetup(event);
@@ -457,7 +489,7 @@ if (!app.requestSingleInstanceLock()) {
     .catch(() => {
       dialog.showErrorBox(
         "GigMate",
-        "本地配置无法读取。请检查系统钥匙串或重新安装后从全新配置开始。",
+        "本地配置无法读取或解密。数据未被删除。请保留配置与 Docker 卷，恢复原系统钥匙串或联系维护者；不要清空或重建。",
       );
       app.quit();
     });

@@ -196,3 +196,21 @@ test("missing/revoked sources cannot be selected; new context invalidates an ope
   assert.equal(button("确认保存"), undefined);
   assert.equal(writes.length, 0);
 });
+
+test("changing a reviewed field value clears customer-confirmation attribution", async () => {
+  await mount();
+  await fill();
+  const confirmed = document.querySelector('input[type="checkbox"]');
+  await act(async () => confirmed.click());
+  assert.equal(confirmed.checked, true);
+  const textarea = document.querySelector("textarea");
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      dom.window.HTMLTextAreaElement.prototype,
+      "value",
+    ).set.call(textarea, "另一项待核对的合成地址");
+    textarea.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+  });
+  assert.equal(confirmed.checked, false);
+  assert.equal(writes.length, 0);
+});

@@ -32,14 +32,10 @@
               maxlength="128"
               autocomplete="new-password"
           /></label>
-          <p class="warning">
-            全新安装会清除本机已标识的 GigMate 旧数据库、聊天、授权与 WhatsApp
-            登录状态。不会删除其他软件或项目文件；不会加载演示数据。
+          <p>
+            首次创建独立的空白工作台，不删除或导入其他 GigMate
+            环境的数据。重装保留已有账号、配置及数据。
           </p>
-          <label class="check"
-            ><input id="clean" type="checkbox" />我了解旧 GigMate
-            运行数据将被清理，从空白开始。</label
-          >
         </section>
         <label
           >DeepSeek API Key（可稍后配置）<input
@@ -52,12 +48,66 @@
           ><input id="ai-consent" type="checkbox" />启用 AI
           分析我稍后明确授权的聊天，并承担供应商费用。</label
         >
+        <label class="check"
+          ><input id="clear-key" type="checkbox" />删除已保存的模型 Key 并关闭
+          AI</label
+        >
+        <label
+          >输入价格（美元／1,000 tokens，按供应商当前价格核对）<input
+            id="input-price"
+            type="number"
+            min="0"
+            step="any"
+        /></label>
+        <label
+          >输出价格（美元／1,000 tokens）<input
+            id="output-price"
+            type="number"
+            min="0"
+            step="any"
+        /></label>
+        <label
+          >每次模型请求预算（美元，最多 10）<input
+            id="budget"
+            type="number"
+            min="0.000001"
+            max="10"
+            step="any"
+            value="0.10"
+        /></label>
+        <p class="subtle">
+          不是人民币／百万 tokens。价格或 Key 不完整时关闭
+          AI，手动工作台仍可启动。取消勾选并保存启动设置可关闭
+          AI，不影响聊天和发送的独立授权。
+        </p>
         <p id="key-state" class="subtle"></p>
-        <button id="start" type="submit">清理旧数据并一键启动</button
+        <button id="start" type="submit">保存设置并启动</button
         ><button id="docker" type="button" class="secondary">
           安装 Docker（首次需要）
         </button>
       </form>
+      <details>
+        <summary>旧环境清理（可选，永久删除）</summary>
+        <p>
+          与启动无关。只列出可识别的旧 GigMate
+          资源，不包含当前工作台。请先自行备份；不会导出密钥或扫描个人文件。
+        </p>
+        <label class="check"
+          ><input id="include-legacy" type="checkbox" />另外列出旧开发项目（包括
+          recovery）的资源，可能包含备份</label
+        >
+        <button id="cleanup-list" type="button">查看待选资源（不删除）</button>
+        <div id="cleanup-resources"></div>
+        <label
+          >确认删除时输入：删除所选数据<input
+            id="cleanup-confirmation"
+            autocomplete="off"
+        /></label>
+        <button id="cleanup-delete" type="button" class="secondary" disabled>
+          永久删除所选资源
+        </button>
+        <p id="cleanup-status" role="status"></p>
+      </details>
       <p class="subtle">
         首次需要联网下载运行环境，可能需要数分钟。Docker
         官方安装及系统权限确认需要你操作一次；无需安装 Python、Node.js 或填写

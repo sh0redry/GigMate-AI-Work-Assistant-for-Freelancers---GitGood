@@ -54,6 +54,8 @@ def main():
             )
     root = Path("/run/desktop-config")
     root.mkdir(parents=True, exist_ok=True)
+    model_root = Path("/run/desktop-model")
+    model_root.mkdir(parents=True, exist_ok=True)
     config = {
         "base_url": "http://127.0.0.1:18700",
         "account_id": account_id,
@@ -74,13 +76,19 @@ def main():
         ("config.json", config),
         ("bindings/ingress.json", binding),
         ("ingress.json", binding),
-        ("model.key", settings.get("modelKey", "")),
     ):
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         fd = os.open(path, os.O_CREAT | os.O_TRUNC | os.O_WRONLY, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as output:
             output.write(value if isinstance(value, str) else json.dumps(value))
+    # Upgrade old desktop profiles without leaving a readable model key in the
+    # monitor's configuration volume. Only the initializer/API/worker mount this.
+    model_file = model_root / "model.key"
+    fd = os.open(model_file, os.O_CREAT | os.O_TRUNC | os.O_WRONLY, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as output:
+        output.write(settings.get("modelKey", ""))
+    (root / "model.key").unlink(missing_ok=True)
     print("DESKTOP_ACCOUNT_AND_PRIVATE_CONFIG_READY")
 
 

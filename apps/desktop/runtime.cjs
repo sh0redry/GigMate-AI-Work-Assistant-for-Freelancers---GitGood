@@ -2,6 +2,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { spawn } = require("node:child_process");
+const { aiReady, updateAI } = require("./settings.cjs");
 const LEGACY_PROJECTS = new Set([
   "gigmate-waha-a02",
   "gigmate-waha-team",
@@ -130,21 +131,34 @@ async function verifyLocalDocker(docker) {
 }
 async function writePrivate(file, content) {
   await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
-  await fs.writeFile(file, content, { mode: 0o600 });
+  const temporary = file + "." + crypto.randomUUID() + ".tmp";
+  try {
+    await fs.writeFile(temporary, content, { mode: 0o600, flag: "wx" });
+    await fs.rename(temporary, file);
+  } finally {
+    await fs.unlink(temporary).catch((error) => {
+      if (error.code !== "ENOENT") throw error;
+    });
+  }
 }
 function newProfile(options) {
-  return {
-    schema: 1,
-    id: crypto.randomUUID(),
-    username: options.username,
-    password: options.password,
-    modelKey: options.modelKey || "",
-    model: "deepseek-chat",
-    dbPassword: crypto.randomBytes(24).toString("hex"),
-    wahaKey: crypto.randomBytes(32).toString("hex"),
-    webhookSecret: crypto.randomBytes(32).toString("hex"),
-    connectionId: crypto.randomUUID(),
-  };
+  return updateAI(
+    {
+      schema: 1,
+      id: crypto.randomUUID(),
+      username: options.username,
+      password: options.password,
+      modelKey: options.modelKey || "",
+      model: "deepseek-chat",
+      dbPassword: crypto.randomBytes(24).toString("hex"),
+      wahaKey: crypto.randomBytes(32).toString("hex"),
+      webhookSecret: crypto.randomBytes(32).toString("hex"),
+      connectionId: crypto.randomUUID(),
+      aiEnabled: false,
+      budget: "0.10",
+    },
+    options,
+  );
 }
 function projectFor(profile) {
   if (!/^[a-f0-9-]{36}$/.test(profile.id))
@@ -154,6 +168,7 @@ function projectFor(profile) {
 function composeDocument(profile, resources, origin, arch = process.arch) {
   const owner = { [OWNER]: "true" },
     image = "gigmate-local-backend:0.3.0";
+  const enabled = aiReady(profile);
   const environment = {
     DATABASE_URL: `postgresql+psycopg://gigmate:${profile.dbPassword}@db:5432/gigmate`,
     APP_MODE: "product",
@@ -166,21 +181,31 @@ function composeDocument(profile, resources, origin, arch = process.arch) {
     WAHA_MEDIA_ENABLED: "true",
     WAHA_MEDIA_ROOT: "/run/waha-media",
     GIGMATE_WORKSPACE_TIMEZONE: "Asia/Hong_Kong",
-    GIGMATE_EXTRACTION_PROVIDER: profile.modelKey ? "reviewed_llm" : "disabled",
+    GIGMATE_EXTRACTION_PROVIDER: enabled ? "reviewed_llm" : "disabled",
     GIGMATE_LLM_PROVIDER: "deepseek",
     GIGMATE_LLM_MODEL: "deepseek-chat",
     GIGMATE_LLM_ENDPOINT: "https://api.deepseek.com",
-    GIGMATE_LLM_ALLOW_LIVE_ORIGIN: profile.modelKey ? "1" : "0",
-    GIGMATE_LLM_LIVE: profile.modelKey ? "1" : "0",
-    GIGMATE_LLM_API_KEY_FILE: "/run/desktop-config/model.key",
-    GIGMATE_LLM_COST_BUDGET_USD: "0.10",
+    GIGMATE_LLM_ALLOW_LIVE_ORIGIN: enabled ? "1" : "0",
+    GIGMATE_LLM_LIVE: enabled ? "1" : "0",
+    GIGMATE_LLM_API_KEY_FILE: "/run/desktop-model/model.key",
+    GIGMATE_LLM_COST_BUDGET_USD: enabled ? profile.budget : "0.10",
+    ...(enabled
+      ? {
+          GIGMATE_LLM_COST_INPUT_USD_PER_1K: profile.inputPrice,
+          GIGMATE_LLM_COST_OUTPUT_USD_PER_1K: profile.outputPrice,
+        }
+      : {}),
   };
   const backend = {
     image,
     build: { context: path.join(resources, "runtime") },
     environment,
     labels: owner,
-    volumes: ["private-config:/run/desktop-config:ro", "media:/run/waha-media"],
+    volumes: [
+      "private-config:/run/desktop-config:ro",
+      "model-secrets:/run/desktop-model:ro",
+      "media:/run/waha-media",
+    ],
     restart: "no",
   };
   return {
@@ -208,6 +233,7 @@ function composeDocument(profile, resources, origin, arch = process.arch) {
         user: "0:0",
         volumes: [
           "private-config:/run/desktop-config",
+          "model-secrets:/run/desktop-model",
           "media:/run/waha-media",
         ],
         command: ["python", "scripts/desktop_init.py"],
@@ -270,53 +296,117 @@ function composeDocument(profile, resources, origin, arch = process.arch) {
       },
       monitor: {
         ...backend,
-        volumes: [
-          ...backend.volumes,
-          "private-config:/workspace/local-data/waha-a02:ro",
-        ],
+        environment: {
+          DATABASE_URL: environment.DATABASE_URL,
+          APP_MODE: "product",
+        },
+        volumes: ["private-config:/workspace/local-data/waha-a02:ro"],
         command: ["python", "scripts/waha_ingress.py", "watch", "--container"],
       },
     },
     volumes: Object.fromEntries(
-      ["database", "private-config", "whatsapp", "media"].map((name) => [
-        name,
-        { labels: owner },
-      ]),
+      ["database", "private-config", "model-secrets", "whatsapp", "media"].map(
+        (name) => [name, { labels: owner }],
+      ),
     ),
   };
 }
 function isOwnedResource(labels = {}) {
   return (
-    labels[OWNER] === "true" ||
-    LEGACY_PROJECTS.has(labels["com.docker.compose.project"])
+    labels[OWNER] === "true" &&
+    /^gigmate-desktop-[a-f0-9]{8}$/.test(
+      labels["com.docker.compose.project"] || "",
+    )
   );
 }
-async function cleanOwnedDocker(docker, { execute = run } = {}) {
-  // No prune, no wildcard volume names, no remote engines. Every destructive
-  // target is inspected again and must have a known GigMate ownership label.
-  const containerIds = (await execute(docker, ["ps", "-aq"]))
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  for (const id of containerIds) {
-    const [item] = JSON.parse(await execute(docker, ["inspect", id]));
-    if (isOwnedResource(item.Config?.Labels))
-      await execute(docker, ["rm", "-f", id]);
+function cleanupResource(kind, item) {
+  const labels =
+    (kind === "container" ? item.Config?.Labels : item.Labels) || {};
+  return {
+    kind,
+    id: kind === "container" ? item.Id : item.Name,
+    name: kind === "container" ? item.Name : item.Name,
+    created: kind === "container" ? item.Created : item.CreatedAt,
+    project: labels["com.docker.compose.project"] || "",
+    owner: labels[OWNER] || "",
+    legacy: LEGACY_PROJECTS.has(labels["com.docker.compose.project"]),
+  };
+}
+async function planCleanup(
+  docker,
+  currentProject,
+  { includeLegacy = false, execute = run } = {},
+) {
+  const plan = [];
+  for (const kind of ["container", "volume"]) {
+    const ids = (
+      await execute(
+        docker,
+        kind === "container"
+          ? ["ps", "-aq", "--no-trunc"]
+          : ["volume", "ls", "-q"],
+      )
+    )
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (ids.length > 1000) throw new Error("CLEANUP_TOO_MANY_RESOURCES");
+    for (const id of ids) {
+      const [item] = JSON.parse(
+        await execute(
+          docker,
+          kind === "container" ? ["inspect", id] : ["volume", "inspect", id],
+        ),
+      );
+      const entry = cleanupResource(kind, item);
+      if (entry.project === currentProject) continue;
+      const labels = kind === "container" ? item.Config?.Labels : item.Labels;
+      if (
+        entry.id &&
+        entry.created &&
+        (isOwnedResource(labels) || (includeLegacy && entry.legacy))
+      )
+        plan.push(entry);
+    }
   }
-  const names = (await execute(docker, ["volume", "ls", "-q"]))
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  for (const name of names) {
+  return plan;
+}
+async function executeCleanup(docker, plan, selected, { execute = run } = {}) {
+  if (
+    !Array.isArray(selected) ||
+    !selected.length ||
+    new Set(selected).size !== selected.length
+  )
+    throw new Error("CLEANUP_SELECTION_INVALID");
+  const entries = selected.map((key) =>
+    plan.find((entry) => `${entry.kind}:${entry.id}` === key),
+  );
+  if (entries.some((entry) => !entry))
+    throw new Error("CLEANUP_SELECTION_INVALID");
+  // Reinspect every selected identity before the first mutation. No name-only
+  // target, project-wide delete, prune, or resource discovered after review.
+  for (const entry of entries) {
     const [item] = JSON.parse(
-      await execute(docker, ["volume", "inspect", name]),
+      await execute(
+        docker,
+        entry.kind === "container"
+          ? ["inspect", entry.id]
+          : ["volume", "inspect", entry.id],
+      ),
     );
     if (
-      isOwnedResource(item.Labels) ||
-      name === "gigmate-waha-a02_model-secret"
+      JSON.stringify(cleanupResource(entry.kind, item)) !==
+      JSON.stringify(entry)
     )
-      await execute(docker, ["volume", "rm", name]);
+      throw new Error("CLEANUP_PLAN_CHANGED");
   }
+  for (const entry of entries)
+    await execute(
+      docker,
+      entry.kind === "container"
+        ? ["rm", "-f", entry.id]
+        : ["volume", "rm", entry.id],
+    );
 }
 async function startRuntime({
   docker,
@@ -358,7 +448,7 @@ async function startRuntime({
     "python",
     "init",
     "-c",
-    "import os,pathlib; roots=[pathlib.Path('/run/desktop-config'),pathlib.Path('/run/waha-media')]; [(os.chown(p,1000,1000),os.chmod(p,0o700 if p.is_dir() else 0o600)) for r in roots for p in [r,*r.rglob('*')]]",
+    "import os,pathlib; roots=[pathlib.Path('/run/desktop-config'),pathlib.Path('/run/desktop-model'),pathlib.Path('/run/waha-media')]; [(os.chown(p,1000,1000),os.chmod(p,0o700 if p.is_dir() else 0o600)) for r in roots for p in [r,*r.rglob('*')]]",
   ]);
   progress("正在启动 WhatsApp 连接、业务服务和消息处理…");
   const startServices = () =>
@@ -466,7 +556,8 @@ module.exports = {
   projectFor,
   composeDocument,
   isOwnedResource,
-  cleanOwnedDocker,
+  planCleanup,
+  executeCleanup,
   startRuntime,
   cancelActiveCommands,
   stopRuntime,

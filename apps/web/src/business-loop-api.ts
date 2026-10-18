@@ -142,6 +142,7 @@ export function businessLoopApi(
         [
           "VALIDATION_FAILED",
           "VERSION_CONFLICT",
+          "WORK_ORDER_REVIEW_REQUIRED",
           "APPROVAL_STALE",
           "NOT_FOUND",
           "SCHEDULE_CONFLICT",
@@ -167,13 +168,17 @@ export function businessLoopApi(
             ? t(
                 "操作尚未核对完成，原记录保留；请读取当前状态后明确核对原请求。",
               )
-            : value?.error?.code === "CHECKLIST_OPEN"
-              ? t("仍有未完成检查项。请先处理，或明确核对后确认仍要结束工单。")
-              : value?.error?.code === "DEPENDENCY_OPEN"
-                ? t("前置待办尚未完成，请先处理依赖事项。")
-                : t(
-                    "后端已明确拒绝本次操作，没有保存。请刷新并核对条件后重新操作。",
-                  ),
+            : value?.error?.code === "WORK_ORDER_REVIEW_REQUIRED"
+              ? t("工单记录需要维护者核查，本次没有保存；请勿反复提交。")
+              : value?.error?.code === "CHECKLIST_OPEN"
+                ? t(
+                    "仍有未完成检查项。请先处理，或明确核对后确认仍要结束工单。",
+                  )
+                : value?.error?.code === "DEPENDENCY_OPEN"
+                  ? t("前置待办尚未完成，请先处理依赖事项。")
+                  : t(
+                      "后端已明确拒绝本次操作，没有保存。请刷新并核对条件后重新操作。",
+                    ),
         );
       const data = value.data;
       if (

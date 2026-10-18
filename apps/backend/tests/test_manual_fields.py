@@ -154,6 +154,41 @@ def test_bad_value_does_not_cancel_existing_draft(signed_in):
     assert response.status_code == 422
 
 
+def test_legacy_optional_fields_use_missing_contract_defaults(signed_in):
+    client, factory, _, headers = signed_in
+    with factory.begin() as db:
+        order = db.get(WorkOrderRow, uid(3))
+        order.data = {
+            **order.data,
+            "fields": {
+                key: value
+                for key, value in order.data["fields"].items()
+                if key not in {"quantity", "specification", "deadline"}
+            },
+        }
+    response = post(
+        client, headers, current(factory, field="specification", value="Synthetic specification")
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["fields"]["quantity"]["status"] == "missing"
+
+
+def test_corrupt_required_order_data_refuses_without_mutation(signed_in):
+    client, factory, _, headers = signed_in
+    body = current(factory)
+    with factory.begin() as db:
+        order = db.get(WorkOrderRow, uid(3))
+        broken = copy.deepcopy(order.data)
+        del broken["fields"]["address"]
+        order.data = broken
+    response = post(client, headers, body)
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "WORK_ORDER_REVIEW_REQUIRED"
+    with factory() as db:
+        assert db.get(WorkOrderRow, uid(3)).data == broken
+        assert db.scalar(select(func.count()).select_from(ChangeRow)) == 0
+
+
 def test_manual_time_updates_calendar(signed_in):
     client, factory, _, headers = signed_in
     schedule = {
@@ -179,6 +214,40 @@ def test_authorized_chat_without_messages_is_readable(signed_in):
     response = client.get(f"/api/v1/conversations/{chat}")
     assert response.status_code == 200, response.text
     assert response.json()["data"]["context_version"] == 0
+
+
+def test_authorized_context_zero_chat_can_create_manual_order(signed_in):
+    client, factory, _, headers = signed_in
+    chat = str(uuid4())
+    with factory.begin() as db:
+        db.add(ConversationRow(id=chat, account_id=uid(1), allowlisted=True, context_version=0))
+    response = client.post(
+        "/api/v1/work-orders",
+        json={"conversation_id": chat, "summary": "Synthetic new job"},
+        headers={**headers, "Idempotency-Key": str(uuid4())},
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["data"]["conversation_ids"] == [chat]
+
+
+def test_manual_correction_cancels_old_conflict_action(signed_in):
+    client, factory, _, headers = signed_in
+    with factory.begin() as db:
+        order, conversation = db.get(WorkOrderRow, uid(3)), db.get(ConversationRow, uid(2))
+        draft = new_draft(
+            db,
+            uid(1),
+            order,
+            conversation,
+            "schedule_conflict:" + str(uuid4()),
+            "Synthetic question",
+            command()["sources"],
+        )
+        old_id = draft["id"]
+    response = post(client, headers, current(factory))
+    assert response.status_code == 200, response.text
+    with factory() as db:
+        assert db.get(ActionRow, old_id).data["state"] == "cancelled"
 
 
 @pytest.mark.parametrize("old_status", ["proposed", "needs_review"])

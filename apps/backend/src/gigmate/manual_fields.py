@@ -3,6 +3,7 @@
 from uuid import UUID, uuid4
 
 from fastapi import Depends, Header, Request
+from pydantic import ValidationError
 from sqlalchemy import select
 
 from gigmate.approvals import cancel_pending
@@ -33,7 +34,15 @@ def correct_field(db, account, order_id, command, key, request_id):
     digest, cached = command_cache(db, account.id, scope, key, payload)
     if cached:
         return cached.data
-    order = locked_order(db, account, order_id, command.expected_version)
+    try:
+        order = locked_order(db, account, order_id, command.expected_version)
+        # Supported additive legacy fields receive only contract defaults, never
+        # guessed values. Corrupt required data requires review, not a raw 500.
+        order.data = WorkOrder.model_validate(order.data).model_dump(mode="json")
+    except (KeyError, TypeError, ValidationError):
+        raise BusinessError(
+            409, "WORK_ORDER_REVIEW_REQUIRED", "Stored work order needs review"
+        ) from None
     conversation = db.scalar(
         select(ConversationRow)
         .where(

@@ -1,4 +1,4 @@
-# ADR 0010: local desktop automatic startup and explicit clean installation
+# ADR 0010: local desktop startup, persistent profiles and explicit maintenance
 
 Status: implemented desktop candidate, native distribution acceptance recorded in release notes. Date: 2026-10-18.
 
@@ -6,7 +6,13 @@ The team has no hosted backend. Reuse the existing UI in Electron with a separat
 
 The installer ships an allowlisted source snapshot plus compiled web assets, not developer configuration, databases, sessions or a Docker engine. Initial setup invokes official Docker installation guidance when needed and requires the user's OS/license interaction. Subsequent launches start the existing Docker stack automatically. The model key uses the OS secret store and a private backend-only volume; business content has no Node/preload privileges. IPC setup methods accept only the separate local setup window. Local-only Docker sockets, loopback-only exposed API ports, trusted origins, CSRF and independent account login remain enforced.
 
-Kyrie explicitly requested removing legacy GigMate runtime data on installation. The first setup therefore requires a visible clean-install acknowledgement before deleting only inspected, known GigMate containers/volumes and the app's private runtime/browser partitions. A unique profile supplies fresh database credentials, connector identity, empty authorization and browser storage. Normal restarts never reset data. Source repositories and other Docker projects are neither searched nor removed. Reinstall generation is marked on Windows and checked against the installed build/executable on startup.
+The original clean-install policy is superseded following PR45 review. First setup provisions a separate empty profile without deleting old resources. Existing encrypted profiles survive install/build/executable changes and Windows uninstall; build identity is provenance only. Unreadable or undecryptable profiles fail closed without provisioning or deletion. The app does not supply cross-machine credential recovery or automatic backups.
+
+Optional old-environment cleanup is a separate privileged setup operation: exclude the current project, explicitly opt into legacy project detection, review exact resource IDs/creation identities, select targets, type confirmation and consume a two-minute single-use review. Recheck local Docker and all selected identities before mutations; refuse drift. No startup-triggered deletion, name-only secret-volume exception, prune or filesystem cleanup remains.
+
+Desktop capability flags enable the existing authenticated send/media interfaces, not automatic execution. Chat processing, individual media/model consent and exact sending approvals remain separate backend gates. Enabling reviewed text AI additionally requires the setup user's explicit consent, private key, accepted USD token prices and bounded request budget. Missing/invalid settings disable live AI while preserving manual startup. The monitor needs WAHA API/binding credentials to observe status, but no model key or media storage; a separate API/worker model-secret volume enforces that boundary.
+
+A busy remembered loopback port falls back and persists a free port before backend trusted-origin configuration. Controlled blob media/frame previews are allowed without granting remote scripts, object execution or Node access. Native releases resolve one immutable source SHA, validate backend/contracts and generate verified checksums; only the final draft-release job receives repository write permission.
 
 Manual field correction is a sourced merchant command, not an AI permission. It validates ownership, current order/context/source revisions and explicit customer-confirmation attribution, then reuses existing confirmation/calendar/task rules atomically. Non-dispatched drafts are invalidated; dispatched/unknown outcomes remain for reconciliation. No new relational tables are needed; additive wire contracts and generated schemas/types document the command.
 

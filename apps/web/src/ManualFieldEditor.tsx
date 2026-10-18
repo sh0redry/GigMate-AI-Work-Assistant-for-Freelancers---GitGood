@@ -169,7 +169,10 @@ export function ManualFieldEditor({
                 <input
                   type="datetime-local"
                   value={start}
-                  onChange={(event) => setStart(event.target.value)}
+                  onChange={(event) => {
+                    setStart(event.target.value);
+                    setConfirmed(false);
+                  }}
                 />
               </label>
               {field === "schedule" && (
@@ -178,7 +181,10 @@ export function ManualFieldEditor({
                   <input
                     type="datetime-local"
                     value={end}
-                    onChange={(event) => setEnd(event.target.value)}
+                    onChange={(event) => {
+                      setEnd(event.target.value);
+                      setConfirmed(false);
+                    }}
                   />
                 </label>
               )}
@@ -189,7 +195,10 @@ export function ManualFieldEditor({
               <textarea
                 value={text}
                 maxLength={field === "summary" ? 120 : 2000}
-                onChange={(event) => setText(event.target.value)}
+                onChange={(event) => {
+                  setText(event.target.value);
+                  setConfirmed(false);
+                }}
               />
             </label>
           )}

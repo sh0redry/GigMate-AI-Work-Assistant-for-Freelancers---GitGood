@@ -8,10 +8,64 @@ on:
         description: 'Existing release tag (v*-desktop*)'
         required: true
 permissions:
-  contents: write
+  contents: read
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - id: source
+        shell: bash
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[A-Za-z0-9._-]*-desktop[A-Za-z0-9._-]*$ ]]
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+  validate:
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17.9
+        env:
+          POSTGRES_USER: gigmate
+          POSTGRES_PASSWORD: desktop-ci-only
+          POSTGRES_DB: gigmate
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U gigmate -d gigmate"
+          --health-interval 3s --health-timeout 3s --health-retries 20
+    env:
+      PYTHONPATH: apps/backend/src
+      DATABASE_URL: postgresql+psycopg://gigmate:desktop-ci-only@127.0.0.1:5432/gigmate
+      TEST_DATABASE_URL: postgresql+psycopg://gigmate:desktop-ci-only@127.0.0.1:5432/gigmate
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+      - run: pip install -r apps/backend/requirements.lock
+      - run: python scripts/export_contracts.py --check
+      - run: python scripts/check_baseline.py
+      - run: alembic -c apps/backend/alembic.ini upgrade head
+      - run: alembic -c apps/backend/alembic.ini check
+      - run: pytest apps/backend/tests -q
+      - run: python -m pytest scripts/test_desktop_checksums.py -q
   package:
     name: Desktop (${{ matrix.os }}, ${{ matrix.arch }})
+    needs: [resolve, validate]
     strategy:
       fail-fast: false
       matrix:
@@ -29,11 +83,11 @@ jobs:
     timeout-minutes: 35
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12.10'
@@ -55,6 +109,9 @@ jobs:
         working-directory: apps/desktop
       - run: npm run dist -- --${{ matrix.target }} --${{ matrix.arch }}
         working-directory: apps/desktop
+      - name: Record exact source
+        shell: bash
+        run: git rev-parse HEAD > apps/desktop/dist/SOURCE_COMMIT.txt
       - uses: actions/upload-artifact@v4
         with:
           name: GigMate-${{ matrix.target }}-${{ matrix.arch }}
@@ -62,13 +119,36 @@ jobs:
             apps/desktop/dist/*.dmg
             apps/desktop/dist/*.zip
             apps/desktop/dist/*.exe
+            apps/desktop/dist/SOURCE_COMMIT.txt
           if-no-files-found: error
-      - name: Upload installers to draft release
+  publish:
+    needs: [resolve, validate, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: GigMate-*
+          path: release-assets
+          merge-multiple: true
+      - name: Generate and verify installer checksums
+        run: |
+          test "$(cat release-assets/SOURCE_COMMIT.txt)" = "$(git rev-parse HEAD)"
+          python scripts/desktop_checksums.py release-assets
+          cd release-assets && sha256sum -c SHA256SUMS.txt
+      - name: Upload verified assets to existing draft release
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
+          SOURCE_SHA: ${{ needs.resolve.outputs.sha }}
         run: |
-          gh release upload "$RELEASE_TAG" apps/desktop/dist/*.${{ matrix.target == 'win' && 'exe' || 'dmg' }} --repo "$GITHUB_REPOSITORY" --clobber
-          if [ "${{ matrix.target }}" = "mac" ]; then
-            gh release upload "$RELEASE_TAG" apps/desktop/dist/*.zip --repo "$GITHUB_REPOSITORY" --clobber
-          fi
+          test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = "true"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)" = "$SOURCE_SHA"
+          gh release upload "$RELEASE_TAG" release-assets/* --repo "$GITHUB_REPOSITORY"
