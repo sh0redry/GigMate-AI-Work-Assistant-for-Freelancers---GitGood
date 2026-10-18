@@ -898,7 +898,40 @@ export const english: Record<string, string> = {
   暂不可用: "Unavailable",
   "可从对应页面使用，操作仍需核对归属、来源和当前版本。":
     "Use the corresponding page. Operations still require ownership, source and version checks.",
-  查看团队进度: "View team progress",
+  未知联系人: "Unknown contact",
+  重新查看新手引导: "Replay the walkthrough",
+  "欢迎使用 GigMate": "Welcome to GigMate",
+  "跟着做 3 件事就能开始：连接 WhatsApp、选要跟进的聊天、看 AI 帮你整理的工单和回复。每一步都要你自己点，随时可以跳过。":
+    "Three things to get started: connect WhatsApp, choose the chats to follow, and see the orders and replies AI prepares. You click every step yourself and can skip at any time.",
+  "第 1 步：连接 WhatsApp": "Step 1: connect WhatsApp",
+  "点亮起来的「WhatsApp 连接」。":
+    "Click the highlighted “WhatsApp connection”.",
+  "扫码，然后勾选业务聊天": "Scan, then tick your business chats",
+  "用手机 WhatsApp 的「关联设备」扫这里的二维码。连上后只勾选和客人谈生意的聊天，私人聊天不要勾，GigMate 不会读取没勾选的聊天。":
+    "Scan the QR code here with “Linked devices” in WhatsApp on your phone. Once connected, tick only chats with customers. Leave private chats unticked; GigMate never reads chats you did not tick.",
+  "第 2 步：看看新单": "Step 2: new orders",
+  "点亮起来的「新建工单」。在手机上先点「更多」。":
+    "Click the highlighted “New order”. On a phone, tap “More” first.",
+  "AI 认出的新单在这里": "New jobs AI spotted appear here",
+  "客人提出新生意时，AI 会在这里放一份建单建议。你核对后才会建单；不是新单就点「忽略这条建议」。也可以直接在下面手动填，缺的可以先空着。":
+    "When a customer asks for new work, AI puts an order suggestion here. Nothing is created until you check it; if it is not a new job, dismiss the suggestion. You can also fill the form yourself and leave unknown details blank.",
+  "第 3 步：批准回复": "Step 3: approve replies",
+  "点亮起来的「回复审批」。": "Click the highlighted “Reply approvals”.",
+  回复一定经过你: "Every reply goes through you",
+  "AI 起草给客人的话都放在这里，你看过、批准后才会发出去，不会自己乱发。":
+    "Everything AI drafts for customers waits here. Nothing is sent until you read and approve it.",
+  完成了: "All set",
+  "以后改期、补地址、撞期提醒都会出现在「业务工作台」。想再看一次引导，到「功能与使用说明」点「重新查看新手引导」。":
+    "Reschedules, missing addresses and clash alerts will show up in the Workspace. To see this again, open “Features & help” and choose “Replay the walkthrough”.",
+  "新手引导 {0}/{1}": "Walkthrough {0}/{1}",
+  关闭: "Close",
+  跳过引导: "Skip walkthrough",
+  上一步: "Back",
+  "等你点亮起来的按钮…": "Waiting for you to click the highlighted button…",
+  "不是新单，忽略这条建议": "Not a new job — dismiss this suggestion",
+  放弃这份草稿: "Discard this draft",
+  "WhatsApp 群组": "WhatsApp group",
+  号码未公开的联系人: "Contact (number not shared)",
   遇到不确定结果: "When a result is uncertain",
   "先恢复网络并读取最新状态。审批和发送保留原请求编号；只有在重新核对后，才明确重试原操作。不要通过反复点按钮、重新建单或重新发消息来试探是否成功。":
     "Restore the connection and read current state. Keep the original approval or sending request ID. Explicitly check the original operation after review. Do not test success by repeatedly clicking, creating another order or sending another message.",
@@ -2659,7 +2692,39 @@ export const cantonese: Record<string, string> = {
   暂不可用: "暫不可用",
   "可从对应页面使用，操作仍需核对归属、来源和当前版本。":
     "可從對應頁面使用，操作仍需核對歸屬、來源和當前版本。",
-  查看团队进度: "查看團隊進度",
+  未知联系人: "未知聯絡人",
+  重新查看新手引导: "再睇一次新手導覽",
+  "欢迎使用 GigMate": "歡迎使用 GigMate",
+  "跟着做 3 件事就能开始：连接 WhatsApp、选要跟进的聊天、看 AI 帮你整理的工单和回复。每一步都要你自己点，随时可以跳过。":
+    "跟住做 3 件事就可以開始：連接 WhatsApp、揀要跟進嘅傾偈、睇 AI 幫你整理嘅工作單同回覆。每一步都要你自己撳，隨時可以跳過。",
+  "第 1 步：连接 WhatsApp": "第 1 步：連接 WhatsApp",
+  "点亮起来的「WhatsApp 连接」。": "撳亮起嘅「WhatsApp 連接」。",
+  "扫码，然后勾选业务聊天": "掃碼，再剔選生意傾偈",
+  "用手机 WhatsApp 的「关联设备」扫这里的二维码。连上后只勾选和客人谈生意的聊天，私人聊天不要勾，GigMate 不会读取没勾选的聊天。":
+    "用手機 WhatsApp 嘅「已連結的裝置」掃呢度個二維碼。連上之後只剔同客傾生意嘅傾偈，私人傾偈唔好剔，GigMate 唔會讀冇剔嘅傾偈。",
+  "第 2 步：看看新单": "第 2 步：睇下新單",
+  "点亮起来的「新建工单」。在手机上先点「更多」。":
+    "撳亮起嘅「新建工作單」。喺手機先撳「更多」。",
+  "AI 认出的新单在这里": "AI 認出嘅新單喺呢度",
+  "客人提出新生意时，AI 会在这里放一份建单建议。你核对后才会建单；不是新单就点「忽略这条建议」。也可以直接在下面手动填，缺的可以先空着。":
+    "客人提新生意嗰陣，AI 會喺度放一份建單建議。你核對完先會建單；唔係新單就撳「略過呢個建議」。你都可以喺下面自己填，未知嘅可以留空。",
+  "第 3 步：批准回复": "第 3 步：批准回覆",
+  "点亮起来的「回复审批」。": "撳亮起嘅「回覆審批」。",
+  回复一定经过你: "每個回覆都要經你",
+  "AI 起草给客人的话都放在这里，你看过、批准后才会发出去，不会自己乱发。":
+    "AI 幫你起草俾客嘅說話都喺度，你睇完、批准咗先會發出，唔會自己亂發。",
+  完成了: "完成",
+  "以后改期、补地址、撞期提醒都会出现在「业务工作台」。想再看一次引导，到「功能与使用说明」点「重新查看新手引导」。":
+    "之後改期、補地址、撞期提醒都會喺「業務工作台」出現。想再睇導覽，去「功能同使用說明」撳「再睇一次新手導覽」。",
+  "新手引导 {0}/{1}": "新手導覽 {0}/{1}",
+  关闭: "關閉",
+  跳过引导: "跳過導覽",
+  上一步: "上一步",
+  "等你点亮起来的按钮…": "等你撳亮起嘅掣…",
+  "不是新单，忽略这条建议": "唔係新單，略過呢個建議",
+  放弃这份草稿: "放棄呢份草稿",
+  "WhatsApp 群组": "WhatsApp 群組",
+  号码未公开的联系人: "未公開號碼嘅聯絡人",
   遇到不确定结果: "遇到不確定結果",
   "先恢复网络并读取最新状态。审批和发送保留原请求编号；只有在重新核对后，才明确重试原操作。不要通过反复点按钮、重新建单或重新发消息来试探是否成功。":
     "先恢復網絡並讀取最新狀態。審批和發送保留原請求編號；只有在重新核對後，才明確重試原操作。不要通過反復點按鈕、重新建單或重新發消息來試探是否成功。",

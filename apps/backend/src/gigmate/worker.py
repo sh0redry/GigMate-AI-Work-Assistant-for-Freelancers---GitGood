@@ -33,6 +33,7 @@ from gigmate.extraction import (
     persist_proposal,
     provider,
 )
+from gigmate.extraction.language import detect_language
 from gigmate.extraction.llm import validate_provider_config
 from gigmate.extraction.persistence import review_schedule_shapes
 from gigmate.planning import CLOSED
@@ -355,18 +356,31 @@ def _route_through_provider(
     available for review; paid calls are not automatically replayed.
     """
     request = prepared_request or _extraction_request(db, account, event, conversation, linked)
-    target_order_id = (
+    outcome = review_schedule_shapes(prepared_outcome or provider().propose(request))
+    # The model chooses which open order this message belongs to; the provider
+    # has already refused any id that was not offered. With one candidate the
+    # legacy single-order request is still honoured.
+    target_order_id = outcome.proposal.work_order_id or (
         request.candidate_work_order_ids[0] if len(request.candidate_work_order_ids) == 1 else None
     )
-    base_version = request.base_work_order_version
-    outcome = review_schedule_shapes(prepared_outcome or provider().propose(request))
+    base_version = (
+        request.candidate_versions.get(target_order_id, request.base_work_order_version)
+        if target_order_id is not None
+        else None
+    )
     if job is not None and job.lease_until is not None:
         if job.lease_until.replace(tzinfo=UTC) <= datetime.now(UTC):
             return False
     db.refresh(conversation)
     if conversation.context_version != request.context_version:
         return False
-    if target_order_id is not None:
+    # Every offered order is re-read, not only the chosen one: if any of them
+    # moved on, the model compared against a stale picture of the conversation.
+    for order_id, version in request.candidate_versions.items():
+        current = db.get(WorkOrderRow, order_id)
+        if current is None or current.data.get("version") != version:
+            return False
+    if target_order_id is not None and not request.candidate_versions:
         current = db.get(WorkOrderRow, target_order_id)
         if current is None or current.data.get("version") != base_version:
             return False
@@ -404,12 +418,30 @@ def _route_through_provider(
     return False
 
 
+def _candidate_brief(data: dict) -> dict:
+    """What the model needs to tell open orders apart; no source ids or tasks."""
+    return {
+        "summary": data.get("summary"),
+        "status": data.get("status"),
+        "fields": {
+            name: {"value": item.get("value"), "status": item.get("status")}
+            for name, item in (data.get("fields") or {}).items()
+        },
+    }
+
+
 def _extraction_request(db, account, event, conversation, linked, request_id=None):
     base_snapshot = None
     base_version: int | None = None
-    if len(linked) == 1:
-        target = db.get(WorkOrderRow, linked[0])
-        if target is not None and target.account_id == account.id:
+    versions: dict[str, int] = {}
+    briefs: dict[str, dict] = {}
+    for order_id in linked:
+        target = db.get(WorkOrderRow, order_id)
+        if target is None or target.account_id != account.id:
+            continue
+        versions[order_id] = target.data.get("version")
+        briefs[order_id] = _candidate_brief(target.data)
+        if len(linked) == 1:
             base_snapshot = target.data
             base_version = target.data.get("version")
     return ExtractionRequest(
@@ -430,6 +462,10 @@ def _extraction_request(db, account, event, conversation, linked, request_id=Non
         # relative-date proposals instead of guessing.
         message_received_at=event.get("occurred_at"),
         workspace_timezone=_workspace_timezone(),
+        candidate_versions=versions,
+        candidate_snapshots=briefs,
+        # Free text follows the customer's own language (see extraction.language).
+        output_language=detect_language(event.get("payload", {}).get("text")),
     )
 
 

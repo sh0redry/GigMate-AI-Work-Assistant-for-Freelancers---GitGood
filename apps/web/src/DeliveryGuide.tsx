@@ -1,14 +1,10 @@
 import { t } from "./i18n.ts";
-import {
-  featureDescriptions,
-  featureLink,
-  loopReady,
-  type Features,
-} from "./features";
+import { featureDescriptions, loopReady, type Features } from "./features";
 export function DeliveryGuide({
   features,
   error,
   onOpen,
+  onStartTour,
 }: {
   features: Features;
   error: string;
@@ -21,11 +17,17 @@ export function DeliveryGuide({
       | "management"
       | "connect",
   ) => void;
+  onStartTour?: () => void;
 }) {
   return (
     <section className="panel" aria-label={t("功能与使用说明")}>
       <p className="eyebrow">{t("开始使用")}</p>
       <h1>{t("每一步，都知道有没有完成。")}</h1>
+      {onStartTour && (
+        <button type="button" className="secondary" onClick={onStartTour}>
+          {t("重新查看新手引导")}
+        </button>
+      )}
       <ol className="getting-started">
         <li>{t("在 WhatsApp 连接页扫码，选择并授权需要处理的聊天。")}</li>
         <li>
@@ -98,13 +100,6 @@ export function DeliveryGuide({
                   {t("打开此功能")}
                 </button>
               )}
-              <a
-                href={featureLink(key as keyof Features)}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {t("查看团队进度")}
-              </a>
             </article>
           );
         })}

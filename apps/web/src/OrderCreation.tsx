@@ -1,3 +1,4 @@
+import { byTime, contactLabel } from "./contact-label";
 import { t } from "./i18n.ts";
 import { privateReadDenied } from "./read-cache";
 import { useStableState as useState } from "./useStableState";
@@ -12,7 +13,7 @@ import {
 import type { components } from "./generated/api";
 import type { Features } from "./features";
 import { orderCommands, type CreateOrderInput } from "./order-command-api";
-import { fieldValue, orderStates } from "./work-order-view";
+import { fieldNames, fieldValue, orderStates } from "./work-order-view";
 type Conversation = components["schemas"]["Conversation"];
 export function OrderCreation({
   csrf,
@@ -66,6 +67,39 @@ export function OrderCreation({
     [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
     [refreshKey, setRefreshKey] = useState(0);
+  // Throw the current draft away: nothing is saved, no field has to be filled.
+  const resetDraft = (keepConversation = true) => {
+    setProposalId("");
+    if (!keepConversation) setConversation("");
+    setSummary("");
+    setAddress("");
+    setScheduleKind("missing");
+    setStart("");
+    setEnd("");
+    setDate("");
+    setAddressSources([]);
+    setScheduleSources([]);
+    setAdditional(false);
+    setReview("");
+    setConsent(false);
+  };
+  const dismissSuggestion = async (
+    s: components["schemas"]["NewOrderSuggestionView"],
+  ) => {
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/new-order-suggestions/${s.id}/dismiss`, {
+        expected_context_version: s.context_version,
+      });
+      if (proposalId === s.id) resetDraft();
+      setRefreshKey((v) => v + 1);
+    } catch (e) {
+      report(e);
+    } finally {
+      setBusy(false);
+    }
+  };
   const report = useCallback(
     (e: unknown) => {
       setError(e instanceof Error ? e.message : t("读取失败，请刷新。"));
@@ -116,7 +150,7 @@ export function OrderCreation({
           )
             throw new Error(t("会话归属无法核对，不能建单。"));
           setContext(info.data.context_version);
-          setMessages(texts);
+          setMessages([...texts].sort(byTime<Message>((m) => m.occurred_at)));
         }
       } catch (e) {
         if (!abort.signal.aborted) {
@@ -278,7 +312,7 @@ export function OrderCreation({
         </p>
       )}
       {features.business_loop_reviewed && (
-        <section className="panel">
+        <section className="panel" data-tour="create-suggestions">
           <h2>{t("AI 新单建议")}</h2>
           <p>
             {t(
@@ -293,13 +327,7 @@ export function OrderCreation({
               <h3>{s.suggestion.summary}</h3>
               {s.suggestion.fields.map((f, i) => (
                 <p key={i}>
-                  {f.field}：{fieldValue(f.value)} ·{" "}
-                  {f.sources
-                    .map(
-                      (ref) =>
-                        `${ref.message_id.slice(-6)} r${ref.message_revision}`,
-                    )
-                    .join(" / ")}
+                  {fieldNames[f.field] ?? f.field}：{fieldValue(f.value)}
                 </p>
               ))}
               {s.suggestion.unresolved_questions.map((q, i) => (
@@ -327,12 +355,19 @@ export function OrderCreation({
               >
                 {t("核对这份新单建议")}
               </button>
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy || loading}
+                onClick={() => void dismissSuggestion(s)}
+              >
+                {t("不是新单，忽略这条建议")}
+              </button>
             </article>
           ))}
           {proposalId && (
             <p role="status">
               {t("已选择建议")}
-              {proposalId.slice(-6)}
               {t("；提交时会重新核对来源与版本。")}
             </p>
           )}
@@ -368,8 +403,7 @@ export function OrderCreation({
               <option value="">{t("请选择会话")}</option>
               {conversations.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {t("会话")}
-                  {c.id.slice(-6)} {t("· 已关联")}
+                  {contactLabel(c.provider_conversation_id)} {t("· 已关联")}
                   {c.work_order_ids.length} {t("张工单")}
                 </option>
               ))}
@@ -478,6 +512,20 @@ export function OrderCreation({
           >
             {t("核对新工单")}
           </button>
+          {(proposalId ||
+            summary ||
+            address ||
+            scheduleKind !== "missing" ||
+            review) && (
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy}
+              onClick={() => resetDraft()}
+            >
+              {t("放弃这份草稿")}
+            </button>
+          )}
           {review && (
             <section className="review-panel" aria-label={t("新工单复核")}>
               <h2>{t("核对后再保存")}</h2>

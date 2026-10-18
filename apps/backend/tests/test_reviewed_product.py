@@ -921,3 +921,45 @@ def test_reviewed_provider_real_subprocess_calls_only_the_loopback_fake_vendor(m
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_ai_suggestion_can_be_dismissed_without_creating_an_order(signed_in):
+    """Requirement 7: the merchant can throw a draft suggestion away."""
+    client, factory, _, headers = signed_in
+    proposed, context = suggestion(factory)
+    path = "/api/v1/new-order-suggestions"
+    assert proposed in {item["id"] for item in client.get(path).json()["items"]}
+    with factory() as db:
+        before = db.scalar(select(func.count()).select_from(WorkOrderRow))
+    key = str(uuid4())
+    body = {"expected_context_version": context}
+    dismiss = f"{path}/{proposed}/dismiss"
+    response = client.post(dismiss, json=body, headers={**headers, "Idempotency-Key": key})
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["action"] == "dismiss"
+    # Same key replays the receipt; the suggestion is gone and cannot be used.
+    again = client.post(dismiss, json=body, headers={**headers, "Idempotency-Key": key})
+    assert again.json()["data"] == response.json()["data"]
+    assert client.get(path).json()["items"] == []
+    args = dict(from_proposal_id=proposed, expected_context_version=context)
+    assert create(client, headers, **args).status_code in {404, 409}
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(WorkOrderRow)) == before
+
+
+def test_dismissing_a_stale_or_foreign_suggestion_is_refused(signed_in):
+    client, factory, _, headers = signed_in
+    proposed, context = suggestion(factory)
+    path = f"/api/v1/new-order-suggestions/{proposed}/dismiss"
+    stale = client.post(
+        path,
+        json={"expected_context_version": context + 1},
+        headers={**headers, "Idempotency-Key": str(uuid4())},
+    )
+    assert stale.status_code == 409
+    missing = client.post(
+        f"/api/v1/new-order-suggestions/{uuid4()}/dismiss",
+        json={"expected_context_version": context},
+        headers={**headers, "Idempotency-Key": str(uuid4())},
+    )
+    assert missing.status_code == 404

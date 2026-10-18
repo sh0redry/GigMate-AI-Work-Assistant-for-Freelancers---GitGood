@@ -11,7 +11,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from gigmate.contracts import (
+    AssignMessageCommand,
     Detail,
+    DismissSuggestionCommand,
+    MessageAssignmentResult,
     NewOrderSuggestionView,
     Page,
     SetTaskStatusCommand,
@@ -226,7 +229,54 @@ def query_workspace(db, account_id, question, now=None):
     return {"supported": True, "intent": intent, "day": day, "items": data[key]}
 
 
+def dismiss_suggestion(db, account, proposal_id, command, key, request_id):
+    """Discard one AI new-order suggestion without creating an order.
+
+    This is the existing "not business" decision on the message that produced
+    the suggestion (``assign_message`` with ``dismiss``), so it shares its
+    idempotency receipt, context-version check and audit row. Afterwards the
+    suggestion is no longer listed and cannot be used to create an order.
+    """
+    from gigmate.workorders import assign_message
+
+    row = owned(db, Proposal, proposal_id, account.id)
+    if row.assignment != "needs_review" or not row.proposal.get("new_work_order"):
+        raise BusinessError(404, "NOT_FOUND", "Suggestion not found")
+    job = db.scalar(select(Job).where(Job.account_id == account.id, Job.event_id == row.event_id))
+    if job is None:
+        raise BusinessError(404, "NOT_FOUND", "Suggestion not found")
+    return assign_message(
+        db,
+        account,
+        job.id,
+        AssignMessageCommand(
+            action="dismiss", expected_context_version=command.expected_context_version
+        ),
+        key,
+        request_id,
+    )
+
+
 def install(app, database, actor, detail, page):
+    @app.post(
+        "/api/v1/new-order-suggestions/{proposal_id}/dismiss",
+        response_model=Detail[MessageAssignmentResult],
+    )
+    def dismiss_new_order_suggestion(
+        proposal_id: UUID,
+        command: DismissSuggestionCommand,
+        request: Request,
+        idempotency_key: str = Header(alias="Idempotency-Key"),
+        account=Depends(actor),
+        db=Depends(database),
+    ):
+        return detail(
+            request,
+            dismiss_suggestion(
+                db, account, str(proposal_id), command, idempotency_key, request.state.request_id
+            ),
+        )
+
     @app.get("/api/v1/new-order-suggestions", response_model=Page[NewOrderSuggestionView])
     def suggestions(
         request: Request,

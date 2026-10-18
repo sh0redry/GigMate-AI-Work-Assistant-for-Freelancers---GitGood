@@ -2400,6 +2400,22 @@
         "title": "Detail[list[WahaChoice]]",
         "type": "object"
       },
+      "DismissSuggestionCommand": {
+        "additionalProperties": false,
+        "description": "Merchant discards an AI new-order suggestion: the message is not a new job.",
+        "properties": {
+          "expected_context_version": {
+            "minimum": 1.0,
+            "title": "Expected Context Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_context_version"
+        ],
+        "title": "DismissSuggestionCommand",
+        "type": "object"
+      },
       "EditActionCommand": {
         "additionalProperties": false,
         "description": "Merchant edits a draft before approving it (new revision and snapshot hash).",
@@ -11240,6 +11256,65 @@
           }
         },
         "summary": "Suggestions"
+      }
+    },
+    "/api/v1/new-order-suggestions/{proposal_id}/dismiss": {
+      "post": {
+        "operationId": "dismiss_new_order_suggestion_api_v1_new_order_suggestions__proposal_id__dismiss_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DismissSuggestionCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_MessageAssignmentResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dismiss New Order Suggestion"
       }
     },
     "/api/v1/replay": {

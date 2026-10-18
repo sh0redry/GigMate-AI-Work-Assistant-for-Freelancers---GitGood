@@ -1,5 +1,18 @@
 # Implementation status and validation
 
+## Per-message assignment, partial extraction, stale proposals after re-authorization — 2026-10-18 (batch 2)
+
+Extraction: every open order's summary and version is sent to the model, which decides per message whether it changes one of them or is a new request; a new request is recognised even when orders exist. The server re-checks the chosen order's own version and discards the result if any offered order moved during the call. An invalid field, a field without a source, or a date without a reliable time basis is dropped and turned into a question while the remaining fields are proposed; only a message with nothing usable left goes to review, keeping the previous stable refusal codes. Foreign orders, stale versions and wrong conversations still refuse the whole message. Prompt 1.4.0 writes free text in `output_language` (default `zh-Hans`, configurable with `GIGMATE_OUTPUT_LANGUAGE`) without stray English and runs a seven-point self-check. Contracts are unchanged: one message still maps to one order or one new suggestion.
+
+Authorization: revoking or re-granting a chat now also moves that chat's `proposed` changes to `needs_review` and cancels unsent drafts, so the page no longer offers to confirm them.
+
+Web: review and business management show the contact's phone number (`@c.us`) instead of a short conversation id, with text labels for groups and contacts without a shared number; review items and conversation messages are ordered by time with Hong Kong timestamps; a failed contact lookup does not block the page. The help page no longer links to the team's GitHub progress or shows issue numbers.
+
+Also in this batch: AI free text now follows the language of the customer's message (the server detects Simplified/Traditional/English by character; code-mixed counts as Chinese; `GIGMATE_OUTPUT_LANGUAGE` is the fallback), prompt 1.4.1. New `POST /new-order-suggestions/{proposal_id}/dismiss` lets the merchant discard an AI order suggestion, reusing the "not business" decision's receipt and version check; the new-order page can discard its draft, shows field names instead of keys and the contact number in the chat picker. A first sign-in starts an interactive walkthrough that highlights the real controls and waits for the user's own clicks; it can be skipped and replayed from the help page, and "seen" is stored per account in the browser.
+
+Verification: backend 1115 passed, 17 skipped (SQLite, Python 3.13; PostgreSQL suite not run); ruff, contract export check and baseline check passed; frontend 185 tests, format, API types and build passed. Not verified against a real model or a real WhatsApp account.
+
+
 ## Single user deployment and partial-time recovery — 2026-10-18
 
 The default runtime is now `product`. Health/login report the actual mode,
@@ -1232,3 +1245,10 @@ WillW27's review identified repeated deep-window polling, inconsistent preview c
 Draft consumption now takes an abort signal and ignores late completion outside its component/conversation lifetime; cleanup releases the original busy state once. Aborting does not imply server rollback or allow an automatic repeat. Seen markers are capped at 256 and pruned/cleared on access changes; source navigation uses a stable callback with explicit dependencies, and numbered conversation copy has English/Cantonese formatting. Backend/contracts/migrations remain unchanged. Eleven new regression cases cover per-tick/deep-window request counts, eight-preview batching, 401/403 stop and manual recovery, fast-denial/slow-sibling races, hidden tabs, 60-second backoff, old-history revocations, 408/429 classification and late success/failure after adoption unmount. Every conversation test now asserts zero remaining timers before test cleanup. Real-phone/vendor acceptance remains pending.
 
 Actual evidence: full frontend **218 passed / 0 failed** (30 conversation cases); TypeScript/Vite, generated API type check, Prettier, contract export, baseline (94 Markdown / 1008 local links) and whitespace checks pass. The existing JS bundle advisory remains (697.76 kB / 220.67 kB gzip). Backend implementation is unchanged, so backend/PG/phone/vendor checks were not rerun for this frontend-only correction. No paid request or real outbound send was performed.
+
+
+PR44 final review: malformed model order IDs and field names could be unhashable JSON arrays/objects and raise before schema validation. Added string guards and four regression cases, preserving review-only handling and partial-field retention. No credentials or live messages used.
+
+PR #39 publication follow-up: main advanced to `f70435a` (#44) during this review batch. Incorporated that main with both contact-label and conversation tests enabled, retained its guided-tour targets and allowed the customer-chat page in the tour's current-view type. Main's order-suggestion dismissal and analysis changes are preserved; no backend/contracts diff remains against main. After compatibility resolution, full frontend **223 passed / 0 failed**, TypeScript/Vite/API type/Prettier checks pass, source contracts and baseline remain synchronized, and Ruff check/format pass (143 Python files). The bundle advisory is 710.07 kB / 225.45 kB gzip. This supersedes the pre-#44 218-test checkpoint above.
+
+After this #44 compatibility merge, focused `test_extraction_language.py`, `test_extraction_split_partial.py` and `test_agent_draft_bindings.py` verification has **48 passed / 1 skipped**, using synthetic providers and temporary SQLite. This checks the inherited parsing and existing draft read/consume bindings; it is not PostgreSQL locking or live-model/phone acceptance.
