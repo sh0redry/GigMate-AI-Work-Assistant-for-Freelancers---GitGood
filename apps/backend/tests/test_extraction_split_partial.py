@@ -381,3 +381,21 @@ def test_contract_still_forbids_matched_with_a_new_order():
 
 def test_outcome_type_is_unchanged():
     assert ExtractionOutcome.__dataclass_fields__.keys() >= {"notes", "refused_reason"}
+
+
+@pytest.mark.parametrize("malformed", [[], {}])
+def test_malformed_order_identity_is_refused_without_exception(monkeypatch, malformed):
+    payload = _address_payload()
+    payload["work_order_id"] = malformed
+    outcome, _ = _run(monkeypatch, payload, _two_orders())
+    assert outcome.proposal.assignment.value == "needs_review"
+    assert outcome.refused_reason == "llm:response-provenance-failed:work_order_id"
+
+
+@pytest.mark.parametrize("malformed", [["address"], {"name": "address"}])
+def test_malformed_field_name_drops_only_that_field(monkeypatch, malformed):
+    payload = _schedule_and_address()
+    payload["changes"][1]["field"] = malformed
+    outcome, _ = _run(monkeypatch, payload, _grounded_request())
+    assert outcome.refused_reason is None
+    assert [change.field for change in outcome.proposal.changes] == ["schedule"]

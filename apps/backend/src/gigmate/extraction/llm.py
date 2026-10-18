@@ -1709,7 +1709,9 @@ class LLMProvider:
 
         def field_of(entry: object) -> str:
             field = entry.get("field") if isinstance(entry, dict) else None
-            return field if field in _FIELD_LABELS["zh-Hans"] else "field"
+            return (
+                field if isinstance(field, str) and field in _FIELD_LABELS["zh-Hans"] else "field"
+            )
 
         changes = data.get("changes")
         had_changes = isinstance(changes, list) and bool(changes)
@@ -1901,6 +1903,7 @@ class LLMProvider:
                 data["base_work_order_version"] = request.base_work_order_version
         if (
             data.get("assignment") == "matched"
+            and isinstance(data.get("work_order_id"), str)
             and data.get("work_order_id") in request.candidate_versions
             and data.get("base_work_order_version") is None
         ):

@@ -1222,3 +1222,6 @@ Verification: 186 frontend tests passed (including new feature navigation, revie
 Completed checks: production Docker formatting + TypeScript + Vite build passed (existing bundle-size advisory); generated contracts and frontend API types match; baseline passed (92 Markdown files, 1000 links, 3 schemas). Backend implementation unchanged; backend pytest was not rerun. The compiled local frontend was applied at the existing product URL, with no backend restart or account changes.
 
 Local browser acceptance: signed in against the existing product backend, verified all eight capability cards and their shortcuts, opened the latest manual-review item, and observed the conversation-specific create/dismiss controls. No live assignment, dismissal, order creation, or outbound send was submitted.
+
+
+PR44 final review: malformed model order IDs and field names could be unhashable JSON arrays/objects and raise before schema validation. Added string guards and four regression cases, preserving review-only handling and partial-field retention. No credentials or live messages used.
