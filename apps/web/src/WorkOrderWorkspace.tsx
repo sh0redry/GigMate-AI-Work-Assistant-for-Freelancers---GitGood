@@ -459,7 +459,10 @@ export function WorkOrderWorkspace({
                   const incomplete = change.status === "needs_review";
                   const ok = !incomplete && confirmable(change);
                   return (
-                    <article className="change" key={change.id}>
+                    <article
+                      className={`change ${conflict ? "conflict" : ""}`}
+                      key={change.id}
+                    >
                       <h3>
                         {incomplete
                           ? change.field === "schedule"

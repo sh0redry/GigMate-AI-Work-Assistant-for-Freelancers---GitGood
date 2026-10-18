@@ -7,6 +7,7 @@ import { BusinessLoopWorkspace } from "./BusinessLoopWorkspace";
 import { ConnectionWorkspace } from "./ConnectionWorkspace";
 import { ApprovalsWorkspace } from "./ApprovalsWorkspace";
 import { WorkOrderWorkspace } from "./WorkOrderWorkspace";
+import { HomeWorkspace } from "./HomeWorkspace";
 import { CalendarWorkspace } from "./CalendarWorkspace";
 import { OrderCreation } from "./OrderCreation";
 import { ReviewWorkspace } from "./ReviewWorkspace";
@@ -17,6 +18,7 @@ import { workspaceApi, type Detail, type Login } from "./workspace-api";
 import { clearConnectionAttempts } from "./connection-api";
 import { unavailableFeatures, loopReady, type Features } from "./features";
 const pages = localized({
+  home: "今日",
   business: "业务工作台",
   create: "新建工单",
   approvals: "回复审批",
@@ -38,8 +40,17 @@ export function App() {
           : "zh-CN";
   }, [language]);
   const [moreOpen, setMoreOpen] = useState(false),
-    [tourOpen, setTourOpen] = useState(false);
-  const [view, setView] = useState<View>("business"),
+    [tourOpen, setTourOpen] = useState(false),
+    [theme, setTheme] = useState<"light" | "dark">(initialTheme);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem("gigmate.theme", theme);
+    } catch {
+      // Private mode or no storage: the choice lasts for this visit only.
+    }
+  }, [theme]);
+  const [view, setView] = useState<View>("home"),
     [selectedOrder, setSelectedOrder] = useState(""),
     [createConversation, setCreateConversation] = useState(""),
     [createSuggestion, setCreateSuggestion] = useState(""),
@@ -63,7 +74,7 @@ export function App() {
     setLogin(null);
     setPassword("");
     setUsername("");
-    setView("business");
+    setView("home");
     setMoreOpen(false);
     setSelectedOrder("");
     setCreateConversation("");
@@ -157,7 +168,7 @@ export function App() {
       setReadScope(result.data.account_id + ":" + result.data.csrf_token);
       setLogin(result.data);
       setPassword("");
-      setView("business");
+      setView("home");
       setNotice("");
     } catch (e) {
       setNotice(e instanceof Error ? e.message : t("登录失败，请重试。"));
@@ -224,6 +235,32 @@ export function App() {
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          className="theme-toggle"
+          aria-label={theme === "dark" ? t("切换到浅色") : t("切换到深色")}
+          title={theme === "dark" ? t("切换到浅色") : t("切换到深色")}
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            {theme === "dark" ? (
+              <>
+                <circle cx="12" cy="12" r="4" />
+                <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+              </>
+            ) : (
+              <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+            )}
+          </svg>
+        </button>
         <a className="brand" href="#workspace-content">
           {t("跟單")}
           <span>GigMate</span>
@@ -315,7 +352,7 @@ export function App() {
           >
             <p className="nav-caption">{t("我的工作空间")}</p>
             <div className="nav-primary">
-              {(["business", "approvals", "planning", "connect"] as View[]).map(
+              {(["home", "business", "approvals", "planning"] as View[]).map(
                 (id) => (
                   <button
                     key={id}
@@ -333,7 +370,9 @@ export function App() {
               )}
             </div>
             <div className="nav-secondary" id="additional-pages">
-              {(["create", "review", "management", "guide"] as View[])
+              {(
+                ["connect", "create", "review", "management", "guide"] as View[]
+              )
                 .filter((id) => id !== "management" || loopReady(features))
                 .filter((id) => id !== "create" || features.create_order)
                 .map((id) => (
@@ -376,6 +415,29 @@ export function App() {
                   "暂时无法核对后端功能状态，依赖功能保持关闭。请在功能说明页查看详情。",
                 )}
               </p>
+            )}
+            {view === "home" && features.create_order && (
+              <NewRequestBanner
+                csrf={login.csrf_token}
+                onOpen={(id) => {
+                  navigate("create");
+                  setCreateSuggestion(id);
+                }}
+              />
+            )}
+            {view === "home" && (
+              <HomeWorkspace
+                {...props}
+                key={login.account_id}
+                accountId={login.account_id}
+                features={features}
+                onNavigate={navigate}
+                onOpenOrder={openOrder}
+                onOpenSend={(id) => {
+                  setSendAction(id);
+                  navigate("management");
+                }}
+              />
             )}
             {view === "business" && (
               <>
@@ -495,4 +557,17 @@ export function App() {
       )}
     </div>
   );
+}
+
+function initialTheme(): "light" | "dark" {
+  try {
+    const saved = localStorage.getItem("gigmate.theme");
+    if (saved === "light" || saved === "dark") return saved;
+  } catch {
+    // Storage unavailable: fall through to the system setting.
+  }
+  return typeof matchMedia === "function" &&
+    matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
 }
