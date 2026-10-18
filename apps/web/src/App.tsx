@@ -38,6 +38,7 @@ export function App() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [view, setView] = useState<View>("business"),
     [selectedOrder, setSelectedOrder] = useState(""),
+    [createConversation, setCreateConversation] = useState(""),
     [sendAction, setSendAction] = useState(""),
     [login, setLogin] = useState<Login | null>(null),
     [username, setUsername] = useState(""),
@@ -56,6 +57,7 @@ export function App() {
     setView("business");
     setMoreOpen(false);
     setSelectedOrder("");
+    setCreateConversation("");
     setBusy(false);
     setFeatures(unavailableFeatures);
     setNotice(message);
@@ -103,6 +105,7 @@ export function App() {
   }, [login, expireSession]);
   function navigate(next: View) {
     if (busy) return;
+    if (next === "create") setCreateConversation("");
     if (next !== "management") setSendAction("");
     setNotice("");
     setView(next);
@@ -390,6 +393,7 @@ export function App() {
                 features={features}
                 onBusyChange={setBusy}
                 onOpenOrder={openOrder}
+                initialConversation={createConversation}
               />
             )}
             {view === "approvals" && (
@@ -410,6 +414,13 @@ export function App() {
             {view === "review" && (
               <ReviewWorkspace
                 {...props}
+                accountId={login.account_id}
+                features={features}
+                onBusyChange={setBusy}
+                onCreate={(id) => {
+                  navigate("create");
+                  setCreateConversation(id);
+                }}
                 onOpenOrder={openOrder}
                 onConnect={() => navigate("connect")}
               />
@@ -435,7 +446,11 @@ export function App() {
               />
             )}
             {view === "guide" && (
-              <DeliveryGuide features={features} error={t(featureError)} />
+              <DeliveryGuide
+                features={features}
+                error={t(featureError)}
+                onOpen={navigate}
+              />
             )}
           </main>
         </div>

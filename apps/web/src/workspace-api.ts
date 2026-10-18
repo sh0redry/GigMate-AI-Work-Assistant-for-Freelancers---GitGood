@@ -57,8 +57,13 @@ export function workspaceApi(
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       result = await response.json().catch(() => null);
-    } catch {
+    } catch (error) {
       if (signal?.aborted) throw new DOMException("Cancelled", "AbortError");
+      if ((error as { name?: string })?.name === "AbortError")
+        throw new WorkspaceError(
+          "READ_INVALIDATED",
+          t("读取期间登录、授权或数据发生变化，请刷新并核对会话授权。"),
+        );
       throw new WorkspaceError(
         "UNAVAILABLE",
         body === undefined

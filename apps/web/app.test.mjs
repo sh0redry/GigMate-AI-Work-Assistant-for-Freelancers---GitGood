@@ -264,7 +264,7 @@ test("delivery login and navigation contain no test environment or public creden
     await act(async () => button(page).click());
     assert.ok(document.querySelector('[aria-current="page"]'));
   }
-  assert.match(document.body.textContent, /暂不可用/);
+  assert.match(document.body.textContent, /当前服务未启用/);
   assert.equal(button("业务管理"), undefined);
   assert.equal(button("新建工单"), undefined);
   assert.ok(
@@ -301,7 +301,7 @@ test("a rejected capability read leaves missing functions unavailable", async ()
   await login();
   await act(async () => button("功能与使用说明").click());
   assert.match(document.body.textContent, /能力状态无法核对/);
-  assert.match(document.body.textContent, /暂不可用/);
+  assert.match(document.body.textContent, /状态未核实/);
 });
 
 function deliveryFixture() {
@@ -1073,4 +1073,143 @@ test("malformed connector list reports an error without crashing the business re
   assert.equal(errors.length, 1);
   assert.equal(errors[0].code, "INVALID_RESPONSE");
   assert.equal(button("核对并提交业务发送"), undefined);
+});
+
+function reviewDecisionFixture({
+  reason = "EXTRACTION_NEEDS_REVIEW",
+  stale = false,
+} = {}) {
+  const data = deliveryFixture(),
+    fallback = globalThis.fetch;
+  const writes = [];
+  let resolved = false;
+  const job = "00000000-0000-4000-8000-000000000099";
+  globalThis.fetch = async (url, options) => {
+    if (url.endsWith("/workspace-capabilities"))
+      return Response.json({
+        data: {
+          calendar_export: true,
+          create_order: true,
+          order_status: true,
+          address_confirmation: true,
+          manual_assignment: true,
+          business_sending: false,
+          automatic_understanding: true,
+          business_loop_reviewed: true,
+        },
+      });
+    if (url.includes("/new-order-suggestions?"))
+      return Response.json({ items: [], next_cursor: null });
+    if (url.includes("/review-items?"))
+      return Response.json({
+        items: resolved
+          ? []
+          : [
+              {
+                id: job,
+                conversation_id: data.order.conversation_ids[0],
+                message_id: data.messages[0].id,
+                context_version: stale ? 3 : 4,
+                current_context_version: 4,
+                reason,
+                state: "completed",
+                observed_at: "2026-10-14T00:00:00Z",
+              },
+            ],
+        next_cursor: null,
+      });
+    if (url.endsWith(`/review-items/${job}/assign`)) {
+      const body = JSON.parse(options.body);
+      writes.push({ body, options });
+      resolved = true;
+      return Response.json({
+        data: {
+          job_id: job,
+          conversation_id: data.order.conversation_ids[0],
+          action: body.action,
+          work_order_id: body.work_order_id,
+          state: "completed",
+        },
+      });
+    }
+    return fallback(url, options);
+  };
+  return { ...data, writes };
+}
+test("feature guide describes live availability and opens calendar directly", async () => {
+  fixture();
+  await mount();
+  await login();
+  await act(async () => button("功能与使用说明").click());
+  assert.doesNotMatch(document.body.textContent, /仍在等待接通/);
+  const card = [...document.querySelectorAll("article")].find((a) =>
+    a.textContent.includes("导出手机日历"),
+  );
+  assert.match(card.textContent, /现在可以使用/);
+  await act(async () => card.querySelector("button").click());
+  assert.ok(document.querySelector('[aria-label="日历与待办"]'));
+});
+test("manual review dismisses the exact current message only after explicit review", async () => {
+  const data = reviewDecisionFixture();
+  await mount();
+  await login();
+  await act(async () => button("人工复核").click());
+  await act(async () => button("查看这条会话原文").click());
+  await act(async () => button("标记无需归单").click());
+  assert.equal(data.writes.length, 0);
+  assert.equal(button("确认保存").disabled, true);
+  await tick("我已核对内容、来源及当前版本");
+  await act(async () => button("确认保存").click());
+  assert.equal(data.writes.length, 1);
+  assert.deepEqual(data.writes[0].body, {
+    action: "dismiss",
+    expected_context_version: 4,
+    work_order_id: null,
+  });
+  assert.ok(data.writes[0].options.headers["Idempotency-Key"]);
+  assert.equal(button("查看这条会话原文"), undefined);
+});
+test("manual review assigns a same-conversation open order and carries current context", async () => {
+  const data = reviewDecisionFixture();
+  await mount();
+  await login();
+  await act(async () => button("人工复核").click());
+  await act(async () => button("查看这条会话原文").click());
+  await select("归入工单", data.order.id);
+  await act(async () => button("核对归单").click());
+  await tick("我已核对内容、来源及当前版本");
+  await act(async () => button("确认保存").click());
+  assert.deepEqual(data.writes[0].body, {
+    action: "assign",
+    expected_context_version: 4,
+    work_order_id: data.order.id,
+  });
+});
+test("stale review records cannot be dismissed and unknown model outcomes cannot be reassigned", async () => {
+  const data = reviewDecisionFixture({ stale: true });
+  await mount();
+  await login();
+  await act(async () => button("人工复核").click());
+  await act(async () => button("查看这条会话原文").click());
+  assert.equal(button("标记无需归单").disabled, true);
+  assert.equal(data.writes.length, 0);
+});
+test("unknown model outcome keeps manual creation available but blocks reassignment", async () => {
+  const data = reviewDecisionFixture({ reason: "MODEL_OUTCOME_UNKNOWN" });
+  await mount();
+  await login();
+  await act(async () => button("人工复核").click());
+  await act(async () => button("查看这条会话原文").click());
+  await select("归入工单", data.order.id);
+  assert.equal(button("核对归单"), undefined);
+  assert.equal(data.writes.length, 0);
+  await act(async () => button("为这条会话新建工单").click());
+  const label = [...document.querySelectorAll("label")].find((l) =>
+    l.textContent.startsWith("已授权会话"),
+  );
+  assert.equal(
+    label.querySelector("select").value,
+    data.order.conversation_ids[0],
+  );
+  assert.equal(data.writes.length, 0);
 });

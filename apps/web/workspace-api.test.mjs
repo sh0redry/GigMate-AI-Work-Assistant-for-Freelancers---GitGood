@@ -116,3 +116,16 @@ test("login blocked by origin explains configuration rather than requesting anot
     /网页地址登录，请联系/,
   );
 });
+
+test("invalidated concurrent reads report an authorization change instead of a network outage", async () => {
+  const request = workspaceApi("", async () => {
+    throw new DOMException("Session changed", "AbortError");
+  });
+  await assert.rejects(
+    request("/work-orders"),
+    (error) =>
+      error.code === "READ_INVALIDATED" &&
+      /授权/.test(error.message) &&
+      !/无法连接/.test(error.message),
+  );
+});
