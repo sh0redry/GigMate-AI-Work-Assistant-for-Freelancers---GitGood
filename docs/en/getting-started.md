@@ -1,5 +1,11 @@
 # Developer onboarding
 
+For the user application, follow the root README and run `scripts/start_product.py`.
+It builds one real local installation at http://127.0.0.1:18780, preserves its
+database/session, verifies the backend contract and never seeds fictional data.
+The replay commands below are explicit developer-only verification, not the
+user startup or an environment selectable in the delivered frontend.
+
 For equal permissions, independent teammate acceptance and the first peer-reviewed PR, see [team collaboration](team-governance.md). Use your own GitHub account, fresh clone and recorded commit SHA; do not copy another person's environment or database.
 
 ## Start the replay workspace

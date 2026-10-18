@@ -49,6 +49,7 @@ export function App() {
   const [returnToMessages, setReturnToMessages] = useState(false);
   const [view, setView] = useState<View>("business"),
     [selectedOrder, setSelectedOrder] = useState(""),
+    [sendAction, setSendAction] = useState(""),
     [login, setLogin] = useState<Login | null>(null),
     [username, setUsername] = useState(""),
     [password, setPassword] = useState(""),
@@ -118,6 +119,7 @@ export function App() {
     if (busy) return;
     if (next === "create") setCreationOrigin(null);
     setReturnToMessages(false);
+    if (next !== "management") setSendAction("");
     setNotice("");
     setView(next);
     setMoreOpen(false);
@@ -406,9 +408,8 @@ export function App() {
               <>
                 <div className="page-heading">
                   <div>
-                    <p className="eyebrow">{t("业务工作台")}</p>
-                    <h1>{t("安排好，下一步。")}</h1>
-                    <p>{t("从客户原文到正式安排，每一步都由你确认。")}</p>
+                    <h1>{t("业务工作台")}</h1>
+                    <p>{t("选一张工单，按「下一步」处理就好。")}</p>
                   </div>
                   {features.create_order && (
                     <button disabled={busy} onClick={() => navigate("create")}>
@@ -433,6 +434,12 @@ export function App() {
                     });
                     setView("messages");
                   }}
+                  onOpenSend={(id) => {
+                    setSendAction(id);
+                    navigate("management");
+                  }}
+                  onConnect={() => navigate("connect")}
+                  onOpenApprovals={() => navigate("approvals")}
                 />
               </>
             )}
@@ -448,19 +455,12 @@ export function App() {
               />
             )}
             {view === "approvals" && (
-              <>
-                <h1>{t("回复审批")}</h1>
-                <p className="availability-note">
-                  {t(
-                    "批准后，请到业务管理核对准确正文并提交发送。需先在连接页单独授权对应聊天；批准和提交都不代表客户已收到。",
-                  )}
-                </p>
-                <ApprovalsWorkspace
-                  {...props}
-                  accountId={login.account_id}
-                  onBusyChange={setBusy}
-                />
-              </>
+              <ApprovalsWorkspace
+                {...props}
+                accountId={login.account_id}
+                onBusyChange={setBusy}
+                onOpenOrder={openOrder}
+              />
             )}
             {view === "planning" && (
               <CalendarWorkspace
@@ -472,6 +472,13 @@ export function App() {
             {view === "review" && (
               <ReviewWorkspace
                 {...props}
+                accountId={login.account_id}
+                features={features}
+                onBusyChange={setBusy}
+                onCreate={(id) => {
+                  navigate("create");
+                  setCreationOrigin({ conversation: id, sources: [] });
+                }}
                 onOpenOrder={openOrder}
                 onConnect={() => navigate("connect")}
               />
@@ -493,19 +500,19 @@ export function App() {
                 features={features}
                 onBusyChange={setBusy}
                 onOpenOrder={openOrder}
+                initialActionId={sendAction}
               />
             )}
             {view === "guide" && (
-              <DeliveryGuide features={features} error={t(featureError)} />
+              <DeliveryGuide
+                features={features}
+                error={t(featureError)}
+                onOpen={navigate}
+              />
             )}
           </main>
         </div>
       )}
-      <footer>
-        {t(
-          "你的聊天由你授权；正式安排需要确认。批准、发送与客户确认是不同步骤。",
-        )}
-      </footer>
     </div>
   );
 }

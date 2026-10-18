@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import secrets
 import socket
 import subprocess
 import sys
@@ -192,6 +193,30 @@ def initialize():
     return {"initialized": True, "secrets_printed": False, "scan_required": True}
 
 
+def initial_password():
+    """Fresh installations have no public demo password; existing accounts are untouched."""
+    configured = os.environ.get("GIGMATE_PASSWORD")
+    if configured:
+        if len(configured) < 12:
+            raise TeamError("INITIAL_PASSWORD_REQUIRES_12_CHARACTERS")
+        return configured
+    target = private_path(PRIVATE / "login.json")
+    if target.exists():
+        return json.loads(target.read_text(encoding="utf-8"))["password"]
+    value = secrets.token_urlsafe(24)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+        json.dump(
+            {
+                "username": os.environ.get("GIGMATE_USERNAME", "merchant"),
+                "password": value,
+            },
+            output,
+        )
+    return value
+
+
 def startup(env):
     if not PROFILE.exists():
         raise TeamError("TEAM_INIT_REQUIRED_EXISTING_SETUP_PRESERVED")
@@ -229,8 +254,8 @@ def startup(env):
             db.add(
                 Account(
                     id="00000000-0000-4000-8000-000000000001",
-                    username="merchant",
-                    password_hash=password_hash("demo-only-change-me"),
+                    username=os.environ.get("GIGMATE_USERNAME", "merchant"),
+                    password_hash=password_hash(initial_password()),
                     active=True,
                 )
             )

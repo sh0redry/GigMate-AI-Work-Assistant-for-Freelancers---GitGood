@@ -1,0 +1,24 @@
+# User-facing local deployment. No fixture service or synthetic database.
+services:
+  ingress:
+    environment:
+      APP_MODE: product
+      TRUSTED_ORIGINS: http://127.0.0.1:18780,http://localhost:18780,http://127.0.0.1:5173,http://localhost:5173
+  ingress-worker:
+    environment:
+      APP_MODE: product
+  product-web:
+    build:
+      context: ..
+      dockerfile: infra/web.Dockerfile
+      args:
+        NGINX_CONF: infra/product.nginx.conf
+    ports: ["127.0.0.1:18780:80"]
+    restart: "no"
+    depends_on:
+      ingress: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1/health"]
+      interval: 3s
+      timeout: 2s
+      retries: 20

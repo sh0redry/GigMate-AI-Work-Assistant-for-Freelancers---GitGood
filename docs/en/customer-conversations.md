@@ -6,7 +6,9 @@ This additive frontend workspace uses the installation's existing same-origin AP
 
 ## Start and use
 
-Use your own existing WAHA installation and account. From `apps/web` in PowerShell:
+Use your own existing WAHA installation and account. For the unified local product, follow [the frontend guide](role-d-frontend-user-guide.md) and run `.venv/Scripts/python.exe scripts/start_product.py` from the repository root (macOS/Linux: `.venv/bin/python`). It builds the page/backend/worker together and normally serves http://127.0.0.1:18780. Existing installations must not be reinitialised. This compatibility merge did not execute that launcher or upgrade your running backend/database.
+
+For frontend-only development against an existing backend, from `apps/web` in PowerShell:
 
 ```powershell
 $env:GIGMATE_REAL_API_URL = 'http://127.0.0.1:18702'
@@ -41,6 +43,8 @@ B owns the real provider, bounded contextual input, prompt-injection handling, p
 ## Compatibility and verification
 
 No backend, migration or public wire schema is changed. Missing chat/timeline/mapping/sending capabilities fail clearly; no synthetic fallback is injected into the product. Conversation IDs are mapped explicitly from choices or received timeline records, never equated with chat IDs. The optional composer props and compact rendering retain the existing panel's default behaviour.
+
+PR #39 now incorporates main `5f8d9e0` (#40/#41/#42). The novice work-order next-step/reply workflow and manual-review decisions remain intact. Known order facts and pending changes retain main's source snippets and add exact-revision navigation into customer chats. Manual review and customer chats share one creation-origin state: either can preselect a conversation, while only explicit customer-chat selection carries source hints. Generic creation clears prior origin hints. Separate business approval/sending routes remain available.
 
 Automated evidence for this batch: frontend **195 passed** including 19 new synthetic conversation/API/DOM cases; TypeScript and production build pass. Generated API drift check, formatting, source-contract export, applicable Ruff checks and baseline are recorded in the implementation status. The bundle-size advisory remains. The reused timeline and draft-binding backend suites have **51 passed / 2 skipped** with temporary SQLite; this is not PostgreSQL locking evidence.
 

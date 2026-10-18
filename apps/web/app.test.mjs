@@ -28,6 +28,7 @@ const components = [
   "LoopCommand",
   "OrderLifecycle",
   "InspectOrderAttempt",
+  "ReplyPanel",
   "OrderCreation",
   "CalendarWorkspace",
   "ReviewWorkspace",
@@ -221,8 +222,8 @@ test("authenticated product lands in honest empty business workspace, connects t
   await mount();
   await login();
   assert.equal(button("业务工作台").getAttribute("aria-pressed"), "true");
-  assert.match(document.body.textContent, /当前还没有工单/);
-  assert.match(document.body.textContent, /自动建单尚未开放/);
+  assert.match(document.body.textContent, /还没有工单/);
+  assert.match(document.body.textContent, /再点「新建工单」/);
   assert.deepEqual(JSON.parse(calls[0].options.body), {
     username: "learner",
     password: "synthetic-password",
@@ -267,7 +268,7 @@ test("delivery login and navigation contain no test environment or public creden
     await act(async () => button(page).click());
     assert.ok(document.querySelector('[aria-current="page"]'));
   }
-  assert.match(document.body.textContent, /暂不可用/);
+  assert.match(document.body.textContent, /当前服务未启用/);
   assert.equal(button("业务管理"), undefined);
   assert.equal(button("新建工单"), undefined);
   assert.ok(
@@ -304,7 +305,7 @@ test("a rejected capability read leaves missing functions unavailable", async ()
   await login();
   await act(async () => button("功能与使用说明").click());
   assert.match(document.body.textContent, /能力状态无法核对/);
-  assert.match(document.body.textContent, /暂不可用/);
+  assert.match(document.body.textContent, /状态未核实/);
 });
 
 function deliveryFixture() {
@@ -629,8 +630,8 @@ test("business sending resolves a different chat UUID from the owned conversatio
   globalThis.fetch = async (url) => {
     if (url.includes("/actions?"))
       return Response.json({ items: [action], next_cursor: null });
-    if (url.endsWith("/connectors"))
-      return Response.json({ data: [{ id: connection }] });
+    if (url.includes("/connectors?"))
+      return Response.json({ items: [{ id: connection }], next_cursor: null });
     if (url.endsWith("/setup"))
       return Response.json({
         data: {
@@ -691,10 +692,10 @@ test("business sending resolves a different chat UUID from the owned conversatio
   await act(async () => root.render(createElement(BusinessLoopReview, props)));
   await select("业务草稿", actionId);
   await select("发送连接", connection);
-  assert.ok(button("核对并提交业务发送"));
-  await act(async () => button("核对并提交业务发送").click());
+  assert.ok(button("发送给客人"));
+  await act(async () => button("发送给客人").click());
   await tick("我已核对内容、来源及当前版本");
-  await act(async () => button("确认保存").click());
+  await act(async () => button("确认发送").click());
   assert.equal(submitted.length, 1);
   assert.equal(submitted[0].body.connection_id, connection);
   assert.equal(submitted[0].body.expected_permission_version, 5);
@@ -936,4 +937,301 @@ test("review and recovery render the exact formatted snapshot without translatin
   );
   assert.equal(document.querySelector('[role="region"] p').textContent, review);
   assert.equal(document.querySelector("img"), null);
+});
+
+test("business replies load paginated connections and prepare exact authorised sending without writing", async () => {
+  const { BusinessLoopReview } = await import(
+    pathToFileURL(join(directory, "BusinessLoopReview.mjs"))
+  );
+  const accountId = "00000000-0000-4000-8000-000000000001";
+  const actionId = "00000000-0000-4000-8000-000000000006";
+  const conversationId = "00000000-0000-4000-8000-000000000002";
+  const connectionId = "00000000-0000-4000-8000-000000000009";
+  const chatId = "00000000-0000-4000-8000-000000000010";
+  const draft = {
+    id: actionId,
+    account_id: accountId,
+    work_order_id: "00000000-0000-4000-8000-000000000003",
+    conversation_id: conversationId,
+    revision: 1,
+    state: "approved",
+    body: "Synthetic approved reply",
+    expires_at: "2099-10-17T00:00:00Z",
+    snapshot_hash: "synthetic-snapshot",
+    send_action_id: null,
+  };
+  const reads = [],
+    errors = [],
+    writes = [];
+  globalThis.fetch = async (url, options) => {
+    assert.equal(options.method, "GET");
+    const parsed = new URL(url, "http://localhost");
+    const path = parsed.pathname.replace(/^.*\/api\/v1/, "");
+    reads.push(path + parsed.search);
+    if (path === "/actions")
+      return Response.json({ items: [draft], next_cursor: null });
+    if (path === "/connectors")
+      return Response.json(
+        parsed.searchParams.has("cursor")
+          ? { items: [{ id: connectionId }], next_cursor: null }
+          : {
+              items: [{ id: "00000000-0000-4000-8000-000000000008" }],
+              next_cursor: "synthetic-next",
+            },
+      );
+    if (path.endsWith("/setup"))
+      return Response.json({
+        data: {
+          connection_id: connectionId,
+          enabled: true,
+          available: true,
+          provider_sample_stale: false,
+          control_version: 3,
+        },
+      });
+    if (path.endsWith("/sending/permission"))
+      return Response.json({
+        data: {
+          version: 2,
+          enabled: true,
+          chat_ids: [chatId],
+          expires_at: "2099-10-17T00:00:00Z",
+        },
+      });
+    if (path.endsWith("/chats"))
+      return Response.json({
+        data: [{ id: chatId, conversation_id: conversationId, selected: true }],
+      });
+    throw Error("Unexpected synthetic read: " + path);
+  };
+  root = createRoot(document.getElementById("root"));
+  await act(async () =>
+    root.render(
+      createElement(BusinessLoopReview, {
+        api: {
+          read: async () => draft,
+          pending: null,
+          error: "",
+          submit: (...args) => writes.push(args),
+        },
+        csrf: "synthetic-reply-csrf",
+        accountId,
+        features: { business_sending: true, manual_assignment: false },
+        orders: [],
+        onDone() {},
+        onBusy() {},
+        onError: (e) => errors.push(e),
+      }),
+    ),
+  );
+  const select = (label) =>
+    [...document.querySelectorAll("label")]
+      .find((node) => node.textContent.includes(label))
+      .querySelector("select");
+  await act(async () => {
+    select("业务草稿").value = actionId;
+    select("业务草稿").dispatchEvent(
+      new window.Event("change", { bubbles: true }),
+    );
+  });
+  assert.equal(select("发送连接").options.length, 3);
+  await act(async () => {
+    select("发送连接").value = connectionId;
+    select("发送连接").dispatchEvent(
+      new window.Event("change", { bubbles: true }),
+    );
+  });
+  assert.ok(reads.some((path) => path.includes("cursor=synthetic-next")));
+  assert.equal(button("发送给客人").disabled, false);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(writes, []);
+});
+
+test("malformed connector list reports an error without crashing the business reply page", async () => {
+  const { BusinessLoopReview } = await import(
+    pathToFileURL(join(directory, "BusinessLoopReview.mjs"))
+  );
+  const errors = [];
+  globalThis.fetch = async (url) =>
+    Response.json(
+      url.includes("/connectors")
+        ? { data: [] }
+        : { items: [], next_cursor: null },
+    );
+  root = createRoot(document.getElementById("root"));
+  await act(async () =>
+    root.render(
+      createElement(BusinessLoopReview, {
+        api: { pending: null, error: "" },
+        csrf: "synthetic-invalid-csrf",
+        accountId: "synthetic-account",
+        features: { business_sending: true, manual_assignment: false },
+        orders: [],
+        onDone() {},
+        onBusy() {},
+        onError: (e) => errors.push(e),
+      }),
+    ),
+  );
+  assert.match(document.body.textContent, /归单与业务回复/);
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].code, "INVALID_RESPONSE");
+  assert.equal(button("核对并提交业务发送"), undefined);
+});
+
+function reviewDecisionFixture({
+  reason = "EXTRACTION_NEEDS_REVIEW",
+  stale = false,
+} = {}) {
+  const data = deliveryFixture(),
+    fallback = globalThis.fetch;
+  const writes = [];
+  let resolved = false;
+  const job = "00000000-0000-4000-8000-000000000099";
+  globalThis.fetch = async (url, options) => {
+    if (url.endsWith("/workspace-capabilities"))
+      return Response.json({
+        data: {
+          calendar_export: true,
+          create_order: true,
+          order_status: true,
+          address_confirmation: true,
+          manual_assignment: true,
+          business_sending: false,
+          automatic_understanding: true,
+          business_loop_reviewed: true,
+        },
+      });
+    if (url.includes("/new-order-suggestions?"))
+      return Response.json({ items: [], next_cursor: null });
+    if (url.includes("/review-items?"))
+      return Response.json({
+        items: resolved
+          ? []
+          : [
+              {
+                id: job,
+                conversation_id: data.order.conversation_ids[0],
+                message_id: data.messages[0].id,
+                context_version: stale ? 3 : 4,
+                current_context_version: 4,
+                reason,
+                state: "completed",
+                observed_at: "2026-10-14T00:00:00Z",
+              },
+            ],
+        next_cursor: null,
+      });
+    if (url.endsWith(`/review-items/${job}/assign`)) {
+      const body = JSON.parse(options.body);
+      writes.push({ body, options });
+      resolved = true;
+      return Response.json({
+        data: {
+          job_id: job,
+          conversation_id: data.order.conversation_ids[0],
+          action: body.action,
+          work_order_id: body.work_order_id,
+          state: "completed",
+        },
+      });
+    }
+    return fallback(url, options);
+  };
+  return { ...data, writes };
+}
+test("feature guide describes live availability and opens calendar directly", async () => {
+  fixture();
+  await mount();
+  await login();
+  await act(async () => button("功能与使用说明").click());
+  assert.doesNotMatch(document.body.textContent, /仍在等待接通/);
+  const card = [...document.querySelectorAll("article")].find((a) =>
+    a.textContent.includes("导出手机日历"),
+  );
+  assert.match(card.textContent, /现在可以使用/);
+  await act(async () => card.querySelector("button").click());
+  assert.ok(document.querySelector('[aria-label="日历与待办"]'));
+});
+test("manual review dismisses the exact current message only after explicit review", async () => {
+  const data = reviewDecisionFixture();
+  await mount();
+  await login();
+  await act(async () => button("人工复核").click());
+  await act(async () => button("查看这条会话原文").click());
+  await act(async () => button("标记无需归单").click());
+  assert.equal(data.writes.length, 0);
+  assert.equal(button("确认保存").disabled, true);
+  await tick("我已核对内容、来源及当前版本");
+  await act(async () => button("确认保存").click());
+  assert.equal(data.writes.length, 1);
+  assert.deepEqual(data.writes[0].body, {
+    action: "dismiss",
+    expected_context_version: 4,
+    work_order_id: null,
+  });
+  assert.ok(data.writes[0].options.headers["Idempotency-Key"]);
+  assert.equal(button("查看这条会话原文"), undefined);
+});
+test("manual review assigns a same-conversation open order and carries current context", async () => {
+  const data = reviewDecisionFixture();
+  await mount();
+  await login();
+  await act(async () => button("人工复核").click());
+  await act(async () => button("查看这条会话原文").click());
+  await select("归入工单", data.order.id);
+  await act(async () => button("核对归单").click());
+  await tick("我已核对内容、来源及当前版本");
+  await act(async () => button("确认保存").click());
+  assert.deepEqual(data.writes[0].body, {
+    action: "assign",
+    expected_context_version: 4,
+    work_order_id: data.order.id,
+  });
+});
+test("stale review records cannot be dismissed and unknown model outcomes cannot be reassigned", async () => {
+  const data = reviewDecisionFixture({ stale: true });
+  await mount();
+  await login();
+  await act(async () => button("人工复核").click());
+  await act(async () => button("查看这条会话原文").click());
+  assert.equal(button("标记无需归单").disabled, true);
+  assert.equal(data.writes.length, 0);
+});
+test("the novice order page keeps source navigation into customer chats after the main merge", async () => {
+  deliveryFixture();
+  await mount();
+  await login();
+  assert.ok(document.querySelector('[aria-label="下一步"]'));
+  assert.match(
+    document.querySelector(".order-facts").textContent,
+    /Synthetic customer sourc/,
+  );
+  await act(async () => button("在客户会话中查看原话").click());
+  assert.equal(document.querySelector('[aria-label="客户会话"]').hidden, false);
+  assert.equal(button("客户会话").getAttribute("aria-current"), "page");
+  assert.equal(document.querySelector('[aria-label="工单详情"]'), null);
+  await act(async () => button("业务工作台").click());
+  assert.ok(document.querySelector('[aria-label="下一步"]'));
+  assert.ok(button("在客户会话中查看原话"));
+});
+
+test("unknown model outcome keeps manual creation available but blocks reassignment", async () => {
+  const data = reviewDecisionFixture({ reason: "MODEL_OUTCOME_UNKNOWN" });
+  await mount();
+  await login();
+  await act(async () => button("人工复核").click());
+  await act(async () => button("查看这条会话原文").click());
+  await select("归入工单", data.order.id);
+  assert.equal(button("核对归单"), undefined);
+  assert.equal(data.writes.length, 0);
+  await act(async () => button("为这条会话新建工单").click());
+  const label = [...document.querySelectorAll("label")].find((l) =>
+    l.textContent.startsWith("已授权会话"),
+  );
+  assert.equal(
+    label.querySelector("select").value,
+    data.order.conversation_ids[0],
+  );
+  assert.equal(data.writes.length, 0);
 });

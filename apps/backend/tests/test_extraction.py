@@ -168,7 +168,7 @@ def test_llm_provider_returns_needs_review_without_configuration(monkeypatch):
     assert outcome.refused_reason and "_SKELETON_SEAM" in outcome.refused_reason
     assert outcome.proposal.model_version == "skeleton:pending"
     # Prompt version is read from the bundled file by default.
-    assert outcome.proposal.prompt_version == "1.3.0"
+    assert outcome.proposal.prompt_version == "1.3.1"
     assert outcome.notes == ("llm:seam-pending",)
 
 
@@ -236,7 +236,7 @@ def test_llm_provider_reads_prompt_version_from_bundled_file():
 
     importlib.reload(llm_module)
     provider = llm_module.LLMProvider()
-    assert provider._read_prompt_version() == "1.3.0"
+    assert provider._read_prompt_version() == "1.3.1"
     assert provider._prompt_load_error is None
 
 
@@ -886,7 +886,7 @@ def test_provider_call_evidence_records_model_and_prompt_versions(memory_account
             select(ModelCallTrace).where(ModelCallTrace.proposal_id == proposal_row.id)
         )
     assert proposal_row.model_version == "synthetic:fixed-stub-v1"
-    assert proposal_row.prompt_version == "1.3.0"
+    assert proposal_row.prompt_version == "1.3.1"
     assert trace_row.provider_name == "deterministic"
     assert trace_row.notes == ["deterministic:matched-known-fixture"]
 
@@ -1203,9 +1203,9 @@ def test_list_provider_metadata_is_json_serialisable():
             f"got {type(row['prompt_version']).__name__}"
         )
     # The deterministic provider reads from the bundled prompt file, so
-    # its prompt_version should follow the file's header (1.2.0 today).
+    # Its prompt_version follows the bundled header.
     deterministic_row = next(r for r in rows if r["name"] == "deterministic")
-    assert deterministic_row["prompt_version"] == "1.3.0"
+    assert deterministic_row["prompt_version"] == "1.3.1"
     # The LLM provider's class attribute is still the placeholder; the
     # real version is computed per call by ``_read_prompt_version``.
     llm_row = next(r for r in rows if r["name"] == "llm")

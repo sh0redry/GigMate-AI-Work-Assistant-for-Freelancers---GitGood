@@ -33,7 +33,9 @@ export function BusinessLoopReview({
   onDone,
   onError,
   onBusy,
+  initialActionId = "",
 }: {
+  initialActionId?: string;
   api: LoopApi;
   csrf: string;
   accountId: string;
@@ -50,7 +52,7 @@ export function BusinessLoopReview({
     [messages, setMessages] = useState<Message[]>([]),
     [context, setContext] = useState(0);
   const [actions, setActions] = useState<Loop["ActionView"][]>([]),
-    [actionId, setActionId] = useState(""),
+    [actionId, setActionId] = useState(initialActionId),
     [action, setAction] = useState<Loop["ActionView"] | null>(null),
     [body, setBody] = useState("");
   const [connections, setConnections] = useState<Model["ConnectorStatus"][]>(
@@ -86,11 +88,7 @@ export function BusinessLoopReview({
         : Promise.resolve([]),
       allPages<Loop["ActionView"]>(request, "/actions", a.signal),
       features.business_sending
-        ? request<{ data: Model["ConnectorStatus"][] }>(
-            "/connectors",
-            undefined,
-            a.signal,
-          ).then((v) => v.data)
+        ? allPages<Model["ConnectorStatus"]>(request, "/connectors", a.signal)
         : Promise.resolve([]),
     ])
       .then(([q, ac, c]) => {
@@ -100,6 +98,7 @@ export function BusinessLoopReview({
         setQueue(q);
         setActions(ac);
         setConnections(c);
+        if (c.length === 1) setConnection((v) => v || c[0].id);
       })
       .catch((e) => {
         if (!a.signal.aborted) onError(e);
@@ -336,8 +335,8 @@ export function BusinessLoopReview({
           )}
         </details>
       )}
-      <details>
-        <summary>{t("修改回复与发送记录")}</summary>
+      <details open={!!initialActionId} id="send-replies">
+        <summary>{t("发送已批准的回复")}</summary>
         <label>
           {t("业务草稿")}
           <select
@@ -402,7 +401,7 @@ export function BusinessLoopReview({
                     value={connection}
                     onChange={(e) => setConnection(e.target.value)}
                   >
-                    <option value="">{t("选择已授权连接")}</option>
+                    <option value="">{t("选择要用的 WhatsApp")}</option>
                     {connections.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.id.slice(-6)}
@@ -427,7 +426,8 @@ export function BusinessLoopReview({
                     Date.parse(permission.expires_at) > Date.now()) && (
                     <LoopCommand
                       {...common}
-                      label={t("核对并提交业务发送")}
+                      label={t("发送给客人")}
+                      confirmLabel={t("确认发送")}
                       intent={{
                         path: `/actions/${action.id}/send`,
                         body: {

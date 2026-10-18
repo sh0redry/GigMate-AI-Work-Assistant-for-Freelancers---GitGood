@@ -7,9 +7,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
-from gigmate.api import app, database
-from gigmate.db import Base, make_engine
-from gigmate.seed import seed
+# Synthetic data belongs to explicit automated tests, never product startup.
+os.environ.setdefault("APP_MODE", "replay")
+
+from gigmate.api import app, database  # noqa: E402
+from gigmate.db import Base, make_engine  # noqa: E402
+from gigmate.seed import seed  # noqa: E402
 
 
 @pytest.fixture

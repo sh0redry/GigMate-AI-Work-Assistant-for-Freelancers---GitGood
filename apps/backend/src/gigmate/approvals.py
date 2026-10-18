@@ -148,7 +148,7 @@ def draft_for_change(db, account_id, order, conversation, change, draft_text=Non
     if change["field"] != "schedule" or change["status"] != "proposed":
         return None
     schedule = change["new_value"]
-    if not schedule or schedule.get("kind") != "timed":
+    if not isinstance(schedule, dict) or schedule.get("kind") != "timed":
         return None
     if not conflicts(db, account_id, order.id, schedule):
         # The customer offered a time that is free: the open question is answered.

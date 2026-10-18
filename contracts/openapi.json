@@ -2573,7 +2573,10 @@
             "type": "string"
           },
           "mode": {
-            "const": "synthetic_replay",
+            "enum": [
+              "product",
+              "synthetic_replay"
+            ],
             "title": "Mode",
             "type": "string"
           },
@@ -7542,7 +7545,7 @@
     }
   },
   "info": {
-    "title": "GigMate replay skeleton",
+    "title": "GigMate API",
     "version": "0.2.0"
   },
   "openapi": "3.1.0",

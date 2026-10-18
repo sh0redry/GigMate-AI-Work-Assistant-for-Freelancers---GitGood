@@ -84,8 +84,54 @@ export function hongKongDateTime(value: string): string | null {
     .slice(0, -1);
   return roundTrip === local ? new Date(timestamp).toISOString() : null;
 }
+const HK = "Asia/Hong_Kong";
+function localeTag() {
+  return getLocale() === "en"
+    ? "en-HK"
+    : getLocale() === "yue"
+      ? "zh-HK"
+      : "zh-CN";
+}
+function parts(value: string | number, timeZone = HK) {
+  const formatted = new Intl.DateTimeFormat(localeTag(), {
+    timeZone,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(value));
+  const get = (type: string) =>
+    formatted.find((part) => part.type === type)?.value ?? "";
+  return {
+    year: get("year"),
+    day: `${get("month")}/${get("day")}`,
+    weekday: get("weekday").replace(/^周|^週|^星期/, ""),
+    time: `${get("hour").replace(/^24$/, "00")}:${get("minute")}`,
+  };
+}
+function dayLabel(value: string | number, timeZone = HK) {
+  const p = parts(value, timeZone);
+  const thisYear = parts(Date.now(), timeZone).year;
+  const day = p.year === thisYear ? p.day : `${p.year}/${p.day}`;
+  return getLocale() === "en"
+    ? `${p.weekday} ${day}`
+    : `${day}（${p.weekday}）`;
+}
+/** Friendly Hong Kong time such as "10/7（三）15:00" for business screens. */
+export function friendlyInstant(value: string) {
+  return `${dayLabel(value)}${getLocale() === "en" ? " " : ""}${parts(value).time}`;
+}
 export function fieldValue(value: unknown): string {
   if (value === null || value === undefined) return t("未提供");
+  if (
+    typeof value === "string" &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value) &&
+    Number.isFinite(Date.parse(value))
+  )
+    return t("{0} 开始", friendlyInstant(value));
   if (typeof value !== "object") return String(value);
   const item = value as {
     kind?: string;
@@ -95,17 +141,21 @@ export function fieldValue(value: unknown): string {
     at?: string;
     timezone?: string;
   };
-  if (item.kind === "date_only")
-    return t("{0} 全天（{1}）", item.date, item.timezone);
-  if (item.kind === "instant" && item.at)
-    return t("{0}（香港时间）", instant(item.at));
-  if (item.kind === "timed" && item.start_at && item.end_at)
-    return t(
-      "{0} → {1}（香港时间；原时区 {2}）",
-      instant(item.start_at),
-      instant(item.end_at),
-      item.timezone,
-    );
+  const elsewhere =
+    item.timezone && item.timezone !== HK
+      ? t("（按 {0} 时间）", item.timezone)
+      : "";
+  if (item.kind === "date_only" && item.date)
+    return t("{0}全天", dayLabel(`${item.date}T12:00:00Z`, "UTC")) + elsewhere;
+  if (item.kind === "instant" && item.at) return friendlyInstant(item.at);
+  if (item.kind === "timed" && item.start_at && item.end_at) {
+    const start = parts(item.start_at),
+      end = parts(item.end_at);
+    const sameDay = dayLabel(item.start_at) === dayLabel(item.end_at);
+    return sameDay
+      ? `${dayLabel(item.start_at)}${getLocale() === "en" ? " " : ""}${start.time}–${end.time}`
+      : `${friendlyInstant(item.start_at)} – ${friendlyInstant(item.end_at)}`;
+  }
   return t("待核对");
 }
 export function filterOrders(orders: Order[], search: string, status: string) {

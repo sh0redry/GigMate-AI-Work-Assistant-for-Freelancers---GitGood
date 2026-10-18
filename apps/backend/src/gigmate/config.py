@@ -11,8 +11,9 @@ TRUSTED_ORIGINS = set(
         "http://localhost:5173,http://127.0.0.1:5173,http://localhost:18080,http://127.0.0.1:18080",
     ).split(",")
 )
-if os.environ.get("APP_MODE", "replay") != "replay":
-    raise RuntimeError("This development skeleton only supports APP_MODE=replay")
+APP_MODE = os.environ.get("APP_MODE", "product")
+if APP_MODE not in {"product", "replay"}:
+    raise RuntimeError("APP_MODE must be product or replay")
 
 
 def workspace_timezone() -> str | None:

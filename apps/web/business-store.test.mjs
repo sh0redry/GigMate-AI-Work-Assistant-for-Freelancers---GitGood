@@ -27,6 +27,22 @@ const proposal = (overrides = {}) => ({
   conflict_ids: [],
   ...overrides,
 });
+test("current partial time explains the missing details and cannot be confirmed", () => {
+  const partial = proposal({
+    status: "needs_review",
+    new_value: "2026-10-18T02:00:00Z",
+  });
+  assert.equal(canConfirm(partial, 3, 4), false);
+  const view = changePresentation(partial, true);
+  assert.equal(view.label, "待复核");
+  assert.match(view.text, /结束时间或时长/);
+  assert.equal(view.warning, true);
+  // Source/version changes still take precedence over a missing-time notice.
+  assert.match(
+    changePresentation(partial, false).text,
+    /业务或来源消息已经变化/,
+  );
+});
 function deferred() {
   let resolve, reject;
   const promise = new Promise((yes, no) => {

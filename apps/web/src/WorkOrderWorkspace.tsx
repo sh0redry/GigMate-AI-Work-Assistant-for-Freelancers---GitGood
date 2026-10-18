@@ -3,13 +3,10 @@ import { useStableState as useState } from "./useStableState";
 import { orderCommands } from "./order-command-api";
 import { OrderLifecycle } from "./OrderLifecycle";
 import { InspectOrderAttempt } from "./InspectOrderAttempt";
-import { unavailableFeatures, loopReady, type Features } from "./features";
+import { ReplyPanel } from "./ReplyPanel";
+import { unavailableFeatures, type Features } from "./features";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
-import {
-  canConfirm,
-  changePresentation,
-  BusinessStore,
-} from "./business-store";
+import { canConfirm, BusinessStore } from "./business-store";
 import {
   changeContext,
   businessApi,
@@ -22,15 +19,13 @@ import {
   conflictLabel,
   customerStates,
   fieldNames,
-  fieldStates,
   fieldValue,
   filterOrders,
-  instant,
+  friendlyInstant,
   messageAnchor,
   onDay,
   orderStates,
   reviewBinding,
-  taskStates,
 } from "./work-order-view";
 
 type Props = {
@@ -40,6 +35,9 @@ type Props = {
   initialSelected?: string;
   onSessionExpired: () => void;
   onBusyChange: (busy: boolean) => void;
+  onOpenSend?: (actionId: string) => void;
+  onConnect?: () => void;
+  onOpenApprovals?: () => void;
   request?: RequestApi;
   onOpenConversation?: (
     conversationId: string,
@@ -47,6 +45,10 @@ type Props = {
     revision: number,
   ) => void;
 };
+function snippet(text: string | null | undefined) {
+  if (!text) return t("（没有文字）");
+  return text.length > 24 ? text.slice(0, 24) + "…" : text;
+}
 function Sources({
   sources,
   data,
@@ -56,47 +58,48 @@ function Sources({
   data: BusinessSnapshot;
   onOpenConversation?: Props["onOpenConversation"];
 }) {
+  const found = sources.flatMap((source) => {
+    const message = data.messages.find(
+      (m) =>
+        m.id === source.message_id && m.revision === source.message_revision,
+    );
+    return message ? [message] : [];
+  });
+  if (!found.length)
+    return sources.length ? (
+      <small className="source-quote">
+        {t("依据的消息暂时读不到，先别确认。")}
+      </small>
+    ) : null;
   return (
-    <small>
-      {t("来源：")}
-      {!sources.length
-        ? t("未提供原文依据")
-        : sources.map((source) => {
-            const message = data.messages.find(
-              (m) =>
-                m.id === source.message_id &&
-                m.revision === source.message_revision,
-            );
-            const label = `${source.message_id.slice(-6)} · r${source.message_revision}`;
-            return (
-              <span
-                className="source-reference"
-                key={`${source.message_id}-${source.message_revision}`}
-              >
-                {message ? (
-                  <a href={`#${messageAnchor(message.id, message.revision)}`}>
-                    {label}
-                  </a>
-                ) : (
-                  t("{0}（该版本未载入，需复核）", label)
-                )}
-                {message && onOpenConversation && (
-                  <button
-                    className="secondary"
-                    onClick={() =>
-                      onOpenConversation(
-                        message.conversation_id,
-                        source.message_id,
-                        source.message_revision,
-                      )
-                    }
-                  >
-                    {t("在客户会话中查看原话")}
-                  </button>
-                )}
-              </span>
-            );
-          })}
+    <small className="source-quote">
+      {t("依据：")}
+      {found.map((message) => (
+        <span
+          className="source-reference"
+          key={`${message.id}-${message.revision}`}
+        >
+          <a href={`#${messageAnchor(message.id, message.revision)}`}>
+            {message.revoked
+              ? t("已撤回的消息")
+              : t("客人说「{0}」", snippet(message.text))}
+          </a>
+          {onOpenConversation && (
+            <button
+              className="secondary"
+              onClick={() =>
+                onOpenConversation(
+                  message.conversation_id,
+                  message.id,
+                  message.revision,
+                )
+              }
+            >
+              {t("在客户会话中查看原话")}
+            </button>
+          )}
+        </span>
+      ))}
     </small>
   );
 }
@@ -107,6 +110,9 @@ export function WorkOrderWorkspace({
   initialSelected = "",
   onSessionExpired,
   onBusyChange,
+  onOpenSend,
+  onConnect,
+  onOpenApprovals,
   request,
   onOpenConversation,
 }: Props) {
@@ -129,12 +135,10 @@ export function WorkOrderWorkspace({
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [conversation, setConversation] = useState("all");
-  const [taskFilter, setTaskFilter] = useState("active");
-  const [day, setDay] = useState("");
+  const day = "";
   const [review, setReview] = useState<{ id: string; binding: string } | null>(
     null,
   );
-  const [consent, setConsent] = useState(false);
   useEffect(() => {
     store.start();
     if (initialSelected) store.select(initialSelected);
@@ -153,7 +157,6 @@ export function WorkOrderWorkspace({
   useEffect(() => {
     setConversation("all");
     setReview(null);
-    setConsent(false);
   }, [state.selected]);
   const data = state.data;
   const order = data?.orders.find((o) => o.id === state.selected);
@@ -169,12 +172,14 @@ export function WorkOrderWorkspace({
   useEffect(() => setRecoverConsent(false), [recoveryBinding]);
   const orders = filterOrders(data?.orders ?? [], search, status);
   const changes = detailReady ? (data?.changes ?? []) : [];
-  const pending = changes.filter((c) => c.status === "proposed");
+  // Incomplete proposals (e.g. only a start time) still need the merchant's
+  // attention, so they appear as a next step without a confirm button.
+  const pending = changes.filter(
+    (c) => c.status === "proposed" || c.status === "needs_review",
+  );
   const reviewed = changes.find((c) => c.id === review?.id);
   const reviewCurrent =
     !!data && !!reviewed && review?.binding === reviewBinding(data, reviewed);
-  const reviewedContext =
-    data && reviewed ? changeContext(data, reviewed) : null;
   const confirmable = (change: Change) =>
     !!data &&
     !!order &&
@@ -185,11 +190,35 @@ export function WorkOrderWorkspace({
     openOrder &&
     (change.field !== "address" || features.address_confirmation) &&
     canConfirm(change, order.version, changeContext(data, change) ?? -1);
+  const history = changes.filter(
+    (c) => c.status !== "proposed" && c.status !== "needs_review",
+  );
+  const fieldOrder = [
+    "schedule",
+    "address",
+    "specification",
+    "quantity",
+    "deadline",
+  ] as const;
+  const known = order
+    ? fieldOrder.flatMap((name) => {
+        const field = order.fields[name];
+        return field && field.status !== "missing" ? [{ name, field }] : [];
+      })
+    : [];
+  const missing = order
+    ? fieldOrder
+        .filter(
+          (name) =>
+            !order.fields[name] || order.fields[name]?.status === "missing",
+        )
+        .map((name) => fieldNames[name])
+    : [];
   const tasks = detailReady
     ? (data?.tasks ?? []).filter(
         (t) =>
           t.work_order_id === state.selected &&
-          (taskFilter === "all" || ["pending", "blocked"].includes(t.state)),
+          ["pending", "blocked"].includes(t.state),
       )
     : [];
   const calendar = (data?.calendar ?? [])
@@ -341,56 +370,41 @@ export function WorkOrderWorkspace({
           />
         </section>
       )}
-      <div
-        className={
-          state.error || state.notice || (state.stale && data)
-            ? `notice ${state.stale && data ? "stale" : ""}`
-            : "workspace-hint"
-        }
-        role="status"
-        aria-live="polite"
-      >
-        {state.error
-          ? t(state.error)
-          : state.notice
-            ? t(state.notice)
-            : t("顾客提议、顾客确认和商户确认分别显示。未知地址保持未提供。")}
-        {state.stale && data && (
-          <p>{t("下面是上次读取的数据，当前不能据此确认。")}</p>
-        )}
-      </div>
-      <div className="replay-tools">
-        <small>
-          {state.loading
-            ? t("正在读取最新数据…")
-            : state.updatedAt
-              ? t(
-                  "内容更新于：{0}",
-                  instant(new Date(state.updatedAt).toISOString()),
-                )
-              : t("尚未读取数据")}
-        </small>
-        <button
-          className="secondary"
-          disabled={state.loading || state.mutating}
-          onClick={() => void store.refresh()}
+      {(state.error || state.notice || (state.stale && data)) && (
+        <div
+          className={`notice ${state.stale && data ? "stale" : ""}`}
+          role="status"
+          aria-live="polite"
         >
-          {t("刷新业务数据")}
-        </button>
-      </div>
+          {state.error ? t(state.error) : state.notice ? t(state.notice) : ""}
+          {state.stale && data && (
+            <p>{t("网络不稳，下面是上次读到的内容，暂时不能确认。")}</p>
+          )}
+        </div>
+      )}
       <div className="grid" aria-busy={state.loading || state.mutating}>
         <aside className="panel">
-          <h2>{t("工单列表")}</h2>
+          <div className="row">
+            <h2>{t("我的工单")}</h2>
+            <button
+              className="secondary small"
+              disabled={state.loading || state.mutating}
+              onClick={() => void store.refresh()}
+            >
+              {t("刷新")}
+            </button>
+          </div>
           <label>
-            {t("搜索业务")}
+            {t("搜索")}
             <input
               type="search"
               value={search}
+              placeholder={t("客人或工作")}
               onChange={(e) => setSearch(e.target.value)}
             />
           </label>
           <label>
-            {t("工单状态")}
+            {t("状态")}
             <select value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="all">{t("全部状态")}</option>
               {Object.entries(orderStates).map(([value, text]) => (
@@ -400,16 +414,6 @@ export function WorkOrderWorkspace({
               ))}
             </select>
           </label>
-          <small>
-            {t("显示")}
-            {orders.length} / {data?.orders.length ?? 0} {t("张工单")}
-          </small>
-          {order && !orders.some((o) => o.id === order.id) && (
-            <p>
-              {t("筛选隐藏了当前工单；右侧仍显示「")}
-              {order.summary}」。
-            </p>
-          )}
           {orders.map((item) => (
             <button
               key={item.id}
@@ -420,18 +424,19 @@ export function WorkOrderWorkspace({
             >
               <strong>{item.summary}</strong>
               <small>
-                {t("版本")}
-                {item.version} · {orderStates[item.status]} ·{" "}
-                {item.conversation_ids.length} {t("个关联会话")}
+                {item.fields.schedule?.value
+                  ? fieldValue(item.fields.schedule.value)
+                  : t("时间未定")}
               </small>
+              <small>{orderStates[item.status]}</small>
             </button>
           ))}
           {data && !orders.length && (
             <p>
               {data.orders.length
-                ? t("没有匹配的工单，调整搜索或状态筛选。")
+                ? t("没有符合条件的工单。")
                 : t(
-                    "当前还没有工单。先在「WhatsApp 连接」中授权会话，再到「新建工单」引用客户原文建单；自动建单尚未开放。",
+                    "还没有工单。先到「WhatsApp 连接」选好要处理的聊天，再点「新建工单」。",
                   )}
             </p>
           )}
@@ -439,406 +444,335 @@ export function WorkOrderWorkspace({
             <p>
               {state.loading
                 ? t("正在读取工单…")
-                : t("读取失败，请检查服务后刷新。")}
+                : t("暂时读不到工单，请稍后刷新。")}
             </p>
           )}
         </aside>
         <section className="panel" aria-label={t("工单详情")}>
-          <h2>{t("工单详情")}</h2>
           {detailReady && !order && (
-            <p>{t("有工单后，可在此查看详情与来源消息。")}</p>
+            <p className="empty">{t("在左边选一张工单。")}</p>
           )}
-          {!detailReady && <p>{t("正在核对选中工单，完成前不能确认。")}</p>}
+          {!detailReady && <p className="empty">{t("正在打开工单…")}</p>}
           {detailReady && order && data && (
             <>
-              <div className="confirmed">
-                <h3>{order.summary}</h3>
-                <small>
-                  {orderStates[order.status]} {t("· 版本")}
-                  {order.version} {t("· 更新于")} {instant(order.updated_at)}
-                </small>
-                {(
-                  [
-                    "schedule",
-                    "address",
-                    "specification",
-                    "quantity",
-                    "deadline",
-                  ] as const
-                )
-                  .flatMap((name) => {
-                    const field = order.fields[name];
-                    return field ? [{ name, field }] : [];
-                  })
-                  .map(({ name, field }) => (
-                    <div className="business-field" key={name}>
-                      <strong>
-                        {fieldNames[name]}：{fieldValue(field.value)}
-                      </strong>
-                      <span
-                        className={`tag ${field.status !== "confirmed" ? "warning" : ""}`}
-                      >
-                        {fieldStates[field.status]}
-                      </span>
+              <div className="order-head">
+                <h2>{order.summary}</h2>
+                <span className="tag">{orderStates[order.status]}</span>
+              </div>
+              <section className="next-step" aria-label={t("下一步")}>
+                <p className="eyebrow">{t("下一步")}</p>
+                {pending.length === 0 && (
+                  <h3>
+                    {!openOrder
+                      ? t("这张工单已经结束。")
+                      : missing.length
+                        ? t("还缺：{0}", missing.join("、"))
+                        : t("都安排好了，没有要你处理的事。")}
+                  </h3>
+                )}
+                {pending.map((change) => {
+                  const context = changeContext(data, change);
+                  const current =
+                    context !== null &&
+                    change.base_work_order_version === order.version &&
+                    change.context_version === context;
+                  const conflict = change.conflict_ids
+                    .map((id) => conflictLabel(data, id))
+                    .join("、");
+                  const incomplete = change.status === "needs_review";
+                  const ok = !incomplete && confirmable(change);
+                  return (
+                    <article className="change" key={change.id}>
+                      <h3>
+                        {incomplete
+                          ? change.field === "schedule"
+                            ? t("客人说了时间，但还不完整")
+                            : t(
+                                "客人提到的{0}需要你看一下",
+                                fieldNames[change.field] ?? change.field,
+                              )
+                          : conflict
+                            ? t("客人想改时间，但和「{0}」撞了", conflict)
+                            : t(
+                                "客人提了新的{0}",
+                                fieldNames[change.field] ?? change.field,
+                              )}
+                      </h3>
+                      <p className="change-values">
+                        <span className="old">
+                          {fieldValue(change.old_value)}
+                        </span>
+                        <span aria-hidden="true">→</span>
+                        <strong>{fieldValue(change.new_value)}</strong>
+                      </p>
+                      {change.customer_confirmation !== "not_requested" && (
+                        <p className="subtle">
+                          {customerStates[change.customer_confirmation]}
+                        </p>
+                      )}
+                      <Sources
+                        sources={change.sources}
+                        data={data}
+                        onOpenConversation={onOpenConversation}
+                      />
+                      {incomplete && (
+                        <p className="subtle">
+                          {change.field === "schedule"
+                            ? t(
+                                "还不知道几点结束（或要多久），先问客人，问清楚后才能放进日历。",
+                              )
+                            : t("意思不够明确，先和客人确认一下。")}
+                        </p>
+                      )}
+                      {["schedule", "address"].includes(change.field) &&
+                        !conflict &&
+                        !incomplete && (
+                          <div className="reply-actions">
+                            <button
+                              disabled={!ok}
+                              onClick={() =>
+                                setReview({
+                                  id: change.id,
+                                  binding: reviewBinding(data, change),
+                                })
+                              }
+                            >
+                              {change.field === "address"
+                                ? t("确认新地址")
+                                : t("确认新时间")}
+                            </button>
+                          </div>
+                        )}
+                      {!ok && !conflict && !incomplete && (
+                        <p className="subtle">
+                          {!current
+                            ? t(
+                                "聊天、授权或工单已变化，这条旧提议不能直接确认。",
+                              )
+                            : !openOrder
+                              ? t("工单已结束，不能再改。")
+                              : change.field === "address" &&
+                                  !features.address_confirmation
+                                ? t("地址确认功能还没开放。")
+                                : t("请稍等，正在同步最新内容。")}
+                        </p>
+                      )}
+                      {!["schedule", "address"].includes(change.field) && (
+                        <p className="subtle">
+                          {t("这类内容请到「业务管理」的需求与交付里确认。")}
+                        </p>
+                      )}
+                      {review?.id === change.id && (
+                        <div className="confirm-sheet" role="region">
+                          {reviewCurrent && reviewed ? (
+                            <>
+                              <p>
+                                {t(
+                                  "确认后，「{0}」改为 {1}。日历和准备待办会一起更新。",
+                                  order.summary,
+                                  fieldValue(reviewed.new_value),
+                                )}
+                              </p>
+                              {reviewed.customer_confirmation !==
+                                "confirmed" && (
+                                <p className="subtle">
+                                  {t(
+                                    "客人还没明确答应，会先记成「暂定」，等客人确认后再变正式。",
+                                  )}
+                                </p>
+                              )}
+                            </>
+                          ) : (
+                            <p>{t("内容刚更新了，请重新看一眼再确认。")}</p>
+                          )}
+                          <div className="reply-actions">
+                            <button
+                              disabled={
+                                !reviewCurrent ||
+                                !reviewed ||
+                                !confirmable(reviewed)
+                              }
+                              onClick={() => {
+                                if (reviewed && reviewCurrent) {
+                                  void store.confirm(reviewed.id);
+                                  setReview(null);
+                                }
+                              }}
+                            >
+                              {t("确认")}
+                            </button>
+                            <button
+                              className="secondary"
+                              disabled={state.mutating || commandBusy}
+                              onClick={() => setReview(null)}
+                            >
+                              {t("先不")}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+                {accountId && openOrder && (
+                  <ReplyPanel
+                    csrf={csrf}
+                    accountId={accountId}
+                    orderId={order.id}
+                    orderSummary={order.summary}
+                    features={features}
+                    refreshKey={state.updatedAt}
+                    onOpenSend={onOpenSend}
+                    onConnect={onConnect}
+                    onOpenApprovals={onOpenApprovals}
+                    onSessionExpired={onSessionExpired}
+                  />
+                )}
+              </section>
+              <h3 className="section-title">{t("安排")}</h3>
+              <dl className="order-facts">
+                {known.map(({ name, field }) => (
+                  <div key={name}>
+                    <dt>{fieldNames[name]}</dt>
+                    <dd>
+                      {fieldValue(field.value)}{" "}
+                      {field.status !== "confirmed" && (
+                        <span className="tag warning">
+                          {field.status === "proposed"
+                            ? t("等客人确认")
+                            : t("需要你看一下")}
+                        </span>
+                      )}
                       <Sources
                         sources={field.sources}
                         data={data}
                         onOpenConversation={onOpenConversation}
                       />
-                      {field.interpretation && (
-                        <small>
-                          {t("解释：")}
-                          {field.interpretation}
-                        </small>
-                      )}
-                    </div>
-                  ))}
-              </div>
-              {commands && (
-                <OrderLifecycle
-                  order={order}
-                  enabled={features.order_status}
-                  ready={ready && !state.mutating}
-                  commands={commands}
-                  onBusyChange={setCommandBusy}
-                  onDone={() => void store.refresh()}
-                  onError={(e) => {
-                    setCommandError(
-                      e instanceof Error ? e.message : t("操作失败"),
-                    );
-                    if ((e as { code?: string })?.code === "UNAUTHENTICATED")
-                      onSessionExpired();
-                  }}
-                />
-              )}
-              <p className="availability-note">
-                {Object.entries(order.fields)
-                  .filter(([, field]) => field.status !== "confirmed")
-                  .map(([name, field]) =>
-                    t(
-                      "{0}：{1}",
-                      fieldNames[name as keyof typeof fieldNames] ?? name,
-                      field.status === "missing"
-                        ? t("等待客户提供")
-                        : field.status === "needs_review"
-                          ? t("来源或含义需复核")
-                          : t("等待客户核实与商户确认"),
-                    ),
-                  )
-                  .join("；") ||
-                  t("当前已记录时间和地址的确认；请继续核对变更来源。")}{" "}
-                {!features.address_confirmation &&
-                  t("当前后端未开放地址提议确认。")}
-                {loopReady(features)
-                  ? t("需求、延期和交付检查请到业务管理。")
-                  : t("人工归单与延期保存仍未开放。")}
-              </p>
-              <h2>
-                {t("待核对变更")}
-                <span className="tag">
-                  {pending.length} {t("项待确认")}
-                  {changes.length > pending.length
-                    ? ` · ${t("共 {0} 项", changes.length)}`
-                    : ""}
-                </span>
-              </h2>
-              {!changes.length && (
-                <p className="empty">
-                  {t("暂无需要核对的变更。新的变更会显示在这里。")}
-                </p>
-              )}
-              {changes.map((change) => {
-                const context = changeContext(data, change);
-                const current =
-                  context !== null &&
-                  change.base_work_order_version === order.version &&
-                  change.context_version === context;
-                const display = changePresentation(change, current);
-                return (
-                  <article className="change" key={change.id}>
-                    <div className="row">
-                      <h3>
-                        {fieldNames[change.field]}
-                        {t("变更")}
-                      </h3>
-                      <span
-                        className={`tag ${display.warning ? "warning" : ""}`}
-                      >
-                        {display.label}
-                      </span>
-                    </div>
-                    <p>
-                      {t("原值：")}
-                      {fieldValue(change.old_value)}
-                    </p>
-                    <p>
-                      <strong>
-                        {t("提议值：")}
-                        {fieldValue(change.new_value)}
-                      </strong>
-                    </p>
-                    <small>
-                      {change.proposer === "customer"
-                        ? t("顾客提出")
-                        : t("商户提出")}{" "}
-                      · {customerStates[change.customer_confirmation]}{" "}
-                      {t("· 工单基于 v")}
-                      {change.base_work_order_version} {t("/ 会话 v")}
-                      {change.context_version}
-                    </small>
-                    <Sources
-                      sources={change.sources}
-                      data={data}
-                      onOpenConversation={onOpenConversation}
-                    />
-                    {change.conflict_ids.length > 0 && (
-                      <p>
-                        {t("冲突安排：")}
-                        {change.conflict_ids
-                          .map((id) => conflictLabel(data, id))
-                          .join("、")}
-                      </p>
-                    )}
-                    <p>
-                      {context === null
-                        ? t("来源版本或归属无法完整核对，保持待复核。")
-                        : !["schedule", "address"].includes(change.field)
-                          ? t("其他字段请到业务管理核对；此处确认时间和地址。")
-                          : display.text}
-                    </p>
-                    {["schedule", "address"].includes(change.field) && (
-                      <button
-                        disabled={!confirmable(change)}
-                        onClick={() => {
-                          setReview({
-                            id: change.id,
-                            binding: reviewBinding(data, change),
-                          });
-                          setConsent(false);
-                        }}
-                      >
-                        {change.field === "address"
-                          ? t("核对并确认地址")
-                          : t("核对并确认安排")}
-                      </button>
-                    )}
-                  </article>
-                );
-              })}
-              {review && (
-                <section
-                  className="change review-panel"
-                  role="region"
-                  aria-label={t("确认安排复核")}
-                >
-                  <h3>{t("复核本次业务更新")}</h3>
-                  {reviewCurrent && reviewed ? (
-                    <>
-                      <p>
-                        「{order.summary}」：{fieldValue(reviewed.old_value)} →{" "}
-                        {fieldValue(reviewed.new_value)}
-                      </p>
-                      <Sources sources={reviewed.sources} data={data} />
-                      <small>
-                        {t("工单 v")}
-                        {order.version} {t("· 来源会话 v")}
-                        {reviewedContext}
-                      </small>
-                    </>
-                  ) : (
-                    <p>
-                      {t(
-                        "提议、工单或来源已变化，本次复核失效。关闭后重新核对。",
-                      )}
-                    </p>
-                  )}
-                  <label className="inline-check">
-                    <input
-                      type="checkbox"
-                      checked={consent}
-                      disabled={
-                        !reviewCurrent || !reviewed || !confirmable(reviewed)
-                      }
-                      onChange={(e) => setConsent(e.target.checked)}
-                    />
-                    {t(
-                      "我已核对原文，接受本次提议。仍未获客户确认的信息保持待确认；日历与准备待办按确认状态处理。",
-                    )}
-                  </label>
-                  <button
-                    disabled={
-                      !consent ||
-                      !reviewCurrent ||
-                      !reviewed ||
-                      !confirmable(reviewed)
-                    }
-                    onClick={() => {
-                      if (reviewed && reviewCurrent) {
-                        void store.confirm(reviewed.id);
-                        setReview(null);
-                        setConsent(false);
-                      }
-                    }}
-                  >
-                    {t("确认并同步安排")}
-                  </button>{" "}
-                  <button
-                    className="secondary"
-                    disabled={state.mutating || commandBusy}
-                    onClick={() => {
-                      setReview(null);
-                      setConsent(false);
-                    }}
-                  >
-                    {t("关闭复核")}
-                  </button>
-                </section>
-              )}
-              <h2>{t("关联会话与来源时间线")}</h2>
-              <label>
-                {t("显示会话")}
-                <select
-                  value={conversation}
-                  onChange={(e) => setConversation(e.target.value)}
-                >
-                  <option value="all">
-                    {t("全部关联会话（")}
-                    {order.conversation_ids.length}）
-                  </option>
-                  {order.conversation_ids.map((id, index) => (
-                    <option value={id} key={id}>
-                      {t("会话")}
-                      {index + 1} · {id.slice(-6)} · v
-                      {data.contexts?.[id] ?? data.contextVersion}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {data.messages
-                .filter(
-                  (m) =>
-                    conversation === "all" ||
-                    m.conversation_id === conversation,
-                )
-                .map((message) => (
-                  <div
-                    className="message"
-                    id={messageAnchor(message.id, message.revision)}
-                    key={`${message.id}-${message.revision}`}
-                  >
-                    <small>
-                      {message.direction === "incoming" ? t("顾客") : t("商户")}{" "}
-                      · {message.source} {t("· 会话")}{" "}
-                      {message.conversation_id.slice(-6)} ·{" "}
-                      {message.id.slice(-6)} · r{message.revision} ·{" "}
-                      {instant(message.occurred_at)}
-                    </small>
-                    <p>
-                      {message.revoked
-                        ? t("消息已撤回，相关内容需复核")
-                        : (message.text ?? t("没有可读取文字"))}
-                    </p>
+                    </dd>
                   </div>
                 ))}
-              {!data.messages.some(
-                (m) =>
-                  conversation === "all" || m.conversation_id === conversation,
-              ) && <p>{t("该范围暂无来源消息。")}</p>}
-              {conversation !== "all" && (
-                <small>
-                  {t("来源链接可能指向隐藏会话；选择全部关联会话查看。")}
-                </small>
+                {missing.length > 0 && (
+                  <div>
+                    <dt>{t("还没有")}</dt>
+                    <dd className="subtle">{missing.join("、")}</dd>
+                  </div>
+                )}
+              </dl>
+              {history.length > 0 && (
+                <details className="quiet">
+                  <summary>{t("改动记录（{0}）", history.length)}</summary>
+                  {history.map((change) => (
+                    <p key={change.id} className="subtle">
+                      {fieldNames[change.field]}：{fieldValue(change.old_value)}{" "}
+                      → {fieldValue(change.new_value)} ·{" "}
+                      {change.status === "confirmed"
+                        ? t("已确认")
+                        : t("已过时")}
+                    </p>
+                  ))}
+                </details>
+              )}
+              <details className="quiet" open>
+                <summary>{t("聊天记录")}</summary>
+                {order.conversation_ids.length > 1 && (
+                  <label>
+                    {t("显示聊天")}
+                    <select
+                      value={conversation}
+                      onChange={(e) => setConversation(e.target.value)}
+                    >
+                      <option value="all">{t("全部")}</option>
+                      {order.conversation_ids.map((id, index) => (
+                        <option value={id} key={id}>
+                          {t("聊天 {0}", index + 1)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {data.messages
+                  .filter(
+                    (m) =>
+                      conversation === "all" ||
+                      m.conversation_id === conversation,
+                  )
+                  .map((message) => (
+                    <div
+                      className={`message ${message.direction === "incoming" ? "" : "mine"}`}
+                      id={messageAnchor(message.id, message.revision)}
+                      key={`${message.id}-${message.revision}`}
+                    >
+                      <small>
+                        {message.direction === "incoming" ? t("客人") : t("我")}{" "}
+                        · {friendlyInstant(message.occurred_at)}
+                      </small>
+                      <p>
+                        {message.revoked
+                          ? t("（这条消息已撤回）")
+                          : (message.text ?? t("（没有文字）"))}
+                      </p>
+                    </div>
+                  ))}
+                {!data.messages.length && (
+                  <p className="subtle">{t("还没有聊天记录。")}</p>
+                )}
+              </details>
+              {commands && (
+                <details className="quiet">
+                  <summary>{t("更多操作（开始、完成、取消工单）")}</summary>
+                  <OrderLifecycle
+                    order={order}
+                    enabled={features.order_status}
+                    ready={ready && !state.mutating}
+                    commands={commands}
+                    onBusyChange={setCommandBusy}
+                    onDone={() => void store.refresh()}
+                    onError={(e) => {
+                      setCommandError(
+                        e instanceof Error ? e.message : t("操作失败"),
+                      );
+                      if ((e as { code?: string })?.code === "UNAUTHENTICATED")
+                        onSessionExpired();
+                    }}
+                  />
+                </details>
               )}
             </>
           )}
         </section>
         <aside className="panel">
-          <h2>{t("个人日历")}</h2>
-          <small>
-            {t("账号全部安排；时刻按香港时区显示，全天日期保留原时区。")}
-          </small>
-          <label>
-            {t("查看日期")}
-            <input
-              type="date"
-              value={day}
-              onChange={(e) => setDay(e.target.value)}
-            />
-          </label>
-          {day && (
-            <button className="secondary" onClick={() => setDay("")}>
-              {t("查看全部安排")}
-            </button>
-          )}
+          <h2>{t("我的日程")}</h2>
           {calendar.map((event) => (
-            <div className="calendar" key={event.id}>
+            <div
+              className={`calendar ${event.work_order_id === state.selected ? "current" : ""}`}
+              key={event.id}
+            >
+              <strong>{fieldValue(event.schedule)}</strong>
               <span>
-                {event.tentative ? t("暂定") : t("正式")} ·{" "}
-                {event.work_order_id === state.selected
-                  ? t("当前工单")
-                  : t("其他工单")}
-              </span>
-              <strong>
                 {data?.orders.find((o) => o.id === event.work_order_id)
-                  ?.summary ?? t("未提供工单标题")}
-              </strong>
-              <p>{fieldValue(event.schedule)}</p>
-              <small>
-                {t("工单 v")}
-                {event.work_order_version} {t("· 缓冲")}
-                {event.buffer_minutes} {t("分钟")}
-              </small>
+                  ?.summary ?? t("未命名工单")}
+                {event.tentative && (
+                  <span className="tag warning">{t("暂定")}</span>
+                )}
+              </span>
             </div>
           ))}
-          {data && !calendar.length && <p>{t("该范围暂无日历安排。")}</p>}
-          <h2>{t("当前工单待办")}</h2>
-          <label>
-            {t("待办范围")}
-            <select
-              value={taskFilter}
-              onChange={(e) => setTaskFilter(e.target.value)}
-            >
-              <option value="active">{t("待处理与受阻")}</option>
-              <option value="all">{t("全部（含历史）")}</option>
-            </select>
-          </label>
+          {data && !calendar.length && (
+            <p className="subtle">{t("还没有安排。")}</p>
+          )}
+          <h2>{t("这张工单要做的事")}</h2>
           {tasks.map((task) => (
             <div className="task" key={task.id}>
               <strong>{task.title}</strong>
               <small>
-                {taskStates[task.state]} {t("· 工单 v")}
-                {task.work_order_version}
+                {task.due ? t("截止 {0}", fieldValue(task.due)) : ""}
+                {task.state === "blocked" && ` · ${t("要等前一件事做完")}`}
               </small>
-              <small>
-                {t("截止：")}
-                {fieldValue(task.due)}
-              </small>
-              <small>
-                {t("依赖：")}
-                {task.depends_on.length
-                  ? task.depends_on
-                      .map(
-                        (id) =>
-                          data?.tasks.find((t) => t.id === id)?.title ??
-                          t("{0}（未载入）", id.slice(-6)),
-                      )
-                      .join("、")
-                  : t("无")}
-              </small>
-              {data && <Sources sources={task.sources} data={data} />}
             </div>
           ))}
           {detailReady && !tasks.length && (
-            <p>{t("当前工单在该范围暂无待办。")}</p>
+            <p className="subtle">{t("暂时没有要做的事。")}</p>
           )}
-          <small>
-            {t(
-              "新建工单请到“新建工单”；支持的状态操作在工单详情核对。回复草稿请到“回复审批”，",
-            )}
-            {loopReady(features) && features.business_sending
-              ? t("已批准草稿可在业务管理核对后提交发送。")
-              : t("业务审批尚未接通 WhatsApp 发送。")}
-          </small>
         </aside>
       </div>
     </>

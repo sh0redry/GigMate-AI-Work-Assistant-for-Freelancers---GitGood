@@ -1,5 +1,57 @@
 # Implementation status and validation
 
+## Single user deployment and partial-time recovery — 2026-10-18
+
+The default runtime is now `product`. Health/login report the actual mode,
+and product mode rejects fixture replay/custom replay and legacy replay status
+with 404. `scripts/start_product.py` builds the compiled web UI, backend and
+worker together, uses the existing owned WAHA/PostgreSQL installation, and
+checks both product health and exact implemented OpenAPI before reporting ready
+at http://127.0.0.1:18780. No fictional account/order/chat is seeded by this
+startup. New installations use a configured private password or an initially
+generated private random login; existing accounts are never reset. Model keys
+are copied via stdin into a backend-only read-only file volume, not Compose
+environment values, process arguments, frontend assets or Git.
+
+A model's schedule can legally be a scalar `FieldValue` (for example, a
+start timestamp with no end). The old conflict-draft path called `.get()` on
+that string, rolling back the entire proposal including a valid address.
+Synthetic reproduction confirms this failure. Worker promotion now keeps such
+time evidence as `needs_review`, persists the other changes and model trace,
+and never invents an end time/calendar interval. Draft generation independently
+tolerates partial values. The frontend explains why time needs review in all
+three UI languages. Prompt 1.3.1 documents complete intervals, missing duration
+and valid customer-confirmation values. Error logs add exception class and code
+location without exception messages or customer content.
+
+On the existing local installation, one explicitly requested manual analysis
+used a new request identifier and reproduced the same string-valued schedule.
+Its saved result was promoted after source/context/order/consent checks. The
+original request fence and an explicit original-unknown diagnostic remain,
+alongside the new trace/audit; no automatic model retry, field confirmation,
+calendar mutation or message send was performed. Actual authenticated HTTP
+checks through the compiled frontend confirm product mode, model availability,
+an address proposal, a time needing review and a 404 replay response.
+
+The two obsolete local replay deployments were checked to contain no WAHA
+connections/messages and then removed with their fictional database volumes and
+networks, as requested. Only the real installation remains running. Python
+`.venv` is a dependency directory, not a fictional business environment.
+
+Verification: clean source snapshot (no ignored private files) in Linux against
+isolated PostgreSQL schemas: **1105 passed / 1 skipped**; frontend **179 passed**;
+Ruff check/format, generated contracts/API type check and compiled production
+frontend/backend startup pass. Native focused checks passed as well. This is
+one local installation, not new Windows installer, fresh-device, commercial
+deployment or broad vendor-quality acceptance. The desktop installer remains
+separate work; no binary has been published by this correction.
+
+Integrated latest main `f47e740` (PR37 UI label/count fixes) before the final
+frontend check and rebuilt the product deployment. Main introduced no backend
+changes relative to the PostgreSQL-tested backend tree; both progress histories
+were preserved. Repository baseline and whitespace checks pass.
+
+
 ## Status action labels, change count and approval filter — 2026-10-17
 
 Status controls now name the action they perform (start work, mark waiting for customer, complete order, cancel order) instead of repeating the resulting state. A `pending_confirmation` order previously offered a single control labelled "cancelled", which read as an outcome rather than the one legal action.
@@ -9,6 +61,7 @@ The changes heading counts awaited proposals and the total recorded changes, so 
 The review queue grouped four different missing fields under one "address" label, printing the same line four times per order. Each missing field now uses its own name (address, specification, quantity, deadline).
 
 Evidence: frontend **176 passed**, including a new regression that action labels never repeat a state name; TypeScript and Prettier pass. No API, contract, migration or backend change. These are implementation checks, not teammate or device acceptance.
+
 
 ## PR35/main integration — 2026-10-17
 
@@ -1135,3 +1188,39 @@ Additive workspace on `andy/customer-conversations`, based on main `f47e740`. Se
 Existing pages keep their defaults; new sending props and compact disclosures are opt-in. Unsent text/origin stays in memory per chat; private read denial clears it. No backend/public contract/migration was changed; no real installation was upgraded, seeded or reset.
 
 Actual verification: full frontend **195 passed**, including **19** new synthetic chat/API/DOM regressions; generated API check, formatting, TypeScript and production build pass. Source-contract export is synchronized; applicable Ruff check and format (139 files) pass. Reused `test_waha_sync.py` and `test_agent_draft_bindings.py`: **51 passed / 2 skipped**, temporary SQLite, one existing Starlette TestClient deprecation warning. No PostgreSQL concurrency claim. Existing JavaScript bundle advisory remains (675.65 kB, 211.68 kB gzip). Browser checks used a disposable synthetic loopback backend with no WAHA/DB/model or sending support: desktop, 390 px phone width with no horizontal overflow, source highlight, English switch preserving raw text/input, and order-to-chat return preserving unsent text; no browser console errors observed. Final real-account text/edit/revoke, attachments, phone delivery, receipt timing and actual B-provider acceptance remain manual. No real message or paid model request was sent.
+
+## Business reply selection white-screen fix — 2026-10-17
+
+With business sending enabled, selecting an approved reply crashed the page:
+the frontend read `GET /connectors` as `{data: [...]}`, although the implemented
+contract returns `{items: [...], next_cursor: ...}`. Business reply review now
+uses the shared validated paginator. It loads every connection page and reports
+invalid list responses through the existing error handler. The per-connection
+chat endpoint correctly remains a detail response.
+
+Updated the existing sending test to match the implemented connector contract;
+added regressions for multiple connector pages without any writes and malformed
+connector responses without a render crash. Before the fix both new cases
+failed; afterwards all **177 frontend tests passed**. TypeScript, frontend API
+type synchronization, Prettier, Vite production build, generated contracts and
+repository baseline checks passed (the build retains the bundle-size advisory).
+In the local running UI, selecting the existing approved draft and connection
+now displays the enabled send-review button. No send was submitted during this
+verification. No backend behavior changed; backend tests were not rerun for this
+frontend-only correction. This does not establish WhatsApp delivery acceptance.
+
+## 2026-10-18 — local follow-up on PR #41: existing API entry points
+
+Local branch `codex/connect-existing-workflows`, based on PR #41 HEAD `8031eaa`: the feature guide now describes actual capability status and links directly to implemented pages. Manual review connects the existing assignment/dismissal API with source/current-context checks, same-conversation open-order selection, explicit consent, and retained request recovery. It can also open manual creation with the selected conversation. No backend contracts, permissions, provider calls, or live business records were changed for acceptance.
+
+Verification: 186 frontend tests passed (including new feature navigation, reviewed dismissal/assignment, stale/unknown-outcome restrictions, conversation handoff, and invalidated-read error tests). The first full run had one environment-only failure because the new checkout lacked its dependency environment; linking the existing project environment fixed it. A separate ad-hoc TypeScript API invocation failed to resolve Vite types from the parent directory; the production build is the authoritative typecheck. Formatting/typecheck/build and contract/baseline results are recorded after completion below. This follow-up is based on PR #41 and does not review or merge that prerequisite. Model response compatibility/quality and regeneration of stale proposals remain separate work.
+
+Completed checks: production Docker formatting + TypeScript + Vite build passed (existing bundle-size advisory); generated contracts and frontend API types match; baseline passed (92 Markdown files, 1000 links, 3 schemas). Backend implementation unchanged; backend pytest was not rerun. The compiled local frontend was applied at the existing product URL, with no backend restart or account changes.
+
+Local browser acceptance: signed in against the existing product backend, verified all eight capability cards and their shortcuts, opened the latest manual-review item, and observed the conversation-specific create/dismiss controls. No live assignment, dismissal, order creation, or outbound send was submitted.
+
+## PR #39 compatibility with main #40/#41/#42 — 2026-10-18
+
+Merged main `5f8d9e0` into `andy/customer-conversations`. Resolved overlapping App/creation state, work-order presentation, translations and bilingual documentation without dropping either workflow. Main's next-step, inline reply/approval/sending and manual-review operations remain; known fields and pending changes gain exact-source navigation into customer chats. Both review-to-create and chat-to-create use a shared origin state, preserving explicit source hints only for the chat selection. The new source links retain main's readable snippets. No backend/API/migration implementation differs from main, and no real runtime/database was upgraded.
+
+Post-merge frontend **207 passed / 0 failed**, including two new integration regressions for work-order→customer-chat→work-order navigation and exact conversation/message/revision callbacks from known fields and next-step changes. Existing manual-review creation/assignment/dismissal tests and the 19 conversation tests remain green. TypeScript/Vite build, API type sync and Prettier pass. Contract export, baseline and applicable Ruff check/format pass (142 Python files). The main branch's partial-schedule and product-mode regressions have **15 passed** on temporary SQLite (no PostgreSQL locking claim). Existing JS bundle advisory remains: 696.49 kB / 220.03 kB gzip. Real phone, paid model and send acceptance were not rerun; the original manual-acceptance limits still apply.

@@ -1,4 +1,4 @@
-prompt_version: 1.3.0
+prompt_version: 1.3.1
 role: role_b_extraction
 classification: synthetic-only
 
@@ -44,8 +44,9 @@ Field-by-field instructions:
 - `changes`: array of `FieldChange` objects. Each change has `field`
   (one of `schedule` / `address` / `summary` / `quantity` /
   `specification` / `deadline`), `old_value`, `new_value`, `field_status`
-  (always `proposed`), `customer_confirmation` (`pending` / `confirmed` /
-  `declined` based on explicit customer wording), `sources` (one entry
+  (`proposed`, or `needs_review` for incomplete time information),
+  `customer_confirmation` (`not_requested` / `pending` / `confirmed` /
+  `ambiguous` based on explicit customer wording), `sources` (one entry
   referencing the `message_id` and `message_revision` you were given) and
   `reason` (one short English sentence explaining the change).
 - Copy `sources[].message_id` **verbatim** from the request: it is an opaque
@@ -53,8 +54,8 @@ Field-by-field instructions:
   guess it. A single changed character makes the whole proposal unusable, and
   the server rejects any identifier it did not issue. The same applies to
   `new_work_order.fields[].sources`.
-- `unresolved_questions`: empty array when `assignment: matched`. Otherwise,
-  one short English sentence describing the ambiguity.
+- `unresolved_questions`: one short English sentence per missing detail or
+  ambiguity, including a missing end time even when `assignment: matched`.
 - `draft_text`: optional merchant-facing summary; may be null.
 
 Schedule parsing:
@@ -70,6 +71,16 @@ Schedule parsing:
   future relative to `received_at`.
 - Emit every timestamp as ISO-8601 in UTC with a trailing `Z`. Never emit a
   local offset and never emit a date-only string as a timed schedule.
+- A complete timed schedule is an object with `kind: "timed"`, `start_at`,
+  `end_at` and `timezone` (an IANA zone). An explicitly date-only arrangement
+  is an object with `kind: "date_only"`, `date` and `timezone`.
+- If the customer gives only a start time, do not invent an end time or
+  duration and do not turn it into an all-day arrangement. For an existing
+  order, retain the stated start time as a string with `field_status:
+  needs_review` and ask for the missing end time/duration. Continue extracting
+  the supplied address as its own change. For a new-order suggestion, omit
+  the incomplete schedule, list it in `missing_fields`, and ask for the
+  missing detail in `unresolved_questions`.
 - If `relative_dates_allowed` is `false`, or `time_basis` is `null`, you have
   no reliable basis: do **not** convert relative dates and do not emit a
   `schedule` / `deadline` change. Return the question in
