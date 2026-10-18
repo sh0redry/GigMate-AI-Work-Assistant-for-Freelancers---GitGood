@@ -27,12 +27,16 @@ const components = [
   "OrderLifecycle",
   "InspectOrderAttempt",
   "ReplyPanel",
+  "ManualFieldEditor",
+  "LoopCommand",
   "OrderCreation",
   "CalendarWorkspace",
   "ReviewWorkspace",
   "DeliveryGuide",
   "ApprovalsWorkspace",
   "WorkOrderWorkspace",
+  "ManualFieldEditor",
+  "LoopCommand",
   "ConnectionWorkspace",
   "ChatChoices",
   "WahaMessages",
@@ -1265,4 +1269,48 @@ test("first sign-in starts an interactive walkthrough that waits for the user's 
     window.HTMLElement.prototype.getBoundingClientRect = measure;
     delete globalThis.localStorage;
   }
+});
+
+test("a newly authorized conversation at version zero can open manual creation", async () => {
+  const data = deliveryFixture(),
+    fallback = globalThis.fetch,
+    chat = data.order.conversation_ids[0];
+  globalThis.fetch = async (url, options) => {
+    if (url.endsWith("/workspace-capabilities"))
+      return Response.json({
+        data: {
+          calendar_export: true,
+          create_order: true,
+          order_status: true,
+          address_confirmation: true,
+          manual_assignment: false,
+          business_sending: false,
+          automatic_understanding: false,
+          business_loop_reviewed: false,
+          manual_field_editing: false,
+        },
+      });
+    if (url.endsWith("/conversations/" + chat))
+      return Response.json({
+        data: {
+          id: chat,
+          account_id: "synthetic-account",
+          context_version: 0,
+          work_order_ids: [data.order.id],
+        },
+      });
+    if (url.includes("/messages?"))
+      return Response.json({ items: [], next_cursor: null });
+    return fallback(url, options);
+  };
+  await mount();
+  await login();
+  await act(async () => button("新建工单").click());
+  await select("已授权会话", chat);
+  await tick("这是另一项业务");
+  const input = [...document.querySelectorAll("label")]
+    .find((label) => label.textContent === "业务摘要")
+    .querySelector("input");
+  await fill(input, "Synthetic first contact without message history");
+  assert.equal(button("核对新工单").disabled, false);
 });

@@ -230,3 +230,7 @@ node_modules/
 
 # Personal local memo
 /start.txt
+
+# Desktop build products (runtime source is tracked, private user data is not)
+/apps/desktop/build/
+/apps/desktop/dist/

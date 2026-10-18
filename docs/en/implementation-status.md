@@ -1225,3 +1225,42 @@ Local browser acceptance: signed in against the existing product backend, verifi
 
 
 PR44 final review: malformed model order IDs and field names could be unhashable JSON arrays/objects and raise before schema validation. Added string guards and four regression cases, preserving review-only handling and partial-field retention. No credentials or live messages used.
+
+
+## 2026-10-18 — automatic-start desktop and explicit manual corrections
+
+PR44 was reviewed and merged after its required backend/frontend/documentation checks passed; its malformed model identity/field-name exception was fixed before merging. This follow-up adds a source-bound, versioned, idempotent merchant command to correct address/schedule/summary/quantity/specification/deadline, preserving distinct customer-confirmation attribution. It reuses atomic calendar/task updates and invalidates only unsent drafts. Rejection now leaves a clear path to manual correction; additive source metadata preserves compatibility with existing local orders.
+
+The Electron desktop startup wizard manages a local Docker backend, separate worker, PostgreSQL and pinned WAHA, uses OS-protected settings and a separate sandboxed business renderer, and performs an explicit, scoped clean installation without importing developer data. Official Docker installation is a first-time prerequisite; no host Python/Node or .env editing is required. GitHub-native macOS arm64/x64 and Windows x64 packaging is configured; native artifact/launch evidence is appended after completion. Bilingual installation/learning guides and ADR0010 document exact deletion scope, normal restart persistence, provenance and unsigned-distribution limits.
+
+Completed checks: 193 frontend tests passed (including new manual correction and stale-source UI tests), 12 new backend correction regressions passed, 90 focused PostgreSQL regressions passed, four desktop lifecycle/cleanup safety tests passed. Frontend formatting/API types/TypeScript/Vite build, Ruff, generated contracts, baseline and diff checks passed. Final full PostgreSQL result: **1121 passed, 27 skipped**; the temporary database was removed. A fresh isolated Docker stack also initialized and authenticated successfully, with orders, calendar, review queue and new-order suggestions all HTTP 200 and empty; its containers/volumes were removed without changing the developer installation. The first startup attempt failed at service readiness; an unchanged rerun passed, and infrastructure startup now retries once without resubmitting business requests. No paid model or live WhatsApp send acceptance is claimed.
+
+
+Local macOS arm64 DMG/zip built successfully and the native main/sandboxed renderer launched to the initial setup without submitting setup or deleting data. The first GitHub native packaging attempt hit an electron-builder update-channel auto-discovery error when a GitHub token was present during compilation. Auto-update publishing is now explicitly disabled; only the separate artifact-upload step receives the GitHub token. Native builds are rerun from the corrected source tag.
+
+
+Fresh-install follow-up: newly authorized chats legitimately have context version zero. Their read contract and frontend read/create readiness now accept zero rather than reporting unavailable data. Manual corrections also explicitly supersede earlier proposals for the same field, preserving history and removing obsolete next-action cards. Added three backend regressions. The earlier full PostgreSQL count predates this follow-up; final targeted checks are recorded separately.
+
+
+Desktop lifecycle follow-up: closing the workbench now quits its hidden setup window and stops only its own stack. Closing during startup cancels owned CLI process trees, prevents later startup commands, and still permits a scoped cleanup command. Added a cancellation regression; no Docker daemon or unrelated process is stopped.
+
+
+Final fresh-install/correction validation: **1124 PostgreSQL tests passed, 27 skipped**, temporary database removed; **195 frontend tests** and **5 desktop lifecycle/cleanup tests** passed. Ruff, generated contracts/API types, formatting, production build, baseline and diff checks pass. Final native artifacts use the follow-up source tag; distribution and platform acceptance details remain in the release notes.
+
+
+The real stop/restart acceptance caught a desktop configuration bug: a blank optional model key disabled the extraction provider but still set the live-LLM flag, causing the worker to exit. Live flags now follow whether a key was explicitly configured, and worker configuration/heartbeat health is required before opening the workbench. Added a no-key regression; the final lifecycle suite has six tests. This root cause explains the earlier intermittent service-readiness failures, superseding the initial unconfirmed diagnosis.
+
+
+Final no-key lifecycle acceptance passed on real isolated Docker: empty product collections, authenticated pinned WAHA version, normal stop/restart preserving the account without supplying its password again, then removal of only that test project. Final desktop safety suite: six passed. No paid model call or real WhatsApp send was performed.
+
+## 2026-10-18 — PR45 review repair batch
+
+Supersedes the initial destructive-install policy above. Installation/build changes and old reset markers no longer trigger deletion. Windows uninstall retains the OS-protected profile; unreadable/corrupt profiles fail closed without recreating credentials. Optional cleanup is separate from startup, excludes the current project, requires explicit legacy opt-in, exact selected resource identities and a typed two-minute single-use confirmation, and reinspects all selected identities before mutation. Profile writes use a private temporary file and atomic replacement.
+
+AI setup now persists explicit enable/disable/key-removal, reviewed USD input/output token prices and bounded per-request budget. Incomplete/invalid settings close live AI while allowing manual startup, and generated Compose settings are tested against the real backend configuration gate without vendor calls. Model secrets moved to a separate API/worker-only volume; initialization removes the obsolete monitor-readable key. Port contention falls back to a persisted free loopback port. CSP permits controlled audio/frame blob previews with the existing sandbox and remote/script/object restrictions retained.
+
+Manual corrections retain additive legacy field defaults and return a definite review-required rejection for corrupt required data. Existing cancellation of old conflict actions and context-zero manual creation are confirmed with formal regressions; these teammate concerns did not require weakening version/source guards. Editing a value clears the customer's prior confirmation checkbox. The release workflow pins one source SHA, validates PostgreSQL/contracts, builds with read-only access and reserves write access for a separate existing-draft publish job that generates/verifies actual installer checksums and refuses tag drift/overwriting assets.
+
+Local evidence: **13 desktop tests**, **196 frontend tests**, API type synchronization, formatting, TypeScript/Vite build, generated contracts, Ruff and baseline passed. A headless Edge check loaded synthetic WAV metadata and a sandboxed blob frame with **zero CSP violations**. Full Windows SQLite backend run: **1127 passed / 30 skipped / 4 failed**, all four failures from the existing AI-contract test reading UTF-8 schema as GBK. After explicitly selecting UTF-8 there, the four failures plus all changed backend/checksum regressions passed (**31 tests**); the entire long suite was not rerun after that one test-reader fix. Docker was stopped, so no local PostgreSQL locking, native installer/Docker lifecycle, real PDF-viewer/attachment, paid model or phone-delivery acceptance is claimed. Updated PR CI provides separate PostgreSQL and platform checks; its results must be reported against the new head, not inherited from old releases. Existing installers are not rebuilt by pushing this batch.
+
+Final safety inspection additionally checks cleanup-review expiry immediately before every mutation, after Docker readiness/identity inspection; a slow Docker operation cannot extend a two-minute authorization. The same 13 desktop tests pass with the expired-at-mutation regression included.

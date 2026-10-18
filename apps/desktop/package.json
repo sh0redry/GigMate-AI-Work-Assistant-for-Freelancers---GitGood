@@ -1,0 +1,70 @@
+{
+  "name": "gigmate-desktop",
+  "version": "0.3.0",
+  "description": "GigMate local desktop application with managed Docker startup",
+  "author": "GitGood",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "main": "main.cjs",
+  "scripts": {
+    "test": "node --test *.test.cjs",
+    "prepare:runtime": "node prepare.mjs",
+    "start": "electron .",
+    "dist": "electron-builder --publish never"
+  },
+  "devDependencies": {
+    "electron": "44.9.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "org.gitgood.gigmate",
+    "productName": "GigMate",
+    "asar": true,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "*.cjs",
+      "setup.html",
+      "setup.js",
+      "setup.css",
+      "!*.test.cjs"
+    ],
+    "extraResources": [
+      {
+        "from": "build/runtime",
+        "to": "runtime"
+      },
+      {
+        "from": "build/web",
+        "to": "web"
+      },
+      {
+        "from": "build/install.json",
+        "to": "install.json"
+      }
+    ],
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.productivity",
+      "identity": "-",
+      "artifactName": "GigMate-${version}-mac-${arch}.${ext}"
+    },
+    "win": {
+      "target": "nsis",
+      "artifactName": "GigMate-${version}-Windows-${arch}-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false,
+      "include": "installer.nsh"
+    },
+    "publish": null
+  }
+}

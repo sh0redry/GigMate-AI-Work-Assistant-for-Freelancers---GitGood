@@ -49,7 +49,7 @@ export function OrderCreation({
     [conversation, setConversation] = useState(initialConversation),
     [messages, setMessages] = useState<Message[]>([]),
     [orders, setOrders] = useState<Order[]>([]),
-    [context, setContext] = useState(0),
+    [context, setContext] = useState(-1),
     [summary, setSummary] = useState(""),
     [scheduleKind, setScheduleKind] = useState("missing"),
     [date, setDate] = useState(""),
@@ -158,7 +158,7 @@ export function OrderCreation({
             setConversations([]);
             setOrders([]);
             setMessages([]);
-            setContext(0);
+            setContext(-1);
           }
           report(e);
         }
@@ -190,7 +190,7 @@ export function OrderCreation({
       .map((m) => ({ message_id: m.id, message_revision: m.revision }));
   const problem = loading
     ? t("正在核对会话与来源。")
-    : !conversation || !context
+    : !conversation || !Number.isInteger(context) || context < 0
       ? t("请选择可用的已授权会话。")
       : !summary.trim() || summary.trim().length > 120
         ? t("请填写 1–120 字的业务摘要。")

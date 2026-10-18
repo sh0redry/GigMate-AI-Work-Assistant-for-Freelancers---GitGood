@@ -88,7 +88,12 @@ export function App() {
         if (
           !result.data ||
           Object.keys(unavailableFeatures)
-            .filter((key) => key !== "business_loop_reviewed")
+            .filter(
+              (key) =>
+                !["business_loop_reviewed", "manual_field_editing"].includes(
+                  key,
+                ),
+            )
             .some(
               (key) => typeof result.data[key as keyof Features] !== "boolean",
             )
@@ -97,6 +102,7 @@ export function App() {
         setFeatures({
           ...result.data,
           business_loop_reviewed: result.data.business_loop_reviewed === true,
+          manual_field_editing: result.data.manual_field_editing === true,
         });
       })
       .catch((e) => {

@@ -1437,6 +1437,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/work-orders/{order_id}/manual-field": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Manual Field */
+    post: operations["manual_field_api_v1_work_orders__order_id__manual_field_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/work-orders/{order_id}/requirements": {
     parameters: {
       query?: never;
@@ -2635,6 +2652,50 @@ export interface components {
       mode: "product" | "synthetic_replay";
       /** Username */
       username: string;
+    };
+    /** ManualFieldCommand */
+    ManualFieldCommand: {
+      /**
+       * Apply Calendar Update
+       * @default false
+       */
+      apply_calendar_update: boolean;
+      /**
+       * Conversation Id
+       * Format: uuid
+       */
+      conversation_id: string;
+      /**
+       * Customer Confirmed
+       * @default false
+       */
+      customer_confirmed: boolean;
+      /** Expected Context Version */
+      expected_context_version: number;
+      /** Expected Version */
+      expected_version: number;
+      /**
+       * Field
+       * @enum {string}
+       */
+      field:
+        | "schedule"
+        | "address"
+        | "summary"
+        | "quantity"
+        | "specification"
+        | "deadline";
+      /** Sources */
+      sources: components["schemas"]["SourceRef"][];
+      /** Value */
+      value:
+        | string
+        | number
+        | boolean
+        | components["schemas"]["TimedSchedule"]
+        | components["schemas"]["DateOnly"]
+        | components["schemas"]["InstantDeadline"]
+        | null;
     };
     /** MessageAssignmentResult */
     MessageAssignmentResult: {
@@ -4406,6 +4467,11 @@ export interface components {
        * @default []
        */
       requirements: components["schemas"]["RequirementItem"][];
+      /**
+       * Source Messages
+       * @default []
+       */
+      source_messages: components["schemas"]["SourceRef"][];
       status: components["schemas"]["WorkOrderStatus"];
       /** Summary */
       summary: string;
@@ -4562,6 +4628,11 @@ export interface components {
        * @default true
        */
       manual_assignment: boolean;
+      /**
+       * Manual Field Editing
+       * @default true
+       */
+      manual_field_editing: boolean;
       /**
        * Order Status
        * @default true
@@ -7626,6 +7697,43 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Detail_WorkOrderEvidenceView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  manual_field_api_v1_work_orders__order_id__manual_field_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        order_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ManualFieldCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_WorkOrder_"];
         };
       };
       /** @description Validation Error */

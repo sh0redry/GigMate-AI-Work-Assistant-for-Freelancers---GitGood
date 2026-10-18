@@ -1752,3 +1752,8 @@ install_workspace(app, database, actor, detail, page, conversation_info)
 from gigmate.product_commands import install as install_product  # noqa: E402
 
 install_product(app, database, actor, detail, page)
+
+
+from gigmate.manual_fields import install as install_manual_fields  # noqa: E402
+
+install_manual_fields(app, database, actor, detail)

@@ -129,3 +129,19 @@ test("invalidated concurrent reads report an authorization change instead of a n
       !/无法连接/.test(error.message),
   );
 });
+
+test("an authorized conversation with no incoming messages accepts context zero", async () => {
+  const api = businessApi(async (path) => {
+    if (path.startsWith("/work-orders?"))
+      return {
+        items: [{ id: "order", conversation_ids: ["chat"], version: 1 }],
+        next_cursor: null,
+      };
+    if (path === "/conversations/chat")
+      return { data: { id: "chat", context_version: 0 } };
+    return { items: [], next_cursor: null };
+  });
+  const snapshot = await api.load("order", new AbortController().signal);
+  assert.equal(snapshot.contextVersion, 0);
+  assert.deepEqual(snapshot.messages, []);
+});

@@ -1127,7 +1127,7 @@
           "type": "string"
         },
         "context_version": {
-          "minimum": 1,
+          "minimum": 0,
           "title": "Context Version",
           "type": "integer"
         },
@@ -1803,6 +1803,96 @@
         "timezone"
       ],
       "title": "InstantDeadline",
+      "type": "object"
+    },
+    "ManualFieldCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "apply_calendar_update": {
+          "default": false,
+          "title": "Apply Calendar Update",
+          "type": "boolean"
+        },
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "customer_confirmed": {
+          "default": false,
+          "title": "Customer Confirmed",
+          "type": "boolean"
+        },
+        "expected_context_version": {
+          "minimum": 1,
+          "title": "Expected Context Version",
+          "type": "integer"
+        },
+        "expected_version": {
+          "minimum": 1,
+          "title": "Expected Version",
+          "type": "integer"
+        },
+        "field": {
+          "enum": [
+            "schedule",
+            "address",
+            "summary",
+            "quantity",
+            "specification",
+            "deadline"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/TimedSchedule"
+            },
+            {
+              "$ref": "#/$defs/DateOnly"
+            },
+            {
+              "$ref": "#/$defs/InstantDeadline"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "expected_version",
+        "expected_context_version",
+        "conversation_id",
+        "field",
+        "value",
+        "sources"
+      ],
+      "title": "ManualFieldCommand",
       "type": "object"
     },
     "NewOrderSuggestionView": {
@@ -5811,6 +5901,14 @@
           "title": "Requirements",
           "type": "array"
         },
+        "source_messages": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Source Messages",
+          "type": "array"
+        },
         "status": {
           "$ref": "#/$defs/WorkOrderStatus"
         },
@@ -5931,6 +6029,11 @@
         "manual_assignment": {
           "default": true,
           "title": "Manual Assignment",
+          "type": "boolean"
+        },
+        "manual_field_editing": {
+          "default": true,
+          "title": "Manual Field Editing",
           "type": "boolean"
         },
         "order_status": {

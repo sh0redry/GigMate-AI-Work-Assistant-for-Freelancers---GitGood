@@ -106,7 +106,14 @@ export function ReplyPanel({
     return () => onBusyChange?.(false);
   }, [busy, onBusyChange]);
   const action = data?.action;
-  if (!action) return null;
+  if (!action)
+    return notice ? (
+      <p role="status">
+        {notice}{" "}
+        {features.manual_field_editing &&
+          t("如果客户已经提供信息，可在下方手动补充／修改字段。")}
+      </p>
+    ) : null;
   const attempt = api.attempt();
   const problem =
     action.state === "pending_approval" ? approveProblem(data, Date.now()) : "";
