@@ -83,6 +83,13 @@ class ExtractionOutcome:
     # ``llm:cost-usage-missing`` when the vendor omits ``usage``). ``None``
     # when a cost row was recorded.
     cost_note: str | None = None
+    # The AI judged the message unrelated to every open order (a greeting,
+    # thanks, a sticker): open proposals stay valid (gigmate.pending).
+    unrelated: bool = False
+    # A separate new job mentioned in the same message as a matched change
+    # ("改 A 单的时间，另外想约一单全家福"). Shape of NewWorkOrderSuggestion;
+    # persisted as its own suggestion, never as a change to the matched order.
+    side_request: dict | None = None
 
 
 class Provider(Protocol):

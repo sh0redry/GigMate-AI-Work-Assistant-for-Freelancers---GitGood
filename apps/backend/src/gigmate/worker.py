@@ -13,7 +13,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from gigmate.approvals import draft_for_change
-from gigmate.contracts import RequirementChange
+from gigmate.contracts import ChangeProposal, RequirementChange
 from gigmate.db import (
     Account,
     ChangeRow,
@@ -68,6 +68,23 @@ def open_orders(db, conversation_id, job_id=None):
     ]
 
 
+def _settle(db, inbox, verdict=None, touched=(), created=()):
+    """Decide what this message means for open proposals (gigmate.pending).
+
+    Without an explicit verdict nothing was judged, so every older open
+    proposal is superseded — the conservative behaviour. Calling it again
+    after a judged verdict changes nothing.
+    """
+    from gigmate.pending import UNKNOWN, reconcile
+
+    if inbox is None:
+        return
+    conversation = db.get(ConversationRow, (inbox.payload or {}).get("conversation_id"))
+    if conversation is None or conversation.account_id != inbox.account_id:
+        return
+    reconcile(db, conversation, inbox.context_version, verdict or UNKNOWN, touched, created)
+
+
 def run_once(factory=Session):
     began = time.monotonic()
     owner = str(uuid4())
@@ -92,11 +109,13 @@ def run_once(factory=Session):
             job.state, job.error_code = "completed", "MODEL_OUTCOME_UNKNOWN"
             job.lease_owner, job.lease_until = None, None
             complete_metrics(job, db.get(Inbox, job.event_id), began)
+            _settle(db, db.get(Inbox, job.event_id))
             return True
         if job.attempts >= 3:
             job.state, job.error_code = "failed", "RETRY_EXHAUSTED"
             job.lease_owner, job.lease_until = None, None
             complete_metrics(job, db.get(Inbox, job.event_id), began)
+            _settle(db, db.get(Inbox, job.event_id))
             return True
         if job.state == "processing":
             job.lease_recoveries += 1
@@ -151,6 +170,9 @@ def run_once(factory=Session):
                 # Ingress advances context and invalidates pending drafts; echoes
                 # never trigger extraction, another question or another send.
                 job.state, job.error_code = "completed", OWN_SEND_ECHO
+                from gigmate.pending import CLEAN
+
+                _settle(db, inbox, CLEAN)
             elif event["connector"] == "waha":
                 linked = open_orders(db, conversation.id, job.id)
                 job.model_request_id = uuid4().hex
@@ -209,6 +231,15 @@ def run_once(factory=Session):
                         }
                         db.flush()
                         draft_for_change(db, account_id, order, conversation, payload)
+                        from gigmate.pending import CLEAN
+
+                        _settle(
+                            db,
+                            inbox,
+                            CLEAN,
+                            touched={(order.id, change["field"])},
+                            created={change_id},
+                        )
                     job.state, job.error_code = (
                         "completed",
                         None if proposal else "STUB_UNSUPPORTED_INPUT",
@@ -218,6 +249,7 @@ def run_once(factory=Session):
                     raise RuntimeError("LEASE_EXPIRED")
                 job.lease_owner, job.lease_until = None, None
                 complete_metrics(job, inbox, began)
+                _settle(db, inbox)
         if deferred is not None:
             # No Session or database lock spans model/network I/O.
             request, event, linked, submitted_connection_id, submitted_control_version = deferred
@@ -299,6 +331,7 @@ def run_once(factory=Session):
                     )
                 job.lease_owner, job.lease_until = None, None
                 complete_metrics(job, inbox, began)
+                _settle(db, inbox)
     except Exception as exc:
         # No raw message text or exception values enter logs.
         frame = traceback.extract_tb(exc.__traceback__)[-1]
@@ -324,6 +357,7 @@ def run_once(factory=Session):
                 job.lease_owner, job.lease_until = None, None
                 if job.state in {"failed", "completed"}:
                     complete_metrics(job, db.get(Inbox, job.event_id), began)
+                    _settle(db, db.get(Inbox, job.event_id))
     return True
 
 
@@ -356,7 +390,9 @@ def _route_through_provider(
     available for review; paid calls are not automatically replayed.
     """
     request = prepared_request or _extraction_request(db, account, event, conversation, linked)
-    outcome = review_schedule_shapes(prepared_outcome or provider().propose(request))
+    outcome = review_schedule_shapes(
+        prepared_outcome or provider().propose(request), request.output_language
+    )
     # The model chooses which open order this message belongs to; the provider
     # has already refused any id that was not offered. With one candidate the
     # legacy single-order request is still honoured.
@@ -392,7 +428,13 @@ def _route_through_provider(
         proposal=outcome.proposal,
         outcome=outcome,
     )
-    if outcome.proposal.assignment.value == "matched" and target_order_id is not None:
+    from gigmate.pending import UNKNOWN, reconcile, touched_by, verdict_for
+
+    matched = outcome.proposal.assignment.value == "matched" and target_order_id is not None
+    if outcome.side_request and matched:
+        _persist_side_request(db, account, conversation, inbox, outcome)
+    new_ids: list[str] = []
+    if matched:
         order = db.get(WorkOrderRow, target_order_id)
         new_ids = persist_changes_for(
             db,
@@ -414,8 +456,52 @@ def _route_through_provider(
                 # Role B's draft_text is a merchant-facing summary (prompt v1), not a
                 # customer reply, so the customer-facing body uses the role C template.
                 draft_for_change(db, account.id, order, conversation, change.data)
-            return True
-    return False
+    # The AI has read this message: keep open proposals it did not touch.
+    reconcile(
+        db,
+        conversation,
+        request.context_version,
+        verdict_for(outcome) if (not matched or new_ids) else UNKNOWN,
+        touched_by(outcome, target_order_id if matched else None),
+        new_ids,
+    )
+    return bool(new_ids)
+
+
+def _persist_side_request(db, account, conversation, inbox, outcome):
+    """Store a second job mentioned next to a matched change as its own suggestion.
+
+    It is an ordinary needs-review proposal with a ``new_work_order`` block,
+    so the existing suggestion list, prefill and creation checks apply. No
+    second model-call trace is written: it came from the same call.
+    """
+    side = ChangeProposal.model_validate(
+        {
+            "schema_version": "0.1.0",
+            "proposal_id": str(uuid4()),
+            "conversation_id": conversation.id,
+            "work_order_id": None,
+            "base_work_order_version": None,
+            "base_context_version": outcome.proposal.base_context_version,
+            "assignment": "needs_review",
+            "candidates": [],
+            "changes": [],
+            "unresolved_questions": [],
+            "new_work_order": outcome.side_request,
+            "draft_text": None,
+            "model_version": outcome.proposal.model_version,
+            "prompt_version": outcome.proposal.prompt_version,
+        }
+    )
+    persist_proposal(
+        db,
+        account_id=account.id,
+        conversation_id=conversation.id,
+        event_id=inbox.id,
+        proposal=side,
+        outcome=outcome,
+        trace=False,
+    )
 
 
 def _candidate_brief(data: dict) -> dict:

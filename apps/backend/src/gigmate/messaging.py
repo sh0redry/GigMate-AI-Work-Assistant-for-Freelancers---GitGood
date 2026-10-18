@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from gigmate.approvals import hold_for_new_message
 from gigmate.config import ROOT
-from gigmate.db import ChangeRow, ConversationRow, Inbox, Job, MessageRow
+from gigmate.db import ConversationRow, Inbox, Job, MessageRow
 from gigmate.errors import BusinessError
 
 
@@ -174,13 +174,21 @@ def ingest(db, account, event, *, trusted_waha=False):
         from gigmate.waha_send import invalidate_context
 
         invalidate_context(db, conversation)
-    for change in db.scalars(
-        select(ChangeRow).where(
-            ChangeRow.conversation_id == conversation.id, ChangeRow.account_id == account.id
+    # Open proposals are no longer superseded wholesale here. A new message
+    # makes them temporarily unconfirmable (their context version is behind);
+    # once the worker has read the message, gigmate.pending.reconcile keeps
+    # the unrelated ones and supersedes only what the message changed. An
+    # edit or revocation removes the basis of proposals quoting that message.
+    if event["event_type"] != "message.created":
+        from gigmate.pending import on_source_changed
+
+        on_source_changed(
+            db,
+            conversation,
+            message_id,
+            revoked=event["event_type"] == "message.revoked",
+            new_version=conversation.context_version,
         )
-    ):
-        if change.data["status"] == "proposed":
-            change.data = {**change.data, "status": "needs_review"}
     db.flush()
     # Old drafts stop being approvable; the worker decides what to ask after reading it.
     hold_for_new_message(db, account.id, conversation, message_id)

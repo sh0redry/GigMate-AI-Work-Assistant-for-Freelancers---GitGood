@@ -43,6 +43,7 @@ const components = [
   "WahaMedia",
   "WahaSend",
   "GuidedTour",
+  "new-request-banner",
 ];
 for (const name of [
   ...components,
@@ -1313,4 +1314,83 @@ test("a newly authorized conversation at version zero can open manual creation",
     .querySelector("input");
   await fill(input, "Synthetic first contact without message history");
   assert.equal(button("核对新工单").disabled, false);
+});
+test("a new job the customer mentioned opens creation with address and time prefilled", async () => {
+  const data = deliveryFixture();
+  const conversation = data.order.conversation_ids[0],
+    messageId = data.messages[0].id;
+  const fallback = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    if (url.endsWith("/workspace-capabilities"))
+      return Response.json({
+        data: {
+          calendar_export: true,
+          create_order: true,
+          order_status: true,
+          address_confirmation: true,
+          manual_assignment: false,
+          business_sending: false,
+          automatic_understanding: false,
+          business_loop_reviewed: true,
+          manual_field_editing: false,
+        },
+      });
+    if (url.includes("/new-order-suggestions?"))
+      return Response.json({
+        items: [
+          {
+            id: "00000000-0000-4000-8000-0000000000c1",
+            conversation_id: conversation,
+            context_version: 4,
+            created_at: "2026-10-18T00:00:00Z",
+            sources: [{ message_id: messageId, message_revision: 1 }],
+            suggestion: {
+              summary: "陈小姐另约全家福",
+              fields: [
+                {
+                  field: "address",
+                  value: "旺角弥敦道 1 号",
+                  sources: [{ message_id: messageId, message_revision: 1 }],
+                  reason: "客人给了地址。",
+                },
+                {
+                  field: "schedule",
+                  value: {
+                    kind: "timed",
+                    start_at: "2026-10-20T07:00:00Z",
+                    end_at: "2026-10-20T08:00:00Z",
+                    timezone: "Asia/Hong_Kong",
+                  },
+                  sources: [{ message_id: messageId, message_revision: 1 }],
+                  reason: "客人给了时间。",
+                },
+              ],
+              missing_fields: [],
+              unresolved_questions: [],
+              confidence: 0.8,
+            },
+          },
+        ],
+        next_cursor: null,
+      });
+    return fallback(url, options);
+  };
+  await mount();
+  await login();
+  assert.match(
+    document.body.textContent,
+    /客人提到一件新事：「陈小姐另约全家福」/,
+  );
+  await act(async () => button("另开一单（已预填）").click());
+  const input = (prefix) =>
+    [...document.querySelectorAll("label")]
+      .find((l) => l.textContent.startsWith(prefix))
+      .querySelector("input, select");
+  assert.equal(input("业务摘要").value, "陈小姐另约全家福");
+  assert.equal(input("客户提供的地址").value, "旺角弥敦道 1 号");
+  assert.equal(input("时间信息").value, "timed");
+  assert.equal(input("开始（香港时间）").value, "2026-10-20T15:00");
+  assert.equal(input("结束（香港时间）").value, "2026-10-20T16:00");
+  // Nothing is written until the merchant reviews and confirms.
+  assert.equal(data.calls.filter((c) => c.options.method === "POST").length, 1);
 });
