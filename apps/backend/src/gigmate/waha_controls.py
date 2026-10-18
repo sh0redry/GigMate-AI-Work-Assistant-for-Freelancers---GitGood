@@ -279,6 +279,32 @@ def choices(db, row):
     return result
 
 
+def stale_after_authorization_change(db, conversation):
+    """Revoking or re-granting a chat makes every earlier AI proposal stale.
+
+    ``confirm()`` already refuses a change whose context version is behind the
+    conversation, but the change kept status ``proposed`` and the page kept
+    offering "confirm". Marking it ``needs_review`` (the same state a newer
+    message produces) removes that button; ``confirm()`` only accepts
+    ``proposed``, so the old address/time cannot be confirmed directly.
+    Unsent drafts bound to the old version are cancelled for the same reason.
+    """
+    from gigmate.approvals import cancel_pending
+    from gigmate.db import ChangeRow
+
+    for change in db.scalars(
+        select(ChangeRow).where(
+            ChangeRow.conversation_id == conversation.id,
+            ChangeRow.account_id == conversation.account_id,
+        )
+    ):
+        if change.data["status"] == "proposed":
+            change.data = {**change.data, "status": "needs_review"}
+    cancel_pending(
+        db, conversation.account_id, reason="superseded", conversation_id=conversation.id
+    )
+
+
 def select_chats(db, row, command):
     version(row, command.expected_version)
     if len(set(command.selected_ids)) != len(command.selected_ids):
@@ -323,6 +349,7 @@ def select_chats(db, row, command):
             authorization_changed(db, row, chat.id, not allow)
             conv.allowlisted = allow
             conv.context_version += 1  # Old proposals remain stale even after reauthorization.
+            stale_after_authorization_change(db, conv)
     for peer in selected - peers.keys():
         identifier = str(
             uuid5(IDENTITY_NAMESPACE, json.dumps([row.id, peer], separators=(",", ":")))

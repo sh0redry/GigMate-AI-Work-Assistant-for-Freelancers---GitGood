@@ -14,6 +14,12 @@ import {
 import type { Features } from "./features";
 import type { components } from "./generated/api";
 import { instant, reviewReasons } from "./work-order-view";
+import {
+  byTime,
+  contactLabel,
+  loadContactLabels,
+  shortTime,
+} from "./contact-label";
 const sendStates: Record<string, string> = localized({
   queued: "已批准，排队中",
   preparing: "连接检查中",
@@ -66,7 +72,10 @@ export function BusinessLoopReview({
     [chatId, setChatId] = useState(""),
     [receipt, setReceipt] = useState<Model["WahaSendActionView"] | null>(null);
   const [tick, setTick] = useState(0),
-    [checked, setChecked] = useState(0);
+    [checked, setChecked] = useState(0),
+    [contacts, setContacts] = useState<Map<string, string>>(new Map());
+  const contact = (conversationId: string) =>
+    contacts.get(conversationId) ?? contactLabel(undefined);
   const done = () => {
     setTick((v) => v + 1);
     onDone();
@@ -90,12 +99,16 @@ export function BusinessLoopReview({
       features.business_sending
         ? allPages<Model["ConnectorStatus"]>(request, "/connectors", a.signal)
         : Promise.resolve([]),
+      loadContactLabels(request, a.signal),
     ])
-      .then(([q, ac, c]) => {
+      .then(([q, ac, c, labels]) => {
         if (a.signal.aborted) return;
         if (ac.some((v) => v.account_id !== accountId))
           throw Error(t("草稿归属无法核对"));
-        setQueue(q);
+        setQueue(
+          [...q].sort(byTime<Model["ReviewItem"]>((i) => i.observed_at)),
+        );
+        setContacts(labels);
         setActions(ac);
         setConnections(c);
         if (c.length === 1) setConnection((v) => v || c[0].id);
@@ -131,7 +144,7 @@ export function BusinessLoopReview({
             ms.some((m) => m.conversation_id !== c.data.id)
           )
             throw Error(t("来源范围无法核对"));
-          setMessages(ms);
+          setMessages([...ms].sort(byTime<Message>((m) => m.occurred_at)));
           setContext(c.data.context_version);
           setChecked(Date.now());
         })
@@ -245,8 +258,7 @@ export function BusinessLoopReview({
                 .filter((q) => q.context_version === q.current_context_version)
                 .map((q) => (
                   <option key={q.id} value={q.id}>
-                    {t("会话")}
-                    {q.conversation_id.slice(-6)} ·{" "}
+                    {contact(q.conversation_id)} · {shortTime(q.observed_at)} ·{" "}
                     {reviewReasons[q.reason] ?? t("需要人工核对")}
                   </option>
                 ))}
@@ -356,8 +368,7 @@ export function BusinessLoopReview({
         {action && (
           <>
             <p>
-              {t("收件会话")}
-              {action.conversation_id.slice(-6)} {t("· 有效至")}{" "}
+              {t("收件会话")} {contact(action.conversation_id)} {t("· 有效至")}{" "}
               {instant(action.expires_at)}
             </p>
             <p className="reply-body">{action.body}</p>
@@ -384,7 +395,7 @@ export function BusinessLoopReview({
                       } satisfies Loop["EditActionCommand"],
                       review: t(
                         "修改发给会话 {0} 的第 {1} 版草稿，新正文：“{2}”。保存后生成新版本，仍需另行批准，不会发送。",
-                        action.conversation_id.slice(-6),
+                        contact(action.conversation_id),
                         action.revision,
                         body.trim(),
                       ),
@@ -441,7 +452,7 @@ export function BusinessLoopReview({
                           "把已批准草稿 r{0} 交给连接 {1}，收件会话 {2}，完整正文：“{3}”。连接 v{4}／发送授权 v{5}。提交不代表客户收到；结果未知时先核对，禁止另建发送。",
                           action.revision,
                           connection.slice(-6),
-                          action.conversation_id.slice(-6),
+                          contact(action.conversation_id),
                           action.body,
                           setup.control_version,
                           permission.version,

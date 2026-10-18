@@ -11,6 +11,7 @@ import { CalendarWorkspace } from "./CalendarWorkspace";
 import { OrderCreation } from "./OrderCreation";
 import { ReviewWorkspace } from "./ReviewWorkspace";
 import { DeliveryGuide } from "./DeliveryGuide";
+import { GuidedTour, tourSeen } from "./GuidedTour";
 import { workspaceApi, type Detail, type Login } from "./workspace-api";
 import { clearConnectionAttempts } from "./connection-api";
 import { unavailableFeatures, loopReady, type Features } from "./features";
@@ -35,7 +36,8 @@ export function App() {
           ? "yue-Hant-HK"
           : "zh-CN";
   }, [language]);
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false),
+    [tourOpen, setTourOpen] = useState(false);
   const [view, setView] = useState<View>("business"),
     [selectedOrder, setSelectedOrder] = useState(""),
     [createConversation, setCreateConversation] = useState(""),
@@ -47,6 +49,11 @@ export function App() {
     [busy, setBusy] = useState(false),
     [features, setFeatures] = useState<Features>(unavailableFeatures),
     [featureError, setFeatureError] = useState("");
+  // First visit for this account on this browser: start the walkthrough.
+  useEffect(() => {
+    if (login && !tourSeen(login.account_id)) setTourOpen(true);
+    if (!login) setTourOpen(false);
+  }, [login]);
   const clearSession = useCallback((message: string) => {
     clearConnectionAttempts();
     setReadScope("");
@@ -304,6 +311,7 @@ export function App() {
                     className="secondary"
                     aria-current={view === id ? "page" : undefined}
                     aria-pressed={view === id}
+                    data-tour={"nav-" + id}
                     disabled={busy}
                     onClick={() => navigate(id)}
                   >
@@ -323,6 +331,7 @@ export function App() {
                     className="secondary"
                     aria-current={view === id ? "page" : undefined}
                     aria-pressed={view === id}
+                    data-tour={"nav-" + id}
                     disabled={busy}
                     onClick={() => navigate(id)}
                   >
@@ -450,9 +459,17 @@ export function App() {
                 features={features}
                 error={t(featureError)}
                 onOpen={navigate}
+                onStartTour={() => setTourOpen(true)}
               />
             )}
           </main>
+          {tourOpen && (
+            <GuidedTour
+              accountId={login.account_id}
+              view={view}
+              onClose={() => setTourOpen(false)}
+            />
+          )}
         </div>
       )}
     </div>

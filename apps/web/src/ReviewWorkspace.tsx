@@ -14,6 +14,12 @@ import {
 } from "./workspace-api";
 import type { components } from "./generated/api";
 import { fieldNames, fieldValue, reviewReasons } from "./work-order-view";
+import {
+  byTime,
+  contactLabel,
+  loadContactLabels,
+  shortTime,
+} from "./contact-label";
 type ReviewItem = components["schemas"]["ReviewItem"];
 export function ReviewWorkspace({
   csrf,
@@ -49,7 +55,10 @@ export function ReviewWorkspace({
     [error, setError] = useState(""),
     [contextError, setContextError] = useState(""),
     [loading, setLoading] = useState(true),
+    [contacts, setContacts] = useState<Map<string, string>>(new Map()),
     [version, setVersion] = useState(0);
+  const contact = (conversationId: string) =>
+    contacts.get(conversationId) ?? contactLabel(undefined);
   useEffect(() => {
     const abort = new AbortController();
     setLoading(!items.length && !orders.length);
@@ -57,10 +66,15 @@ export function ReviewWorkspace({
 
     void (async () => {
       try {
-        const [queue, list] = await Promise.all([
+        const [unordered, list, labels] = await Promise.all([
           allPages<ReviewItem>(api, "/review-items", abort.signal),
           allPages<Order>(api, "/work-orders", abort.signal),
+          loadContactLabels(api, abort.signal),
         ]);
+        // The server pages by id; the queue is shown strictly by arrival time.
+        const queue = [...unordered].sort(
+          byTime<ReviewItem>((i) => i.observed_at),
+        );
         const allChanges = (
           await Promise.all(
             list.map((o) =>
@@ -77,6 +91,7 @@ export function ReviewWorkspace({
             old ? (queue.find((i) => i.id === old.id) ?? null) : null,
           );
           setItems(queue);
+          setContacts(labels);
           setOrders(list);
           setChanges(allChanges);
         }
@@ -126,7 +141,9 @@ export function ReviewWorkspace({
               values.some((m) => m.conversation_id !== selected.conversation_id)
             )
               throw new Error(t("来源会话无法核对。"));
-            setMessages(values);
+            setMessages(
+              [...values].sort(byTime<Message>((m) => m.occurred_at)),
+            );
             setContext(info.data.context_version);
           }
         })
@@ -220,8 +237,8 @@ export function ReviewWorkspace({
                   : (reviewReasons[item.reason] ?? t("需要人工核对"))}
               </h3>
               <small>
-                {t("会话")}
-                {item.conversation_id.slice(-6)} {t("· 记录 v")}
+                {contact(item.conversation_id)} · {shortTime(item.observed_at)}{" "}
+                {t("· 记录 v")}
                 {item.context_version} {t("/ 当前 v")}
                 {item.current_context_version}
                 {item.context_version !== item.current_context_version
@@ -251,15 +268,14 @@ export function ReviewWorkspace({
           {selected && (
             <section className="review-panel">
               <h3>
-                {t("来源会话")}
-                {selected.conversation_id.slice(-6)}
+                {t("来源会话")} {contact(selected.conversation_id)}
               </h3>
               {contextError && <p role="alert">{contextError}</p>}
               {messages.map((m) => (
                 <article className="message" key={m.id}>
                   <small>
-                    {m.direction === "incoming" ? t("客户") : t("商户")} · r
-                    {m.revision}
+                    {m.direction === "incoming" ? t("客户") : t("商户")} ·{" "}
+                    {shortTime(m.occurred_at)} · r{m.revision}
                     {m.id === selected.message_id ? t(" · 触发消息") : ""}
                   </small>
                   <p>

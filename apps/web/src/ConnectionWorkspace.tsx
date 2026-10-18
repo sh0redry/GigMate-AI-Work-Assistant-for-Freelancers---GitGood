@@ -525,6 +525,7 @@ export function ConnectionWorkspace({
     <section
       className="connection-workspace"
       aria-label={t("WhatsApp 连接与会话授权")}
+      data-tour="connect-page"
     >
       <div className="connect-heading">
         <div>

@@ -1,5 +1,18 @@
 # Implementation status and validation
 
+## Per-message assignment, partial extraction, stale proposals after re-authorization — 2026-10-18 (batch 2)
+
+Extraction: every open order's summary and version is sent to the model, which decides per message whether it changes one of them or is a new request; a new request is recognised even when orders exist. The server re-checks the chosen order's own version and discards the result if any offered order moved during the call. An invalid field, a field without a source, or a date without a reliable time basis is dropped and turned into a question while the remaining fields are proposed; only a message with nothing usable left goes to review, keeping the previous stable refusal codes. Foreign orders, stale versions and wrong conversations still refuse the whole message. Prompt 1.4.0 writes free text in `output_language` (default `zh-Hans`, configurable with `GIGMATE_OUTPUT_LANGUAGE`) without stray English and runs a seven-point self-check. Contracts are unchanged: one message still maps to one order or one new suggestion.
+
+Authorization: revoking or re-granting a chat now also moves that chat's `proposed` changes to `needs_review` and cancels unsent drafts, so the page no longer offers to confirm them.
+
+Web: review and business management show the contact's phone number (`@c.us`) instead of a short conversation id, with text labels for groups and contacts without a shared number; review items and conversation messages are ordered by time with Hong Kong timestamps; a failed contact lookup does not block the page. The help page no longer links to the team's GitHub progress or shows issue numbers.
+
+Also in this batch: AI free text now follows the language of the customer's message (the server detects Simplified/Traditional/English by character; code-mixed counts as Chinese; `GIGMATE_OUTPUT_LANGUAGE` is the fallback), prompt 1.4.1. New `POST /new-order-suggestions/{proposal_id}/dismiss` lets the merchant discard an AI order suggestion, reusing the "not business" decision's receipt and version check; the new-order page can discard its draft, shows field names instead of keys and the contact number in the chat picker. A first sign-in starts an interactive walkthrough that highlights the real controls and waits for the user's own clicks; it can be skipped and replayed from the help page, and "seen" is stored per account in the browser.
+
+Verification: backend 1115 passed, 17 skipped (SQLite, Python 3.13; PostgreSQL suite not run); ruff, contract export check and baseline check passed; frontend 185 tests, format, API types and build passed. Not verified against a real model or a real WhatsApp account.
+
+
 ## Single user deployment and partial-time recovery — 2026-10-18
 
 The default runtime is now `product`. Health/login report the actual mode,
@@ -1209,3 +1222,6 @@ Verification: 186 frontend tests passed (including new feature navigation, revie
 Completed checks: production Docker formatting + TypeScript + Vite build passed (existing bundle-size advisory); generated contracts and frontend API types match; baseline passed (92 Markdown files, 1000 links, 3 schemas). Backend implementation unchanged; backend pytest was not rerun. The compiled local frontend was applied at the existing product URL, with no backend restart or account changes.
 
 Local browser acceptance: signed in against the existing product backend, verified all eight capability cards and their shortcuts, opened the latest manual-review item, and observed the conversation-specific create/dismiss controls. No live assignment, dismissal, order creation, or outbound send was submitted.
+
+
+PR44 final review: malformed model order IDs and field names could be unhashable JSON arrays/objects and raise before schema validation. Added string guards and four regression cases, preserving review-only handling and partial-field retention. No credentials or live messages used.

@@ -222,7 +222,7 @@ export function ApprovalsWorkspace({
     }
   }
   return (
-    <section aria-label={t("回复审批工作台")}>
+    <section aria-label={t("回复审批工作台")} data-tour="approvals-page">
       <div className="page-heading">
         <div>
           <h1>{t("回复审批")}</h1>
