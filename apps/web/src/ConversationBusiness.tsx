@@ -41,6 +41,25 @@ export function ConversationBusiness({
   const [reviewDraft, setReviewDraft] = useState<AgentDraft | null>(null);
   const [uncertain, setUncertain] = useState(false);
   const attempt = useRef(false);
+  const lifetime = useRef<{
+    active: boolean;
+    abort: AbortController;
+    release: (() => void) | null;
+  } | null>(null);
+  useEffect(() => {
+    const current = {
+      active: true,
+      abort: new AbortController(),
+      release: null as (() => void) | null,
+    };
+    lifetime.current = current;
+    return () => {
+      current.active = false;
+      current.abort.abort();
+      current.release?.();
+      current.release = null;
+    };
+  }, [api, conversation]);
   const order = orders.find((value) => value.id === selected);
   useEffect(() => {
     const abort = new AbortController();
@@ -107,7 +126,9 @@ export function ConversationBusiness({
       Date.parse(d.expires_at) > Date.now(),
   );
   async function adopt() {
+    const current = lifetime.current;
     if (
+      !current?.active ||
       !reviewDraft ||
       !order ||
       !enabled ||
@@ -121,20 +142,26 @@ export function ConversationBusiness({
       return;
     attempt.current = true;
     onBusyChange(true);
+    current.release = () => onBusyChange(false);
     try {
-      const value = await api.consume(reviewDraft);
+      const value = await api.consume(reviewDraft, current.abort.signal);
+      if (!current.active || current.abort.signal.aborted) return;
       onAdopt(value.text);
       setReviewDraft(null);
       setRefresh((value) => value + 1);
     } catch (error) {
+      if (!current.active || current.abort.signal.aborted) return;
       setNotice(error instanceof Error ? error.message : t("查询失败"));
       if ((error as { code?: string }).code === "DRAFT_RESULT_UNKNOWN")
         setUncertain(true);
       if ((error as { code?: string }).code === "UNAUTHENTICATED")
         onSessionExpired();
     } finally {
-      attempt.current = false;
-      onBusyChange(false);
+      if (current.active) {
+        attempt.current = false;
+        current.release?.();
+        current.release = null;
+      }
     }
   }
   return (

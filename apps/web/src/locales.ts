@@ -1,4 +1,5 @@
 const conversationEnglish: Record<string, string> = {
+  "会话 {0}": "Conversation {0}",
   发送授权: "Sending permission",
   回复来源与附件类型: "Reply origin and attachment type",
   "固定内容政策（高级选项）": "Fixed-content policy (advanced)",
@@ -102,6 +103,7 @@ const conversationEnglish: Record<string, string> = {
 };
 
 const conversationCantonese: Record<string, string> = {
+  "会话 {0}": "對話 {0}",
   发送授权: "發送授權",
   回复来源与附件类型: "回覆來源同附件類型",
   "固定内容政策（高级选项）": "固定內容政策（進階選項）",

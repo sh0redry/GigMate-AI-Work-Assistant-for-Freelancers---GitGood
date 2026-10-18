@@ -57,6 +57,7 @@ for (const name of [
   "environment",
   "read-cache",
   "useStableState",
+  "usePolling",
   "workspace-api",
   "i18n",
   "locales",

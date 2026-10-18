@@ -39,6 +39,7 @@ for (const filename of (
 }
 const load = (name) => import(pathToFileURL(join(directory, `${name}.mjs`)));
 const { CustomerConversations } = await load("CustomerConversations");
+const { ConversationBusiness } = await load("ConversationBusiness");
 const { conversationApi } = await load("conversation-api");
 const { orderedMessages, sourceMatch, nearConversationBottom } =
   await load("conversation-view");
@@ -59,6 +60,7 @@ const original = {
   fetch: globalThis.fetch,
   setInterval: globalThis.setInterval,
   clearInterval: globalThis.clearInterval,
+  dateNow: Date.now,
 };
 let root,
   timers = new Map(),
@@ -293,7 +295,10 @@ afterEach(async () => {
   if (root) await act(async () => root.unmount());
   root = null;
   document.getElementById("root").replaceChildren();
+  assert.equal(timers.size, 0, "unmount must remove every poll timer");
   timers.clear();
+  Date.now = original.dateNow;
+  delete document.hidden;
   sessionStorage.clear();
   localStorage.clear();
   clearReadCache();
@@ -768,3 +773,327 @@ test("quoted replies stay scoped to the selected chat and do not dispatch any se
     0,
   );
 });
+
+test("401 ends all polling even when the host does not unmount the workspace", async () => {
+  let denied = false,
+    expired = 0;
+  const { calls } = fixture({
+    override: (url) =>
+      denied && url.includes("timeline?")
+        ? Response.json({ error: { code: "UNAUTHENTICATED" } }, { status: 401 })
+        : null,
+  });
+  await mount({ onSessionExpired: () => expired++ });
+  await click(document.querySelector(".conversation-choice"));
+  denied = true;
+  await poll(3000);
+  assert.equal(expired, 1);
+  assert.equal(timers.size, 0);
+  const count = calls.length;
+  await poll(3000);
+  await poll(15000);
+  assert.equal(calls.length, count);
+  assert.equal(document.querySelectorAll(".conversation-message").length, 0);
+  assert.ok(button("刷新会话"));
+});
+
+test("preview denial pauses every loop and explicit refresh can recover without a stuck running flag", async () => {
+  let denied = false;
+  const { calls, data } = fixture({
+    override: (url) =>
+      denied && url.includes(chatB) && url.includes("timeline?")
+        ? Response.json(
+            { error: { code: "CONVERSATION_NOT_ALLOWED" } },
+            { status: 403 },
+          )
+        : null,
+  });
+  await mount();
+  await click(document.querySelector(".conversation-choice"));
+  denied = true;
+  await poll(15000);
+  assert.equal(timers.size, 0);
+  const count = calls.length;
+  await poll(15000);
+  assert.equal(calls.length, count);
+  denied = false;
+  await click(button("刷新会话"));
+  assert.equal(document.querySelectorAll(".conversation-choice").length, 2);
+  assert.ok(timers.size > 0);
+  data.b = [
+    {
+      ...message(uid(11), chatB, conversationB),
+      text: "Synthetic recovered preview",
+    },
+  ];
+  await poll(15000);
+  assert.match(
+    document.querySelectorAll(".conversation-choice")[1].textContent,
+    /Synthetic recovered preview/,
+  );
+});
+
+test("hidden documents make no poll requests and resume only when visible", async () => {
+  const { calls } = fixture();
+  await mount();
+  await click(document.querySelector(".conversation-choice"));
+  Object.defineProperty(document, "hidden", {
+    configurable: true,
+    value: true,
+  });
+  const count = calls.length;
+  await poll(3000);
+  await poll(15000);
+  assert.equal(calls.length, count);
+  Object.defineProperty(document, "hidden", {
+    configurable: true,
+    value: false,
+  });
+  await poll(3000);
+  assert.equal(calls.length, count + 1);
+});
+
+test("temporary connector failures back off exponentially up to sixty seconds without erasing unsent text", async () => {
+  let now = original.dateNow(),
+    failing = false,
+    requests = 0;
+  Date.now = () => now;
+  fixture({
+    override: (url) => {
+      if (!url.includes("/connectors?")) return null;
+      requests++;
+      return failing ? Response.json({}, { status: 503 }) : null;
+    },
+  });
+  await mount();
+  await click(document.querySelector(".conversation-choice"));
+  await change(
+    document.querySelector(".conversation-composer textarea"),
+    "Synthetic retained during backoff",
+  );
+  failing = true;
+  await poll(15000);
+  const failed = requests;
+  now += 15000;
+  await poll(15000);
+  assert.equal(requests, failed);
+  now += 15000;
+  await poll(15000);
+  assert.equal(requests, failed + 1);
+  now += 59000;
+  await poll(15000);
+  assert.equal(requests, failed + 1);
+  failing = false;
+  now += 1000;
+  await poll(15000);
+  assert.equal(requests, failed + 2);
+  assert.equal(
+    document.querySelector(".conversation-composer textarea").value,
+    "Synthetic retained during backoff",
+  );
+});
+
+test("a ten-page source lookup is one-shot; fast polls read one page and periodic history checks apply old revocations", async () => {
+  let now = original.dateNow(),
+    revoked = false,
+    requests = 0;
+  Date.now = () => now;
+  fixture({
+    override: (url) => {
+      if (!url.includes(chatA) || !url.includes("timeline?")) return null;
+      requests++;
+      const page = Number(
+        new URL(url, "http://localhost").searchParams.get("cursor") ?? 0,
+      );
+      return Response.json({
+        items: [
+          {
+            ...message(uid(200 + page)),
+            source_message_id: page === 9 ? uid(110) : uid(1000 + page),
+            occurred_at: `2026-10-18T02:${String(59 - page).padStart(2, "0")}:00Z`,
+            revoked: page === 9 && revoked,
+            text: page === 9 && revoked ? null : `Synthetic history ${page}`,
+          },
+        ],
+        next_cursor: page < 9 ? String(page + 1) : null,
+      });
+    },
+  });
+  await mount();
+  await click(document.querySelector(".conversation-choice"));
+  await change(
+    document.querySelector(".conversation-business select"),
+    orderId,
+  );
+  const before = requests;
+  await click(button("查找原文并核对版本"));
+  assert.equal(requests - before, 10);
+  assert.equal(document.querySelectorAll(".conversation-message").length, 10);
+  let last = requests;
+  await poll(3000);
+  assert.equal(requests - last, 1);
+  last = requests;
+  await poll(3000);
+  assert.equal(requests - last, 1);
+  assert.equal(document.querySelectorAll(".conversation-message").length, 10);
+  revoked = true;
+  now += 30000;
+  last = requests;
+  await poll(3000);
+  assert.equal(requests - last, 10);
+  assert.doesNotMatch(
+    document.querySelector(".conversation-scroll").textContent,
+    /Synthetic history 9/,
+  );
+  last = requests;
+  await poll(3000);
+  assert.equal(requests - last, 1);
+});
+
+for (const reject of [false, true])
+  test(`unmount aborts adoption and ignores a late ${reject ? "failure" : "success"}`, async () => {
+    let settle, signal;
+    const busy = [],
+      adopted = [];
+    fixture({
+      draftsAvailable: true,
+      override: (url, options) => {
+        if (!url.includes("/consume")) return null;
+        signal = options.signal;
+        return new Promise((resolve, fail) => {
+          settle = reject ? fail : resolve;
+        });
+      },
+    });
+    root = createRoot(document.getElementById("root"));
+    await act(async () =>
+      root.render(
+        createElement(ConversationBusiness, {
+          csrf: "synthetic",
+          conversation: conversationA,
+          messages: [message()],
+          enabled: true,
+          busy: false,
+          onBusyChange: (value) => busy.push(value),
+          onAdopt: (text) => adopted.push(text),
+          onLocate() {},
+          onOpenOrder() {},
+          onSessionExpired() {},
+        }),
+      ),
+    );
+    await change(
+      document.querySelector(".conversation-business select"),
+      orderId,
+    );
+    await click(button("刷新工单与建议"));
+    await click(
+      [...document.querySelectorAll("button")].find((node) =>
+        node.textContent.startsWith("核对建议回复"),
+      ),
+    );
+    await click(button("采用到输入框（不发送）"));
+    assert.ok(signal && !signal.aborted);
+    await act(async () => root.unmount());
+    root = null;
+    assert.equal(signal.aborted, true);
+    assert.equal(timers.size, 0);
+    const count = busy.length;
+    await act(async () =>
+      settle(
+        reject
+          ? new Error("Synthetic delayed failure")
+          : Response.json({
+              data: {
+                ...draft,
+                status: "consumed",
+                consumed_at: "2026-10-18T03:00:00Z",
+              },
+            }),
+      ),
+    );
+    assert.equal(
+      busy.length,
+      count,
+      "late completion must not unlock a different page",
+    );
+    assert.deepEqual(
+      adopted,
+      [],
+      "late text must not enter another conversation",
+    );
+    assert.equal(document.querySelector(".conversation-composer"), null);
+  });
+
+test("preview batches request at most the eight visible chats", async () => {
+  const choices = Array.from({ length: 12 }, (_, i) => ({
+    ...choice(uid(300 + i), uid(400 + i)),
+    label: `Synthetic contact ${i}`,
+  }));
+  let previews = 0;
+  fixture({
+    override: (url) => {
+      if (url.endsWith("/chats")) return Response.json({ data: choices });
+      if (!url.includes("/timeline?")) return null;
+      previews++;
+      const selected = choices.find((item) => url.includes(item.id));
+      return Response.json({
+        items: [message(uid(500), selected.id, selected.conversation_id)],
+        next_cursor: null,
+      });
+    },
+  });
+  await mount();
+  assert.equal(previews, 8);
+  assert.equal(document.querySelectorAll(".conversation-choice").length, 8);
+  await poll(15000);
+  assert.equal(previews, 16);
+  await click(button("下一页"));
+  assert.equal(previews, 20);
+  assert.equal(document.querySelectorAll(".conversation-choice").length, 4);
+});
+
+test("a fast preview denial stops and clears immediately while another preview is still pending", async () => {
+  let denying = false,
+    settle;
+  fixture({
+    override: (url) => {
+      if (!denying || !url.includes("/timeline?")) return null;
+      if (url.includes(chatA)) return Response.json({}, { status: 401 });
+      return new Promise((resolve) => {
+        settle = resolve;
+      });
+    },
+  });
+  await mount();
+  await click(document.querySelector(".conversation-choice"));
+  denying = true;
+  // Do not wait for the slow sibling; privacy must be cleared before it answers.
+  await act(async () => {
+    for (const { fn, delay } of [...timers.values()])
+      if (delay === 15000) void fn();
+  });
+  assert.equal(timers.size, 0);
+  assert.equal(document.querySelectorAll(".conversation-message").length, 0);
+  await act(async () =>
+    settle(
+      Response.json({
+        items: [message(uid(11), chatB, conversationB)],
+        next_cursor: null,
+      }),
+    ),
+  );
+  assert.equal(document.querySelectorAll(".conversation-choice").length, 0);
+  assert.equal(document.querySelectorAll(".conversation-message").length, 0);
+});
+
+for (const status of [408, 429])
+  test(`HTTP ${status} is a transient read failure, not a privacy denial`, async () => {
+    const api = conversationApi("synthetic", async () =>
+      Response.json({}, { status }),
+    );
+    await assert.rejects(
+      api.connectors(),
+      (error) => error.code === "UNAVAILABLE",
+    );
+  });

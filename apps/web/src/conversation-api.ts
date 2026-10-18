@@ -51,7 +51,9 @@ export function conversationApi(csrf: string, fetcher: typeof fetch = fetch) {
             ? "FORBIDDEN"
             : response.status === 404
               ? "CONVERSATION_API_UNAVAILABLE"
-              : response.status >= 500
+              : response.status >= 500 ||
+                  response.status === 429 ||
+                  response.status === 408
                 ? body
                   ? "DRAFT_RESULT_UNKNOWN"
                   : "UNAVAILABLE"
@@ -192,10 +194,10 @@ export function conversationApi(csrf: string, fetcher: typeof fetch = fetch) {
         items: result.items.filter((d) => d.conversation_id === conversation),
       };
     },
-    async consume(draft: AgentDraft) {
+    async consume(draft: AgentDraft, signal?: AbortSignal) {
       const value = await request<{ data: AgentDraft }>(
         `/drafts/${encodeURIComponent(draft.id)}/consume`,
-        undefined,
+        signal,
         {},
       );
       if (

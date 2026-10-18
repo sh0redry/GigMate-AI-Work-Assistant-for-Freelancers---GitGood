@@ -6,6 +6,7 @@ import { type Choice, type Connector } from "./connection-api";
 import { privateReadDenied } from "./read-cache";
 import type { TimelineMessage } from "./waha-sync-api";
 import {
+  orderedMessages,
   nearConversationBottom,
   messageSummary,
   sourceMatch,
@@ -13,6 +14,7 @@ import {
 } from "./conversation-view";
 import { WahaSend } from "./WahaSend";
 import { WahaMedia } from "./WahaMedia";
+import { usePolling } from "./usePolling";
 import { ConversationBusiness } from "./ConversationBusiness";
 import type { Features } from "./features";
 
@@ -85,6 +87,11 @@ export function CustomerConversations({
   const [busy, setBusy] = useState(false);
   const [composerBlocked, setComposerBlocked] = useState(false);
   const [refresh, setRefresh] = useState(0);
+  const [timelineRefresh, setTimelineRefresh] = useState(0);
+  const [suspended, setSuspended] = useState(false);
+  const accessStopped = useRef(false);
+  const stopped = useCallback(() => accessStopped.current, []);
+  const historyRefreshedAt = useRef(0);
   const [newCount, setNewCount] = useState(0);
   const [highlight, setHighlight] = useState("");
   const [sourceNotice, setSourceNotice] = useState("");
@@ -122,6 +129,12 @@ export function CustomerConversations({
   const requestedPages = useRef(1);
   const seen = useRef(new Map<string, string>());
   const handledIntent = useRef("");
+  const rememberSeen = useCallback((key: string, id: string) => {
+    seen.current.delete(key);
+    seen.current.set(key, id);
+    if (seen.current.size > 256)
+      seen.current.delete(seen.current.keys().next().value!);
+  }, []);
   const choices = catalog.scope === connection ? catalog.items : [];
   const chat = choices.find((value) => value.id === selected);
   const scope = `${connection}:${selected}`;
@@ -151,16 +164,9 @@ export function CustomerConversations({
     },
     [onBusyChange],
   );
-  const report = useCallback(
-    (error: unknown) => {
-      if ((error as { code?: string }).code === "UNAUTHENTICATED")
-        onSessionExpired();
-      setNotice(error instanceof Error ? error.message : t("查询失败"));
-    },
-    [onSessionExpired],
-  );
   const clearPrivate = useCallback(() => {
     setSelected("");
+    seen.current.clear();
     setCatalog({ scope: "", items: [], ready: false });
     setWindow(emptyWindow);
     current.current = emptyWindow;
@@ -174,16 +180,34 @@ export function CustomerConversations({
     sourceTarget.current = null;
   }, []);
 
-  useEffect(() => {
-    if (!visible) return;
-    const abort = new AbortController();
-    let running = false;
-    async function load() {
-      if (running || document.hidden) return;
-      running = true;
+  const report = useCallback(
+    (error: unknown) => {
+      if ((error as { code?: string }).code === "UNAUTHENTICATED")
+        onSessionExpired();
+      if (privateReadDenied(error)) {
+        accessStopped.current = true;
+        setSuspended(true);
+        setConnectorReady(false);
+        setStale(true);
+        clearPrivate();
+      }
+      setNotice(error instanceof Error ? error.message : t("查询失败"));
+    },
+    [onSessionExpired, clearPrivate],
+  );
+  const refreshAll = () => {
+    accessStopped.current = false;
+    setSuspended(false);
+    requestedPages.current = 1;
+    historyRefreshedAt.current = 0;
+    setRefresh((old) => old + 1);
+  };
+
+  const readConnectors = useCallback(
+    async (signal: AbortSignal) => {
       try {
-        const result = await api.connectors(abort.signal);
-        if (abort.signal.aborted) return;
+        const result = await api.connectors(signal);
+        if (signal.aborted || stopped()) return;
         setConnectors(result.items);
         setConnectorReady(true);
         setConnection((old) =>
@@ -194,79 +218,75 @@ export function CustomerConversations({
         if (result.partial)
           setNotice(t("仅展示本次有界查询结果，列表可能不完整。"));
       } catch (error) {
-        if (!abort.signal.aborted) {
+        if (!signal.aborted && !stopped()) {
           setStale(true);
           setConnectorReady(false);
-          if (privateReadDenied(error)) {
-            setConnectors([]);
-            clearPrivate();
-          }
-          report(error);
+          if (privateReadDenied(error)) setConnectors([]);
         }
-      } finally {
-        running = false;
+        throw error;
       }
-    }
-    void load();
-    const timer = setInterval(() => void load(), 15000);
-    return () => {
-      abort.abort();
-      clearInterval(timer);
-    };
-  }, [api, visible, refresh, report, clearPrivate]);
+    },
+    [api, refresh, stopped],
+  );
+  usePolling(readConnectors, 15000, visible && !suspended, report, stopped);
 
-  useEffect(() => {
-    if (!visible || !connection) return;
-    const abort = new AbortController();
-    let running = false;
-    async function load() {
-      if (running || document.hidden) return;
-      running = true;
+  const readChats = useCallback(
+    async (signal: AbortSignal) => {
       try {
-        const items = await api.chats(connection, abort.signal);
-        if (abort.signal.aborted) return;
+        const items = await api.chats(connection, signal);
+        if (signal.aborted || stopped()) return;
         setCatalog({ scope: connection, items, ready: true });
         setSelected((old) =>
           items.some((value) => value.id === old) ? old : "",
         );
+        const allowed = new Set(
+          items.map((value) => `${connection}:${value.id}`),
+        );
+        for (const key of seen.current.keys()) {
+          if (key.startsWith(connection + ":") && !allowed.has(key))
+            seen.current.delete(key);
+        }
       } catch (error) {
-        if (!abort.signal.aborted) {
+        if (!signal.aborted && !stopped()) {
           setCatalog((old) => ({ ...old, ready: false }));
           setStale(true);
-          if (privateReadDenied(error)) clearPrivate();
-          report(error);
         }
-      } finally {
-        running = false;
+        throw error;
       }
-    }
-    void load();
-    const timer = setInterval(() => void load(), 15000);
-    return () => {
-      abort.abort();
-      clearInterval(timer);
-    };
-  }, [api, connection, visible, refresh, report, clearPrivate]);
+    },
+    [api, connection, refresh, stopped],
+  );
+  usePolling(
+    readChats,
+    15000,
+    visible && !!connection && !suspended,
+    report,
+    stopped,
+  );
 
-  function choose(id: string) {
-    if (busy) return;
-    setSelected(id);
-    setStale(true);
-    setHighlight("");
-    setNewCount(0);
-    setSelectedSources([]);
-    setOpenedMedia("");
-    setComposerInput(undefined);
-    setMobileList(false);
-    requestedPages.current = 1;
-    current.current = emptyWindow;
-    setPendingSource(null);
-    setSourceNotice("");
-    sourceTarget.current = null;
-    atBottom.current = true;
-    position.current = null;
-    setNotice("");
-  }
+  const choose = useCallback(
+    (id: string) => {
+      if (busy) return;
+      setSelected(id);
+      setStale(true);
+      setHighlight("");
+      setNewCount(0);
+      setSelectedSources([]);
+      setOpenedMedia("");
+      setComposerInput(undefined);
+      setMobileList(false);
+      requestedPages.current = 1;
+      current.current = emptyWindow;
+      setPendingSource(null);
+      setSourceNotice("");
+      sourceTarget.current = null;
+      atBottom.current = true;
+      position.current = null;
+      setNotice("");
+      historyRefreshedAt.current = 0;
+    },
+    [busy],
+  );
   useEffect(() => {
     if (
       !visible ||
@@ -289,26 +309,53 @@ export function CustomerConversations({
         });
     } else if (connection)
       setNotice(t("关联会话未授权或旧后端缺少映射，请核对连接与后端版本。"));
-  }, [intent, catalog, visible]);
+  }, [intent, catalog, visible, connection, choose]);
 
-  useEffect(() => {
-    if (!visible || !chat || !catalog.ready) return;
-    const abort = new AbortController();
-    let running = false;
-    async function load() {
-      if (running || document.hidden) return;
-      running = true;
+  const readTimeline = useCallback(
+    async (signal: AbortSignal) => {
+      if (!chat) return;
       try {
         const previous =
           current.current.scope === scope ? current.current : emptyWindow;
+        const full =
+          requestedPages.current > 0 ||
+          Date.now() - historyRefreshedAt.current >= 30000;
         const result = await api.timeline(
           connection,
           chat!,
-          Math.max(requestedPages.current, previous.pages),
-          previous.items[0]?.id,
-          abort.signal,
+          full ? Math.max(requestedPages.current, previous.pages) : 1,
+          full ? previous.items[0]?.id : previous.items.at(-1)?.id,
+          signal,
         );
-        if (abort.signal.aborted) return;
+        if (signal.aborted || stopped()) return;
+        if (full) {
+          requestedPages.current = 0;
+          historyRefreshedAt.current = Date.now();
+        }
+        const updated =
+          full || result.truncated
+            ? result
+            : {
+                ...result,
+                items: orderedMessages([
+                  ...previous.items,
+                  ...result.items,
+                ]).slice(-500),
+                cursor: previous.cursor,
+                pages: Math.min(
+                  MAX_CONVERSATION_PAGES,
+                  Math.max(
+                    previous.pages,
+                    Math.ceil(
+                      (previous.items.length +
+                        result.items.filter(
+                          (m) => !previous.items.some((old) => old.id === m.id),
+                        ).length) /
+                        50,
+                    ),
+                  ),
+                ),
+              };
         const element = scroller.current;
         if (element)
           position.current = {
@@ -317,12 +364,12 @@ export function CustomerConversations({
             bottom: atBottom.current,
             prepend:
               !!previous.items.length &&
-              !!result.items.length &&
-              result.items[0].occurred_at < previous.items[0].occurred_at,
+              !!updated.items.length &&
+              updated.items[0].occurred_at < previous.items[0].occurred_at,
           };
         const last = previous.items.at(-1);
         const additions = last
-          ? result.items.filter(
+          ? updated.items.filter(
               (m) =>
                 !previous.items.some((old) => old.id === m.id) &&
                 (m.occurred_at > last.occurred_at ||
@@ -331,14 +378,14 @@ export function CustomerConversations({
           : 0;
         if (additions && !atBottom.current)
           setNewCount((old) => old + additions);
-        const value = { ...result, scope, observed: new Date().toISOString() };
+        const value = { ...updated, scope, observed: new Date().toISOString() };
         current.current = value;
         setWindow(value);
         setStale(false);
         setNotice("");
         setSelectedSources((old) =>
           old.filter((key) =>
-            result.items.some(
+            updated.items.some(
               (m) =>
                 `${m.id}:${m.revision}` === key &&
                 !m.revoked &&
@@ -346,38 +393,33 @@ export function CustomerConversations({
             ),
           ),
         );
-        if (result.items.length)
-          seen.current.set(scope, result.items.at(-1)!.id);
+        if (updated.items.length) rememberSeen(scope, updated.items.at(-1)!.id);
         if (result.truncated)
           setNotice(
             t("消息更新超过本次显示上限，请核对近期消息；未声称历史完整。"),
           );
       } catch (error) {
-        if (!abort.signal.aborted) {
-          setStale(true);
-          if (privateReadDenied(error)) clearPrivate();
-          report(error);
-        }
-      } finally {
-        running = false;
+        if (!signal.aborted && !stopped()) setStale(true);
+        throw error;
       }
-    }
-    void load();
-    const timer = setInterval(() => void load(), 3000);
-    return () => {
-      abort.abort();
-      clearInterval(timer);
-    };
-  }, [
-    api,
-    connection,
-    chat?.id,
-    catalog.ready,
-    visible,
-    refresh,
+    },
+    [
+      api,
+      connection,
+      chat?.id,
+      refresh,
+      timelineRefresh,
+      stopped,
+      rememberSeen,
+    ],
+  );
+  usePolling(
+    readTimeline,
+    3000,
+    visible && !!chat && catalog.ready && !suspended,
     report,
-    clearPrivate,
-  ]);
+    stopped,
+  );
 
   useEffect(() => {
     const element = scroller.current,
@@ -389,56 +431,56 @@ export function CustomerConversations({
     position.current = null;
   }, [windowData]);
 
-  useEffect(() => {
-    if (!visible || !connection || !catalog.ready || !visibleChoices.length)
-      return;
-    const abort = new AbortController();
-    let running = false;
-    async function load() {
-      if (running || document.hidden) return;
-      running = true;
+  const readPreviews = useCallback(
+    async (signal: AbortSignal) => {
       const results = await Promise.allSettled(
-        visibleChoices.map(async (choice) => ({
-          id: `${connection}:${choice.id}`,
-          message:
-            (
-              await api.timeline(connection, choice, 1, undefined, abort.signal)
-            ).items.at(-1) ?? null,
-        })),
-      );
-      if (!abort.signal.aborted) {
-        const updates: Record<string, TimelineMessage | null> = {};
-        for (const result of results) {
-          if (result.status === "fulfilled") {
-            updates[result.value.id] = result.value.message;
-            if (result.value.message && !seen.current.has(result.value.id))
-              seen.current.set(result.value.id, result.value.message.id);
-          } else if (privateReadDenied(result.reason)) {
-            clearPrivate();
-            report(result.reason);
-            return;
+        visibleChoices.map(async (choice) => {
+          try {
+            return {
+              id: `${connection}:${choice.id}`,
+              message:
+                (
+                  await api.timeline(connection, choice, 1, undefined, signal)
+                ).items.at(-1) ?? null,
+            };
+          } catch (error) {
+            // A fast denial must clear private data even if another preview is slow.
+            if (!signal.aborted && !stopped() && privateReadDenied(error))
+              report(error);
+            throw error;
           }
+        }),
+      );
+      if (signal.aborted || stopped()) return;
+      const updates: Record<string, TimelineMessage | null> = {};
+      let failed: unknown;
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          updates[result.value.id] = result.value.message;
+          if (result.value.message && !seen.current.has(result.value.id)) {
+            rememberSeen(result.value.id, result.value.message.id);
+          }
+        } else {
+          if (privateReadDenied(result.reason)) throw result.reason;
+          failed = result.reason;
         }
-        setPreviews((old) => ({ ...old, ...updates }));
       }
-      running = false;
-    }
-    void load();
-    const timer = setInterval(() => void load(), 15000);
-    return () => {
-      abort.abort();
-      clearInterval(timer);
-    };
-  }, [
-    api,
-    connection,
-    visibleIds,
-    catalog.ready,
-    visible,
-    refresh,
+      setPreviews((old) => ({ ...old, ...updates }));
+      if (failed) throw failed;
+    },
+    [api, connection, visibleIds, refresh, stopped, report, rememberSeen],
+  );
+  usePolling(
+    readPreviews,
+    15000,
+    visible &&
+      !!connection &&
+      catalog.ready &&
+      !!visibleChoices.length &&
+      !suspended,
     report,
-    clearPrivate,
-  ]);
+    stopped,
+  );
 
   function locate(id: string, revision: number) {
     setPendingSource({ id, revision, scope });
@@ -472,10 +514,11 @@ export function CustomerConversations({
         .getElementById(`conversation-message-${value.id}`)
         ?.scrollIntoView({ block: "center" });
       atBottom.current = false;
+      requestedPages.current = 0;
       setPendingSource(null);
     } else if (windowData.cursor && windowData.pages < MAX_CONVERSATION_PAGES) {
       requestedPages.current = MAX_CONVERSATION_PAGES;
-      setRefresh((old) => old + 1);
+      setTimelineRefresh((old) => old + 1);
       setSourceNotice(t("正在有界查找较早来源；历史快照不能代替客户确认。"));
     } else {
       setSourceNotice(
@@ -528,6 +571,11 @@ export function CustomerConversations({
           {t("连接与会话授权")}
         </button>
       </div>
+      {suspended && (
+        <button className="secondary" disabled={busy} onClick={refreshAll}>
+          {t("刷新会话")}
+        </button>
+      )}
       {notice && (
         <p className="notice" role="status">
           {notice}
@@ -560,8 +608,7 @@ export function CustomerConversations({
             >
               {connectors.map((value, index) => (
                 <option key={value.id} value={value.id}>
-                  {t("会话")}
-                  {index + 1} · {value.state}
+                  {t("会话 {0}", index + 1)} · {value.state}
                 </option>
               ))}
             </select>
@@ -679,7 +726,7 @@ export function CustomerConversations({
                     <button
                       className="secondary"
                       disabled={busy}
-                      onClick={() => setRefresh((old) => old + 1)}
+                      onClick={refreshAll}
                     >
                       {t("刷新会话")}
                     </button>
@@ -718,7 +765,7 @@ export function CustomerConversations({
                         }
                         onClick={() => {
                           requestedPages.current = windowData.pages + 1;
-                          setRefresh((old) => old + 1);
+                          setTimelineRefresh((old) => old + 1);
                         }}
                       >
                         {t("加载更早消息")}
