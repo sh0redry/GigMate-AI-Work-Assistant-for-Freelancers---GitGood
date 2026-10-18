@@ -199,6 +199,15 @@ test("explicit cleanup excludes current/legacy/unrelated resources; stale and fo
   );
   assert.deepEqual(removed, []);
   changed = false;
+  await assert.rejects(
+    executeCleanup("fake-docker", plan, ["container:ours"], {
+      execute,
+      expiresAt: 100,
+      now: () => 101,
+    }),
+    /CLEANUP_PLAN_CHANGED/,
+  );
+  assert.deepEqual(removed, []);
   await executeCleanup("fake-docker", plan, ["container:ours"], { execute });
   assert.deepEqual(removed, [["rm", "-f", "ours"]]);
 });

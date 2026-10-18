@@ -371,7 +371,12 @@ async function planCleanup(
   }
   return plan;
 }
-async function executeCleanup(docker, plan, selected, { execute = run } = {}) {
+async function executeCleanup(
+  docker,
+  plan,
+  selected,
+  { execute = run, expiresAt = Infinity, now = Date.now } = {},
+) {
   if (
     !Array.isArray(selected) ||
     !selected.length ||
@@ -400,13 +405,17 @@ async function executeCleanup(docker, plan, selected, { execute = run } = {}) {
     )
       throw new Error("CLEANUP_PLAN_CHANGED");
   }
-  for (const entry of entries)
+  for (const entry of entries) {
+    // Docker startup/inspection can outlast the review. Check before every
+    // mutation, including after the final identity inspection.
+    if (now() >= expiresAt) throw new Error("CLEANUP_PLAN_CHANGED");
     await execute(
       docker,
       entry.kind === "container"
         ? ["rm", "-f", entry.id]
         : ["volume", "rm", entry.id],
     );
+  }
 }
 async function startRuntime({
   docker,

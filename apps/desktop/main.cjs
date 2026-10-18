@@ -452,6 +452,7 @@ if (!app.requestSingleInstanceLock()) {
             docker,
             review.entries,
             options.selected,
+            { expiresAt: review.expires },
           );
           return true;
         });
