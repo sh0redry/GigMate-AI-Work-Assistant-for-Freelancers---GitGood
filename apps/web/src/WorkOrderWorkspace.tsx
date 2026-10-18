@@ -39,6 +39,11 @@ type Props = {
   onConnect?: () => void;
   onOpenApprovals?: () => void;
   request?: RequestApi;
+  onOpenConversation?: (
+    conversationId: string,
+    messageId: string,
+    revision: number,
+  ) => void;
 };
 function snippet(text: string | null | undefined) {
   if (!text) return t("（没有文字）");
@@ -47,9 +52,11 @@ function snippet(text: string | null | undefined) {
 function Sources({
   sources,
   data,
+  onOpenConversation,
 }: {
   sources: Change["sources"];
   data: BusinessSnapshot;
+  onOpenConversation?: Props["onOpenConversation"];
 }) {
   const found = sources.flatMap((source) => {
     const message = data.messages.find(
@@ -68,14 +75,30 @@ function Sources({
     <small className="source-quote">
       {t("依据：")}
       {found.map((message) => (
-        <a
+        <span
+          className="source-reference"
           key={`${message.id}-${message.revision}`}
-          href={`#${messageAnchor(message.id, message.revision)}`}
         >
-          {message.revoked
-            ? t("已撤回的消息")
-            : t("客人说「{0}」", snippet(message.text))}
-        </a>
+          <a href={`#${messageAnchor(message.id, message.revision)}`}>
+            {message.revoked
+              ? t("已撤回的消息")
+              : t("客人说「{0}」", snippet(message.text))}
+          </a>
+          {onOpenConversation && (
+            <button
+              className="secondary"
+              onClick={() =>
+                onOpenConversation(
+                  message.conversation_id,
+                  message.id,
+                  message.revision,
+                )
+              }
+            >
+              {t("在客户会话中查看原话")}
+            </button>
+          )}
+        </span>
       ))}
     </small>
   );
@@ -91,6 +114,7 @@ export function WorkOrderWorkspace({
   onConnect,
   onOpenApprovals,
   request,
+  onOpenConversation,
 }: Props) {
   const commands = useMemo(
     () => (accountId ? orderCommands(csrf, accountId) : undefined),
@@ -486,7 +510,11 @@ export function WorkOrderWorkspace({
                           {customerStates[change.customer_confirmation]}
                         </p>
                       )}
-                      <Sources sources={change.sources} data={data} />
+                      <Sources
+                        sources={change.sources}
+                        data={data}
+                        onOpenConversation={onOpenConversation}
+                      />
                       {incomplete && (
                         <p className="subtle">
                           {change.field === "schedule"
@@ -615,6 +643,11 @@ export function WorkOrderWorkspace({
                             : t("需要你看一下")}
                         </span>
                       )}
+                      <Sources
+                        sources={field.sources}
+                        data={data}
+                        onOpenConversation={onOpenConversation}
+                      />
                     </dd>
                   </div>
                 ))}

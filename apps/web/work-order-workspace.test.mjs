@@ -239,6 +239,25 @@ async function mount(f, props = {}) {
     ),
   );
 }
+test("new order facts and next-step changes preserve the exact conversation and source revision", async () => {
+  const f = fixture(),
+    opened = [];
+  await mount(f, {
+    onOpenConversation: (...values) => opened.push(values),
+  });
+  const sources = [...document.querySelectorAll(".source-reference button")];
+  assert.equal(sources.length, 2);
+  assert.ok(document.querySelector(".next-step .source-reference"));
+  assert.ok(document.querySelector(".order-facts .source-reference"));
+  for (const source of sources) await act(async () => source.click());
+  assert.deepEqual(opened, [
+    ["c2", "m2", 1],
+    ["c2", "m2", 1],
+  ]);
+  assert.deepEqual(f.writes, []);
+  assert.equal(button("确认新时间").disabled, false);
+});
+
 test("business workspace renders both conversations, missing fields and the next step without replay controls; confirmation states its effect before saving", async () => {
   const f = fixture();
   await mount(f);

@@ -11,6 +11,8 @@ import { CalendarWorkspace } from "./CalendarWorkspace";
 import { OrderCreation } from "./OrderCreation";
 import { ReviewWorkspace } from "./ReviewWorkspace";
 import { DeliveryGuide } from "./DeliveryGuide";
+import { CustomerConversations } from "./CustomerConversations";
+import type { ConversationIntent } from "./conversation-view";
 import { GuidedTour, tourSeen } from "./GuidedTour";
 import { workspaceApi, type Detail, type Login } from "./workspace-api";
 import { clearConnectionAttempts } from "./connection-api";
@@ -24,6 +26,7 @@ const pages = localized({
   connect: "WhatsApp 连接",
   guide: "功能与使用说明",
   management: "业务管理",
+  messages: "客户会话",
 });
 type View = keyof typeof pages;
 export function App() {
@@ -36,11 +39,18 @@ export function App() {
           ? "yue-Hant-HK"
           : "zh-CN";
   }, [language]);
-  const [moreOpen, setMoreOpen] = useState(false),
-    [tourOpen, setTourOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [conversationIntent, setConversationIntent] = useState<
+    ConversationIntent | undefined
+  >(undefined);
+  const [creationOrigin, setCreationOrigin] = useState<{
+    conversation: string;
+    sources: { message_id: string; message_revision: number }[];
+  } | null>(null);
+  const [returnToMessages, setReturnToMessages] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
   const [view, setView] = useState<View>("business"),
     [selectedOrder, setSelectedOrder] = useState(""),
-    [createConversation, setCreateConversation] = useState(""),
     [sendAction, setSendAction] = useState(""),
     [login, setLogin] = useState<Login | null>(null),
     [username, setUsername] = useState(""),
@@ -64,7 +74,9 @@ export function App() {
     setView("business");
     setMoreOpen(false);
     setSelectedOrder("");
-    setCreateConversation("");
+    setConversationIntent(undefined);
+    setCreationOrigin(null);
+    setReturnToMessages(false);
     setBusy(false);
     setFeatures(unavailableFeatures);
     setNotice(message);
@@ -112,7 +124,8 @@ export function App() {
   }, [login, expireSession]);
   function navigate(next: View) {
     if (busy) return;
-    if (next === "create") setCreateConversation("");
+    if (next === "create") setCreationOrigin(null);
+    setReturnToMessages(false);
     if (next !== "management") setSendAction("");
     setNotice("");
     setView(next);
@@ -296,6 +309,7 @@ export function App() {
         <div className="app-layout">
           <nav
             className="workspace-navigation"
+            data-customer-chats
             aria-label={t("工作台页面")}
             onKeyDown={(e) => {
               if (e.key === "Escape") setMoreOpen(false);
@@ -304,22 +318,28 @@ export function App() {
           >
             <p className="nav-caption">{t("我的工作空间")}</p>
             <div className="nav-primary">
-              {(["business", "approvals", "planning", "connect"] as View[]).map(
-                (id) => (
-                  <button
-                    key={id}
-                    className="secondary"
-                    aria-current={view === id ? "page" : undefined}
-                    aria-pressed={view === id}
-                    data-tour={"nav-" + id}
-                    disabled={busy}
-                    onClick={() => navigate(id)}
-                  >
-                    <NavIcon name={id} />
-                    <span>{pages[id]}</span>
-                  </button>
-                ),
-              )}
+              {(
+                [
+                  "business",
+                  "messages",
+                  "approvals",
+                  "planning",
+                  "connect",
+                ] as View[]
+              ).map((id) => (
+                <button
+                  key={id}
+                  className="secondary"
+                  aria-current={view === id ? "page" : undefined}
+                  aria-pressed={view === id}
+                  data-tour={"nav-" + id}
+                  disabled={busy}
+                  onClick={() => navigate(id)}
+                >
+                  <NavIcon name={id} />
+                  <span>{pages[id]}</span>
+                </button>
+              ))}
             </div>
             <div className="nav-secondary" id="additional-pages">
               {(["create", "review", "management", "guide"] as View[])
@@ -366,6 +386,33 @@ export function App() {
                 )}
               </p>
             )}
+            {returnToMessages && (view === "business" || view === "create") && (
+              <button
+                className="secondary"
+                disabled={busy}
+                onClick={() => navigate("messages")}
+              >
+                {t("返回客户会话")}
+              </button>
+            )}
+            <CustomerConversations
+              {...props}
+              key={login.account_id}
+              active={view === "messages"}
+              features={features}
+              intent={conversationIntent}
+              onBusyChange={setBusy}
+              onOpenOrder={(id) => {
+                setReturnToMessages(true);
+                openOrder(id);
+              }}
+              onCreate={(conversation, sources) => {
+                setCreationOrigin({ conversation, sources });
+                setReturnToMessages(true);
+                setView("create");
+              }}
+              onConnect={() => navigate("connect")}
+            />
             {view === "business" && (
               <>
                 <div className="page-heading">
@@ -386,6 +433,16 @@ export function App() {
                   features={features}
                   initialSelected={selectedOrder}
                   onBusyChange={setBusy}
+                  onOpenConversation={(conversationId, messageId, revision) => {
+                    if (busy) return;
+                    setConversationIntent({
+                      conversationId,
+                      messageId,
+                      revision,
+                      token: crypto.randomUUID(),
+                    });
+                    setView("messages");
+                  }}
                   onOpenSend={(id) => {
                     setSendAction(id);
                     navigate("management");
@@ -402,7 +459,8 @@ export function App() {
                 features={features}
                 onBusyChange={setBusy}
                 onOpenOrder={openOrder}
-                initialConversation={createConversation}
+                initialConversation={creationOrigin?.conversation}
+                initialSources={creationOrigin?.sources}
               />
             )}
             {view === "approvals" && (
@@ -428,7 +486,7 @@ export function App() {
                 onBusyChange={setBusy}
                 onCreate={(id) => {
                   navigate("create");
-                  setCreateConversation(id);
+                  setCreationOrigin({ conversation: id, sources: [] });
                 }}
                 onOpenOrder={openOrder}
                 onConnect={() => navigate("connect")}
