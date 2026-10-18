@@ -416,6 +416,15 @@ export function App() {
                 )}
               </p>
             )}
+            {view === "home" && features.create_order && (
+              <NewRequestBanner
+                csrf={login.csrf_token}
+                onOpen={(id) => {
+                  navigate("create");
+                  setCreateSuggestion(id);
+                }}
+              />
+            )}
             {view === "home" && (
               <HomeWorkspace
                 {...props}

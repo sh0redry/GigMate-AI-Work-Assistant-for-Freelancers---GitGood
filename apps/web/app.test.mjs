@@ -1383,6 +1383,12 @@ test("a new job the customer mentioned opens creation with address and time pref
   };
   await mount();
   await login();
+  // The suggestion shows on 今日, where sign-in lands, and on the business page.
+  assert.match(
+    document.body.textContent,
+    /客人提到一件新事：「陈小姐另约全家福」/,
+  );
+  await act(async () => button("业务工作台").click());
   assert.match(
     document.body.textContent,
     /客人提到一件新事：「陈小姐另约全家福」/,
