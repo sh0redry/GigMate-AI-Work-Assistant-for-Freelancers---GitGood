@@ -71,7 +71,12 @@ import httpx
 from pydantic import ValidationError
 
 from gigmate import secrets
-from gigmate.contracts import ChangeProposal, NewWorkOrderSuggestedField, ProposalChange
+from gigmate.contracts import (
+    ChangeProposal,
+    NewWorkOrderSuggestedField,
+    NewWorkOrderSuggestion,
+    ProposalChange,
+)
 
 from .types import ExtractionOutcome, ExtractionRequest
 
@@ -229,6 +234,11 @@ _DROPPED_TEMPLATE = {
     "zh-Hans": "未能可靠识别{0}，已留空，请向客人核对。",
     "zh-Hant": "未能可靠識別{0}，已留空，請向客人核對。",
     "en": "Could not reliably read the {0}; left blank, please check with the customer.",
+}
+_SIDE_QUESTION = {
+    "zh-Hans": "客人另外提到「{0}」，要另开一单吗？",
+    "zh-Hant": "客人另外提到「{0}」，要另開一單嗎？",
+    "en": "The customer also mentioned “{0}”. Open a separate order?",
 }
 _NOTHING_USABLE = {
     "zh-Hans": "这条消息里没有可用的工单信息，请人工判断。",
@@ -1867,6 +1877,11 @@ class LLMProvider:
                 cost_usd=cost_usd,
                 cost_note=cost_note,
             )
+        # Two signals ride outside the ChangeProposal contract and are removed
+        # before it is validated: the AI's relevance judgement and a second,
+        # separate job mentioned next to a matched change.
+        relevance = data.pop("relevance", None)
+        side_raw = data.pop("also_new_work_order", None)
         # Force provider-set fields so the LLM cannot override them.
         data["model_version"] = model_version
         data["prompt_version"] = prompt_version
@@ -1935,6 +1950,15 @@ class LLMProvider:
         # the provenance guard (which has already refused a mismatching value)
         # and never left to whatever the model echoed back.
         data["base_context_version"] = request.context_version
+        side_request = None
+        if data.get("assignment") == "matched":
+            side_request = self._side_request(side_raw, request)
+            if side_request is not None and isinstance(data.get("unresolved_questions"), list):
+                data["unresolved_questions"].append(
+                    _SIDE_QUESTION.get(request.output_language, _SIDE_QUESTION["en"]).format(
+                        side_request["summary"]
+                    )
+                )
         try:
             proposal = ChangeProposal.model_validate(data)
         except ValidationError as exc:
@@ -1982,28 +2006,88 @@ class LLMProvider:
                 provider_name=self.name,
                 proposal=proposal,
                 latency_ms=self._elapsed(began),
-                notes=("llm:matched", *outcome_notes),
+                notes=(
+                    "llm:matched",
+                    *outcome_notes,
+                    *(("llm:side-request",) if side_request else ()),
+                ),
                 refused_reason=None,
                 request_id=request_id,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 cost_usd=cost_usd,
                 cost_note=cost_note,
+                side_request=side_request,
             )
+        unrelated = (
+            relevance == "unrelated" and not proposal.changes and proposal.new_work_order is None
+        )
         # LLM explicitly asked for review; pass through with a typed note so
         # the worker records evidence.
         return ExtractionOutcome(
             provider_name=self.name,
             proposal=proposal,
             latency_ms=self._elapsed(began),
-            notes=("llm:needs-review", *outcome_notes),
+            notes=(
+                "llm:needs-review",
+                *outcome_notes,
+                *(("llm:unrelated",) if unrelated else ()),
+            ),
             refused_reason="llm:needs-review",
             request_id=request_id,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cost_usd=cost_usd,
             cost_note=cost_note,
+            unrelated=unrelated,
         )
+
+    def _side_request(self, raw: object, request: ExtractionRequest) -> dict | None:
+        """Validate a second job mentioned next to a matched change.
+
+        Same rules as a new-order suggestion: every field is bound to this
+        message, unreadable or ungrounded fields are dropped and listed as
+        missing. Anything malformed is ignored (the matched change stands).
+        """
+        if not isinstance(raw, dict):
+            return None
+        basis, _ = self._time_basis(request)
+        fields = raw.get("fields") if isinstance(raw.get("fields"), list) else []
+        missing = raw.get("missing_fields") if isinstance(raw.get("missing_fields"), list) else []
+        kept = []
+        for entry in fields:
+            if not isinstance(entry, dict):
+                continue
+            entry["sources"] = [
+                {"message_id": request.message_id, "message_revision": request.message_revision}
+            ]
+            if (
+                basis is None
+                and entry.get("field") in _DATE_BEARING_FIELDS
+                and _carries_a_date(entry.get("value"))
+            ):
+                missing.append(entry["field"])
+                continue
+            try:
+                NewWorkOrderSuggestedField.model_validate(entry)
+            except ValidationError:
+                if entry.get("field") in _FIELD_LABELS["zh-Hans"]:
+                    missing.append(entry["field"])
+                continue
+            kept.append(entry)
+        candidate = {
+            "summary": raw.get("summary"),
+            "fields": kept,
+            "missing_fields": list(dict.fromkeys(m for m in missing if isinstance(m, str))),
+            "unresolved_questions": [
+                q for q in raw.get("unresolved_questions") or [] if isinstance(q, str) and q
+            ],
+            "confidence": raw.get("confidence", 0.5),
+        }
+        try:
+            return NewWorkOrderSuggestion.model_validate(candidate).model_dump(mode="json")
+        except ValidationError:
+            return None
 
 
 __all__ = [

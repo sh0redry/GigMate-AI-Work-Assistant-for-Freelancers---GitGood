@@ -12,6 +12,7 @@ import { OrderCreation } from "./OrderCreation";
 import { ReviewWorkspace } from "./ReviewWorkspace";
 import { DeliveryGuide } from "./DeliveryGuide";
 import { GuidedTour, tourSeen } from "./GuidedTour";
+import { NewRequestBanner } from "./new-request-banner";
 import { workspaceApi, type Detail, type Login } from "./workspace-api";
 import { clearConnectionAttempts } from "./connection-api";
 import { unavailableFeatures, loopReady, type Features } from "./features";
@@ -41,6 +42,7 @@ export function App() {
   const [view, setView] = useState<View>("business"),
     [selectedOrder, setSelectedOrder] = useState(""),
     [createConversation, setCreateConversation] = useState(""),
+    [createSuggestion, setCreateSuggestion] = useState(""),
     [sendAction, setSendAction] = useState(""),
     [login, setLogin] = useState<Login | null>(null),
     [username, setUsername] = useState(""),
@@ -118,7 +120,10 @@ export function App() {
   }, [login, expireSession]);
   function navigate(next: View) {
     if (busy) return;
-    if (next === "create") setCreateConversation("");
+    if (next === "create") {
+      setCreateConversation("");
+      setCreateSuggestion("");
+    }
     if (next !== "management") setSendAction("");
     setNotice("");
     setView(next);
@@ -385,6 +390,15 @@ export function App() {
                     </button>
                   )}
                 </div>
+                {features.create_order && (
+                  <NewRequestBanner
+                    csrf={login.csrf_token}
+                    onOpen={(id) => {
+                      navigate("create");
+                      setCreateSuggestion(id);
+                    }}
+                  />
+                )}
                 <WorkOrderWorkspace
                   {...props}
                   key={login.account_id}
@@ -409,6 +423,7 @@ export function App() {
                 onBusyChange={setBusy}
                 onOpenOrder={openOrder}
                 initialConversation={createConversation}
+                initialSuggestion={createSuggestion}
               />
             )}
             {view === "approvals" && (

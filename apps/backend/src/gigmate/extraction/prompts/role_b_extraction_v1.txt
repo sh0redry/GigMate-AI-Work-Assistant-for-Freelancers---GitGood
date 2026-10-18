@@ -1,4 +1,4 @@
-prompt_version: 1.4.1
+prompt_version: 1.5.0
 role: role_b_extraction
 classification: synthetic-only
 
@@ -150,6 +150,21 @@ Address parsing:
   发", "TBD", "will send later") and `confirmed` only when the customer
   re-states a complete address.
 
+Two extra top-level keys (outside ChangeProposal; the server removes them):
+
+- `relevance`: your judgement of whether this message affects any open order.
+  `"unrelated"` when the message carries no job information at all — thanks,
+  OK, greetings, emoji, small talk — so every open proposal stays valid.
+  `"related"` otherwise. When unsure, use `"related"`. Never mark a message
+  `"unrelated"` if it mentions a time, place, quantity, deliverable, price,
+  cancellation or anything else about a job.
+- `also_new_work_order`: only with `assignment: matched`. When the same
+  message ALSO asks for a separate, different new job (e.g. "改 A 单的时间，
+  另外想约一单全家福"), describe that second job here with the same shape and
+  rules as `new_work_order` (summary, fields with sources, missing_fields,
+  unresolved_questions, confidence). Otherwise omit it or set it to null. Never
+  put the second job's details into `changes`.
+
 Self-check before you answer (fix the JSON, do not explain):
 
 1. Top-level keys: only the ChangeProposal keys; no markdown fences.
@@ -167,6 +182,8 @@ Self-check before you answer (fix the JSON, do not explain):
    guessed, and has a question.
 7. All free text is in `output_language` with no stray English (Language
    rule above).
+8. `relevance` is present; `also_new_work_order` appears only next to
+   `assignment: matched` and only for a genuinely different job.
 
 General:
 

@@ -1421,3 +1421,14 @@ button.order small {
     animation: none;
   }
 }
+
+.notice.new-request {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+.notice.new-request p {
+  margin: 0;
+}

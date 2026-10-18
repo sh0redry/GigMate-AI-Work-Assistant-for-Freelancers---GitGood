@@ -27,8 +27,17 @@ from gigmate.db import ChangeRow, ModelCallTrace, Proposal
 
 from .types import ExtractionOutcome
 
+_INCOMPLETE_TIME = {
+    "zh-Hans": "时间还不完整，请向客人补问结束时间或时长；不完整的时间不会写进日历。",
+    "zh-Hant": "時間還不完整，請向客人補問結束時間或時長；不完整的時間不會寫入日曆。",
+    "en": (
+        "Review the appointment time and provide any missing end time or duration; "
+        "a partial time cannot be synchronized to the calendar."
+    ),
+}
 
-def review_schedule_shapes(outcome: ExtractionOutcome) -> ExtractionOutcome:
+
+def review_schedule_shapes(outcome: ExtractionOutcome, language: str = "en") -> ExtractionOutcome:
     """Preserve partial time evidence without treating it as a calendar interval.
 
     FieldValue intentionally also admits scalar values. A model can therefore
@@ -48,10 +57,7 @@ def review_schedule_shapes(outcome: ExtractionOutcome) -> ExtractionOutcome:
         changes.append(change)
     if not incomplete:
         return outcome
-    question = (
-        "Review the appointment time and provide any missing end time or duration; "
-        "a partial time cannot be synchronized to the calendar."
-    )
+    question = _INCOMPLETE_TIME.get(language, _INCOMPLETE_TIME["en"])
     questions = list(outcome.proposal.unresolved_questions)
     if question not in questions:
         questions.append(question)
@@ -72,6 +78,7 @@ def persist_proposal(
     event_id: str,
     proposal: ChangeProposal,
     outcome: ExtractionOutcome,
+    trace: bool = True,
 ) -> Proposal:
     """Persist one ``Proposal`` row plus its ``ModelCallTrace``.
 
@@ -98,6 +105,8 @@ def persist_proposal(
     )
     db.add(proposal_row)
     db.flush()
+    if not trace:
+        return proposal_row
     db.add(
         ModelCallTrace(
             id=str(uuid4()),

@@ -724,6 +724,10 @@ export const english: Record<string, string> = {
   "可从对应页面使用，操作仍需核对归属、来源和当前版本。":
     "Use the corresponding page. Operations still require ownership, source and version checks.",
   未知联系人: "Unknown contact",
+  "客人提到一件新事：「{0}」。": "The customer mentioned something new: “{0}”.",
+  "客人提到 {0} 件新事，最新一件：「{1}」。":
+    "The customer mentioned {0} new things. Latest: “{1}”.",
+  "另开一单（已预填）": "Open a new order (prefilled)",
   重新查看新手引导: "Replay the walkthrough",
   "欢迎使用 GigMate": "Welcome to GigMate",
   "跟着做 3 件事就能开始：连接 WhatsApp、选要跟进的聊天、看 AI 帮你整理的工单和回复。每一步都要你自己点，随时可以跳过。":
@@ -2548,6 +2552,10 @@ export const cantonese: Record<string, string> = {
   "可从对应页面使用，操作仍需核对归属、来源和当前版本。":
     "可從對應頁面使用，操作仍需核對歸屬、來源和當前版本。",
   未知联系人: "未知聯絡人",
+  "客人提到一件新事：「{0}」。": "客人提到一件新事：「{0}」。",
+  "客人提到 {0} 件新事，最新一件：「{1}」。":
+    "客人提到 {0} 件新事，最新一件：「{1}」。",
+  "另开一单（已预填）": "另開一單（已預填）",
   重新查看新手引导: "再睇一次新手導覽",
   "欢迎使用 GigMate": "歡迎使用 GigMate",
   "跟着做 3 件事就能开始：连接 WhatsApp、选要跟进的聊天、看 AI 帮你整理的工单和回复。每一步都要你自己点，随时可以跳过。":
