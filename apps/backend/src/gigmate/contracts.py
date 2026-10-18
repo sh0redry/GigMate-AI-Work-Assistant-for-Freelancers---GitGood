@@ -63,6 +63,7 @@ class WorkspaceCapabilities(Model):
     business_sending: bool = True
     automatic_understanding: bool = False
     business_loop_reviewed: bool = True
+    manual_field_editing: bool = True
 
 
 class ReviewItem(Model):
@@ -433,6 +434,7 @@ class WorkOrder(Model):
     account_id: Id
     conversation_ids: Annotated[list[Id], Field(min_length=1)]
     summary: Text
+    source_messages: list[SourceRef] = []
     status: Annotated[WorkOrderStatus, Field(strict=False)]
     version: Positive
     fields: WorkOrderFields
@@ -790,6 +792,39 @@ class AuditLog(Model):
     operation: Text
     occurred_at: UtcTimestamp
     request_id: Id
+
+
+class ManualFieldCommand(Model):
+    expected_version: Positive
+    expected_context_version: Positive
+    conversation_id: Id
+    field: Literal["schedule", "address", "summary", "quantity", "specification", "deadline"]
+    value: FieldValue
+    sources: Annotated[list[SourceRef], Field(min_length=1, max_length=20)]
+    customer_confirmed: bool = False
+    apply_calendar_update: bool = False
+
+    @model_validator(mode="after")
+    def valid_manual_value(self):
+        from pydantic import TypeAdapter
+
+        if self.field in {"address", "summary", "specification"}:
+            if not isinstance(self.value, str) or not self.value.strip():
+                raise ValueError("Text value is required")
+        elif self.field == "schedule":
+            TypeAdapter(ScheduleValue).validate_python(self.value)
+            if not self.apply_calendar_update:
+                raise ValueError("Explicit calendar synchronization is required")
+        elif self.field == "deadline":
+            TypeAdapter(DeadlineValue).validate_python(self.value)
+        elif isinstance(self.value, bool) or not (
+            isinstance(self.value, (int, float))
+            and self.value > 0
+            or isinstance(self.value, str)
+            and bool(self.value.strip())
+        ):
+            raise ValueError("A positive quantity or description is required")
+        return self
 
 
 class ConfirmChangeCommand(Model):

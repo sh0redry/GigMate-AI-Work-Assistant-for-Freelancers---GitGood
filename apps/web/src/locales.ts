@@ -1,5 +1,37 @@
 // UI copy only. Customer content and approved payloads are never translated.
 export const english: Record<string, string> = {
+  "如果客户已经提供信息，可在下方手动补充／修改字段。":
+    "If the customer already supplied the details, use Add or correct fields below.",
+  "真实语音与图片识别、媒体结果转工单、自由 Agent 自动回复和外部日历持续同步尚未交付。文字业务可通过 AI 提议或手动核对处理。":
+    "Live audio/image understanding, media-to-order promotion, unrestricted automatic Agent replies and continuous external-calendar sync are not delivered. Text work can be handled through AI suggestions or manual review.",
+  "桌面自动启动版支持 macOS 和 Windows。首次完成 Docker 安装、账号与 API Key 设置后，打开程序会自动启动本机服务。需要网络；关闭程序会停止它管理的后台，保留业务数据。首次清理旧数据需明确核对。":
+    "Desktop automatic startup supports macOS and Windows. After initial Docker, account and API-key setup, opening the app starts local services. Internet is required; quitting stops its services while preserving business data. First-install cleanup requires explicit review.",
+  手动补充或修改工单: "Manually correct work-order fields",
+  "手动补充／修改字段": "Add or correct fields",
+  "引用客户原文，补充 AI 漏掉的信息；核对后更新工单和相关草稿。":
+    "Use the customer source to add details missed by AI; review before updating the order and drafts.",
+  "将「{0}」的{1}改为：{2}。依据：{3}。{4}":
+    "Change {1} of “{0}” to {2}. Source: {3}. {4}",
+  "你已核对客户原文明确确认。":
+    "You reviewed the customer’s explicit confirmation.",
+  "保留为待客户确认，不记成客户已同意。":
+    "Keep awaiting customer confirmation; do not record customer agreement.",
+  "客户已经说清、AI 却没识别时，在这里补充。选择原文，核对后保存；不会发送消息。":
+    "Add information the customer already supplied but AI missed. Select the source and review before saving; this does not send a message.",
+  要修改的内容: "Field to change",
+  "截止时间（香港时间）": "Deadline (Hong Kong time)",
+  "开始时间（香港时间）": "Start (Hong Kong time)",
+  "结束时间（香港时间）": "End (Hong Kong time)",
+  正确内容: "Correct value",
+  依据哪条客户消息: "Customer source message",
+  请选择客户原文: "Select the customer source",
+  没有文字: "No text",
+  "我已核对原文，客户明确确认了这个值":
+    "I reviewed the source: the customer explicitly confirmed this value",
+  "保存会更新工单；时间修改同步日历。旧的未发送草稿作废，仍缺的内容会重新准备询问。":
+    "Saving updates the order and synchronizes calendar changes. Old unsent drafts are invalidated; remaining gaps may produce a new question.",
+  核对修改: "Review correction",
+  保存失败: "Could not save",
   "读取期间登录、授权或数据发生变化，请刷新并核对会话授权。":
     "Your session, permissions, or data changed during this read. Refresh and check conversation permissions.",
   "聊天、授权或工单已变化，这条旧提议不能直接确认。":
@@ -1818,6 +1850,36 @@ export const english: Record<string, string> = {
   "{0} 开始": "starts {0}",
 };
 export const cantonese: Record<string, string> = {
+  "如果客户已经提供信息，可在下方手动补充／修改字段。":
+    "如果客人已經提供資料，可喺下方手動補充／修改欄位。",
+  "真实语音与图片识别、媒体结果转工单、自由 Agent 自动回复和外部日历持续同步尚未交付。文字业务可通过 AI 提议或手动核对处理。":
+    "真實語音同圖片識別、媒體轉工作單、自由 Agent 自動回覆同外部日曆持續同步尚未交付。文字業務可用 AI 建議或者手動核對處理。",
+  "桌面自动启动版支持 macOS 和 Windows。首次完成 Docker 安装、账号与 API Key 设置后，打开程序会自动启动本机服务。需要网络；关闭程序会停止它管理的后台，保留业务数据。首次清理旧数据需明确核对。":
+    "桌面自動啟動版支援 macOS 同 Windows。首次裝好 Docker、設定帳號同 API Key 後，打開程式就會自動啟動本機服務。需要網絡；關閉程式會停止佢管理嘅後台，保留業務資料。首次清理舊資料需要明確核對。",
+  手动补充或修改工单: "手動補充或修改工作單",
+  "手动补充／修改字段": "手動補充／修改欄位",
+  "引用客户原文，补充 AI 漏掉的信息；核对后更新工单和相关草稿。":
+    "引用客人原文，補充 AI 漏咗嘅資料；核對後更新工作單同草稿。",
+  "将「{0}」的{1}改为：{2}。依据：{3}。{4}":
+    "將「{0}」嘅{1}改為：{2}。依據：{3}。{4}",
+  "你已核对客户原文明确确认。": "你已核對客人原文明確確認。",
+  "保留为待客户确认，不记成客户已同意。":
+    "保留為等客人確認，唔會當作客人已同意。",
+  "客户已经说清、AI 却没识别时，在这里补充。选择原文，核对后保存；不会发送消息。":
+    "客人已經講清楚、AI 卻冇識別到時，喺呢度補充。揀原文、核對後儲存；唔會發送訊息。",
+  要修改的内容: "要修改嘅內容",
+  "截止时间（香港时间）": "截止時間（香港時間）",
+  "开始时间（香港时间）": "開始時間（香港時間）",
+  "结束时间（香港时间）": "結束時間（香港時間）",
+  正确内容: "正確內容",
+  依据哪条客户消息: "依據邊條客人訊息",
+  请选择客户原文: "請選擇客人原文",
+  没有文字: "冇文字",
+  "我已核对原文，客户明确确认了这个值": "我已核對原文，客人明確確認咗呢個值",
+  "保存会更新工单；时间修改同步日历。旧的未发送草稿作废，仍缺的内容会重新准备询问。":
+    "儲存會更新工作單；時間修改會同步日曆。舊嘅未發送草稿作廢，仍然欠嘅資料會重新準備詢問。",
+  核对修改: "核對修改",
+  保存失败: "儲存失敗",
   "读取期间登录、授权或数据发生变化，请刷新并核对会话授权。":
     "讀取期間登入、授權或者資料有變，請重新整理同核對對話授權。",
   "聊天、授权或工单已变化，这条旧提议不能直接确认。":

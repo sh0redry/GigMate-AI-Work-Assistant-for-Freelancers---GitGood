@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'"
+    />
+    <title>GigMate 一键启动</title>
+    <link rel="stylesheet" href="setup.css" />
+  </head>
+  <body>
+    <main>
+      <p class="brand">GigMate</p>
+      <h1>打开，就能开始工作。</h1>
+      <p>一次配置，之后自动启动全部本地服务。</p>
+      <form id="setup">
+        <section id="fresh">
+          <label
+            >你的登录账号<input
+              id="username"
+              autocomplete="username"
+              value="merchant"
+              maxlength="64"
+              required /></label
+          ><label
+            >设置密码（至少 12 位）<input
+              id="password"
+              type="password"
+              minlength="12"
+              maxlength="128"
+              autocomplete="new-password"
+          /></label>
+          <p class="warning">
+            全新安装会清除本机已标识的 GigMate 旧数据库、聊天、授权与 WhatsApp
+            登录状态。不会删除其他软件或项目文件；不会加载演示数据。
+          </p>
+          <label class="check"
+            ><input id="clean" type="checkbox" />我了解旧 GigMate
+            运行数据将被清理，从空白开始。</label
+          >
+        </section>
+        <label
+          >DeepSeek API Key（可稍后配置）<input
+            id="model-key"
+            type="password"
+            autocomplete="off"
+            maxlength="512"
+            placeholder="只保存在本机系统钥匙串和私密后端配置中" /></label
+        ><label class="check"
+          ><input id="ai-consent" type="checkbox" />启用 AI
+          分析我稍后明确授权的聊天，并承担供应商费用。</label
+        >
+        <p id="key-state" class="subtle"></p>
+        <button id="start" type="submit">清理旧数据并一键启动</button
+        ><button id="docker" type="button" class="secondary">
+          安装 Docker（首次需要）
+        </button>
+      </form>
+      <p class="subtle">
+        首次需要联网下载运行环境，可能需要数分钟。Docker
+        官方安装及系统权限确认需要你操作一次；无需安装 Python、Node.js 或填写
+        .env。未填 API Key 时可手动管理业务。
+      </p>
+      <p id="progress" role="status" aria-live="polite">正在检查本地配置…</p>
+    </main>
+    <script src="setup.js"></script>
+  </body>
+</html>

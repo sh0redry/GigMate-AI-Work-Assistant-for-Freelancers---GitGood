@@ -4,6 +4,7 @@ import { orderCommands } from "./order-command-api";
 import { OrderLifecycle } from "./OrderLifecycle";
 import { InspectOrderAttempt } from "./InspectOrderAttempt";
 import { ReplyPanel } from "./ReplyPanel";
+import { ManualFieldEditor } from "./ManualFieldEditor";
 import { unavailableFeatures, type Features } from "./features";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { canConfirm, BusinessStore } from "./business-store";
@@ -601,6 +602,24 @@ export function WorkOrderWorkspace({
                   />
                 )}
               </section>
+              {features.manual_field_editing && accountId && openOrder && (
+                <ManualFieldEditor
+                  key={order.id}
+                  csrf={csrf}
+                  accountId={accountId}
+                  features={features}
+                  order={order}
+                  data={data}
+                  disabled={
+                    !ready ||
+                    commandBusy ||
+                    state.mutating ||
+                    !!commands?.attempt
+                  }
+                  onBusy={setCommandBusy}
+                  onDone={() => void store.refresh()}
+                />
+              )}
               <h3 className="section-title">{t("安排")}</h3>
               <dl className="order-facts">
                 {known.map(({ name, field }) => (

@@ -14,7 +14,7 @@ export type LoopIntent = {
 };
 type Saved = { key: string; intent: LoopIntent };
 const routes = [
-  /^\/work-orders\/[a-f0-9-]{36}\/(defer|requirements|archive|status)$/i,
+  /^\/work-orders\/[a-f0-9-]{36}\/(defer|requirements|archive|status|manual-field)$/i,
   /^\/work-orders\/[a-f0-9-]{36}\/requirements\/[a-f0-9-]{36}$/i,
   /^\/work-orders\/[a-f0-9-]{36}\/changes\/[a-f0-9-]{36}\/(confirm|reject)$/i,
   /^\/actions\/[a-f0-9-]{36}\/(edit|send|cancel)$/i,
