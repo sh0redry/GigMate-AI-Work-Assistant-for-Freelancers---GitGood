@@ -38,6 +38,7 @@ const components = [
   "WahaMessages",
   "WahaMedia",
   "WahaSend",
+  "GuidedTour",
 ];
 for (const name of [
   ...components,
@@ -57,6 +58,7 @@ for (const name of [
   "i18n",
   "locales",
   "work-order-view",
+  "contact-label",
   "connection-api",
   "waha-live-api",
   "waha-sync-api",
@@ -1212,4 +1214,55 @@ test("unknown model outcome keeps manual creation available but blocks reassignm
     data.order.conversation_ids[0],
   );
   assert.equal(data.writes.length, 0);
+});
+test("first sign-in starts an interactive walkthrough that waits for the user's own clicks", async () => {
+  fixture();
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => store.set(k, String(v)),
+    removeItem: (k) => store.delete(k),
+  };
+  // jsdom lays nothing out; give elements a visible box so targets count as shown.
+  const measure = window.HTMLElement.prototype.getBoundingClientRect;
+  window.HTMLElement.prototype.getBoundingClientRect = () => ({
+    top: 10,
+    left: 10,
+    width: 120,
+    height: 32,
+    right: 130,
+    bottom: 42,
+  });
+  try {
+    await mount();
+    await login();
+    const dialog = () => document.querySelector('.tour [role="dialog"]');
+    assert.ok(dialog(), "tour opens on first sign-in");
+    assert.match(dialog().textContent, /欢迎使用 GigMate/);
+    await act(async () => button("下一步").click());
+    assert.match(dialog().textContent, /第 1 步：连接 WhatsApp/);
+    // A waiting step has no "next": only the real highlighted button moves on.
+    assert.equal(button("下一步"), undefined);
+    assert.match(dialog().textContent, /等你点亮起来的按钮/);
+    const nav = document.querySelector('[data-tour="nav-connect"]');
+    assert.ok(nav, "the real navigation button is the tour target");
+    await act(async () => nav.click());
+    assert.match(dialog().textContent, /扫码，然后勾选业务聊天/);
+    await act(async () => button("跳过引导").click());
+    assert.equal(dialog(), null);
+    assert.ok([...store.values()].includes("done"));
+    // Seen once on this account: signing in again does not start it again.
+    await act(async () => root.unmount());
+    document.getElementById("root").replaceChildren();
+    await mount();
+    await login();
+    assert.equal(dialog(), null);
+    // It can always be replayed from the help page.
+    await act(async () => button("功能与使用说明").click());
+    await act(async () => button("重新查看新手引导").click());
+    assert.match(dialog().textContent, /欢迎使用 GigMate/);
+  } finally {
+    window.HTMLElement.prototype.getBoundingClientRect = measure;
+    delete globalThis.localStorage;
+  }
 });

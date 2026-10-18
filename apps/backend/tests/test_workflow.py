@@ -378,3 +378,29 @@ def test_worker_poll_recovers_after_database_outage(signed_in, monkeypatch):
     assert not worker.poll(factory)
     assert worker.poll(factory)
     assert count(factory, ChangeRow) == 1
+
+
+def test_reauthorization_makes_old_ai_proposals_unconfirmable(signed_in):
+    """Revoke then re-grant a chat: the earlier AI proposal is stale for good.
+
+    Mirrors ``waha_controls.select_chats``: each flip bumps the context
+    version and runs the same stale-marking helper.
+    """
+    from gigmate.db import ConversationRow
+    from gigmate.waha_controls import stale_after_authorization_change
+
+    client, factory, _, headers = signed_in
+    change = proposal(client, factory, headers, "reschedule")
+    with factory.begin() as db:
+        conversation = db.get(ConversationRow, uid(2))
+        for allow in (False, True):
+            conversation.allowlisted = allow
+            conversation.context_version += 1
+            stale_after_authorization_change(db, conversation)
+        current = conversation.context_version
+    rows = client.get(PATH + "/changes").json()["items"]
+    stale = next(row for row in rows if row["id"] == change["id"])
+    assert stale["status"] == "needs_review"
+    # Neither the old nor the new context version lets it be confirmed.
+    assert confirm(client, headers, change).status_code == 409
+    assert confirm(client, headers, {**change, "context_version": current}).status_code == 409

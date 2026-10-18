@@ -1094,6 +1094,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/new-order-suggestions/{proposal_id}/dismiss": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Dismiss New Order Suggestion */
+    post: operations["dismiss_new_order_suggestion_api_v1_new_order_suggestions__proposal_id__dismiss_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/replay": {
     parameters: {
       query?: never;
@@ -2532,6 +2549,14 @@ export interface components {
        * Format: uuid
        */
       request_id: string;
+    };
+    /**
+     * DismissSuggestionCommand
+     * @description Merchant discards an AI new-order suggestion: the message is not a new job.
+     */
+    DismissSuggestionCommand: {
+      /** Expected Context Version */
+      expected_context_version: number;
     };
     /**
      * EditActionCommand
@@ -6812,6 +6837,43 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Page_NewOrderSuggestionView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  dismiss_new_order_suggestion_api_v1_new_order_suggestions__proposal_id__dismiss_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path: {
+        proposal_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DismissSuggestionCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_MessageAssignmentResult_"];
         };
       };
       /** @description Validation Error */

@@ -47,6 +47,13 @@ class ExtractionRequest:
     # refuse to promote relative-date interpretations instead of guessing.
     message_received_at: str | None = None
     workspace_timezone: str | None = None
+    # Every open work order the message may belong to, keyed by id, with the
+    # version the snapshot was read at. The model picks one (or none) per
+    # message; the server re-checks the chosen id and version after the call.
+    candidate_versions: dict[str, int] = field(default_factory=dict)
+    candidate_snapshots: dict[str, dict] = field(default_factory=dict)
+    # Language for merchant-facing free text (reason, questions, summary).
+    output_language: str = "zh-Hans"
     extra: dict = field(default_factory=dict)
 
 

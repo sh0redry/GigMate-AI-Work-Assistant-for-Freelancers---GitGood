@@ -71,7 +71,7 @@ import httpx
 from pydantic import ValidationError
 
 from gigmate import secrets
-from gigmate.contracts import ChangeProposal
+from gigmate.contracts import ChangeProposal, NewWorkOrderSuggestedField, ProposalChange
 
 from .types import ExtractionOutcome, ExtractionRequest
 
@@ -191,6 +191,50 @@ _CHAT_FRAMING_TOKENS = 16
 # ``instant`` is the ``InstantDeadline`` shape ("明天交稿") and was the hole
 # in the original guard.
 _DATE_BEARING_FIELDS = frozenset({"schedule", "deadline"})
+
+
+def _note_category(code: str) -> str:
+    """Stable note family for a whole-message refusal code."""
+    for family in (
+        "llm:time-basis-missing",
+        "llm:response-schema-failed",
+        "llm:response-provenance-failed",
+    ):
+        if code.startswith(family) or (
+            family == "llm:time-basis-missing" and code.startswith("llm:time-basis")
+        ):
+            return family
+    return code
+
+
+_FIELD_LABELS = {
+    "zh-Hans": {
+        "schedule": "时间",
+        "address": "地址",
+        "summary": "工作内容",
+        "quantity": "数量",
+        "specification": "规格要求",
+        "deadline": "交付期限",
+    },
+    "zh-Hant": {
+        "schedule": "時間",
+        "address": "地址",
+        "summary": "工作內容",
+        "quantity": "數量",
+        "specification": "規格要求",
+        "deadline": "交付期限",
+    },
+}
+_DROPPED_TEMPLATE = {
+    "zh-Hans": "未能可靠识别{0}，已留空，请向客人核对。",
+    "zh-Hant": "未能可靠識別{0}，已留空，請向客人核對。",
+    "en": "Could not reliably read the {0}; left blank, please check with the customer.",
+}
+_NOTHING_USABLE = {
+    "zh-Hans": "这条消息里没有可用的工单信息，请人工判断。",
+    "zh-Hant": "這條訊息裡沒有可用的工作單資料，請人工判斷。",
+    "en": "No usable work-order detail in this message; please review.",
+}
 _DATE_BEARING_KINDS = frozenset({"timed", "date_only", "instant"})
 
 # Best-effort default price list in USD per 1K tokens, keyed by
@@ -1447,6 +1491,18 @@ class LLMProvider:
                 # means the model must not resolve them at all.
                 "time_basis": basis,
                 "relative_dates_allowed": basis is not None,
+                # One brief per open order so the model can decide which one
+                # (if any) this message is about. Versions let it echo the
+                # base version of the order it picked.
+                "candidate_work_orders": [
+                    {
+                        "work_order_id": order_id,
+                        "version": request.candidate_versions.get(order_id),
+                        **(request.candidate_snapshots.get(order_id) or {}),
+                    }
+                    for order_id in request.candidate_work_order_ids
+                ],
+                "output_language": request.output_language,
             },
             ensure_ascii=False,
         )
@@ -1489,7 +1545,8 @@ class LLMProvider:
             chosen = data.get("work_order_id")
             if chosen not in request.candidate_work_order_ids:
                 return "llm:response-provenance-failed:work_order_id", rebound
-            if data.get("base_work_order_version") != request.base_work_order_version:
+            expected = request.candidate_versions.get(chosen, request.base_work_order_version)
+            if data.get("base_work_order_version") != expected:
                 return "llm:response-provenance-failed:base_work_order_version", rebound
         # P2-3: the context version is server-owned; a different value is a
         # mismatch, not something to overwrite silently. Round 2 also refuses
@@ -1573,6 +1630,133 @@ class LLMProvider:
             if suggested_questions is not None and not isinstance(suggested_questions, list):
                 return "llm:response-provenance-failed:suggested-questions-shape", rebound
         return None, rebound
+
+    @staticmethod
+    def _identity_problem(data: dict, request: ExtractionRequest) -> str | None:
+        """Who/which-version checks that always refuse the whole message.
+
+        A wrong conversation, an order that was not offered, or a stale
+        version is a sign of injection or drift, not one unreadable field, so
+        nothing from such a response is kept.
+        """
+        if data.get("conversation_id") != request.conversation_id:
+            return "llm:response-provenance-failed:conversation_id"
+        if data.get("assignment") == "matched":
+            chosen = data.get("work_order_id")
+            if chosen not in request.candidate_work_order_ids:
+                return "llm:response-provenance-failed:work_order_id"
+            expected = request.candidate_versions.get(chosen, request.base_work_order_version)
+            if data.get("base_work_order_version") != expected:
+                return "llm:response-provenance-failed:base_work_order_version"
+        declared = data.get("base_context_version")
+        if declared is not None and (
+            not isinstance(declared, int)
+            or isinstance(declared, bool)
+            or declared != request.context_version
+        ):
+            return "llm:response-provenance-failed:base_context_version"
+        return None
+
+    def _salvage(
+        self, data: dict, request: ExtractionRequest
+    ) -> tuple[list[tuple[str, str]], str | None]:
+        """Keep every usable field; drop only the ones that cannot be trusted.
+
+        One unreadable field used to fail ``ChangeProposal`` validation and
+        send the whole message to manual review, losing the address or quantity
+        the model had read correctly. Each change and each suggested field is
+        now validated on its own. An invalid one — wrong shape, impossible
+        time, no source, or a date with no reliable time basis — is removed,
+        left missing, and turned into a question for the merchant. Only a
+        message with nothing usable left falls back to review.
+
+        Returns ``(dropped, problem)``: ``dropped`` lists ``(field, code)`` for
+        the trace; ``problem`` is a whole-message refusal code, set only when
+        nothing usable is left (it reuses the first drop's stable code).
+        """
+        language = request.output_language if request.output_language in _FIELD_LABELS else "en"
+        labels = _FIELD_LABELS.get(language) or {name: name for name in _FIELD_LABELS["zh-Hans"]}
+        basis, invalid_basis = self._time_basis(request)
+        dropped: list[tuple[str, str]] = []
+        rebound: list[bool] = []
+
+        def check(entry: object, model, prefix: str) -> str | None:
+            if not isinstance(entry, dict):
+                return f"llm:response-provenance-failed:{prefix}field-shape"
+            sources = entry.get("sources")
+            if sources is not None and not isinstance(sources, list):
+                return f"llm:response-provenance-failed:{prefix}source-shape"
+            if not sources:
+                return f"llm:response-provenance-failed:{prefix}source-missing"
+            if not all(isinstance(source, dict) for source in sources):
+                return f"llm:response-provenance-failed:{prefix}source-shape"
+            for source in sources:
+                # The request carries exactly one message: rebind, as before.
+                if source.get("message_id") != request.message_id:
+                    rebound.append(True)
+                source["message_id"] = request.message_id
+                source["message_revision"] = request.message_revision
+            if basis is None and entry.get("field") in _DATE_BEARING_FIELDS:
+                keys = ("old_value", "new_value") if model is ProposalChange else ("value",)
+                if any(_carries_a_date(entry.get(key)) for key in keys):
+                    return invalid_basis or "llm:time-basis-missing:schedule"
+            try:
+                model.model_validate(entry)
+            except ValidationError as exc:
+                loc = ".".join(str(part) for part in exc.errors()[0].get("loc", ())) or "root"
+                return f"llm:response-schema-failed:{prefix}{loc}"
+            return None
+
+        def field_of(entry: object) -> str:
+            field = entry.get("field") if isinstance(entry, dict) else None
+            return field if field in _FIELD_LABELS["zh-Hans"] else "field"
+
+        changes = data.get("changes")
+        had_changes = isinstance(changes, list) and bool(changes)
+        if isinstance(changes, list):
+            kept = []
+            for entry in changes:
+                code = check(entry, ProposalChange, "")
+                if code is None:
+                    kept.append(entry)
+                else:
+                    dropped.append((field_of(entry), code))
+            data["changes"] = kept
+        suggestion = data.get("new_work_order")
+        had_fields = False
+        if isinstance(suggestion, dict) and isinstance(suggestion.get("fields"), list):
+            had_fields = bool(suggestion["fields"])
+            missing = suggestion.get("missing_fields")
+            kept = []
+            for entry in suggestion["fields"]:
+                code = check(entry, NewWorkOrderSuggestedField, "suggested-")
+                if code is None:
+                    kept.append(entry)
+                    continue
+                name = field_of(entry)
+                dropped.append((name, code))
+                if isinstance(missing, list) and name in labels and name not in missing:
+                    missing.append(name)
+            suggestion["fields"] = kept
+        data["_rebound"] = bool(rebound)
+        if not dropped:
+            return dropped, None
+        # Nothing usable left: refuse the whole message with the first stable
+        # code, exactly as before. Later messages are unaffected (rule 5).
+        nothing_left = (had_changes and not data["changes"] and suggestion is None) or (
+            had_fields
+            and isinstance(suggestion, dict)
+            and not suggestion["fields"]
+            and not data.get("changes")
+        )
+        if nothing_left:
+            return dropped, dropped[0][1]
+        questions = data.get("unresolved_questions")
+        if isinstance(questions, list):
+            for name in dict.fromkeys(name for name, _ in dropped):
+                if name in labels:
+                    questions.append(_DROPPED_TEMPLATE[language].format(labels[name]))
+        return dropped, None
 
     def _time_basis_problem(self, proposal, request: ExtractionRequest) -> str | None:
         """Refuse schedule values that were produced without a real basis.
@@ -1696,8 +1880,11 @@ class LLMProvider:
             # a filler sentence when the questions live inside the suggestion.
             if not data.get("unresolved_questions") and not data.get("new_work_order"):
                 reason_text = data.get("reason")
+                language = request.output_language
                 data["unresolved_questions"] = [
-                    str(reason_text) if reason_text else "LLM requested review"
+                    str(reason_text)
+                    if reason_text
+                    else _NOTHING_USABLE.get(language, _NOTHING_USABLE["en"])
                 ]
             data.setdefault("work_order_id", None)
             data.setdefault("base_work_order_version", None)
@@ -1712,7 +1899,21 @@ class LLMProvider:
                 and request.base_work_order_version is not None
             ):
                 data["base_work_order_version"] = request.base_work_order_version
-        problem, rebound = self._provenance_problem(data, request)
+        if (
+            data.get("assignment") == "matched"
+            and data.get("work_order_id") in request.candidate_versions
+            and data.get("base_work_order_version") is None
+        ):
+            # The version is server-owned; the model only names the order.
+            data["base_work_order_version"] = request.candidate_versions[data["work_order_id"]]
+        problem = self._identity_problem(data, request)
+        dropped: list[tuple[str, str]] = []
+        if problem is None:
+            dropped, problem = self._salvage(data, request)
+        rebound = bool(data.pop("_rebound", False))
+        if problem is None:
+            problem, also_rebound = self._provenance_problem(data, request)
+            rebound = rebound or also_rebound
         if problem is not None:
             return self._needs_review(
                 request,
@@ -1720,7 +1921,7 @@ class LLMProvider:
                 latency_ms=self._elapsed(began),
                 prompt_version=prompt_version,
                 model_version=model_version,
-                notes=("llm:response-provenance-failed",),
+                notes=(_note_category(problem),),
                 request_id=request_id,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
@@ -1769,7 +1970,10 @@ class LLMProvider:
         # Observability, not trust: when the vendor echoed the wrong source
         # identifier the proposal still carries the server's value, and the
         # trace says so instead of hiding the correction.
-        outcome_notes = ("llm:source-rebound",) if rebound else ()
+        outcome_notes = (
+            *(("llm:source-rebound",) if rebound else ()),
+            *(f"llm:partial-dropped:{name}" for name, _ in dropped),
+        )
         if proposal.assignment.value == "matched":
             return ExtractionOutcome(
                 provider_name=self.name,

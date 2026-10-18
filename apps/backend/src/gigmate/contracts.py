@@ -1029,6 +1029,12 @@ class AssignMessageCommand(Model):
         return self
 
 
+class DismissSuggestionCommand(Model):
+    """Merchant discards an AI new-order suggestion: the message is not a new job."""
+
+    expected_context_version: Positive
+
+
 class MessageAssignmentResult(Model):
     job_id: Id
     conversation_id: Id
