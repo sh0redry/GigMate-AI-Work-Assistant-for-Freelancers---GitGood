@@ -198,6 +198,34 @@ _CHAT_FRAMING_TOKENS = 16
 _DATE_BEARING_FIELDS = frozenset({"schedule", "deadline"})
 
 
+def _coerce_value(field: object, value: object) -> object:
+    """Fit a model's structured value into the contract's scalar FieldValue.
+
+    Live traces showed values the contract rejects, e.g. a list of things to
+    bring (``["证件", "白色背景"]``) or ``{"amount": 2, "unit": "套"}``. One
+    such value used to send the whole message to manual review. Lists and
+    plain objects on non-date fields are turned into readable text; date
+    shapes (``kind`` objects) and anything else are left for validation.
+    """
+    if not isinstance(field, str) or field in _DATE_BEARING_FIELDS:
+        return value
+    if isinstance(value, list):
+        parts = [_coerce_value(field, item) for item in value]
+        text = "；".join(str(part) for part in parts if part not in (None, ""))
+        return text or None
+    if isinstance(value, dict) and "kind" not in value:
+        number = next(
+            (value[k] for k in ("amount", "count", "quantity", "number", "value") if k in value),
+            None,
+        )
+        unit = value.get("unit")
+        if number is not None and isinstance(number, (int, float, str)):
+            return f"{number} {unit}".strip() if unit else number
+        parts = [str(v) for v in value.values() if isinstance(v, (str, int, float)) and v != ""]
+        return "，".join(parts) or None
+    return value
+
+
 def _note_category(code: str) -> str:
     """Stable note family for a whole-message refusal code."""
     for family in (
@@ -1706,6 +1734,9 @@ class LLMProvider:
                     rebound.append(True)
                 source["message_id"] = request.message_id
                 source["message_revision"] = request.message_revision
+            for key in ("old_value", "new_value") if model is ProposalChange else ("value",):
+                if key in entry:
+                    entry[key] = _coerce_value(entry.get("field"), entry[key])
             if basis is None and entry.get("field") in _DATE_BEARING_FIELDS:
                 keys = ("old_value", "new_value") if model is ProposalChange else ("value",)
                 if any(_carries_a_date(entry.get(key)) for key in keys):
@@ -2061,6 +2092,7 @@ class LLMProvider:
             entry["sources"] = [
                 {"message_id": request.message_id, "message_revision": request.message_revision}
             ]
+            entry["value"] = _coerce_value(entry.get("field"), entry.get("value"))
             if (
                 basis is None
                 and entry.get("field") in _DATE_BEARING_FIELDS

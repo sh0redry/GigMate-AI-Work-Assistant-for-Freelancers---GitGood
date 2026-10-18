@@ -1,4 +1,4 @@
-prompt_version: 1.5.0
+prompt_version: 1.5.1
 role: role_b_extraction
 classification: synthetic-only
 
@@ -165,6 +165,15 @@ Two extra top-level keys (outside ChangeProposal; the server removes them):
   unresolved_questions, confidence). Otherwise omit it or set it to null. Never
   put the second job's details into `changes`.
 
+Value shapes (the server rejects anything else):
+
+- `address`, `summary`, `specification`, `quantity`: one string or one number.
+  Several items (things to bring, requirements, to-dos) are ONE string joined
+  with "；", e.g. "证件；白色背景". A quantity with a unit is one string, e.g.
+  "2 套". Never a JSON array or object.
+- `schedule` / `deadline`: only the timed / date_only / instant objects
+  described above, or omitted.
+
 Self-check before you answer (fix the JSON, do not explain):
 
 1. Top-level keys: only the ChangeProposal keys; no markdown fences.
@@ -184,6 +193,8 @@ Self-check before you answer (fix the JSON, do not explain):
    rule above).
 8. `relevance` is present; `also_new_work_order` appears only next to
    `assignment: matched` and only for a genuinely different job.
+9. Every `value` / `new_value` / `old_value` is a string, a number, null, or
+   one of the time objects; no arrays, no other objects.
 
 General:
 
