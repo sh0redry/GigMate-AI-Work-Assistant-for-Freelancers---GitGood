@@ -40,7 +40,16 @@ export function App() {
           : "zh-CN";
   }, [language]);
   const [moreOpen, setMoreOpen] = useState(false),
-    [tourOpen, setTourOpen] = useState(false);
+    [tourOpen, setTourOpen] = useState(false),
+    [theme, setTheme] = useState<"light" | "dark">(initialTheme);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem("gigmate.theme", theme);
+    } catch {
+      // Private mode or no storage: the choice lasts for this visit only.
+    }
+  }, [theme]);
   const [view, setView] = useState<View>("home"),
     [selectedOrder, setSelectedOrder] = useState(""),
     [createConversation, setCreateConversation] = useState(""),
@@ -226,6 +235,32 @@ export function App() {
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          className="theme-toggle"
+          aria-label={theme === "dark" ? t("切换到浅色") : t("切换到深色")}
+          title={theme === "dark" ? t("切换到浅色") : t("切换到深色")}
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            {theme === "dark" ? (
+              <>
+                <circle cx="12" cy="12" r="4" />
+                <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+              </>
+            ) : (
+              <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+            )}
+          </svg>
+        </button>
         <a className="brand" href="#workspace-content">
           {t("跟單")}
           <span>GigMate</span>
@@ -513,4 +548,17 @@ export function App() {
       )}
     </div>
   );
+}
+
+function initialTheme(): "light" | "dark" {
+  try {
+    const saved = localStorage.getItem("gigmate.theme");
+    if (saved === "light" || saved === "dark") return saved;
+  } catch {
+    // Storage unavailable: fall through to the system setting.
+  }
+  return typeof matchMedia === "function" &&
+    matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
 }

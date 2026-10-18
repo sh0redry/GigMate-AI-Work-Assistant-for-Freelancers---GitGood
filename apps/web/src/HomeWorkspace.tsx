@@ -343,13 +343,13 @@ export function HomeWorkspace({
 
       <div className="home-grid">
         {/* ① Large: everything that needs the merchant */}
-        <article className="home-widget size-large">
+        <article
+          className={`home-widget size-large ${attention.length ? "needs-you" : "all-clear"}`}
+        >
           <div className="w-head">
             <p className="w-label">{t("需要你处理")}</p>
             {attention.length > 0 && (
-              <span className="w-pill warn">
-                {t("{0} 项", attention.length)}
-              </span>
+              <span className="w-pill">{t("{0} 项", attention.length)}</span>
             )}
           </div>
           {!attention.length && (
@@ -420,7 +420,7 @@ export function HomeWorkspace({
           <p className="w-label">{t("待回复")}</p>
           <div>
             <p
-              className={`w-number ${toApprove.length + toSend.length ? "warn-text" : ""}`}
+              className={`w-number ${toApprove.length + toSend.length ? "iris-text" : ""}`}
             >
               {toApprove.length + toSend.length}
             </p>

@@ -1900,6 +1900,8 @@ export const english: Record<string, string> = {
   "去连接 ›": "Connect ›",
   "有 {0} 件事等你处理。": "{0} things need you.",
   "今天没有要你处理的事。": "Nothing needs you today.",
+  切换到浅色: "Switch to light mode",
+  切换到深色: "Switch to dark mode",
 };
 export const cantonese: Record<string, string> = {
   "工单记录需要维护者核查，本次没有保存；请勿反复提交。":
@@ -3695,4 +3697,6 @@ export const cantonese: Record<string, string> = {
   "去连接 ›": "去連接 ›",
   "有 {0} 件事等你处理。": "有 {0} 件事等你處理。",
   "今天没有要你处理的事。": "今日冇嘢要你處理。",
+  切换到浅色: "轉做淺色",
+  切换到深色: "轉做深色",
 };

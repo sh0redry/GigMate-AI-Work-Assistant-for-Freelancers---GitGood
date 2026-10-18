@@ -1406,8 +1406,9 @@ test("home widgets count real orders, replies, appointments and route every acti
   );
   const account = "00000000-0000-4000-8000-000000000001";
   const today = hongKongDay();
-  const later = new Date(Date.now() + 2 * 3600000).toISOString();
-  const laterEnd = new Date(Date.now() + 3 * 3600000).toISOString();
+  // Minutes ahead, not hours, so the event stays on today's Hong Kong date late at night.
+  const later = new Date(Date.now() + 60000).toISOString();
+  const laterEnd = new Date(Date.now() + 5 * 60000).toISOString();
   const order = (id, summary, status, extra = {}) => ({
     id,
     account_id: account,
