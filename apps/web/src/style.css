@@ -10,13 +10,13 @@
   color-scheme: light;
   --ink: #253047;
   --muted: #667085;
-  --accent: #425f9e;
-  --accent-hover: #354f89;
-  --soft: #edf1f9;
+  --accent: #008069;
+  --accent-hover: #006b58;
+  --soft: #e7f6f2;
   --surface: #ffffff;
   --line: #e3e7ef;
-  --warning: #fff5e6;
-  --warning-ink: #835524;
+  --warning: #fff1e8;
+  --warning-ink: #c2410c;
   --glass: rgba(255, 255, 255, 0.76);
   --glass-line: rgba(255, 255, 255, 0.94);
   --shadow:
@@ -29,8 +29,8 @@ body {
   margin: 0;
   min-width: 320px;
   background:
-    radial-gradient(ellipse at 10% 0%, #e9eef9 0%, transparent 42%),
-    radial-gradient(ellipse at 95% 6%, #eeeaf4 0%, transparent 34%), #f6f7fb;
+    radial-gradient(ellipse at 10% 0%, #dcf5ea 0%, transparent 42%),
+    radial-gradient(ellipse at 95% 6%, #e1f3fb 0%, transparent 34%), #f6f7fb;
   min-height: 100vh;
 }
 button,
@@ -76,7 +76,7 @@ button.secondary:disabled {
   color: #7d8698;
 }
 :where(button, input, select, textarea, a, summary):focus-visible {
-  outline: 3px solid #7b98d0;
+  outline: 3px solid #53bdeb;
   outline-offset: 4px;
 }
 a {
@@ -102,7 +102,7 @@ textarea {
 input:focus,
 select:focus,
 textarea:focus {
-  border-color: #7b98d0;
+  border-color: #53bdeb;
   background: white;
 }
 input::placeholder,
@@ -302,11 +302,11 @@ pre {
   color: #58647a;
 }
 .workspace-navigation button:hover:not(:disabled) {
-  background: rgba(230, 236, 247, 0.8);
+  background: rgba(220, 245, 234, 0.8);
 }
 .workspace-navigation button[aria-current="page"] {
-  background: #e6ecf7;
-  color: #354f89;
+  background: #dcf5ea;
+  color: #006b58;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
   font-weight: 650;
 }
@@ -431,7 +431,7 @@ button.order.active {
   border: 1px solid #e3e8f2;
   border-radius: 16px;
   color: #53627d;
-  background: #eff3fa;
+  background: #eef7f4;
   font-size: 13px;
   margin: 0 0 20px;
 }
@@ -439,7 +439,7 @@ button.order.active {
 .availability-note {
   color: var(--warning-ink);
   background: var(--warning);
-  border: 1px solid #ecdcc4;
+  border: 1px solid #f6c9ae;
 }
 .availability-note {
   border-radius: 14px;
@@ -471,15 +471,15 @@ button.order.active {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  background: #e7edf8;
-  color: #415d93;
+  background: #e1f3fb;
+  color: #027eb5;
   padding: 3px 10px;
   font-size: 11px;
   font-weight: 500;
   line-height: 1.7;
 }
 .warning {
-  background: #fff1df;
+  background: #ffe8db;
   color: var(--warning-ink);
 }
 .change {
@@ -506,7 +506,7 @@ button.order.active {
 .message:target,
 .source-message:target {
   background: var(--soft);
-  outline: 2px solid #7b98d0;
+  outline: 2px solid #53bdeb;
   border-radius: 12px;
   padding: 14px;
 }
@@ -551,7 +551,7 @@ button.order.active {
 .approval-review {
   border-radius: 18px;
   background: #f7f8fc;
-  border: 1px solid #cbd6eb;
+  border: 1px solid #bfe3d8;
   padding: 20px;
   margin: 18px 0;
 }
@@ -932,7 +932,7 @@ footer {
     white-space: nowrap;
   }
   .workspace-navigation .mobile-more[aria-expanded="true"] {
-    background: #e6ecf7;
+    background: #dcf5ea;
     color: var(--accent);
   }
   .workspace-navigation .nav-secondary {
@@ -1215,7 +1215,7 @@ footer {
 }
 .next-step {
   border-radius: 20px;
-  background: #f3f6fc;
+  background: #f1f8f5;
   border: 1px solid #d5def0;
   padding: 20px;
   margin-bottom: 24px;
@@ -1230,6 +1230,13 @@ footer {
 .next-step .change {
   background: var(--surface);
   margin: 12px 0 0;
+}
+/* A time conflict is the most important alert: use the contrast colour. */
+.next-step .change.conflict {
+  box-shadow: inset 0 0 0 1.5px #f6c9ae;
+}
+.next-step .change.conflict h3 {
+  color: var(--warning-ink);
 }
 .next-step .change h3 {
   margin: 0 0 8px;
@@ -1275,7 +1282,7 @@ footer {
   padding: 14px 16px;
   border-radius: 14px;
   background: #f7f8fc;
-  border: 1px solid #cbd6eb;
+  border: 1px solid #bfe3d8;
 }
 .confirm-sheet p {
   margin: 0 0 6px;
@@ -1300,7 +1307,7 @@ footer {
   margin: 0;
   padding: 12px 14px;
   border-radius: 14px 14px 14px 4px;
-  background: #e8f6ea;
+  background: #d9fdd3;
   white-space: pre-wrap;
 }
 .reply-steps {
@@ -1439,10 +1446,11 @@ button.order small {
   --w-glass-hover: rgba(255, 255, 255, 0.76);
   --w-label: #8a8a8f;
   --w-ink: #1d1d1f;
-  --w-blue: #3b82c4;
-  --w-green: #5fae8b;
-  --w-orange: #c9813a;
-  --w-red: #d2716b;
+  --w-blue: #027eb5; /* WhatsApp blue: info, links, charts */
+  --w-green: #008069; /* WhatsApp teal: primary, done */
+  --w-brand: #25d366; /* WhatsApp brand green: fills, live dot */
+  --w-orange: #e8590c; /* the one contrast colour: needs attention */
+  --w-red: #e8590c;
   --w-line: rgba(0, 0, 0, 0.06);
   display: grid;
   gap: 22px;
@@ -1571,11 +1579,11 @@ button.order small {
   padding: 2px 10px;
   font-size: 12px;
   font-weight: 600;
-  background: rgba(59, 130, 196, 0.14);
-  color: var(--w-blue);
+  background: rgba(0, 128, 105, 0.12);
+  color: var(--w-green);
 }
 .home .w-pill.warn {
-  background: rgba(201, 129, 58, 0.15);
+  background: rgba(232, 89, 12, 0.13);
   color: var(--w-orange);
 }
 .home .w-lead {
@@ -1632,11 +1640,11 @@ button.order small {
   flex-shrink: 0;
   padding: 5px 14px;
   font-size: 13px;
-  color: var(--w-blue);
-  background: rgba(59, 130, 196, 0.14);
+  color: var(--w-green);
+  background: rgba(0, 128, 105, 0.12);
 }
 .home .w-chip:hover:not(:disabled) {
-  background: rgba(59, 130, 196, 0.22);
+  background: rgba(0, 128, 105, 0.2);
 }
 .home .w-link {
   align-self: flex-start;
@@ -1692,8 +1700,8 @@ button.order small {
   border-radius: 50%;
   font-size: 14px;
   font-weight: 600;
-  color: #6f63ad;
-  background: rgba(139, 127, 199, 0.18);
+  color: var(--w-green);
+  background: rgba(37, 211, 102, 0.16);
 }
 .home .w-msg {
   display: flex;
@@ -1724,7 +1732,7 @@ button.order small {
   stroke: rgba(0, 0, 0, 0.08);
 }
 .home .w-ring-bar {
-  stroke: var(--w-green);
+  stroke: var(--w-brand);
   stroke-linecap: round;
 }
 .home .w-bars {
@@ -1747,7 +1755,7 @@ button.order small {
   width: 100%;
   max-height: 70%;
   border-radius: 8px;
-  background: rgba(59, 130, 196, 0.22);
+  background: rgba(2, 126, 181, 0.18);
 }
 .home .w-bars > .today .w-bar {
   background: var(--w-blue);
@@ -1794,16 +1802,16 @@ button.order small {
   color: #fff;
 }
 .home .w-app.blue {
-  background: var(--w-blue);
+  background: var(--w-green);
 }
 .home .w-app.orange {
-  background: var(--w-orange);
+  background: var(--w-blue);
 }
 .home .w-app.red {
-  background: var(--w-red);
+  background: #34b7f1;
 }
 .home .w-app.green {
-  background: var(--w-green);
+  background: var(--w-brand);
 }
 .home .w-status {
   font-size: 12px;
@@ -1820,7 +1828,7 @@ button.order small {
   height: 8px;
   margin-right: 5px;
   border-radius: 50%;
-  background: var(--w-green);
+  background: var(--w-brand);
 }
 @media (max-width: 1180px) {
   .home-grid {
