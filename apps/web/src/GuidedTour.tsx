@@ -3,6 +3,7 @@ import { useStableState as useState } from "./useStableState";
 import { useEffect, useRef } from "react";
 
 type View =
+  | "home"
   | "business"
   | "create"
   | "approvals"
