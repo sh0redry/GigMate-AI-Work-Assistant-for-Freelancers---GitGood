@@ -1246,3 +1246,9 @@ Desktop lifecycle follow-up: closing the workbench now quits its hidden setup wi
 
 
 Final fresh-install/correction validation: **1124 PostgreSQL tests passed, 27 skipped**, temporary database removed; **195 frontend tests** and **5 desktop lifecycle/cleanup tests** passed. Ruff, generated contracts/API types, formatting, production build, baseline and diff checks pass. Final native artifacts use the follow-up source tag; distribution and platform acceptance details remain in the release notes.
+
+
+The real stop/restart acceptance caught a desktop configuration bug: a blank optional model key disabled the extraction provider but still set the live-LLM flag, causing the worker to exit. Live flags now follow whether a key was explicitly configured, and worker configuration/heartbeat health is required before opening the workbench. Added a no-key regression; the final lifecycle suite has six tests. This root cause explains the earlier intermittent service-readiness failures, superseding the initial unconfirmed diagnosis.
+
+
+Final no-key lifecycle acceptance passed on real isolated Docker: empty product collections, authenticated pinned WAHA version, normal stop/restart preserving the account without supplying its password again, then removal of only that test project. Final desktop safety suite: six passed. No paid model call or real WhatsApp send was performed.

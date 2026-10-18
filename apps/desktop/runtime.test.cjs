@@ -138,3 +138,32 @@ test("closing during startup cancels only owned command trees and still permits 
     "cleanup-ready",
   );
 });
+
+test("omitting an optional model key keeps live AI off while retaining worker readiness checks", () => {
+  const empty = newProfile({
+    username: "merchant",
+    password: "synthetic-password",
+    modelKey: "",
+  });
+  const doc = composeDocument(
+    empty,
+    "/synthetic-runtime",
+    "http://127.0.0.1:27880",
+  );
+  assert.equal(
+    doc.services.worker.environment.GIGMATE_EXTRACTION_PROVIDER,
+    "disabled",
+  );
+  assert.equal(doc.services.worker.environment.GIGMATE_LLM_LIVE, "0");
+  assert.equal(
+    doc.services.worker.environment.GIGMATE_LLM_ALLOW_LIVE_ORIGIN,
+    "0",
+  );
+  assert.ok(doc.services.worker.healthcheck);
+  const enabled = composeDocument(
+    { ...empty, modelKey: "sk-synthetic-no-real-key" },
+    "/synthetic-runtime",
+    "http://127.0.0.1:27880",
+  );
+  assert.equal(enabled.services.worker.environment.GIGMATE_LLM_LIVE, "1");
+});

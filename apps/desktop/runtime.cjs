@@ -170,8 +170,8 @@ function composeDocument(profile, resources, origin, arch = process.arch) {
     GIGMATE_LLM_PROVIDER: "deepseek",
     GIGMATE_LLM_MODEL: "deepseek-chat",
     GIGMATE_LLM_ENDPOINT: "https://api.deepseek.com",
-    GIGMATE_LLM_ALLOW_LIVE_ORIGIN: "1",
-    GIGMATE_LLM_LIVE: "1",
+    GIGMATE_LLM_ALLOW_LIVE_ORIGIN: profile.modelKey ? "1" : "0",
+    GIGMATE_LLM_LIVE: profile.modelKey ? "1" : "0",
     GIGMATE_LLM_API_KEY_FILE: "/run/desktop-config/model.key",
     GIGMATE_LLM_COST_BUDGET_USD: "0.10",
   };
@@ -252,7 +252,22 @@ function composeDocument(profile, resources, origin, arch = process.arch) {
           retries: 40,
         },
       },
-      worker: { ...backend, command: ["python", "-m", "gigmate.worker"] },
+      worker: {
+        ...backend,
+        command: ["python", "-m", "gigmate.worker"],
+        healthcheck: {
+          test: [
+            "CMD",
+            "python",
+            "-c",
+            "from datetime import UTC,datetime; from gigmate.worker import audit_provider_config; assert audit_provider_config(); from gigmate.db import Session,ServiceHeartbeat; db=Session(); h=db.get(ServiceHeartbeat,'worker'); assert h and (datetime.now(UTC)-h.observed_at.replace(tzinfo=UTC)).total_seconds()<30; db.close()",
+          ],
+          interval: "3s",
+          timeout: "4s",
+          retries: 20,
+          start_period: "5s",
+        },
+      },
       monitor: {
         ...backend,
         volumes: [
