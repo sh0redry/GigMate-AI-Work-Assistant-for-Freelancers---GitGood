@@ -602,3 +602,72 @@ def test_side_request_becomes_a_listed_suggestion_next_to_the_change(memory_fact
     )
     db.flush()
     assert db.scalar(available_suggestion_job(ACCOUNT_ID, side.event_id)) is not None
+
+
+# --- Live failure: llm:response-schema-failed:new_work_order.fields.0.value.str ---
+
+
+def _suggestion_with(value, field="specification"):
+    return {
+        "assignment": "needs_review",
+        "work_order_id": None,
+        "base_work_order_version": None,
+        "candidates": [],
+        "changes": [],
+        "unresolved_questions": [],
+        "draft_text": None,
+        "new_work_order": {
+            "summary": "陈小姐证件照拍摄",
+            "fields": [
+                {
+                    "field": field,
+                    "value": value,
+                    "sources": [{"message_id": MESSAGE_ID, "message_revision": 1}],
+                    "reason": "客人列了要求。",
+                }
+            ],
+            "missing_fields": [],
+            "unresolved_questions": [],
+            "confidence": 0.9,
+        },
+    }
+
+
+def test_a_list_of_to_dos_becomes_one_text_value(monkeypatch):
+    payload = _suggestion_with(["带证件", "白色背景", "化淡妆"])
+    outcome, _ = _run(monkeypatch, payload, _grounded_request(candidate_work_order_ids=()))
+    assert outcome.refused_reason == "llm:needs-review"
+    field = outcome.proposal.new_work_order.fields[0]
+    assert field.value == "带证件；白色背景；化淡妆"
+
+
+def test_a_quantity_object_becomes_text(monkeypatch):
+    payload = _suggestion_with({"amount": 2, "unit": "套"}, field="quantity")
+    outcome, _ = _run(monkeypatch, payload, _grounded_request(candidate_work_order_ids=()))
+    assert outcome.proposal.new_work_order.fields[0].value == "2 套"
+
+
+def test_a_list_in_a_change_is_kept_as_text(monkeypatch):
+    payload = _address_payload()
+    payload["changes"][0]["field"] = "specification"
+    payload["changes"][0]["new_value"] = ["A4", "彩色", "双面"]
+    outcome, _ = _run(monkeypatch, payload, _grounded_request())
+    assert outcome.proposal.assignment.value == "matched"
+    assert outcome.proposal.changes[0].new_value == "A4；彩色；双面"
+
+
+def test_schedule_objects_are_never_rewritten(monkeypatch):
+    payload = _suggestion_with({"start": "明天下午"}, field="schedule")
+    payload["new_work_order"]["fields"].append(
+        {
+            "field": "address",
+            "value": "旺角弥敦道 1 号",
+            "sources": [{"message_id": MESSAGE_ID, "message_revision": 1}],
+            "reason": "客人给了地址。",
+        }
+    )
+    outcome, _ = _run(monkeypatch, payload, _grounded_request(candidate_work_order_ids=()))
+    # Not coerced into text: an unreadable time stays missing, never guessed.
+    suggestion = outcome.proposal.new_work_order
+    assert [f.field for f in suggestion.fields] == ["address"]
+    assert "schedule" in suggestion.missing_fields
