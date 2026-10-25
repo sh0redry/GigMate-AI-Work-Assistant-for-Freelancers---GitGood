@@ -311,6 +311,7 @@ test("a rejected capability read leaves missing functions unavailable", async ()
       : original(url, opts);
   await mount();
   await login();
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 220)));
   await act(async () => button("功能与使用说明").click());
   assert.match(document.body.textContent, /能力状态无法核对/);
   assert.match(document.body.textContent, /状态未核实/);
@@ -651,6 +652,8 @@ test("business sending resolves a different chat UUID from the owned conversatio
           provider_sample_stale: false,
         },
       });
+    if (url.endsWith("/sending/capabilities"))
+      return Response.json({ data: { enabled: true } });
     if (url.endsWith("/sending/permission"))
       return Response.json({
         data: { version: 5, enabled: true, chat_ids: [chat], expires_at: null },
@@ -863,6 +866,7 @@ for (const field of ["quantity", "deadline"])
     assert.match(document.body.textContent, /保存结果已确认/);
     data.offline();
     await act(async () => button("刷新业务管理").click());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 220)));
     assert.ok(document.querySelector('[role="alert"]'));
     assert.doesNotMatch(document.body.textContent, /保存结果已确认/);
   });
@@ -998,6 +1002,8 @@ test("business replies load paginated connections and prepare exact authorised s
           control_version: 3,
         },
       });
+    if (path.endsWith("/sending/capabilities"))
+      return Response.json({ data: { enabled: true } });
     if (path.endsWith("/sending/permission"))
       return Response.json({
         data: {
@@ -1529,3 +1535,155 @@ test("home widgets count real orders, replies, appointments and route every acti
   assert.deepEqual(opened, ["o1"]);
   assert.deepEqual(writes, []); // Reading the home page never writes.
 });
+
+for (const blocked of [
+  "",
+  "server-disabled",
+  "chat-not-authorised",
+  "expired",
+]) {
+  test(`approved reply opens inline exact review without navigation or submission: ${blocked || "ready"}`, async () => {
+    const { ReplyPanel } = await import(
+      pathToFileURL(join(directory, "ReplyPanel.mjs"))
+    );
+    const data = deliveryFixture(),
+      fallback = globalThis.fetch;
+    const connection = "00000000-0000-4000-8000-000000000077",
+      chat = "00000000-0000-4000-8000-000000000078";
+    const action = {
+      id: "00000000-0000-4000-8000-000000000088",
+      account_id: data.order.account_id,
+      work_order_id: data.order.id,
+      conversation_id: data.order.conversation_ids[0],
+      recipient: "synthetic-peer",
+      kind: "send_text",
+      state: "approved",
+      revision: 1,
+      bound_work_order_version: 3,
+      bound_context_version: 4,
+      snapshot_hash: "sha256:" + "a".repeat(64),
+      expires_at:
+        blocked === "expired" ? "2000-01-01T00:00:00Z" : "2099-10-17T00:00:00Z",
+      sources: [{ message_id: data.messages[0].id, message_revision: 1 }],
+      body: "Synthetic exact approved text",
+      trigger: "open_items:missing_address",
+      delivery_status: "not_submitted",
+      send_action_id: null,
+    };
+    data.messages.forEach((message) => {
+      message.account_id = data.order.account_id;
+    });
+    const writes = [],
+      navigated = [],
+      reads = [];
+    globalThis.fetch = async (url, options) => {
+      const path = new URL(url, "http://localhost").pathname.replace(
+        "/api/v1",
+        "",
+      );
+      reads.push(path);
+      if (options.method !== "GET") {
+        writes.push(path);
+        throw Error("Unexpected write");
+      }
+      if (path === "/actions")
+        return Response.json({ items: [action], next_cursor: null });
+      if (path === `/actions/${action.id}`)
+        return Response.json({ data: action });
+      if (path === `/work-orders/${data.order.id}`)
+        return Response.json({ data: data.order });
+      if (path === "/connectors")
+        return Response.json({
+          items: [{ id: connection }],
+          next_cursor: null,
+        });
+      if (path.endsWith("/setup"))
+        return Response.json({
+          data: {
+            connection_id: connection,
+            control_version: 3,
+            enabled: true,
+            available: true,
+            provider_sample_stale: false,
+          },
+        });
+      if (path.endsWith("/sending/capabilities"))
+        return Response.json({
+          data: { enabled: blocked !== "server-disabled" },
+        });
+      if (path.endsWith("/sending/capabilities"))
+        return Response.json({ data: { enabled: true } });
+      if (path.endsWith("/sending/permission"))
+        return Response.json({
+          data: {
+            version: 2,
+            enabled: blocked !== "chat-not-authorised",
+            chat_ids: blocked === "chat-not-authorised" ? [] : [chat],
+            expires_at: "2099-10-17T00:00:00Z",
+          },
+        });
+      if (path.endsWith("/chats"))
+        return Response.json({
+          data: [
+            {
+              id: chat,
+              selected: true,
+              conversation_id: action.conversation_id,
+            },
+          ],
+        });
+      return fallback(url, options);
+    };
+    root = createRoot(document.getElementById("root"));
+    await act(async () =>
+      root.render(
+        createElement(ReplyPanel, {
+          csrf: "synthetic-csrf",
+          accountId: data.order.account_id,
+          orderId: data.order.id,
+          orderSummary: data.order.summary,
+          features: {
+            business_sending: true,
+            business_loop_reviewed: true,
+            manual_assignment: true,
+          },
+          refreshKey: 1,
+          onOpenSend: (id) => navigated.push(id),
+          onSessionExpired() {},
+        }),
+      ),
+    );
+    await act(async () => button("核对发送").click());
+    assert.deepEqual(navigated, []);
+    assert.deepEqual(writes, []);
+    assert.match(document.body.textContent, /Synthetic exact approved text/);
+    assert.match(document.body.textContent, /打开此页面不会发送消息/);
+    assert.equal(reads.includes("/review-items"), false);
+    const draftSelect = [...document.querySelectorAll("label")]
+      .find((l) => l.textContent.startsWith("业务草稿"))
+      .querySelector("select");
+    assert.equal(draftSelect.value, action.id);
+    assert.equal(draftSelect.disabled, true);
+    if (blocked) {
+      assert.equal(
+        [...document.querySelectorAll("button")].some(
+          (b) => b.textContent === "发送给客人",
+        ),
+        false,
+      );
+      assert.match(
+        document.body.textContent,
+        blocked === "server-disabled"
+          ? /服务器尚未开启 WhatsApp 发送/
+          : blocked === "expired"
+            ? /尚未批准或已过期/
+            : /授权此会话发送/,
+      );
+    } else {
+      await act(async () => button("发送给客人").click());
+      assert.equal(button("确认发送").disabled, true);
+      assert.match(document.body.textContent, /Synthetic exact approved text/);
+      assert.deepEqual(writes, []);
+    }
+  });
+}

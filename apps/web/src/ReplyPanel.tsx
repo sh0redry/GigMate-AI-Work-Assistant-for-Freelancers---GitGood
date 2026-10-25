@@ -9,6 +9,8 @@ import {
 import { approveProblem, deliveryStates } from "./approval-view";
 import { allPages, workspaceApi } from "./workspace-api";
 import type { Features } from "./features";
+import { BusinessLoopReview } from "./BusinessLoopReview";
+import { businessLoopApi } from "./business-loop-api";
 
 type Props = {
   csrf: string;
@@ -47,7 +49,6 @@ export function ReplyPanel({
   orderSummary,
   features,
   refreshKey,
-  onOpenSend,
   onConnect,
   onOpenApprovals,
   onSessionExpired,
@@ -55,6 +56,12 @@ export function ReplyPanel({
 }: Props) {
   const api = useMemo(() => approvalsApi(csrf, accountId), [csrf, accountId]);
   const request = useMemo(() => workspaceApi(csrf), [csrf]);
+  const sendApi = useMemo(
+    () => businessLoopApi(csrf, accountId, features),
+    [csrf, accountId, features],
+  );
+  const [sendActionId, setSendActionId] = useState("");
+  useEffect(() => setSendActionId(""), [orderId]);
   const [data, setData] = useState<ApprovalSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -105,9 +112,73 @@ export function ReplyPanel({
     onBusyChange?.(busy);
     return () => onBusyChange?.(false);
   }, [busy, onBusyChange]);
+  const sendError = useCallback(
+    (e: unknown) => {
+      if ((e as { code?: string })?.code === "UNAUTHENTICATED")
+        onSessionExpired();
+      else
+        setError(
+          e instanceof Error ? e.message : t("操作没有完成，请稍后再试。"),
+        );
+    },
+    [onSessionExpired],
+  );
+  if (sendActionId)
+    return (
+      <section className="reply-panel" aria-label={t("核对发送")}>
+        <h3>{t("核对发送")}</h3>
+        <p>{t("发给：「{0}」的客人 · WhatsApp", orderSummary)}</p>
+        <p>{t("核对收件人与正文后再确认；打开此页面不会发送消息。")}</p>
+        {error && (
+          <p role="alert" className="notice stale">
+            {error}
+          </p>
+        )}
+        {notice && <p role="status">{notice}</p>}
+        <BusinessLoopReview
+          key={sendActionId}
+          initialActionId={sendActionId}
+          sendOnly
+          api={sendApi}
+          csrf={csrf}
+          accountId={accountId}
+          features={features}
+          orders={[]}
+          onBusy={setBusy}
+          onError={sendError}
+          onDone={() =>
+            setNotice(t("发送操作已提交，请核对回执；结果未知时不要重复发送。"))
+          }
+        />
+        <button
+          className="secondary"
+          disabled={busy}
+          onClick={() => {
+            setSendActionId("");
+            setNotice("");
+            void load()
+              .then((next) => {
+                if (alive.current) setData(next);
+              })
+              .catch(sendError);
+          }}
+        >
+          {t("返回工单")}
+        </button>
+        {onConnect && (
+          <button className="text-button" disabled={busy} onClick={onConnect}>
+            {t("去连接 WhatsApp")}
+          </button>
+        )}
+      </section>
+    );
   const action = data?.action;
   if (!action)
-    return notice ? (
+    return error ? (
+      <p role="alert" className="notice stale">
+        {error}
+      </p>
+    ) : notice ? (
       <p role="status">
         {notice}{" "}
         {features.manual_field_editing &&
@@ -213,10 +284,22 @@ export function ReplyPanel({
         </>
       ) : !submitted ? (
         <div className="reply-actions">
-          {features.business_sending && onOpenSend ? (
-            <button onClick={() => onOpenSend(action.id)}>
-              {t("发送给客人")}
-            </button>
+          {features.business_sending ? (
+            <>
+              <button
+                disabled={busy}
+                onClick={() => {
+                  setError("");
+                  setNotice("");
+                  setSendActionId(action.id);
+                }}
+              >
+                {t("核对发送")}
+              </button>
+              <p className="subtle">
+                {t("核对收件人与正文后再确认；打开此页面不会发送消息。")}
+              </p>
+            </>
           ) : (
             <>
               <button disabled>{t("发送给客人")}</button>
