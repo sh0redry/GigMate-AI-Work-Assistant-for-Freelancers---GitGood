@@ -40,8 +40,10 @@ export function BusinessLoopReview({
   onError,
   onBusy,
   initialActionId = "",
+  sendOnly = false,
 }: {
   initialActionId?: string;
+  sendOnly?: boolean;
   api: LoopApi;
   csrf: string;
   accountId: string;
@@ -70,6 +72,7 @@ export function BusinessLoopReview({
       Model["WahaSendPermissionView"] | null
     >(null),
     [chatId, setChatId] = useState(""),
+    [sendEnabled, setSendEnabled] = useState<boolean | null>(null),
     [receipt, setReceipt] = useState<Model["WahaSendActionView"] | null>(null);
   const [tick, setTick] = useState(0),
     [checked, setChecked] = useState(0),
@@ -92,7 +95,7 @@ export function BusinessLoopReview({
     const a = new AbortController();
     setChecked(0);
     void Promise.all([
-      features.manual_assignment
+      features.manual_assignment && !sendOnly
         ? allPages<Model["ReviewItem"]>(request, "/review-items", a.signal)
         : Promise.resolve([]),
       allPages<Loop["ActionView"]>(request, "/actions", a.signal),
@@ -117,7 +120,7 @@ export function BusinessLoopReview({
         if (!a.signal.aborted) onError(e);
       });
     return () => a.abort();
-  }, [request, accountId, features, tick, onError]);
+  }, [request, accountId, features, sendOnly, tick, onError]);
   const selected = queue.find((q) => q.id === job);
   useEffect(() => {
     const a = new AbortController();
@@ -159,6 +162,7 @@ export function BusinessLoopReview({
     setBody("");
     setSetup(null);
     setPermission(null);
+    setSendEnabled(null);
     setReceipt(null);
     setChatId("");
     if (actionId)
@@ -173,7 +177,7 @@ export function BusinessLoopReview({
           setChecked(Date.now());
           if (connection && features.business_sending) {
             const prefix = `/connectors/${connection}`;
-            const [s, p, chats] = await Promise.all([
+            const [s, p, chats, caps] = await Promise.all([
               request<Detail<Model["WahaSetup"]>>(
                 `${prefix}/setup`,
                 undefined,
@@ -186,6 +190,11 @@ export function BusinessLoopReview({
               ),
               request<Detail<Model["WahaChoice"][]>>(
                 `${prefix}/chats`,
+                undefined,
+                a.signal,
+              ),
+              request<Detail<Model["WahaSendCapabilities"]>>(
+                `${prefix}/sending/capabilities`,
                 undefined,
                 a.signal,
               ),
@@ -204,6 +213,7 @@ export function BusinessLoopReview({
             setChatId(linkedChat);
             setSetup(s.data);
             setPermission(p.data);
+            setSendEnabled(caps.data.enabled === true);
             if (v.send_action_id) {
               const r = await request<Detail<Model["WahaSendActionView"]>>(
                 `${prefix}/sending/actions/${encodeURIComponent(v.send_action_id)}`,
@@ -239,6 +249,25 @@ export function BusinessLoopReview({
     tick,
     onError,
   ]);
+  const sendIssue =
+    !features.business_sending || sendEnabled === false
+      ? t("服务器尚未开启 WhatsApp 发送，请联系维护者开启。")
+      : action &&
+          (action.state !== "approved" ||
+            Date.parse(action.expires_at) <= Date.now())
+        ? t("这条回复尚未批准或已过期，请重新核对并批准。")
+        : !connection
+          ? t("选择要用的 WhatsApp")
+          : !setup || !permission || sendEnabled === null
+            ? t("正在核对连接与发送授权。")
+            : !setup.enabled || !setup.available || setup.provider_sample_stale
+              ? t("WhatsApp 连接尚未就绪，请到连接页刷新状态。")
+              : !permission.enabled || !permission.chat_ids.includes(chatId)
+                ? t("请先在 WhatsApp 连接页授权此会话发送。")
+                : permission.expires_at &&
+                    Date.parse(permission.expires_at) <= Date.now()
+                  ? t("此会话的发送授权已到期，请重新授权。")
+                  : "";
   return (
     <section className="panel">
       <div className="page-heading">
@@ -247,7 +276,7 @@ export function BusinessLoopReview({
           {t("读取当前归单与回复")}
         </button>
       </div>
-      {features.manual_assignment && (
+      {features.manual_assignment && !sendOnly && (
         <details>
           <summary>{t("人工归单")}</summary>
           <label>
@@ -353,16 +382,19 @@ export function BusinessLoopReview({
           {t("业务草稿")}
           <select
             value={actionId}
+            disabled={sendOnly}
             onChange={(e) => setActionId(e.target.value)}
           >
             <option value="">{t("选择草稿")}</option>
-            {actions.map((a) => (
-              <option key={a.id} value={a.id}>
-                {orders.find((o) => o.id === a.work_order_id)?.summary ||
-                  a.work_order_id.slice(-6)}{" "}
-                · r{a.revision} · {actionStates[a.state] ?? t("需要人工核对")}
-              </option>
-            ))}
+            {actions
+              .filter((a) => !sendOnly || a.id === initialActionId)
+              .map((a) => (
+                <option key={a.id} value={a.id}>
+                  {orders.find((o) => o.id === a.work_order_id)?.summary ||
+                    a.work_order_id.slice(-6)}{" "}
+                  · r{a.revision} · {actionStates[a.state] ?? t("需要人工核对")}
+                </option>
+              ))}
           </select>
         </label>
         {action && (
@@ -404,6 +436,11 @@ export function BusinessLoopReview({
                 )}
               </>
             )}
+            {sendIssue && !action.send_action_id && (
+              <p role="status" className="notice">
+                {sendIssue}
+              </p>
+            )}
             {features.business_sending && (
               <>
                 <label>
@@ -425,7 +462,10 @@ export function BusinessLoopReview({
                     "需先在 WhatsApp 连接页授权此会话发送；这里不会扩大授权范围。",
                   )}
                 </p>
-                {action.state === "approved" &&
+                {!action.send_action_id &&
+                  !sendIssue &&
+                  sendEnabled === true &&
+                  action.state === "approved" &&
                   Date.parse(action.expires_at) > Date.now() &&
                   setup?.enabled &&
                   setup.available &&
