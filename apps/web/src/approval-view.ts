@@ -122,6 +122,13 @@ export function triggerDescription(
       missing_schedule: t("等待客户提供日期和时间"),
       verify_schedule: t("等待客户核实日期和时间"),
       missing_time: t("只有日期，等待客户说明几点"),
+      missing_schedule_date: t("等待客户补充日期"),
+      missing_start_time: t("等待客户补充开始时间"),
+      missing_duration: t("等待客户补充服务时长"),
+      clarify_date: t("日期有歧义，等待客户澄清"),
+      clarify_start_time: t("开始时间有歧义，等待客户澄清"),
+      clarify_duration: t("时长有歧义，等待客户澄清"),
+      clarify_address: t("地址有歧义，等待客户澄清"),
       missing_address: t("等待客户提供地址"),
       verify_address: t("等待客户核实地址"),
     };

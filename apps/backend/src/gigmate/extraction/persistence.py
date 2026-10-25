@@ -101,6 +101,7 @@ def persist_proposal(
         model_version=proposal.model_version,
         prompt_version=proposal.prompt_version,
         draft_text=proposal.draft_text,
+        clarification=outcome.clarification,
         created_at=now,
     )
     db.add(proposal_row)

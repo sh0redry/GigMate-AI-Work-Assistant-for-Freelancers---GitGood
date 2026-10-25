@@ -46,6 +46,8 @@ class ConversationRow(Base):
     account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"), index=True)
     context_version: Mapped[int] = mapped_column(Integer)
     allowlisted: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Sources accepted before the latest consent change cannot enter new model context.
+    consent_context_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class WorkOrderRow(Base):
@@ -578,6 +580,7 @@ class Proposal(Base):
     model_version: Mapped[str] = mapped_column(String(64))
     prompt_version: Mapped[str] = mapped_column(String(32))
     draft_text: Mapped[str | None] = mapped_column(String(2048))
+    clarification: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 

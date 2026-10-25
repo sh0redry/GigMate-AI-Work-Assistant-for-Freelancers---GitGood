@@ -1655,6 +1655,13 @@ export interface components {
         | "missing_time"
         | "missing_address"
         | "verify_address"
+        | "missing_schedule_date"
+        | "missing_start_time"
+        | "missing_duration"
+        | "clarify_date"
+        | "clarify_start_time"
+        | "clarify_duration"
+        | "clarify_address"
       )[];
       /** Provider Message Id */
       provider_message_id: string | null;

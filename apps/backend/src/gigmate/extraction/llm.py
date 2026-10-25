@@ -1493,6 +1493,10 @@ class LLMProvider:
         return json.dumps(
             {
                 "message_text": request.message_text,
+                "message_id": request.message_id,
+                "message_revision": request.message_revision,
+                "recent_messages": list(request.recent_messages),
+                "clarification_context": list(request.clarification_context),
                 "context_version": request.context_version,
                 "candidate_work_order_ids": list(request.candidate_work_order_ids),
                 "base_work_order_version": request.base_work_order_version,
@@ -1516,6 +1520,22 @@ class LLMProvider:
             },
             ensure_ascii=False,
         )
+
+    @staticmethod
+    def _bind_source(source: dict, request: ExtractionRequest) -> tuple[str | None, bool]:
+        if request.recent_messages or request.clarification_context:
+            allowed = {m["message_id"]: m["message_revision"] for m in request.recent_messages}
+            allowed[request.message_id] = request.message_revision
+            message_id, revision = source.get("message_id"), source.get("message_revision")
+            if not isinstance(message_id, str) or message_id not in allowed:
+                return "llm:response-provenance-failed:source-message-id", False
+            if type(revision) is not int or revision != allowed[message_id]:
+                return "llm:response-provenance-failed:source-message-revision", False
+            return None, False
+        changed = source.get("message_id") != request.message_id
+        source["message_id"] = request.message_id
+        source["message_revision"] = request.message_revision
+        return None, changed
 
     @staticmethod
     def _provenance_problem(data: dict, request: ExtractionRequest) -> tuple[str | None, bool]:
@@ -1593,10 +1613,10 @@ class LLMProvider:
                 # fail the whole proposal with ``source-message-id``. Writing
                 # the server's own value is stricter than trusting the echo and
                 # keeps the proposal usable; a missing source is still refused.
-                if source.get("message_id") != request.message_id:
-                    rebound = True
-                source["message_id"] = request.message_id
-                source["message_revision"] = request.message_revision
+                problem, changed = LLMProvider._bind_source(source, request)
+                if problem:
+                    return problem, rebound
+                rebound = rebound or changed
         # P2-4 (round 2): every other collection the module reads is
         # type-checked here as well, before Pydantic sees it. A wrong shape is
         # then reported as a provenance code instead of a schema one, and no
@@ -1629,10 +1649,10 @@ class LLMProvider:
                 for source in sources or []:
                     if not isinstance(source, dict):
                         return "llm:response-provenance-failed:suggested-source-shape", rebound
-                    if source.get("message_id") != request.message_id:
-                        rebound = True
-                    source["message_id"] = request.message_id
-                    source["message_revision"] = request.message_revision
+                    problem, changed = LLMProvider._bind_source(source, request)
+                    if problem:
+                        return problem, rebound
+                    rebound = rebound or changed
             missing = suggestion.get("missing_fields")
             if missing is not None and not isinstance(missing, list):
                 return "llm:response-provenance-failed:missing-fields-shape", rebound
@@ -1702,10 +1722,11 @@ class LLMProvider:
                 return f"llm:response-provenance-failed:{prefix}source-shape"
             for source in sources:
                 # The request carries exactly one message: rebind, as before.
-                if source.get("message_id") != request.message_id:
+                problem, changed = self._bind_source(source, request)
+                if problem:
+                    return problem
+                if changed:
                     rebound.append(True)
-                source["message_id"] = request.message_id
-                source["message_revision"] = request.message_revision
             if basis is None and entry.get("field") in _DATE_BEARING_FIELDS:
                 keys = ("old_value", "new_value") if model is ProposalChange else ("value",)
                 if any(_carries_a_date(entry.get(key)) for key in keys):
@@ -1880,8 +1901,16 @@ class LLMProvider:
         # Two signals ride outside the ChangeProposal contract and are removed
         # before it is validated: the AI's relevance judgement and a second,
         # separate job mentioned next to a matched change.
+        from gigmate.clarification import (
+            normalize_missing_fields,
+            parse_assessment,
+            request_for_order,
+        )
+
+        clarification_raw = data.pop("clarification", None)
         relevance = data.pop("relevance", None)
         side_raw = data.pop("also_new_work_order", None)
+        missing_normalized = normalize_missing_fields(data)
         # Force provider-set fields so the LLM cannot override them.
         data["model_version"] = model_version
         data["prompt_version"] = prompt_version
@@ -1924,13 +1953,34 @@ class LLMProvider:
         ):
             # The version is server-owned; the model only names the order.
             data["base_work_order_version"] = request.candidate_versions[data["work_order_id"]]
+        guard_request = request_for_order(
+            request, data.get("work_order_id") if data.get("assignment") == "matched" else None
+        )
         problem = self._identity_problem(data, request)
         dropped: list[tuple[str, str]] = []
         if problem is None:
-            dropped, problem = self._salvage(data, request)
+            dropped, problem = self._salvage(data, guard_request)
+        partial_for_clarification = False
+        candidate_assessment = parse_assessment(
+            clarification_raw, request, data.get("work_order_id")
+        )
+        if (
+            problem is not None
+            and dropped
+            and candidate_assessment is not None
+            and isinstance(data.get("new_work_order"), dict)
+            and all(
+                name == "schedule" and code.startswith("llm:response-schema-failed:suggested-value")
+                for name, code in dropped
+            )
+        ):
+            # Drop the invalid interval, not its independently quoted partial
+            # facts. A zero-field new-order suggestion is still review-only.
+            problem = None
+            partial_for_clarification = True
         rebound = bool(data.pop("_rebound", False))
         if problem is None:
-            problem, also_rebound = self._provenance_problem(data, request)
+            problem, also_rebound = self._provenance_problem(data, guard_request)
             rebound = rebound or also_rebound
         if problem is not None:
             return self._needs_review(
@@ -1997,7 +2047,22 @@ class LLMProvider:
         # Observability, not trust: when the vendor echoed the wrong source
         # identifier the proposal still carries the server's value, and the
         # trace says so instead of hiding the correction.
+        clarification = parse_assessment(clarification_raw, request, proposal.work_order_id)
         outcome_notes = (
+            *(("llm:partial-time-kept-for-clarification",) if partial_for_clarification else ()),
+            *(
+                ("clarification:derived-time-omitted",)
+                if clarification is not None
+                and isinstance(clarification_raw, dict)
+                and clarification.get("facts") != clarification_raw.get("facts")
+                else ()
+            ),
+            *(("llm:missing-field-normalized",) if missing_normalized else ()),
+            *(
+                ("clarification:invalid",)
+                if clarification_raw is not None and clarification is None
+                else ()
+            ),
             *(("llm:source-rebound",) if rebound else ()),
             *(f"llm:partial-dropped:{name}" for name, _ in dropped),
         )
@@ -2018,6 +2083,7 @@ class LLMProvider:
                 cost_usd=cost_usd,
                 cost_note=cost_note,
                 side_request=side_request,
+                clarification=clarification,
             )
         unrelated = (
             relevance == "unrelated" and not proposal.changes and proposal.new_work_order is None
@@ -2040,6 +2106,7 @@ class LLMProvider:
             cost_usd=cost_usd,
             cost_note=cost_note,
             unrelated=unrelated,
+            clarification=clarification,
         )
 
     def _side_request(self, raw: object, request: ExtractionRequest) -> dict | None:
@@ -2058,9 +2125,21 @@ class LLMProvider:
         for entry in fields:
             if not isinstance(entry, dict):
                 continue
-            entry["sources"] = [
-                {"message_id": request.message_id, "message_revision": request.message_revision}
-            ]
+            if request.recent_messages or request.clarification_context:
+                sources = entry.get("sources")
+                if (
+                    not isinstance(sources, list)
+                    or not sources
+                    or any(
+                        not isinstance(source, dict) or self._bind_source(source, request)[0]
+                        for source in sources
+                    )
+                ):
+                    continue
+            else:
+                entry["sources"] = [
+                    {"message_id": request.message_id, "message_revision": request.message_revision}
+                ]
             if (
                 basis is None
                 and entry.get("field") in _DATE_BEARING_FIELDS

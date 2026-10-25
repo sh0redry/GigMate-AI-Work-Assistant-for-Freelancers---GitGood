@@ -349,6 +349,7 @@ def select_chats(db, row, command):
             authorization_changed(db, row, chat.id, not allow)
             conv.allowlisted = allow
             conv.context_version += 1  # Old proposals remain stale even after reauthorization.
+            conv.consent_context_version = conv.context_version
             stale_after_authorization_change(db, conv)
     for peer in selected - peers.keys():
         identifier = str(
