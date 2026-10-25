@@ -1,5 +1,25 @@
 // UI copy only. Customer content and approved payloads are never translated.
 export const english: Record<string, string> = {
+  "WhatsApp 连接尚未就绪，请到连接页刷新状态。":
+    "WhatsApp is not ready. Refresh its status on the connection page.",
+  "发送操作已提交，请核对回执；结果未知时不要重复发送。":
+    "The send operation was submitted. Check its receipt; do not resend an unknown outcome.",
+  "暂时无法读取数据（HTTP {0}），请稍后刷新。":
+    "Cannot read data right now (HTTP {0}). Refresh shortly.",
+  "服务器尚未开启 WhatsApp 发送，请联系维护者开启。":
+    "WhatsApp sending is disabled on the server. Ask the maintainer to enable it.",
+  核对发送: "Review sending",
+  "核对收件人与正文后再确认；打开此页面不会发送消息。":
+    "Check the recipient and full text before confirming. Opening this panel does not send a message.",
+  "正在核对连接与发送授权。": "Checking the connection and sending permission.",
+  "此会话的发送授权已到期，请重新授权。":
+    "Sending permission for this chat has expired. Grant it again.",
+  "请先在 WhatsApp 连接页授权此会话发送。":
+    "First grant sending permission for this chat on the WhatsApp connection page.",
+  "读取请求超时，请稍后刷新。": "The read request timed out. Refresh shortly.",
+  返回工单: "Back to work order",
+  "这条回复尚未批准或已过期，请重新核对并批准。":
+    "This reply is unapproved or expired. Review and approve a current draft.",
   "工单记录需要维护者核查，本次没有保存；请勿反复提交。":
     "This order needs maintainer review. Nothing was saved; do not repeatedly submit.",
   "如果客户已经提供信息，可在下方手动补充／修改字段。":
@@ -1912,6 +1932,26 @@ export const english: Record<string, string> = {
   切换到深色: "Switch to dark mode",
 };
 export const cantonese: Record<string, string> = {
+  "WhatsApp 连接尚未就绪，请到连接页刷新状态。":
+    "WhatsApp 連線未準備好，請去連線頁刷新狀態。",
+  "发送操作已提交，请核对回执；结果未知时不要重复发送。":
+    "發送操作已提交，請核對回執；結果未知時唔好重發。",
+  "暂时无法读取数据（HTTP {0}），请稍后刷新。":
+    "暫時讀取唔到資料（HTTP {0}），請稍後刷新。",
+  "服务器尚未开启 WhatsApp 发送，请联系维护者开启。":
+    "伺服器未開啟 WhatsApp 發送，請聯絡維護者。",
+  核对发送: "核對發送",
+  "核对收件人与正文后再确认；打开此页面不会发送消息。":
+    "核對收件人同全文後再確認；打開呢頁唔會發訊息。",
+  "正在核对连接与发送授权。": "核對緊連線同發送授權。",
+  "此会话的发送授权已到期，请重新授权。":
+    "呢個對話嘅發送授權已過期，請重新授權。",
+  "请先在 WhatsApp 连接页授权此会话发送。":
+    "請先喺 WhatsApp 連線頁授權呢個對話發送。",
+  "读取请求超时，请稍后刷新。": "讀取請求逾時，請稍後刷新。",
+  返回工单: "返回工單",
+  "这条回复尚未批准或已过期，请重新核对并批准。":
+    "呢條回覆未批准或已過期，請重新核對同批准。",
   "工单记录需要维护者核查，本次没有保存；请勿反复提交。":
     "工作單記錄需要維護者核查，今次冇儲存，請唔好重複提交。",
   "如果客户已经提供信息，可在下方手动补充／修改字段。":

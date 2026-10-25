@@ -23,6 +23,7 @@ for (const name of [
   "OrderLifecycle",
   "InspectOrderAttempt",
   "ReplyPanel",
+  "BusinessLoopReview",
   "ManualFieldEditor",
   "LoopCommand",
   "approvals-api",
@@ -37,10 +38,11 @@ for (const name of [
   "i18n",
   "locales",
   "work-order-view",
+  "contact-label",
 ]) {
   const source = await readFile(
     new URL(
-      `./src/${name}.${["WorkOrderWorkspace", "OrderLifecycle", "InspectOrderAttempt", "ReplyPanel", "ManualFieldEditor", "LoopCommand"].includes(name) ? "tsx" : "ts"}`,
+      `./src/${name}.${["WorkOrderWorkspace", "OrderLifecycle", "InspectOrderAttempt", "ReplyPanel", "BusinessLoopReview", "ManualFieldEditor", "LoopCommand"].includes(name) ? "tsx" : "ts"}`,
       import.meta.url,
     ),
     "utf8",
@@ -54,6 +56,7 @@ for (const name of [
           "OrderLifecycle",
           "InspectOrderAttempt",
           "ReplyPanel",
+          "BusinessLoopReview",
           "ManualFieldEditor",
           "LoopCommand",
         ].includes(name)

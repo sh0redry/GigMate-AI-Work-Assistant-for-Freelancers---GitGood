@@ -42,7 +42,7 @@ export function workspaceApi(
     let response: Response;
     let result;
     try {
-      response = await cachedFetch(`${base}${path}`, {
+      const options: RequestInit = {
         method: body === undefined ? "GET" : "POST",
         credentials: "same-origin",
         cache: "no-store",
@@ -55,10 +55,36 @@ export function workspaceApi(
             : { "Idempotency-Key": crypto.randomUUID() }),
         },
         body: body === undefined ? undefined : JSON.stringify(body),
-      });
+      };
+      async function transmit(): Promise<Response> {
+        for (let attempt = 0; ; attempt++) {
+          if (signal?.aborted)
+            throw new DOMException("Cancelled", "AbortError");
+          timeout.throwIfAborted();
+          const reply = await cachedFetch(`${base}${path}`, options);
+          if (
+            body === undefined &&
+            attempt === 0 &&
+            [429, 502, 503, 504].includes(reply.status) &&
+            !signal?.aborted &&
+            !timeout.aborted
+          ) {
+            await reply.body?.cancel();
+            await new Promise((resolve) => setTimeout(resolve, 180));
+            continue;
+          }
+          return reply;
+        }
+      }
+      response = await transmit();
       result = await response.json().catch(() => null);
     } catch (error) {
       if (signal?.aborted) throw new DOMException("Cancelled", "AbortError");
+      if (timeout.aborted && body === undefined)
+        throw new WorkspaceError(
+          "REQUEST_TIMEOUT",
+          t("读取请求超时，请稍后刷新。"),
+        );
       if ((error as { name?: string })?.name === "AbortError")
         throw new WorkspaceError(
           "READ_INVALIDATED",
@@ -99,7 +125,7 @@ export function workspaceApi(
         code,
         messages[code] ??
           (body === undefined
-            ? t("暂时无法读取数据，请检查本地服务后刷新。")
+            ? t("暂时无法读取数据（HTTP {0}），请稍后刷新。", response.status)
             : t("操作未能完成或结果暂无法确认，请刷新核对后再操作。")),
       );
     }
