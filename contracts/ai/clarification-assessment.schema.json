@@ -1,0 +1,162 @@
+{
+  "$defs": {
+    "Evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "quote": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        }
+      },
+      "required": [
+        "source",
+        "quote"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "Fact": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "maxItems": 3,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "item": {
+          "enum": [
+            "date",
+            "start_time",
+            "end_time",
+            "duration",
+            "address"
+          ],
+          "title": "Item",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "known",
+            "missing",
+            "ambiguous",
+            "deferred"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        }
+      },
+      "required": [
+        "item",
+        "state"
+      ],
+      "title": "Fact",
+      "type": "object"
+    },
+    "SourceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "message_id": {
+          "format": "uuid",
+          "title": "Message Id",
+          "type": "string"
+        },
+        "message_revision": {
+          "minimum": 1,
+          "title": "Message Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "message_id",
+        "message_revision"
+      ],
+      "title": "SourceRef",
+      "type": "object"
+    }
+  },
+  "$id": "https://gigmate.local/contracts/ai/clarification-assessment/1.0.0",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Generated source-bound AI clarification DTO; semantic/source checks also required",
+  "properties": {
+    "facts": {
+      "items": {
+        "$ref": "#/$defs/Fact"
+      },
+      "maxItems": 5,
+      "minItems": 5,
+      "title": "Facts",
+      "type": "array"
+    },
+    "language": {
+      "default": "zh-Hans",
+      "enum": [
+        "zh-Hans",
+        "zh-Hant",
+        "en"
+      ],
+      "title": "Language",
+      "type": "string"
+    },
+    "questions": {
+      "items": {
+        "enum": [
+          "date",
+          "start_time",
+          "end_time",
+          "duration",
+          "address"
+        ],
+        "type": "string"
+      },
+      "maxItems": 4,
+      "title": "Questions",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "tone": {
+      "default": "concise",
+      "enum": [
+        "concise",
+        "friendly"
+      ],
+      "title": "Tone",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "facts",
+    "questions"
+  ],
+  "title": "Assessment",
+  "type": "object",
+  "x-version": "1.0.0"
+}

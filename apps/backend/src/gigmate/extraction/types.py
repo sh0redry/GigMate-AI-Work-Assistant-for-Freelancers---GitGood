@@ -54,6 +54,9 @@ class ExtractionRequest:
     candidate_snapshots: dict[str, dict] = field(default_factory=dict)
     # Language for merchant-facing free text (reason, questions, summary).
     output_language: str = "zh-Hans"
+    # Server-selected recent incoming text, oldest first, with original revisions.
+    recent_messages: tuple[dict, ...] = ()
+    clarification_context: tuple[dict, ...] = ()
     extra: dict = field(default_factory=dict)
 
 
@@ -85,6 +88,7 @@ class ExtractionOutcome:
     cost_note: str | None = None
     # The AI judged the message unrelated to every open order (a greeting,
     # thanks, a sticker): open proposals stay valid (gigmate.pending).
+    clarification: dict | None = None
     unrelated: bool = False
     # A separate new job mentioned in the same message as a matched change
     # ("改 A 单的时间，另外想约一单全家福"). Shape of NewWorkOrderSuggestion;

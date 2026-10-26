@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT / "apps/backend/src"))
 
 from gigmate import contracts as c  # noqa: E402
 from gigmate.api import app  # noqa: E402
+from gigmate.clarification import Assessment  # noqa: E402
 from pydantic import TypeAdapter  # noqa: E402
 
 
@@ -122,6 +123,16 @@ def main():
     for relative, value in [
         ("contracts/domain/models.schema.json", domain_schema()),
         ("contracts/openapi.json", app.openapi()),
+        (
+            "contracts/ai/clarification-assessment.schema.json",
+            {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "$id": "https://gigmate.local/contracts/ai/clarification-assessment/1.0.0",
+                "x-version": "1.0.0",
+                "description": "Generated source-bound AI clarification DTO; semantic/source checks also required",
+                **Assessment.model_json_schema(),
+            },
+        ),
     ]:
         path = ROOT / relative
         content = json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n"

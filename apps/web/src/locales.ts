@@ -962,6 +962,14 @@ export const english: Record<string, string> = {
   "/ 当前 v": "/ current v",
   " · 历史轮次": " · Earlier round",
   查看这条会话原文: "View conversation source",
+  "地址有歧义，等待客户澄清": "Ambiguous address; waiting for clarification",
+  "开始时间有歧义，等待客户澄清":
+    "Ambiguous start time; waiting for clarification",
+  "日期有歧义，等待客户澄清": "Ambiguous date; waiting for clarification",
+  "时长有歧义，等待客户澄清": "Ambiguous duration; waiting for clarification",
+  等待客户补充开始时间: "Waiting for the start time",
+  等待客户补充日期: "Waiting for the date",
+  等待客户补充服务时长: "Waiting for the service duration",
   "目前没有记录到需复核的处理事项。这不表示 AI 已理解所有聊天。":
     "No processing items currently need review. This does not prove AI understood every chat.",
   来源会话: "Source conversation",
@@ -2848,6 +2856,13 @@ export const cantonese: Record<string, string> = {
   "/ 当前 v": "/ 當前 v",
   " · 历史轮次": " · 歷史輪次",
   查看这条会话原文: "查看這條會話原文",
+  "地址有歧义，等待客户澄清": "地址有歧義，等待客人澄清",
+  "开始时间有歧义，等待客户澄清": "開始時間有歧義，等待客人澄清",
+  "日期有歧义，等待客户澄清": "日期有歧義，等待客人澄清",
+  "时长有歧义，等待客户澄清": "時長有歧義，等待客人澄清",
+  等待客户补充开始时间: "等待客人補充開始時間",
+  等待客户补充日期: "等待客人補充日期",
+  等待客户补充服务时长: "等待客人補充服務時長",
   "目前没有记录到需复核的处理事项。这不表示 AI 已理解所有聊天。":
     "目前沒有記錄到需復核的處理事項。這不表示 AI 已理解所有對話。",
   来源会话: "來源會話",

@@ -140,3 +140,19 @@ test("open-item reasons are explicit and malformed/extended triggers have a safe
   assert.match(triggerDescription("open_items:future"), /未确认的信息/);
   assert.match(triggerDescription("unknown"), /人工核对/);
 });
+
+test("AI clarification reasons distinguish duration and ambiguity from an unknown appointment", () => {
+  assert.match(triggerDescription("open_items", ["missing_duration"]), /时长/);
+  assert.doesNotMatch(
+    triggerDescription("open_items", ["missing_duration"]),
+    /日期和时间|只有日期/,
+  );
+  assert.match(
+    triggerDescription("open_items", ["clarify_start_time"]),
+    /歧义/,
+  );
+  assert.match(
+    triggerDescription("open_items", ["missing_start_time"]),
+    /开始时间/,
+  );
+});

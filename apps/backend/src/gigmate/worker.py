@@ -420,6 +420,20 @@ def _route_through_provider(
         current = db.get(WorkOrderRow, target_order_id)
         if current is None or current.data.get("version") != base_version:
             return False
+    from dataclasses import replace
+
+    from gigmate.clarification import parse_assessment
+
+    assessment = parse_assessment(
+        outcome.clarification,
+        request,
+        target_order_id if outcome.proposal.assignment.value == "matched" else None,
+    )
+    if assessment is not None:
+        basis = (request.candidate_snapshots.get(target_order_id) or {}).get("fields", {})
+        outcome = replace(outcome, clarification={"assessment": assessment, "basis": basis})
+    else:
+        outcome = replace(outcome, clarification=None)
     proposal_row = persist_proposal(
         db,
         account_id=account.id,
@@ -456,6 +470,17 @@ def _route_through_provider(
                 # Role B's draft_text is a merchant-facing summary (prompt v1), not a
                 # customer reply, so the customer-facing body uses the role C template.
                 draft_for_change(db, account.id, order, conversation, change.data)
+        if assessment is not None:
+            from gigmate.approvals import ask_open_items
+
+            # A conflict explanation takes precedence over a clarification reply.
+            if not any(
+                c.field == "schedule"
+                and c.field_status.value == "proposed"
+                and hasattr(c.new_value, "end_at")
+                for c in outcome.proposal.changes
+            ):
+                ask_open_items(db, account.id, order, conversation)
     # The AI has read this message: keep open proposals it did not touch.
     reconcile(
         db,
@@ -516,6 +541,83 @@ def _candidate_brief(data: dict) -> dict:
     }
 
 
+def _recent_messages(db, account, conversation, event):
+    """Bounded current revisions from this authorized incoming chat, never connector history."""
+    from sqlalchemy import func
+
+    from gigmate.message_context import source_allowed
+
+    if not conversation.allowlisted or event.get("direction") != "incoming":
+        return ()
+    try:
+        anchor = datetime.fromisoformat(event["occurred_at"].replace("Z", "+00:00"))
+        if anchor.tzinfo is None:
+            return ()
+    except (KeyError, TypeError, ValueError):
+        return ()
+    floor = anchor - timedelta(minutes=5)
+    latest = (
+        select(MessageRow.id.label("message_id"), func.max(MessageRow.revision).label("revision"))
+        .where(MessageRow.account_id == account.id, MessageRow.conversation_id == conversation.id)
+        .group_by(MessageRow.id)
+        .subquery()
+    )
+    rows = db.scalars(
+        select(MessageRow)
+        .join(
+            latest,
+            and_(MessageRow.id == latest.c.message_id, MessageRow.revision == latest.c.revision),
+        )
+        .where(MessageRow.account_id == account.id, MessageRow.conversation_id == conversation.id)
+        .order_by(MessageRow.data["occurred_at"].as_string().desc(), MessageRow.id)
+        .limit(40)
+    )
+    candidates = []
+    for row in rows:
+        data = row.data
+        if (
+            data.get("revoked")
+            or data.get("direction") != "incoming"
+            or data.get("source") != "app"
+            or not source_allowed(db, conversation, row)
+        ):
+            continue
+        if not isinstance(data.get("text"), str) or not data["text"].strip():
+            continue
+        try:
+            at = datetime.fromisoformat(data["occurred_at"].replace("Z", "+00:00"))
+            if at.tzinfo is None or not floor <= at <= anchor:
+                continue
+        except (KeyError, TypeError, ValueError):
+            continue
+        candidates.append(
+            (
+                at,
+                row.id,
+                {
+                    "message_id": row.id,
+                    "message_revision": row.revision,
+                    "text": data["text"],
+                    "occurred_at": data["occurred_at"],
+                },
+            )
+        )
+    candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    chosen, size = [], 0
+    for _, _, message in candidates:
+        cost = len(json.dumps(message, ensure_ascii=False).encode())
+        if len(chosen) >= 8 or size + cost > 8000:
+            break
+        chosen.append(message)
+        size += cost
+    chosen.reverse()
+    if len(chosen) < 2 or not any(
+        m["message_id"] == event["payload"]["message_id"] for m in chosen
+    ):
+        return ()
+    return tuple(chosen)
+
+
 def _extraction_request(db, account, event, conversation, linked, request_id=None):
     base_snapshot = None
     base_version: int | None = None
@@ -530,6 +632,8 @@ def _extraction_request(db, account, event, conversation, linked, request_id=Non
         if len(linked) == 1:
             base_snapshot = target.data
             base_version = target.data.get("version")
+    from gigmate.clarification import memory_for
+
     return ExtractionRequest(
         account_id=account.id,
         conversation_id=conversation.id,
@@ -541,6 +645,8 @@ def _extraction_request(db, account, event, conversation, linked, request_id=Non
         base_work_order_version=base_version,
         base_work_order_snapshot=copy.deepcopy(base_snapshot),
         extra={"request_id": request_id} if request_id else {},
+        recent_messages=_recent_messages(db, account, conversation, event),
+        clarification_context=memory_for(db, account.id, conversation, linked),
         origin="live",
         # Gate 4: the connector's own sending time plus the merchant's
         # configured zone are the only date-grounding basis the provider gets.
