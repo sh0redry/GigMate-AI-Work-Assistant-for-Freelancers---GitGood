@@ -1,5 +1,7 @@
 # GigMate frontend user guide
 
+2026-10-18 additive frontend batch: [Customer conversations](customer-conversations.md) offers authorised chat selection, bounded live-message polling, the existing manual sending gateway and order-source navigation. It does not upgrade an older backend. Existing valid B drafts can be reviewed and consumed; fresh reply generation/polishing and automatic replies remain separate integration work.
+
 Local user delivery, updated 2026-10-18. [中文](../zh/role-d-frontend-user-guide.md). Technical evidence: [implementation status](implementation-status.md).
 
 ## Run on your own laptop
