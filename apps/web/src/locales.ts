@@ -209,6 +209,60 @@ const conversationCantonese: Record<string, string> = {
 export const english: Record<string, string> = {
   ...conversationEnglish,
 
+  "WhatsApp 连接尚未就绪，请到连接页刷新状态。":
+    "WhatsApp is not ready. Refresh its status on the connection page.",
+  "发送操作已提交，请核对回执；结果未知时不要重复发送。":
+    "The send operation was submitted. Check its receipt; do not resend an unknown outcome.",
+  "暂时无法读取数据（HTTP {0}），请稍后刷新。":
+    "Cannot read data right now (HTTP {0}). Refresh shortly.",
+  "服务器尚未开启 WhatsApp 发送，请联系维护者开启。":
+    "WhatsApp sending is disabled on the server. Ask the maintainer to enable it.",
+  核对发送: "Review sending",
+  "核对收件人与正文后再确认；打开此页面不会发送消息。":
+    "Check the recipient and full text before confirming. Opening this panel does not send a message.",
+  "正在核对连接与发送授权。": "Checking the connection and sending permission.",
+  "此会话的发送授权已到期，请重新授权。":
+    "Sending permission for this chat has expired. Grant it again.",
+  "请先在 WhatsApp 连接页授权此会话发送。":
+    "First grant sending permission for this chat on the WhatsApp connection page.",
+  "读取请求超时，请稍后刷新。": "The read request timed out. Refresh shortly.",
+  返回工单: "Back to work order",
+  "这条回复尚未批准或已过期，请重新核对并批准。":
+    "This reply is unapproved or expired. Review and approve a current draft.",
+  "工单记录需要维护者核查，本次没有保存；请勿反复提交。":
+    "This order needs maintainer review. Nothing was saved; do not repeatedly submit.",
+  "如果客户已经提供信息，可在下方手动补充／修改字段。":
+    "If the customer already supplied the details, use Add or correct fields below.",
+  "真实语音与图片识别、媒体结果转工单、自由 Agent 自动回复和外部日历持续同步尚未交付。文字业务可通过 AI 提议或手动核对处理。":
+    "Live audio/image understanding, media-to-order promotion, unrestricted automatic Agent replies and continuous external-calendar sync are not delivered. Text work can be handled through AI suggestions or manual review.",
+  "桌面自动启动版支持 macOS 和 Windows。首次完成 Docker 安装、账号与 API Key 设置后，打开程序会自动启动本机服务。需要网络；关闭程序会停止它管理的后台，保留业务数据。首次清理旧数据需明确核对。":
+    "Desktop automatic startup supports macOS and Windows. After initial Docker, account and API-key setup, opening the app starts local services. Internet is required; quitting stops its services while preserving business data. First-install cleanup requires explicit review.",
+  手动补充或修改工单: "Manually correct work-order fields",
+  "手动补充／修改字段": "Add or correct fields",
+  "引用客户原文，补充 AI 漏掉的信息；核对后更新工单和相关草稿。":
+    "Use the customer source to add details missed by AI; review before updating the order and drafts.",
+  "将「{0}」的{1}改为：{2}。依据：{3}。{4}":
+    "Change {1} of “{0}” to {2}. Source: {3}. {4}",
+  "你已核对客户原文明确确认。":
+    "You reviewed the customer’s explicit confirmation.",
+  "保留为待客户确认，不记成客户已同意。":
+    "Keep awaiting customer confirmation; do not record customer agreement.",
+  "客户已经说清、AI 却没识别时，在这里补充。选择原文，核对后保存；不会发送消息。":
+    "Add information the customer already supplied but AI missed. Select the source and review before saving; this does not send a message.",
+  要修改的内容: "Field to change",
+  "截止时间（香港时间）": "Deadline (Hong Kong time)",
+  "开始时间（香港时间）": "Start (Hong Kong time)",
+  "结束时间（香港时间）": "End (Hong Kong time)",
+  正确内容: "Correct value",
+  依据哪条客户消息: "Customer source message",
+  请选择客户原文: "Select the customer source",
+  没有文字: "No text",
+  "我已核对原文，客户明确确认了这个值":
+    "I reviewed the source: the customer explicitly confirmed this value",
+  "保存会更新工单；时间修改同步日历。旧的未发送草稿作废，仍缺的内容会重新准备询问。":
+    "Saving updates the order and synchronizes calendar changes. Old unsent drafts are invalidated; remaining gaps may produce a new question.",
+  核对修改: "Review correction",
+  保存失败: "Could not save",
   "读取期间登录、授权或数据发生变化，请刷新并核对会话授权。":
     "Your session, permissions, or data changed during this read. Refresh and check conversation permissions.",
   "聊天、授权或工单已变化，这条旧提议不能直接确认。":
@@ -899,6 +953,10 @@ export const english: Record<string, string> = {
   "可从对应页面使用，操作仍需核对归属、来源和当前版本。":
     "Use the corresponding page. Operations still require ownership, source and version checks.",
   未知联系人: "Unknown contact",
+  "客人提到一件新事：「{0}」。": "The customer mentioned something new: “{0}”.",
+  "客人提到 {0} 件新事，最新一件：「{1}」。":
+    "The customer mentioned {0} new things. Latest: “{1}”.",
+  "另开一单（已预填）": "Open a new order (prefilled)",
   重新查看新手引导: "Replay the walkthrough",
   "欢迎使用 GigMate": "Welcome to GigMate",
   "跟着做 3 件事就能开始：连接 WhatsApp、选要跟进的聊天、看 AI 帮你整理的工单和回复。每一步都要你自己点，随时可以跳过。":
@@ -1113,6 +1171,14 @@ export const english: Record<string, string> = {
   "/ 当前 v": "/ current v",
   " · 历史轮次": " · Earlier round",
   查看这条会话原文: "View conversation source",
+  "地址有歧义，等待客户澄清": "Ambiguous address; waiting for clarification",
+  "开始时间有歧义，等待客户澄清":
+    "Ambiguous start time; waiting for clarification",
+  "日期有歧义，等待客户澄清": "Ambiguous date; waiting for clarification",
+  "时长有歧义，等待客户澄清": "Ambiguous duration; waiting for clarification",
+  等待客户补充开始时间: "Waiting for the start time",
+  等待客户补充日期: "Waiting for the date",
+  等待客户补充服务时长: "Waiting for the service duration",
   "目前没有记录到需复核的处理事项。这不表示 AI 已理解所有聊天。":
     "No processing items currently need review. This does not prove AI understood every chat.",
   来源会话: "Source conversation",
@@ -2025,10 +2091,110 @@ export const english: Record<string, string> = {
   "意思不够明确，先和客人确认一下。":
     "It's not clear enough yet; check with the client first.",
   "{0} 开始": "starts {0}",
+  今日: "Today",
+  "暂时读不到工作台数据，请稍后刷新。":
+    "Can't load today's work right now. Please refresh later.",
+  "正在读取今天的工作…": "Loading today's work…",
+  重试: "Retry",
+  "回复已批准，还没发给客人": "Reply approved, not sent to the client yet",
+  "客人提了新的安排，等你确认":
+    "The client suggested a change; waiting for you",
+  查看: "View",
+  有一项需要你决定: "One item needs your decision",
+  "网络不稳，下面是上次读到的内容。":
+    "Connection is unstable; showing the last loaded content.",
+  需要你处理: "Needs you",
+  "{0} 项": "{0} items",
+  都处理完了: "All caught up",
+  "客人有新消息时，要你做决定的事会出现在这里。":
+    "When clients send new messages, anything that needs your decision appears here.",
+  "查看全部工单 ›": "All jobs ›",
+  进行中工单: "Open jobs",
+  "其中 {0} 张在等客人": "{0} waiting on the client",
+  没有在等客人的工单: "None waiting on clients",
+  待回复: "Replies",
+  "{0} 条已批准、未发送": "{0} approved, not sent",
+  批准后才会发给客人: "Nothing is sent until you approve",
+  今日预约: "Today's appointments",
+  "下一个：{0} {1}": "Next: {0} {1}",
+  今天没有预约: "No appointments today",
+  已完成工单: "Completed jobs",
+  "{0} / {1} 张": "{0} / {1}",
+  "未来 7 天预约": "Next 7 days",
+  "打开日历 ›": "Calendar ›",
+  "{0} {1} 个": "{0}: {1}",
+  "今天没有到期的待办。": "Nothing due today.",
+  要等前一件事: "Waiting on an earlier step",
+  已逾期: "Overdue",
+  客人最新消息: "Latest from clients",
+  "已授权的工作聊天里还没有客人消息。":
+    "No client messages in your authorized work chats yet.",
+  快捷入口: "Shortcuts",
+  日程: "Schedule",
+  未连接: "Not connected",
+  未设置: "Not set up",
+  个聊天已授权处理: "chats authorized",
+  "去连接 ›": "Connect ›",
+  "有 {0} 件事等你处理。": "{0} things need you.",
+  "今天没有要你处理的事。": "Nothing needs you today.",
+  切换到浅色: "Switch to light mode",
+  切换到深色: "Switch to dark mode",
 };
 export const cantonese: Record<string, string> = {
   ...conversationCantonese,
 
+  "WhatsApp 连接尚未就绪，请到连接页刷新状态。":
+    "WhatsApp 連線未準備好，請去連線頁刷新狀態。",
+  "发送操作已提交，请核对回执；结果未知时不要重复发送。":
+    "發送操作已提交，請核對回執；結果未知時唔好重發。",
+  "暂时无法读取数据（HTTP {0}），请稍后刷新。":
+    "暫時讀取唔到資料（HTTP {0}），請稍後刷新。",
+  "服务器尚未开启 WhatsApp 发送，请联系维护者开启。":
+    "伺服器未開啟 WhatsApp 發送，請聯絡維護者。",
+  核对发送: "核對發送",
+  "核对收件人与正文后再确认；打开此页面不会发送消息。":
+    "核對收件人同全文後再確認；打開呢頁唔會發訊息。",
+  "正在核对连接与发送授权。": "核對緊連線同發送授權。",
+  "此会话的发送授权已到期，请重新授权。":
+    "呢個對話嘅發送授權已過期，請重新授權。",
+  "请先在 WhatsApp 连接页授权此会话发送。":
+    "請先喺 WhatsApp 連線頁授權呢個對話發送。",
+  "读取请求超时，请稍后刷新。": "讀取請求逾時，請稍後刷新。",
+  返回工单: "返回工單",
+  "这条回复尚未批准或已过期，请重新核对并批准。":
+    "呢條回覆未批准或已過期，請重新核對同批准。",
+  "工单记录需要维护者核查，本次没有保存；请勿反复提交。":
+    "工作單記錄需要維護者核查，今次冇儲存，請唔好重複提交。",
+  "如果客户已经提供信息，可在下方手动补充／修改字段。":
+    "如果客人已經提供資料，可喺下方手動補充／修改欄位。",
+  "真实语音与图片识别、媒体结果转工单、自由 Agent 自动回复和外部日历持续同步尚未交付。文字业务可通过 AI 提议或手动核对处理。":
+    "真實語音同圖片識別、媒體轉工作單、自由 Agent 自動回覆同外部日曆持續同步尚未交付。文字業務可用 AI 建議或者手動核對處理。",
+  "桌面自动启动版支持 macOS 和 Windows。首次完成 Docker 安装、账号与 API Key 设置后，打开程序会自动启动本机服务。需要网络；关闭程序会停止它管理的后台，保留业务数据。首次清理旧数据需明确核对。":
+    "桌面自動啟動版支援 macOS 同 Windows。首次裝好 Docker、設定帳號同 API Key 後，打開程式就會自動啟動本機服務。需要網絡；關閉程式會停止佢管理嘅後台，保留業務資料。首次清理舊資料需要明確核對。",
+  手动补充或修改工单: "手動補充或修改工作單",
+  "手动补充／修改字段": "手動補充／修改欄位",
+  "引用客户原文，补充 AI 漏掉的信息；核对后更新工单和相关草稿。":
+    "引用客人原文，補充 AI 漏咗嘅資料；核對後更新工作單同草稿。",
+  "将「{0}」的{1}改为：{2}。依据：{3}。{4}":
+    "將「{0}」嘅{1}改為：{2}。依據：{3}。{4}",
+  "你已核对客户原文明确确认。": "你已核對客人原文明確確認。",
+  "保留为待客户确认，不记成客户已同意。":
+    "保留為等客人確認，唔會當作客人已同意。",
+  "客户已经说清、AI 却没识别时，在这里补充。选择原文，核对后保存；不会发送消息。":
+    "客人已經講清楚、AI 卻冇識別到時，喺呢度補充。揀原文、核對後儲存；唔會發送訊息。",
+  要修改的内容: "要修改嘅內容",
+  "截止时间（香港时间）": "截止時間（香港時間）",
+  "开始时间（香港时间）": "開始時間（香港時間）",
+  "结束时间（香港时间）": "結束時間（香港時間）",
+  正确内容: "正確內容",
+  依据哪条客户消息: "依據邊條客人訊息",
+  请选择客户原文: "請選擇客人原文",
+  没有文字: "冇文字",
+  "我已核对原文，客户明确确认了这个值": "我已核對原文，客人明確確認咗呢個值",
+  "保存会更新工单；时间修改同步日历。旧的未发送草稿作废，仍缺的内容会重新准备询问。":
+    "儲存會更新工作單；時間修改會同步日曆。舊嘅未發送草稿作廢，仍然欠嘅資料會重新準備詢問。",
+  核对修改: "核對修改",
+  保存失败: "儲存失敗",
   "读取期间登录、授权或数据发生变化，请刷新并核对会话授权。":
     "讀取期間登入、授權或者資料有變，請重新整理同核對對話授權。",
   "聊天、授权或工单已变化，这条旧提议不能直接确认。":
@@ -2693,6 +2859,10 @@ export const cantonese: Record<string, string> = {
   "可从对应页面使用，操作仍需核对归属、来源和当前版本。":
     "可從對應頁面使用，操作仍需核對歸屬、來源和當前版本。",
   未知联系人: "未知聯絡人",
+  "客人提到一件新事：「{0}」。": "客人提到一件新事：「{0}」。",
+  "客人提到 {0} 件新事，最新一件：「{1}」。":
+    "客人提到 {0} 件新事，最新一件：「{1}」。",
+  "另开一单（已预填）": "另開一單（已預填）",
   重新查看新手引导: "再睇一次新手導覽",
   "欢迎使用 GigMate": "歡迎使用 GigMate",
   "跟着做 3 件事就能开始：连接 WhatsApp、选要跟进的聊天、看 AI 帮你整理的工单和回复。每一步都要你自己点，随时可以跳过。":
@@ -2897,6 +3067,13 @@ export const cantonese: Record<string, string> = {
   "/ 当前 v": "/ 當前 v",
   " · 历史轮次": " · 歷史輪次",
   查看这条会话原文: "查看這條會話原文",
+  "地址有歧义，等待客户澄清": "地址有歧義，等待客人澄清",
+  "开始时间有歧义，等待客户澄清": "開始時間有歧義，等待客人澄清",
+  "日期有歧义，等待客户澄清": "日期有歧義，等待客人澄清",
+  "时长有歧义，等待客户澄清": "時長有歧義，等待客人澄清",
+  等待客户补充开始时间: "等待客人補充開始時間",
+  等待客户补充日期: "等待客人補充日期",
+  等待客户补充服务时长: "等待客人補充服務時長",
   "目前没有记录到需复核的处理事项。这不表示 AI 已理解所有聊天。":
     "目前沒有記錄到需復核的處理事項。這不表示 AI 已理解所有對話。",
   来源会话: "來源會話",
@@ -3744,4 +3921,48 @@ export const cantonese: Record<string, string> = {
     "仲未知幾點完（或者要幾耐），先問客人，問清楚先可以入日曆。",
   "意思不够明确，先和客人确认一下。": "意思唔夠清楚，先同客人確認一下。",
   "{0} 开始": "{0} 開始",
+  今日: "今日",
+  "暂时读不到工作台数据，请稍后刷新。": "暫時讀唔到工作台資料，請稍後再更新。",
+  "正在读取今天的工作…": "讀緊今日嘅工作…",
+  重试: "重試",
+  "回复已批准，还没发给客人": "回覆已批准，未發俾客人",
+  "客人提了新的安排，等你确认": "客人提出新安排，等你確認",
+  查看: "睇睇",
+  有一项需要你决定: "有一項要你決定",
+  "网络不稳，下面是上次读到的内容。": "網絡唔穩定，以下係上次讀到嘅內容。",
+  需要你处理: "要你處理",
+  "{0} 项": "{0} 項",
+  都处理完了: "全部處理好",
+  "客人有新消息时，要你做决定的事会出现在这里。":
+    "客人有新訊息時，要你決定嘅嘢會喺度出現。",
+  "查看全部工单 ›": "睇全部工單 ›",
+  进行中工单: "進行中工單",
+  "其中 {0} 张在等客人": "其中 {0} 張等緊客人",
+  没有在等客人的工单: "冇工單等緊客人",
+  待回复: "待回覆",
+  "{0} 条已批准、未发送": "{0} 條已批准、未發送",
+  批准后才会发给客人: "批准咗先會發俾客人",
+  今日预约: "今日預約",
+  "下一个：{0} {1}": "下一個：{0} {1}",
+  今天没有预约: "今日冇預約",
+  已完成工单: "已完成工單",
+  "{0} / {1} 张": "{0} / {1} 張",
+  "未来 7 天预约": "未來 7 日預約",
+  "打开日历 ›": "打開日曆 ›",
+  "{0} {1} 个": "{0} {1} 個",
+  "今天没有到期的待办。": "今日冇到期嘅待辦。",
+  要等前一件事: "要等上一樣嘢",
+  已逾期: "已逾期",
+  客人最新消息: "客人最新訊息",
+  "已授权的工作聊天里还没有客人消息。": "已授權嘅工作對話仲未有客人訊息。",
+  快捷入口: "快捷入口",
+  日程: "日程",
+  未连接: "未連接",
+  未设置: "未設定",
+  个聊天已授权处理: "個對話已授權處理",
+  "去连接 ›": "去連接 ›",
+  "有 {0} 件事等你处理。": "有 {0} 件事等你處理。",
+  "今天没有要你处理的事。": "今日冇嘢要你處理。",
+  切换到浅色: "轉做淺色",
+  切换到深色: "轉做深色",
 };

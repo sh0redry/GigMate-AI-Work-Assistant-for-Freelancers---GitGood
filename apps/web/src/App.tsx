@@ -7,6 +7,7 @@ import { BusinessLoopWorkspace } from "./BusinessLoopWorkspace";
 import { ConnectionWorkspace } from "./ConnectionWorkspace";
 import { ApprovalsWorkspace } from "./ApprovalsWorkspace";
 import { WorkOrderWorkspace } from "./WorkOrderWorkspace";
+import { HomeWorkspace } from "./HomeWorkspace";
 import { CalendarWorkspace } from "./CalendarWorkspace";
 import { OrderCreation } from "./OrderCreation";
 import { ReviewWorkspace } from "./ReviewWorkspace";
@@ -14,10 +15,12 @@ import { DeliveryGuide } from "./DeliveryGuide";
 import { CustomerConversations } from "./CustomerConversations";
 import type { ConversationIntent } from "./conversation-view";
 import { GuidedTour, tourSeen } from "./GuidedTour";
+import { NewRequestBanner } from "./new-request-banner";
 import { workspaceApi, type Detail, type Login } from "./workspace-api";
 import { clearConnectionAttempts } from "./connection-api";
 import { unavailableFeatures, loopReady, type Features } from "./features";
 const pages = localized({
+  home: "今日",
   business: "业务工作台",
   create: "新建工单",
   approvals: "回复审批",
@@ -39,7 +42,6 @@ export function App() {
           ? "yue-Hant-HK"
           : "zh-CN";
   }, [language]);
-  const [moreOpen, setMoreOpen] = useState(false);
   const [conversationIntent, setConversationIntent] = useState<
     ConversationIntent | undefined
   >(undefined);
@@ -48,9 +50,20 @@ export function App() {
     sources: { message_id: string; message_revision: number }[];
   } | null>(null);
   const [returnToMessages, setReturnToMessages] = useState(false);
-  const [tourOpen, setTourOpen] = useState(false);
-  const [view, setView] = useState<View>("business"),
+  const [moreOpen, setMoreOpen] = useState(false),
+    [tourOpen, setTourOpen] = useState(false),
+    [theme, setTheme] = useState<"light" | "dark">(initialTheme);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem("gigmate.theme", theme);
+    } catch {
+      // Private mode or no storage: the choice lasts for this visit only.
+    }
+  }, [theme]);
+  const [view, setView] = useState<View>("home"),
     [selectedOrder, setSelectedOrder] = useState(""),
+    [createSuggestion, setCreateSuggestion] = useState(""),
     [sendAction, setSendAction] = useState(""),
     [login, setLogin] = useState<Login | null>(null),
     [username, setUsername] = useState(""),
@@ -71,11 +84,12 @@ export function App() {
     setLogin(null);
     setPassword("");
     setUsername("");
-    setView("business");
+    setView("home");
     setMoreOpen(false);
     setSelectedOrder("");
     setConversationIntent(undefined);
     setCreationOrigin(null);
+    setCreateSuggestion("");
     setReturnToMessages(false);
     setBusy(false);
     setFeatures(unavailableFeatures);
@@ -100,7 +114,12 @@ export function App() {
         if (
           !result.data ||
           Object.keys(unavailableFeatures)
-            .filter((key) => key !== "business_loop_reviewed")
+            .filter(
+              (key) =>
+                !["business_loop_reviewed", "manual_field_editing"].includes(
+                  key,
+                ),
+            )
             .some(
               (key) => typeof result.data[key as keyof Features] !== "boolean",
             )
@@ -109,6 +128,7 @@ export function App() {
         setFeatures({
           ...result.data,
           business_loop_reviewed: result.data.business_loop_reviewed === true,
+          manual_field_editing: result.data.manual_field_editing === true,
         });
       })
       .catch((e) => {
@@ -124,7 +144,10 @@ export function App() {
   }, [login, expireSession]);
   function navigate(next: View) {
     if (busy) return;
-    if (next === "create") setCreationOrigin(null);
+    if (next === "create") {
+      setCreationOrigin(null);
+      setCreateSuggestion("");
+    }
     setReturnToMessages(false);
     if (next !== "management") setSendAction("");
     setNotice("");
@@ -159,7 +182,7 @@ export function App() {
       setReadScope(result.data.account_id + ":" + result.data.csrf_token);
       setLogin(result.data);
       setPassword("");
-      setView("business");
+      setView("home");
       setNotice("");
     } catch (e) {
       setNotice(e instanceof Error ? e.message : t("登录失败，请重试。"));
@@ -226,6 +249,32 @@ export function App() {
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          className="theme-toggle"
+          aria-label={theme === "dark" ? t("切换到浅色") : t("切换到深色")}
+          title={theme === "dark" ? t("切换到浅色") : t("切换到深色")}
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            {theme === "dark" ? (
+              <>
+                <circle cx="12" cy="12" r="4" />
+                <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+              </>
+            ) : (
+              <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+            )}
+          </svg>
+        </button>
         <a className="brand" href="#workspace-content">
           {t("跟單")}
           <span>GigMate</span>
@@ -320,11 +369,11 @@ export function App() {
             <div className="nav-primary">
               {(
                 [
+                  "home",
                   "business",
                   "messages",
                   "approvals",
                   "planning",
-                  "connect",
                 ] as View[]
               ).map((id) => (
                 <button
@@ -342,7 +391,9 @@ export function App() {
               ))}
             </div>
             <div className="nav-secondary" id="additional-pages">
-              {(["create", "review", "management", "guide"] as View[])
+              {(
+                ["connect", "create", "review", "management", "guide"] as View[]
+              )
                 .filter((id) => id !== "management" || loopReady(features))
                 .filter((id) => id !== "create" || features.create_order)
                 .map((id) => (
@@ -397,7 +448,9 @@ export function App() {
             )}
             <CustomerConversations
               {...props}
-              key={login.account_id}
+              // Distinct from HomeWorkspace's sibling key: duplicate sibling keys
+              // made React keep extra hidden copies (and their polling) alive.
+              key={"conversations:" + login.account_id}
               active={view === "messages"}
               features={features}
               intent={conversationIntent}
@@ -413,6 +466,29 @@ export function App() {
               }}
               onConnect={() => navigate("connect")}
             />
+            {view === "home" && features.create_order && (
+              <NewRequestBanner
+                csrf={login.csrf_token}
+                onOpen={(id) => {
+                  navigate("create");
+                  setCreateSuggestion(id);
+                }}
+              />
+            )}
+            {view === "home" && (
+              <HomeWorkspace
+                {...props}
+                key={login.account_id}
+                accountId={login.account_id}
+                features={features}
+                onNavigate={navigate}
+                onOpenOrder={openOrder}
+                onOpenSend={(id) => {
+                  setSendAction(id);
+                  navigate("management");
+                }}
+              />
+            )}
             {view === "business" && (
               <>
                 <div className="page-heading">
@@ -426,6 +502,15 @@ export function App() {
                     </button>
                   )}
                 </div>
+                {features.create_order && (
+                  <NewRequestBanner
+                    csrf={login.csrf_token}
+                    onOpen={(id) => {
+                      navigate("create");
+                      setCreateSuggestion(id);
+                    }}
+                  />
+                )}
                 <WorkOrderWorkspace
                   {...props}
                   key={login.account_id}
@@ -461,6 +546,7 @@ export function App() {
                 onOpenOrder={openOrder}
                 initialConversation={creationOrigin?.conversation}
                 initialSources={creationOrigin?.sources}
+                initialSuggestion={createSuggestion}
               />
             )}
             {view === "approvals" && (
@@ -532,4 +618,17 @@ export function App() {
       )}
     </div>
   );
+}
+
+function initialTheme(): "light" | "dark" {
+  try {
+    const saved = localStorage.getItem("gigmate.theme");
+    if (saved === "light" || saved === "dark") return saved;
+  } catch {
+    // Storage unavailable: fall through to the system setting.
+  }
+  return typeof matchMedia === "function" &&
+    matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
 }

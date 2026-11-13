@@ -8,6 +8,7 @@ The transition in [ADR 0002](../docs/en/adr/0002-contract-authority.md) is compl
 | --- | --- |
 | [Domain models](domain/models.schema.json) | Work orders, provenance, calendar values, actions and commands |
 | [Event envelope](events/message-event.schema.json) | Adapter-normalized inbound events |
+| [AI clarification](ai/clarification-assessment.schema.json) | Independently versioned 1.0.0 source-bound semantic assessment; not a calendar value or execution authority |
 | [AI proposal](ai/change-proposal.schema.json) | Suggestions only, without permission or execution fields |
 | [Example manifest](examples/manifest.json) | Every positive and intentionally invalid fixture |
 | [Acceptance scenarios](examples/scenarios.json) | Synthetic inputs and expected business behavior |

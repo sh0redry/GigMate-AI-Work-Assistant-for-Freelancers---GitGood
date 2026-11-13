@@ -15,7 +15,7 @@ def validator():
     registry = Registry()
     for path in (ROOT / "contracts").rglob("*.schema.json"):
         registry = registry.with_resource(
-            path.as_uri(), Resource.from_contents(json.loads(path.read_text()))
+            path.as_uri(), Resource.from_contents(json.loads(path.read_text(encoding="utf-8")))
         )
     schema = ROOT / "contracts/ai/change-proposal.schema.json"
     return Draft202012Validator(

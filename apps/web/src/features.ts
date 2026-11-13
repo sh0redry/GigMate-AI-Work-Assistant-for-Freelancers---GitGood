@@ -5,6 +5,7 @@ export type Features = {
 };
 export const unavailableFeatures: Features = {
   calendar_export: false,
+  manual_field_editing: false,
   create_order: false,
   order_status: false,
   address_confirmation: false,
@@ -17,6 +18,10 @@ export const featureDescriptions: Record<
   keyof Features,
   { title: string; reason: string }
 > = localized({
+  manual_field_editing: {
+    title: "手动补充／修改字段",
+    reason: "引用客户原文，补充 AI 漏掉的信息；核对后更新工单和相关草稿。",
+  },
   business_loop_reviewed: {
     title: "业务扩展与安全验收",
     reason: "本版已接通归单、延期、需求、工作时间、摘要、交付检查和归档。",

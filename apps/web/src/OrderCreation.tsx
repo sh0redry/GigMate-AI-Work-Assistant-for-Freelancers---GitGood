@@ -24,6 +24,7 @@ export function OrderCreation({
   onOpenOrder,
   initialConversation = "",
   initialSources = [],
+  initialSuggestion = "",
 }: {
   csrf: string;
   accountId: string;
@@ -33,6 +34,7 @@ export function OrderCreation({
   onOpenOrder: (id: string) => void;
   initialConversation?: string;
   initialSources?: { message_id: string; message_revision: number }[];
+  initialSuggestion?: string;
 }) {
   const active = useRef(true);
   useEffect(() => {
@@ -51,7 +53,7 @@ export function OrderCreation({
     [conversation, setConversation] = useState(initialConversation),
     [messages, setMessages] = useState<Message[]>([]),
     [orders, setOrders] = useState<Order[]>([]),
-    [context, setContext] = useState(0),
+    [context, setContext] = useState(-1),
     [summary, setSummary] = useState(""),
     [scheduleKind, setScheduleKind] = useState("missing"),
     [date, setDate] = useState(""),
@@ -67,6 +69,54 @@ export function OrderCreation({
     [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
     [refreshKey, setRefreshKey] = useState(0);
+  // Prefill from an AI suggestion: summary, plus the address and time it read,
+  // with the customer message it read them from already ticked as the source.
+  // The merchant still reviews and confirms before anything is saved.
+  const applySuggestion = (
+    s: components["schemas"]["NewOrderSuggestionView"],
+  ) => {
+    const field = (name: string) =>
+      s.suggestion.fields.find((f) => f.field === name && f.value !== null);
+    const ids = (f?: { sources: { message_id: string }[] }) =>
+      f ? [...new Set(f.sources.map((r) => r.message_id))] : [];
+    const hk = (utc: string) =>
+      new Date(Date.parse(utc) + 8 * 3600_000).toISOString().slice(0, 16);
+    const place = field("address"),
+      time = field("schedule"),
+      when = time?.value as
+        | { kind?: string; start_at?: string; end_at?: string; date?: string }
+        | undefined;
+    setProposalId(s.id);
+    setConversation(s.conversation_id);
+    setSummary(s.suggestion.summary.slice(0, 120));
+    setAddress(
+      typeof place?.value === "string" ? place.value.slice(0, 300) : "",
+    );
+    setAddressSources(typeof place?.value === "string" ? ids(place) : []);
+    if (when?.kind === "timed" && when.start_at && when.end_at) {
+      setScheduleKind("timed");
+      setStart(hk(when.start_at));
+      setEnd(hk(when.end_at));
+      setDate("");
+      setScheduleSources(ids(time));
+    } else if (when?.kind === "date_only" && when.date) {
+      setScheduleKind("date_only");
+      setDate(when.date);
+      setStart("");
+      setEnd("");
+      setScheduleSources(ids(time));
+    } else {
+      setScheduleKind("missing");
+      setStart("");
+      setEnd("");
+      setDate("");
+      setScheduleSources([]);
+    }
+    setAdditional(false);
+    setReview("");
+    setConsent(false);
+  };
+  const applied = useRef("");
   // Throw the current draft away: nothing is saved, no field has to be filled.
   const resetDraft = (keepConversation = true) => {
     setProposalId("");
@@ -127,6 +177,11 @@ export function OrderCreation({
         ]);
         if (abort.signal.aborted) return;
         setSuggestions(proposed);
+        const wanted = proposed.find((s) => s.id === initialSuggestion);
+        if (wanted && applied.current !== wanted.id) {
+          applied.current = wanted.id;
+          applySuggestion(wanted);
+        }
         setConversations(choices);
         setOrders(allOrders);
         if (conversation) {
@@ -160,7 +215,7 @@ export function OrderCreation({
             setConversations([]);
             setOrders([]);
             setMessages([]);
-            setContext(0);
+            setContext(-1);
           }
           report(e);
         }
@@ -192,7 +247,7 @@ export function OrderCreation({
       .map((m) => ({ message_id: m.id, message_revision: m.revision }));
   const problem = loading
     ? t("正在核对会话与来源。")
-    : !conversation || !context
+    : !conversation || !Number.isInteger(context) || context < 0
       ? t("请选择可用的已授权会话。")
       : !summary.trim() || summary.trim().length > 120
         ? t("请填写 1–120 字的业务摘要。")
@@ -337,21 +392,7 @@ export function OrderCreation({
                 type="button"
                 className="secondary"
                 disabled={busy || loading}
-                onClick={() => {
-                  setProposalId(s.id);
-                  setConversation(s.conversation_id);
-                  setSummary(s.suggestion.summary.slice(0, 120));
-                  setAddress("");
-                  setScheduleKind("missing");
-                  setStart("");
-                  setEnd("");
-                  setDate("");
-                  setAddressSources([]);
-                  setScheduleSources([]);
-                  setAdditional(false);
-                  setReview("");
-                  setConsent(false);
-                }}
+                onClick={() => applySuggestion(s)}
               >
                 {t("核对这份新单建议")}
               </button>

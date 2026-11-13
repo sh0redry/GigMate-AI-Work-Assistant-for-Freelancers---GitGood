@@ -399,3 +399,206 @@ def test_malformed_field_name_drops_only_that_field(monkeypatch, malformed):
     outcome, _ = _run(monkeypatch, payload, _grounded_request())
     assert outcome.refused_reason is None
     assert [change.field for change in outcome.proposal.changes] == ["schedule"]
+
+
+# --- Requirement: only the AI-identified order/field invalidates old proposals ---
+
+
+def _old_change(db, order_id, field, *, version=4, source=None, status="proposed"):
+    """An open proposal written for the previous message (context 4)."""
+    change_id = str(uuid4())
+    db.add(
+        ChangeRow(
+            id=change_id,
+            account_id=ACCOUNT_ID,
+            work_order_id=order_id,
+            conversation_id=CONVERSATION_ID,
+            context_version=version,
+            data={
+                "id": change_id,
+                "field": field,
+                "status": status,
+                "sources": [
+                    {"message_id": source or str(uuid4()), "message_revision": 1},
+                ],
+            },
+        )
+    )
+    db.flush()
+    return change_id
+
+
+def _route(db, monkeypatch, payload, linked):
+    monkeypatch.setattr(worker_module, "draft_for_change", lambda *a, **k: None)
+    _reset_provider_for_testing(_scripted_provider(monkeypatch, payload))
+    try:
+        return _route_through_provider(
+            db,
+            account=db.get(Account, ACCOUNT_ID),
+            inbox=_receipt(db),
+            event=_event(),
+            conversation=db.get(ConversationRow, CONVERSATION_ID),
+            linked=linked,
+        )
+    finally:
+        _reset_provider_for_testing(None)
+
+
+def _status(db, change_id):
+    row = db.get(ChangeRow, change_id)
+    return row.data["status"], row.context_version
+
+
+def _thanks():
+    return {
+        "assignment": "needs_review",
+        "work_order_id": None,
+        "base_work_order_version": None,
+        "candidates": [],
+        "changes": [],
+        "unresolved_questions": [],
+        "draft_text": None,
+        "relevance": "unrelated",
+    }
+
+
+def test_thanks_keeps_every_open_proposal_confirmable(memory_factory, monkeypatch):
+    db = _seed_two(memory_factory)
+    a = _old_change(db, CANDIDATE, "schedule")
+    b = _old_change(db, SECOND, "address")
+    _route(db, monkeypatch, _thanks(), [CANDIDATE, SECOND])
+    # Still proposed and moved to the current context: confirmable again.
+    assert _status(db, a) == ("proposed", 5)
+    assert _status(db, b) == ("proposed", 5)
+
+
+def test_only_the_same_order_and_field_is_superseded(memory_factory, monkeypatch):
+    db = _seed_two(memory_factory)
+    same = _old_change(db, SECOND, "address")
+    other_field = _old_change(db, SECOND, "schedule")
+    other_order = _old_change(db, CANDIDATE, "address")
+    payload = _address_payload()
+    payload.update(work_order_id=SECOND, base_work_order_version=7, relevance="related")
+    assert _route(db, monkeypatch, payload, [CANDIDATE, SECOND]) is True
+    assert _status(db, same)[0] == "needs_review"
+    assert _status(db, other_field) == ("proposed", 5)
+    assert _status(db, other_order) == ("proposed", 5)
+
+
+def test_a_field_the_ai_tried_but_failed_to_read_still_supersedes(memory_factory, monkeypatch):
+    db = _seed_two(memory_factory)
+    old_schedule = _old_change(db, SECOND, "schedule")
+    payload = _address_payload()
+    payload.update(work_order_id=SECOND, base_work_order_version=7)
+    payload["changes"].append(
+        {
+            "field": "schedule",
+            "old_value": None,
+            "new_value": {"kind": "timed", "start_at": "bad"},
+            "field_status": "proposed",
+            "customer_confirmation": "pending",
+            "sources": [{"message_id": MESSAGE_ID, "message_revision": 1}],
+            "reason": "客人想改时间。",
+        }
+    )
+    _route(db, monkeypatch, payload, [CANDIDATE, SECOND])
+    assert _status(db, old_schedule)[0] == "needs_review"
+
+
+def test_when_the_ai_cannot_tell_every_old_proposal_is_superseded(memory_factory, monkeypatch):
+    db = _seed_two(memory_factory)
+    a = _old_change(db, CANDIDATE, "schedule")
+    unsure = _thanks()
+    unsure.pop("relevance")
+    unsure["unresolved_questions"] = ["不确定是哪一单。"]
+    _route(db, monkeypatch, unsure, [CANDIDATE, SECOND])
+    assert _status(db, a)[0] == "needs_review"
+
+
+def test_a_proposal_two_messages_old_is_superseded(memory_factory, monkeypatch):
+    """An unanalysed message in between means nobody checked it: be conservative."""
+    db = _seed_two(memory_factory)
+    stale = _old_change(db, CANDIDATE, "schedule", version=3)
+    _route(db, monkeypatch, _thanks(), [CANDIDATE, SECOND])
+    assert _status(db, stale)[0] == "needs_review"
+
+
+def test_revoking_a_message_supersedes_only_proposals_quoting_it(memory_factory):
+    from gigmate.pending import on_source_changed
+
+    db = _seed_two(memory_factory)
+    quoted = _old_change(db, CANDIDATE, "schedule", source=MESSAGE_ID)
+    unrelated = _old_change(db, SECOND, "address")
+    conversation = db.get(ConversationRow, CONVERSATION_ID)
+    on_source_changed(db, conversation, MESSAGE_ID, revoked=True, new_version=5)
+    assert _status(db, quoted)[0] == "needs_review"
+    assert _status(db, unrelated) == ("proposed", 5)
+
+
+# --- Requirement: one message, a change to order A plus a separate new job ---
+
+
+def _with_side_request():
+    payload = _address_payload()
+    payload.update(
+        work_order_id=SECOND,
+        base_work_order_version=7,
+        also_new_work_order={
+            "summary": "陈小姐另约全家福",
+            "fields": [
+                {
+                    "field": "address",
+                    "value": "旺角弥敦道 1 号",
+                    "sources": [{"message_id": "wrong", "message_revision": 9}],
+                    "reason": "客人给了地址。",
+                }
+            ],
+            "missing_fields": ["schedule"],
+            "unresolved_questions": ["全家福想约几号？"],
+            "confidence": 0.8,
+        },
+    )
+    return payload
+
+
+def test_side_request_is_parsed_and_asked_about(monkeypatch):
+    outcome, _ = _run(monkeypatch, _with_side_request(), _two_orders())
+    assert outcome.proposal.assignment.value == "matched"
+    assert outcome.side_request["summary"] == "陈小姐另约全家福"
+    source = outcome.side_request["fields"][0]["sources"][0]
+    assert source == {"message_id": MESSAGE_ID, "message_revision": 1}
+    assert "llm:side-request" in outcome.notes
+    assert any("另开一单" in q for q in outcome.proposal.unresolved_questions)
+
+
+def test_side_request_is_ignored_without_a_matched_change(monkeypatch):
+    payload = _thanks()
+    payload["also_new_work_order"] = _with_side_request()["also_new_work_order"]
+    outcome, _ = _run(monkeypatch, payload, _two_orders())
+    assert outcome.side_request is None
+
+
+def test_side_request_becomes_a_listed_suggestion_next_to_the_change(memory_factory, monkeypatch):
+    from gigmate.db import Job, Proposal
+    from gigmate.product_commands import available_suggestion_job
+
+    db = _seed_two(memory_factory)
+    assert _route(db, monkeypatch, _with_side_request(), [CANDIDATE, SECOND]) is True
+    assert [row.work_order_id for row in db.scalars(select(ChangeRow))] == [SECOND]
+    side = db.scalar(select(Proposal).where(Proposal.assignment == "needs_review"))
+    assert side is not None and side.work_order_id is None
+    assert side.proposal["new_work_order"]["summary"] == "陈小姐另约全家福"
+    # The matched message's job completes cleanly and the suggestion is offered.
+    db.add(
+        Job(
+            id=str(uuid4()),
+            event_id=side.event_id,
+            account_id=ACCOUNT_ID,
+            state="completed",
+            attempts=1,
+            available_at=datetime.now(UTC),
+            error_code=None,
+        )
+    )
+    db.flush()
+    assert db.scalar(available_suggestion_job(ACCOUNT_ID, side.event_id)) is not None

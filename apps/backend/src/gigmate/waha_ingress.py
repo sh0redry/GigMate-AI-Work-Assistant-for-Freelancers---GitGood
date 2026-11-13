@@ -428,12 +428,33 @@ def purge_expired(db, connection_id, *, now=None):
         select(WahaMessage.message_id).join(WahaChat).where(WahaChat.connection_id == connection_id)
     )
     scrubbed = 0
+    expired_sources = set()
     for message in db.scalars(
         select(MessageRow).where(MessageRow.id.in_(message_ids)).with_for_update()
     ):
+        if message.data["occurred_at"] < utc(cutoff):
+            expired_sources.add(message.id)
         if message.data["occurred_at"] < utc(cutoff) and message.data.get("text") is not None:
             message.data = {**message.data, "text": None}
             scrubbed += 1
+    # A newer assessment may quote an older source. Its own receipt retention
+    # cannot extend the lifetime of that copied text.
+    if expired_sources:
+        for proposal in db.scalars(
+            select(Proposal).where(Proposal.account_id == connection.account_id)
+        ):
+            metadata = proposal.clarification
+            if not isinstance(metadata, dict):
+                continue
+            assessment = metadata.get("assessment", metadata)
+            if any(
+                evidence.get("source", {}).get("message_id") in expired_sources
+                for fact in assessment.get("facts", [])
+                if isinstance(fact, dict)
+                for evidence in fact.get("evidence", [])
+                if isinstance(evidence, dict)
+            ):
+                proposal.clarification = None
     db.flush()
     return {
         "deleted_receipts": events,

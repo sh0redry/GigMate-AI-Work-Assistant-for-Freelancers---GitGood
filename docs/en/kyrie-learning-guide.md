@@ -82,3 +82,8 @@ See the [file atlas](kyrie-file-atlas.md) and [developer setup](getting-started.
 Trace one click from review to request to server to receipt. Then inspect why edited source messages invalidate approval. In a disposable environment, interrupt the service and recover the original operation without duplicating it. Switch languages and check input and customer text stay intact.
 
 Use fictional data, never real chats, keys, QR codes or session files in learning artifacts. [Current delivery](bcd-product-delivery.md) separates implemented code from independent acceptance.
+
+
+## 2026-10-18 desktop follow-up
+
+Desktop automatic-start and manual correction are now implemented candidates. See [installation, data retention and optional maintenance](desktop-installation.md) for Docker setup, non-destructive installation/reinstall, explicit old-resource cleanup, secrets and unsigned-distribution limits.

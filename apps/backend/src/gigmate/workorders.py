@@ -784,9 +784,16 @@ def defer_item(db, account, work_order_id, command, key, request_id):
         raise BusinessError(409, "VERSION_CONFLICT", "Refresh the work order first")
     if order.data["status"] != "pending_confirmation":
         raise BusinessError(409, "VERSION_CONFLICT", "Only an order still being confirmed")
-    items, _ = open_items({**order.data, "deferred": {}})
-    prefix = {"schedule": ("_schedule", "_time"), "address": ("_address",)}[command.field]
-    if not any(item.endswith(prefix) for item in items):
+    items, questions = open_items({**order.data, "deferred": {}})
+    from gigmate.clarification import field_for_code, reply_plan
+
+    conversation = authorized_order_conversation(
+        db, account, order, order.data["conversation_ids"][0]
+    )
+    plan = reply_plan(db, account.id, order, conversation, items, questions)
+    if plan is not None:
+        items = plan[0]
+    if not any(field_for_code(item) == command.field for item in items):
         raise BusinessError(409, "VERSION_CONFLICT", f"The {command.field} is not open")
     conversation_id = order.data["conversation_ids"][0]
     conversation = authorized_order_conversation(db, account, order, conversation_id)

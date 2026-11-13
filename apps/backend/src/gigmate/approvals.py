@@ -194,7 +194,9 @@ def open_items(order_data):
     deferred = order_data.get("deferred") or {}
     if "schedule" in deferred:
         # The customer will answer later: keep the item open, but do not ask now.
-        items = [item for item in items if not item.endswith(("_schedule", "_time"))]
+        from gigmate.clarification import field_for_code
+
+        items = [item for item in items if field_for_code(item) != "schedule"]
         questions = []
     if "address" in deferred:
         return items, questions
@@ -261,9 +263,20 @@ def ask_open_items(db, account_id, order, conversation, round_of=None):
     Returns the draft data, or None when nothing is open or the order is not
     pending.
     """
-    if order.data["status"] != "pending_confirmation" or not conversation.allowlisted:
+    if (
+        order.data["status"] not in {"pending_confirmation", "confirmed"}
+        or not conversation.allowlisted
+    ):
         return None
     items, questions = open_items(order.data)
+    from gigmate.clarification import reply_plan
+
+    plan = reply_plan(db, account_id, order, conversation, items, questions)
+    ai_body, ai_sources = None, []
+    if plan is not None:
+        items, ai_body, ai_sources = plan
+    elif order.data["status"] != "pending_confirmation":
+        return None
     if not items:
         # Nothing to ask now (e.g. every open item is deferred): no stale question stays.
         cancel_pending(db, account_id, work_order_id=order.id, reason="deferred")
@@ -276,11 +289,14 @@ def ask_open_items(db, account_id, order, conversation, round_of=None):
         for source in field["sources"]:
             if source not in sources:
                 sources.append(source)
+    for source in ai_sources:
+        if source not in sources:
+            sources.append(source)
     sources = sources or latest_message_source(db, account_id, conversation.id)
     if not sources:
         return None
     cancel_pending(db, account_id, work_order_id=order.id, reason="superseded")
-    body = OPEN_ITEMS_TEMPLATE.format(questions="".join(questions))
+    body = ai_body or OPEN_ITEMS_TEMPLATE.format(questions="".join(questions))
     return new_draft(db, account_id, order, conversation, trigger, body, sources)
 
 

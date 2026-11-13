@@ -19,3 +19,8 @@
 未来获授权的打包批次应记录 ADR、保留权限边界、定义签名更新／迁移回滚／私有数据路径，并测试全新安装／卸载不删业务数据、重启任务恢复、登录／CSRF、来源失效、断线／未知结果以及原生 Windows/macOS。签名、公证和应用商店是各平台独立门槛。本次评估不添加打包依赖或空原生目录。
 
 2026-10-12 核对来源：[Tauri 介绍](https://v2.tauri.app/start/)、[Electron 前提](https://www.electronjs.org/docs/latest/tutorial/tutorial-prerequisites)、[MDN PWA 介绍](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps)。官方资料证明各框架的打包／运行方式，不证明 GigMate 已兼容或具体包大小。
+
+
+## 2026-10-18 desktop follow-up
+
+桌面自动启动与手动补字段已实现为候选交付；[安装说明](desktop-installation.md)解释 Docker 首次安装、安装／重装保留数据、独立选择旧资源清理、密钥与未签名分发的边界。

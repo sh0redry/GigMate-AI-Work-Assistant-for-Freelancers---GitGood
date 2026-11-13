@@ -9,6 +9,25 @@ permissions:
   contents: read
 
 jobs:
+  desktop-safety:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+      - run: node --test apps/desktop/*.test.cjs
+      - uses: actions/setup-python@v5
+        if: runner.os == 'Linux'
+        with:
+          python-version: '3.12.10'
+      - run: python scripts/check_desktop_preview.py --browser google-chrome
+        if: runner.os == 'Linux'
   pdf-isolation:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
@@ -49,10 +68,14 @@ jobs:
         with:
           python-version: '3.12.10'
       - run: pip install -r apps/backend/requirements.lock
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
       - run: ruff check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py scripts/smoke_deepseek.py scripts/smoke_media.py
       - run: ruff format --check apps/backend scripts/export_contracts.py scripts/smoke_replay.py scripts/run_evaluation.py scripts/smoke_deepseek.py scripts/smoke_media.py
       - run: python scripts/export_contracts.py --check
       - run: python scripts/check_baseline.py
+      - run: python -m pytest scripts/test_desktop_checksums.py -q
       - run: alembic -c apps/backend/alembic.ini upgrade head
       - run: alembic -c apps/backend/alembic.ini check
       - run: pytest apps/backend/tests -q

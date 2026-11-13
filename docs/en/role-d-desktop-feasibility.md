@@ -19,3 +19,8 @@ Decide deployment first: (1) a desktop client with a hosted API/worker/database/
 A future authorized packaging batch should record an ADR, preserve permission boundaries, define signed update/migration rollback and private data paths, then test fresh install/uninstall without deleting business data, restart/job recovery, login/CSRF, source invalidation, disconnected/unknown outcomes and native Windows/macOS operation. Signing/notarization and applicable store distribution are platform-specific gates. No packaging dependencies or unused native directories are added by this assessment.
 
 Sources checked on 2026-10-12: [Tauri overview](https://v2.tauri.app/start/), [Electron prerequisites](https://www.electronjs.org/docs/latest/tutorial/tutorial-prerequisites), [MDN PWA overview](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps). Official framework descriptions establish their packaging/runtime approach, not GigMate compatibility or bundle size.
+
+
+## 2026-10-18 desktop follow-up
+
+Desktop automatic-start and manual correction are now implemented candidates. See [installation, data retention and optional maintenance](desktop-installation.md) for Docker setup, non-destructive installation/reinstall, explicit old-resource cleanup, secrets and unsigned-distribution limits.

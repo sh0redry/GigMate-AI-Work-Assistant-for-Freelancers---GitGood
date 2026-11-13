@@ -7,8 +7,9 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends, Header, Query, Request
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import aliased
 
 from gigmate.contracts import (
     AssignMessageCommand,
@@ -45,6 +46,8 @@ from gigmate.workorders import (
     validate,
 )
 
+_Primary = aliased(Proposal)
+
 
 def available_suggestion_job(account_id, event_id):
     """One unhandled review decision, shared by listing and creation checks."""
@@ -52,7 +55,18 @@ def available_suggestion_job(account_id, event_id):
         Job.account_id == account_id,
         Job.event_id == event_id,
         Job.state == "completed",
-        Job.error_code.in_(REVIEWABLE),
+        # A reviewable message, or a matched message whose same text also
+        # asked for a separate new job (its needs-review side suggestion is the
+        # only kind of suggestion a cleanly matched job can carry).
+        or_(
+            Job.error_code.in_(REVIEWABLE),
+            and_(
+                Job.error_code.is_(None),
+                select(_Primary.id)
+                .where(_Primary.event_id == event_id, _Primary.assignment == "matched")
+                .exists(),
+            ),
+        ),
         ~select(JobAssignment.job_id).where(JobAssignment.job_id == Job.id).exists(),
     )
 
@@ -245,6 +259,8 @@ def dismiss_suggestion(db, account, proposal_id, command, key, request_id):
     job = db.scalar(select(Job).where(Job.account_id == account.id, Job.event_id == row.event_id))
     if job is None:
         raise BusinessError(404, "NOT_FOUND", "Suggestion not found")
+    if job.state == "completed" and job.error_code is None:
+        return _dismiss_side_request(db, account, job, row, command, key, request_id)
     return assign_message(
         db,
         account,
@@ -255,6 +271,41 @@ def dismiss_suggestion(db, account, proposal_id, command, key, request_id):
         key,
         request_id,
     )
+
+
+def _dismiss_side_request(db, account, job, row, command, key, request_id):
+    """Discard the extra job noticed next to a matched change.
+
+    The matched change itself is untouched; only the suggestion stops being
+    listed or usable. Same receipt, context check and audit as a dismissal.
+    """
+    scope = f"dismiss-side:{row.id}"
+    digest, cached = command_cache(db, account.id, scope, key, command.model_dump())
+    if cached:
+        return cached.data
+    conversation = owned(db, ConversationRow, row.conversation_id, account.id)
+    if not conversation.allowlisted:
+        raise BusinessError(403, "CONSENT_REVOKED", "Conversation processing is paused")
+    if (
+        command.expected_context_version != conversation.context_version
+        or row.context_version != conversation.context_version
+    ):
+        raise BusinessError(
+            409, "VERSION_CONFLICT", "Newer messages arrived; decide on the newest one"
+        )
+    job.error_code = "DISMISSED_BY_MERCHANT"
+    audit = audit_row(account.id, job.id, "dismiss_message", request_id)
+    audit.data = {**audit.data, "entity_type": "message_job"}
+    db.add(audit)
+    result = {
+        "job_id": job.id,
+        "conversation_id": conversation.id,
+        "action": "dismiss",
+        "work_order_id": None,
+        "state": job.state,
+    }
+    save_result(db, account.id, scope, key, digest, result)
+    return result
 
 
 def install(app, database, actor, detail, page):

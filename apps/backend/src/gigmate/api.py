@@ -158,6 +158,13 @@ class ActionView(ApprovalAction):
             "missing_time",
             "missing_address",
             "verify_address",
+            "missing_schedule_date",
+            "missing_start_time",
+            "missing_duration",
+            "clarify_date",
+            "clarify_start_time",
+            "clarify_duration",
+            "clarify_address",
         ]
     ]
     closed_reason: str | None
@@ -1752,3 +1759,8 @@ install_workspace(app, database, actor, detail, page, conversation_info)
 from gigmate.product_commands import install as install_product  # noqa: E402
 
 install_product(app, database, actor, detail, page)
+
+
+from gigmate.manual_fields import install as install_manual_fields  # noqa: E402
+
+install_manual_fields(app, database, actor, detail)

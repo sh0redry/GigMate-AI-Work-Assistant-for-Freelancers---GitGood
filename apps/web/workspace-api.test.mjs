@@ -129,3 +129,67 @@ test("invalidated concurrent reads report an authorization change instead of a n
       !/无法连接/.test(error.message),
   );
 });
+
+test("an authorized conversation with no incoming messages accepts context zero", async () => {
+  const api = businessApi(async (path) => {
+    if (path.startsWith("/work-orders?"))
+      return {
+        items: [{ id: "order", conversation_ids: ["chat"], version: 1 }],
+        next_cursor: null,
+      };
+    if (path === "/conversations/chat")
+      return { data: { id: "chat", context_version: 0 } };
+    return { items: [], next_cursor: null };
+  });
+  const snapshot = await api.load("order", new AbortController().signal);
+  assert.equal(snapshot.contextVersion, 0);
+  assert.deepEqual(snapshot.messages, []);
+});
+
+test("transient read failure retries once but never retries writes or authorization failures", async () => {
+  let reads = 0;
+  const api = workspaceApi("", async () =>
+    ++reads === 1
+      ? new Response("temporary", { status: 502 })
+      : Response.json({ items: [], next_cursor: null }),
+  );
+  assert.deepEqual(await api("/conversations"), {
+    items: [],
+    next_cursor: null,
+  });
+  assert.equal(reads, 2);
+  let denied = 0;
+  await assert.rejects(
+    workspaceApi("", async () => {
+      denied++;
+      return Response.json(
+        { error: { code: "UNAUTHENTICATED" } },
+        { status: 401 },
+      );
+    })("/work-orders"),
+    /登录已过期/,
+  );
+  assert.equal(denied, 1);
+  let writes = 0;
+  await assert.rejects(
+    workspaceApi("csrf", async () => {
+      writes++;
+      return new Response("temporary", { status: 502 });
+    })("/work-orders", {}),
+  );
+  assert.equal(writes, 1);
+});
+
+test("exhausted read retry reports HTTP status without exposing proxy HTML", async () => {
+  let calls = 0;
+  const api = workspaceApi("", async () => {
+    calls++;
+    return new Response("<html>private proxy failure</html>", { status: 503 });
+  });
+  await assert.rejects(
+    api("/conversations"),
+    (error) =>
+      /HTTP 503/.test(error.message) && !/html|private/.test(error.message),
+  );
+  assert.equal(calls, 2);
+});

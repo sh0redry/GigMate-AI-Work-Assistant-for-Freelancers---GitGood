@@ -183,11 +183,17 @@ def test_old_work_order_version_is_rejected(signed_in):
 
 
 def test_new_message_invalidates_before_worker_runs(signed_in):
+    """Unconfirmable at once; superseded once the worker sees the same field change."""
     client, factory, _, headers = signed_in
     change = proposal(client, factory, headers)
     assert replay(client, headers, "reschedule").status_code == 202
+    # Before the new message is read, the old proposal cannot be confirmed.
     assert confirm(client, headers, change).status_code == 409
-    assert client.get(PATH + "/changes").json()["items"][0]["status"] == "needs_review"
+    assert run_once(factory)
+    rows = {row["id"]: row for row in client.get(PATH + "/changes").json()["items"]}
+    # The new message changed the same order's same field: the old one is gone.
+    assert rows[change["id"]]["status"] == "needs_review"
+    assert confirm(client, headers, change).status_code == 409
 
 
 def test_source_revocation_invalidates_proposal(signed_in):

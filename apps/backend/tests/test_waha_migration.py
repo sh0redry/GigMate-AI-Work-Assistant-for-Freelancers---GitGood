@@ -232,11 +232,7 @@ def test_versioned_migration_preserves_replay_rows(migration_database, existing_
 def test_media_evidence_upgrade_does_not_invent_old_sending_times(migration_database):
     from datetime import UTC, datetime
 
-    from sqlalchemy import MetaData, Table, select
-    from sqlalchemy.orm import sessionmaker
-
-    from gigmate.db import Account, ConversationRow, WahaChat, WahaConnection
-    from gigmate.seed import seed
+    from sqlalchemy import MetaData, Table
 
     root = Path(__file__).resolve().parents[3]
     environment = {
@@ -256,39 +252,72 @@ def test_media_evidence_upgrade_does_not_invent_old_sending_times(migration_data
 
     migrate("0009_waha_media_ingestion")
     engine = create_engine(migration_database)
-    factory = sessionmaker(engine)
-    seed(factory)
-    connection_id, chat_id, snapshot_id, asset_id, job_id = [str(uuid4()) for _ in range(5)]
-    with factory.begin() as db:
-        account = db.scalar(select(Account).where(Account.username == "merchant"))
-        conversation = db.scalar(
-            select(ConversationRow).where(ConversationRow.account_id == account.id)
-        )
-        account_id = account.id
-        db.add(
-            WahaConnection(
-                id=connection_id,
-                account_id=account.id,
-                instance_id="synthetic-migration",
-                session_id="default",
-            )
-        )
-        db.flush()
-        db.add(
-            WahaChat(
-                id=chat_id,
-                connection_id=connection_id,
-                conversation_id=conversation.id,
-                provider_chat_id="synthetic:peer@lid",
-            )
-        )
+    account_id, conversation_id, connection_id, chat_id, snapshot_id, asset_id, job_id = [
+        str(uuid4()) for _ in range(7)
+    ]
     metadata = MetaData()
     tables = {
         name: Table(name, metadata, autoload_with=engine)
-        for name in ["waha_snapshots", "waha_attachments", "waha_media_jobs"]
+        for name in [
+            "accounts",
+            "conversations",
+            "waha_connections",
+            "waha_chats",
+            "waha_snapshots",
+            "waha_attachments",
+            "waha_media_jobs",
+        ]
     }
     at = datetime(2026, 10, 10, tzinfo=UTC)
     with engine.begin() as db:
+        # Construct the 0009 schema directly: today's ORM/seed may require
+        # columns introduced by later migrations and cannot seed this version.
+        db.execute(
+            tables["accounts"]
+            .insert()
+            .values(
+                id=account_id,
+                username="synthetic-legacy",
+                password_hash="synthetic:hash",
+                active=True,
+            )
+        )
+        db.execute(
+            tables["conversations"]
+            .insert()
+            .values(
+                id=conversation_id,
+                account_id=account_id,
+                context_version=4,
+                allowlisted=True,
+            )
+        )
+        db.execute(
+            tables["waha_connections"]
+            .insert()
+            .values(
+                id=connection_id,
+                account_id=account_id,
+                instance_id="synthetic-migration",
+                session_id="default",
+                enabled=False,
+                control_version=0,
+                state="unknown",
+                accepted=0,
+                duplicates=0,
+                stale_events=0,
+            )
+        )
+        db.execute(
+            tables["waha_chats"]
+            .insert()
+            .values(
+                id=chat_id,
+                connection_id=connection_id,
+                conversation_id=conversation_id,
+                provider_chat_id="synthetic:peer@lid",
+            )
+        )
         db.execute(
             tables["waha_snapshots"]
             .insert()

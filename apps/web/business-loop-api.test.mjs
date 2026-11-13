@@ -245,6 +245,7 @@ test("definite initial checklist/dependency rejections permit a reviewed correct
     "CHECKLIST_OPEN",
     "DEPENDENCY_OPEN",
     "MODEL_OUTCOME_UNKNOWN",
+    "WORK_ORDER_REVIEW_REQUIRED",
   ]) {
     let lose = false;
     const api = businessLoopApi(
