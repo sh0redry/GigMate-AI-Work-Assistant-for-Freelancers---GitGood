@@ -249,7 +249,8 @@ export function WahaSend({
     setMultiple(false);
     setReaction("👍");
     setMime("");
-    setMode("manual");
+    // Restored unsent text keeps the origin it was saved with (manual or reviewed AI).
+    setMode(initialMode);
     setKind("text");
     setUnknownNote("");
     setUnknownConsent(false);

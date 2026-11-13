@@ -592,6 +592,68 @@ test("adopting a valid existing model suggestion consumes once but never submits
   assert.equal(posts[0].options.headers["X-CSRF-Token"], "synthetic-csrf");
 });
 
+test("an adopted AI reply keeps its agent-assisted origin after a chat round trip; manual text stays manual", async () => {
+  const drafts = [];
+  const { calls } = fixture({
+    draftsAvailable: true,
+    override: (url, options) => {
+      if (url.includes("/sending/context/"))
+        return Response.json({
+          data: { context_version: 3, control_version: 1 },
+        });
+      if (url.endsWith("/sending/drafts") && options.method === "POST") {
+        drafts.push(JSON.parse(options.body));
+        return Response.json(
+          { error: { code: "SYNTHETIC_DRAFT_STOP" } },
+          { status: 409 },
+        );
+      }
+    },
+  });
+  await mount();
+  await click(document.querySelectorAll(".conversation-choice")[0]);
+  await change(labelled("选择关联工单"), orderId);
+  await click(
+    [...document.querySelectorAll("button")].find((element) =>
+      element.textContent.startsWith("核对建议回复"),
+    ),
+  );
+  await click(button("采用到输入框（不发送）"));
+  assert.equal(labelled("内容来源").value, "agent_assisted");
+  await click(document.querySelectorAll(".conversation-choice")[1]);
+  assert.equal(labelled("内容来源").value, "manual");
+  await change(
+    document.querySelector(".conversation-composer textarea"),
+    "Synthetic manual Beta",
+  );
+  await click(document.querySelectorAll(".conversation-choice")[0]);
+  assert.equal(
+    document.querySelector(".conversation-composer textarea").value,
+    draft.text,
+  );
+  assert.equal(labelled("内容来源").value, "agent_assisted");
+  await click(button("保存待审核草稿"));
+  await click(document.querySelectorAll(".conversation-choice")[1]);
+  assert.equal(
+    document.querySelector(".conversation-composer textarea").value,
+    "Synthetic manual Beta",
+  );
+  assert.equal(labelled("内容来源").value, "manual");
+  await click(button("保存待审核草稿"));
+  assert.deepEqual(
+    drafts.map((d) => [d.chat_id, d.mode, d.payload.text]),
+    [
+      [chatA, "agent_assisted", draft.text],
+      [chatB, "manual", "Synthetic manual Beta"],
+    ],
+  );
+  assert.equal(
+    calls.filter((call) => /\/consume$/.test(call.url)).length,
+    1,
+    "returning to the chat does not consume the suggestion again",
+  );
+});
+
 test("a stopped workspace makes no background message requests", async () => {
   const { calls } = fixture();
   await mount({ active: false });
