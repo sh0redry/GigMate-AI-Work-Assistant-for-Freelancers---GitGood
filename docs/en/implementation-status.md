@@ -1,5 +1,11 @@
 # Implementation status and validation
 
+## CI Linux runner pinned to Ubuntu 24.04 — 2026-11-13
+
+GitHub moved `ubuntu-latest` to Ubuntu 26.04 from 2026-10-19, and `actions/setup-python@v5` has no Python 3.12.10 x64 build for that image, so every Linux job (`backend`, `frontend (ubuntu-latest)`, `pdf-isolation`, `desktop-safety`) failed at Python setup while macOS/Windows passed. All `ubuntu-latest` runner labels in `skeleton.yml`, `baseline.yml` and `desktop-release.yml` (direct `runs-on` and matrix entries) are now `ubuntu-24.04`; the pinned Python 3.12.10 and Node 24.15.0 are unchanged. No application code, dependency or contract changed. Linux job names now read `ubuntu-24.04`; existing `runner.os == 'Linux'` conditions are unaffected. Moving to a newer Ubuntu image requires a Python version available for it and is a separate decision.
+
+Verification: `python scripts/check_baseline.py` passed locally; GitHub Actions results for this change are recorded in the pull request.
+
 ## Mainline context and source-bound clarification — 2026-10-25
 
 Ported bounded recent incoming revisions (five minutes, eight messages, 8000 UTF-8 bytes), exact supplied source binding and AI clarification semantics into ordinary merchant-authorized conversations. The existing reviewed provider decides known/missing/ambiguous/deferred date/start/end/duration/address, question order and tone. Server-side coverage/provenance checks render bounded customer wording; invalid assessments retain the existing template/manual path. A full interval remains necessary for calendar writes; no model or send gate is enabled by this feature.

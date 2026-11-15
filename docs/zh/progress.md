@@ -1,5 +1,11 @@
 # 已完成工作与验证记录
 
+## CI Linux runner 固定为 Ubuntu 24.04 — 2026-11-13
+
+GitHub 自 2026-10-19 起把 `ubuntu-latest` 切换为 Ubuntu 26.04，而 `actions/setup-python@v5` 没有该镜像的 Python 3.12.10 x64 版本，因此所有 Linux 任务（`backend`、`frontend (ubuntu-latest)`、`pdf-isolation`、`desktop-safety`）在安装 Python 时失败，macOS/Windows 任务正常。`skeleton.yml`、`baseline.yml`、`desktop-release.yml` 中所有 `ubuntu-latest`（直接 `runs-on` 和矩阵项）改为 `ubuntu-24.04`；固定的 Python 3.12.10 和 Node 24.15.0 不变。未改动应用代码、依赖或契约。Linux 任务名改为显示 `ubuntu-24.04`；现有 `runner.os == 'Linux'` 条件不受影响。升级到更新的 Ubuntu 镜像需要该镜像可用的 Python 版本，另行决定。
+
+验证：本地 `python scripts/check_baseline.py` 通过；本次改动的 GitHub Actions 结果记录在 PR 中。
+
 ## 主线上下文与有来源约束的 AI 补问 — 2026-10-25
 
 提取近五分钟、最多八条和 8000 UTF-8 字节的已授权入站消息上下文、准确来源绑定及 AI 补问能力。模型判断日期/开始/结束/时长/地址的已知、缺失、歧义和暂缓状态，并选择问题顺序、语气；服务端检查覆盖与证据后组织受限文案，无效时回落原有模板/人工复核。日历仍要求完整时间区间，本功能不打开模型或发送开关。
