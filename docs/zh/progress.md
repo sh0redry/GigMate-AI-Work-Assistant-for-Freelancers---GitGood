@@ -10,6 +10,14 @@ Kyrie 评审（P2）：`WahaSend` 每次重新进入聊天时把回复来源重�
 
 证据（Windows、Python 3.12.10、Node 24.15.0、隔离 worktree）：前端 **238 passed / 0 failed**（会话用例 32 项），Prettier、生成 API 类型检查、TypeScript/Vite 构建通过；包体积提示 746.51 kB / 237.00 kB gzip。Ruff check/format、`export_contracts.py --check` 与 `check_baseline.py` 通过。隔离的临时 PostgreSQL 17.9 容器：后端全量 **1207 passed / 14 skipped / 0 failed**（其中 12 项为本 Windows 主机无法运行的 Linux 专用 PDF 隔离用例）；Alembic `upgrade head` 到唯一 head `0024_context_clarification`，`alembic check` 无漂移。补充 SQLite 运行：**1190 passed / 31 skipped / 0 failed**（不作为行锁证据）。与 main 相比没有任何后端、契约或迁移文件差异，后端测试是在合并后的代码树上复核 main 的后端。浏览器验收使用临时本机合成服务（不连 WAHA、数据库、模型，不发送）：采用 AI 建议 → 切换 → 返回仍为 `agent_assisted`，保存的草稿请求按聊天分别为 `agent_assisted`/`manual`，只消费一次；“今日”与业务页来回切换后仍只有一个会话工作区；来源跳转高亮对应修订；控制台错误仅为夹具有意返回的 409。该浏览器中“采用”确认框由测试替身自动确认。真实手机、真实聊天、模型与发送验收仍待完成；继续保持 Draft 并等待独立评审。
 
+2026-11-15 跟进：Kyrie 批准 `5e8ecdb` 后，合入 main `d45fc81`（#53，固定 Ubuntu runner；仅 workflow 与进度记录，无应用代码变化）。冲突只在两份进度记录，双方小节均保留。合并后 head 上的 CI 即 Kyrie 要求的整合检查。
+
+## CI Linux runner 固定为 Ubuntu 24.04 — 2026-11-13
+
+GitHub 自 2026-10-19 起把 `ubuntu-latest` 切换为 Ubuntu 26.04，而 `actions/setup-python@v5` 没有该镜像的 Python 3.12.10 x64 版本，因此所有 Linux 任务（`backend`、`frontend (ubuntu-latest)`、`pdf-isolation`、`desktop-safety`）在安装 Python 时失败，macOS/Windows 任务正常。`skeleton.yml`、`baseline.yml`、`desktop-release.yml` 中所有 `ubuntu-latest`（直接 `runs-on` 和矩阵项）改为 `ubuntu-24.04`；固定的 Python 3.12.10 和 Node 24.15.0 不变。未改动应用代码、依赖或契约。Linux 任务名改为显示 `ubuntu-24.04`；现有 `runner.os == 'Linux'` 条件不受影响。升级到更新的 Ubuntu 镜像需要该镜像可用的 Python 版本，另行决定。
+
+验证：本地 `python scripts/check_baseline.py` 通过；本次改动的 GitHub Actions 结果记录在 PR 中。
+
 ## 主线上下文与有来源约束的 AI 补问 — 2026-10-25
 
 提取近五分钟、最多八条和 8000 UTF-8 字节的已授权入站消息上下文、准确来源绑定及 AI 补问能力。模型判断日期/开始/结束/时长/地址的已知、缺失、歧义和暂缓状态，并选择问题顺序、语气；服务端检查覆盖与证据后组织受限文案，无效时回落原有模板/人工复核。日历仍要求完整时间区间，本功能不打开模型或发送开关。
