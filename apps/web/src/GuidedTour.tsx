@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 
 type View =
   | "home"
+  | "messages"
   | "business"
   | "create"
   | "approvals"

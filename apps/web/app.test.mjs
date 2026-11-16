@@ -19,6 +19,8 @@ const directory = await mkdtemp(join(tmpdir(), "gigmate-app-dom-"));
 const require = createRequire(import.meta.url);
 const components = [
   "App",
+  "CustomerConversations",
+  "ConversationBusiness",
   "NavIcon",
   "BusinessLoopWorkspace",
   "ProductTools",
@@ -49,6 +51,8 @@ const components = [
 for (const name of [
   ...components,
   "features",
+  "conversation-api",
+  "conversation-view",
   "business-loop-api",
   "useWorkspaceData",
   "order-command-api",
@@ -60,6 +64,7 @@ for (const name of [
   "environment",
   "read-cache",
   "useStableState",
+  "usePolling",
   "workspace-api",
   "i18n",
   "locales",
@@ -1213,6 +1218,28 @@ test("stale review records cannot be dismissed and unknown model outcomes cannot
   assert.equal(button("标记无需归单").disabled, true);
   assert.equal(data.writes.length, 0);
 });
+test("the novice order page keeps source navigation into customer chats after the main merge", async () => {
+  deliveryFixture();
+  await mount();
+  await login();
+  // Main now opens on the "today" home page; the order workspace is one click away.
+  await act(async () => button("业务工作台").click());
+  assert.ok(document.querySelector('[aria-label="下一步"]'));
+  assert.match(
+    document.querySelector(".order-facts").textContent,
+    /Synthetic customer sourc/,
+  );
+  await act(async () => button("在客户会话中查看原话").click());
+  // Leaving the home page must not leave extra hidden chat workspaces (and pollers) behind.
+  assert.equal(document.querySelectorAll('[aria-label="客户会话"]').length, 1);
+  assert.equal(document.querySelector('[aria-label="客户会话"]').hidden, false);
+  assert.equal(button("客户会话").getAttribute("aria-current"), "page");
+  assert.equal(document.querySelector('[aria-label="工单详情"]'), null);
+  await act(async () => button("业务工作台").click());
+  assert.ok(document.querySelector('[aria-label="下一步"]'));
+  assert.ok(button("在客户会话中查看原话"));
+});
+
 test("unknown model outcome keeps manual creation available but blocks reassignment", async () => {
   const data = reviewDecisionFixture({ reason: "MODEL_OUTCOME_UNKNOWN" });
   await mount();

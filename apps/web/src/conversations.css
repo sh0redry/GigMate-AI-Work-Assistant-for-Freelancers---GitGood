@@ -1,0 +1,266 @@
+/* Scoped to the new workspace; existing order/connection screens retain their layout. */
+.customer-conversations[hidden] {
+  display: none;
+}
+.customer-conversations > label {
+  max-width: 32rem;
+  margin-bottom: 1rem;
+}
+.customer-conversations .page-heading h1 {
+  font-size: clamp(1.6rem, 2.5vw, 2.2rem);
+  margin-block: 0.4rem;
+}
+.customer-conversations .page-heading {
+  margin-bottom: 0.8rem;
+}
+.conversation-send-group {
+  margin-block: 0.5rem;
+  border: 1px solid #dce3f1;
+  border-radius: 0.6rem;
+  padding: 0.6rem;
+}
+.conversation-send-group > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.conversation-composer textarea {
+  min-height: 5rem;
+}
+.conversation-layout {
+  display: grid;
+  grid-template-columns: minmax(13rem, 18rem) minmax(20rem, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+.conversation-layout[data-business="true"] {
+  grid-template-columns: minmax(12rem, 16rem) minmax(20rem, 1fr) minmax(
+      15rem,
+      20rem
+    );
+}
+.conversation-list,
+.conversation-main,
+.conversation-business {
+  min-width: 0;
+  border: 1px solid #dce3f1;
+  border-radius: 1.4rem;
+  background: #fff;
+  padding: 1rem;
+}
+.conversation-list {
+  position: sticky;
+  top: 7rem;
+  max-height: calc(100dvh - 8rem);
+  overflow: auto;
+}
+.conversation-list h2,
+.conversation-business h2 {
+  font-size: 1.15rem;
+}
+.conversation-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  width: 100%;
+  text-align: start;
+  padding: 0.9rem;
+  margin: 0.5rem 0;
+  border: 1px solid transparent;
+  border-radius: 0.8rem;
+}
+.conversation-choice[aria-pressed="true"] {
+  border-color: #4764a0;
+  background: #edf2fc;
+}
+.conversation-choice > strong,
+.conversation-choice > span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conversation-choice small,
+.conversation-choice time {
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+.conversation-pagination,
+.conversation-header,
+.conversation-source-actions,
+.conversation-message-actions {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.conversation-pagination {
+  justify-content: space-between;
+  margin: 1rem 0;
+}
+.conversation-header h2 {
+  margin: 0;
+  flex: 1;
+  font-size: 1.2rem;
+  overflow-wrap: anywhere;
+}
+.conversation-scroll {
+  height: clamp(20rem, 52dvh, 44rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.75rem;
+  background: #f3f5fa;
+  border-radius: 0.8rem;
+  overflow-anchor: none;
+}
+.conversation-message {
+  display: flex;
+  margin: 0.65rem 0;
+  scroll-margin-block: 8rem;
+}
+.conversation-message[data-direction="outgoing"] {
+  justify-content: flex-end;
+}
+.conversation-bubble {
+  max-width: 90%;
+  padding: 0.8rem 1rem;
+  border: 1px solid #dce3f1;
+  background: white;
+  border-radius: 1rem 1rem 1rem 0.2rem;
+  overflow-wrap: anywhere;
+}
+.conversation-message[data-direction="outgoing"] .conversation-bubble {
+  background: #e6edf9;
+  border-radius: 1rem 1rem 0.2rem 1rem;
+}
+.conversation-message[data-highlight="true"] .conversation-bubble {
+  outline: 3px solid #bc830f;
+  outline-offset: 2px;
+}
+.conversation-bubble > small {
+  display: block;
+  font-size: 0.75rem;
+}
+.conversation-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.conversation-message-actions {
+  border-top: 1px solid #dce3f1;
+  padding-top: 0.6rem;
+}
+.conversation-message-actions button {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.8rem;
+}
+.conversation-message-actions label {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  margin: 0;
+  font-size: 0.8rem;
+}
+.conversation-message-actions input[type="checkbox"] {
+  width: auto;
+}
+.conversation-source-actions {
+  margin: 0.8rem 0;
+  font-size: 0.85rem;
+}
+.conversation-new {
+  display: block;
+  margin: 0.5rem auto;
+}
+.conversation-composer {
+  border-top: 1px solid #dce3f1;
+  padding-top: 1rem;
+}
+.conversation-composer > summary {
+  cursor: pointer;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+}
+.conversation-composer > section {
+  max-height: 65dvh;
+  overflow-y: auto;
+  padding: 0.5rem;
+  box-shadow: none;
+}
+.conversation-business {
+  max-height: calc(100dvh - 8rem);
+  overflow: auto;
+  position: sticky;
+  top: 7rem;
+}
+.conversation-field {
+  padding: 0.8rem 0;
+  border-bottom: 1px solid #e7ebf3;
+}
+.conversation-field p {
+  margin: 0.4rem 0;
+}
+.conversation-field button {
+  margin: 0.2rem;
+  font-size: 0.8rem;
+}
+.conversation-draft-review {
+  border: 1px solid #dce3f1;
+  border-radius: 0.7rem;
+  padding: 0.7rem;
+}
+.conversation-back {
+  display: none;
+}
+@media (max-width: 1350px) {
+  .conversation-layout[data-business="true"] {
+    grid-template-columns: minmax(12rem, 15rem) minmax(18rem, 1fr);
+  }
+  .conversation-business {
+    grid-column: 2;
+    position: static;
+    max-height: none;
+  }
+}
+@media (max-width: 850px) {
+  .conversation-header h2 {
+    flex-basis: 100%;
+    order: -1;
+  }
+  .conversation-header button {
+    font-size: 0.8rem;
+    padding: 0.5rem 0.7rem;
+  }
+  .conversation-layout,
+  .conversation-layout[data-business="true"] {
+    display: block;
+  }
+  .conversation-list,
+  .conversation-business {
+    position: static;
+    max-height: none;
+    margin-bottom: 1rem;
+  }
+  .conversation-back {
+    display: inline-flex;
+  }
+  .customer-conversations[data-mobile-list="false"] .conversation-list {
+    display: none;
+  }
+  .customer-conversations[data-mobile-list="true"] .conversation-main,
+  .customer-conversations[data-mobile-list="true"] .conversation-business {
+    display: none;
+  }
+  .conversation-scroll {
+    height: 52dvh;
+    min-height: 16rem;
+  }
+  .conversation-bubble {
+    max-width: 96%;
+  }
+}
+@media (max-width: 760px) {
+  .workspace-navigation[data-customer-chats] {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
