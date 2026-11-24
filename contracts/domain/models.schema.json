@@ -424,6 +424,378 @@
       "title": "AssignmentResult",
       "type": "string"
     },
+    "AssistantAnswer": {
+      "additionalProperties": false,
+      "properties": {
+        "citations": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AssistantCitation"
+          },
+          "title": "Citations",
+          "type": "array"
+        },
+        "draft_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Draft Id"
+        },
+        "execution_authority": {
+          "const": false,
+          "default": false,
+          "title": "Execution Authority",
+          "type": "boolean"
+        },
+        "kind": {
+          "enum": [
+            "slots",
+            "orders",
+            "draft",
+            "clarification",
+            "unsupported"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "slots": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Slot"
+          },
+          "title": "Slots",
+          "type": "array"
+        },
+        "text": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "unverified_claims": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Unverified Claims",
+          "type": "array"
+        },
+        "work_order_ids": {
+          "default": [],
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Work Order Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "text"
+      ],
+      "title": "AssistantAnswer",
+      "type": "object"
+    },
+    "AssistantCitation": {
+      "additionalProperties": false,
+      "description": "Where an answer statement comes from: a customer message revision, an order\nversion, or the server's own free-slot computation.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "message",
+            "work_order",
+            "free_slots"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "work_order_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Work Order Id"
+        },
+        "work_order_version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Work Order Version"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "AssistantCitation",
+      "type": "object"
+    },
+    "AssistantContext": {
+      "additionalProperties": false,
+      "description": "What the merchant explicitly selected. The server re-resolves ownership and\nversions; a missing selection is never filled by guessing (for example the\nfirst of several open orders).",
+      "properties": {
+        "conversation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Conversation Id"
+        },
+        "expected_context_version": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Context Version"
+        },
+        "expected_work_order_version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Work Order Version"
+        },
+        "selected_sources": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "maxItems": 8,
+          "title": "Selected Sources",
+          "type": "array"
+        },
+        "work_order_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Work Order Id"
+        }
+      },
+      "title": "AssistantContext",
+      "type": "object"
+    },
+    "AssistantTurnCommand": {
+      "additionalProperties": false,
+      "description": "One merchant question. Sent with an Idempotency-Key; the turn runs as a durable job.",
+      "properties": {
+        "context": {
+          "$ref": "#/$defs/AssistantContext",
+          "default": {
+            "conversation_id": null,
+            "expected_context_version": null,
+            "expected_work_order_version": null,
+            "selected_sources": [],
+            "work_order_id": null
+          }
+        },
+        "question": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "thread_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Thread Id"
+        }
+      },
+      "required": [
+        "question"
+      ],
+      "title": "AssistantTurnCommand",
+      "type": "object"
+    },
+    "AssistantTurnView": {
+      "additionalProperties": false,
+      "properties": {
+        "answer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AssistantAnswer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "completed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Completed At"
+        },
+        "context": {
+          "$ref": "#/$defs/AssistantContext"
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Created At",
+          "type": "string"
+        },
+        "engine": {
+          "anyOf": [
+            {
+              "enum": [
+                "rules",
+                "model"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Engine"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Code"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "intent": {
+          "anyOf": [
+            {
+              "enum": [
+                "availability",
+                "order_status",
+                "reply_draft",
+                "polish",
+                "clarify",
+                "unsupported"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Intent"
+        },
+        "question": {
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "completed",
+            "failed",
+            "unknown",
+            "superseded"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "thread_id": {
+          "format": "uuid",
+          "title": "Thread Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "thread_id",
+        "status",
+        "question",
+        "intent",
+        "context",
+        "answer",
+        "error_code",
+        "engine",
+        "created_at",
+        "completed_at"
+      ],
+      "title": "AssistantTurnView",
+      "type": "object"
+    },
     "AuditLog": {
       "additionalProperties": false,
       "properties": {
@@ -2982,6 +3354,35 @@
         "expected_version"
       ],
       "title": "SetWorkOrderStatusCommand",
+      "type": "object"
+    },
+    "Slot": {
+      "additionalProperties": false,
+      "properties": {
+        "end_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "End At",
+          "type": "string"
+        },
+        "label": {
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "start_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Start At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "start_at",
+        "end_at",
+        "label"
+      ],
+      "title": "Slot",
       "type": "object"
     },
     "SourceRef": {

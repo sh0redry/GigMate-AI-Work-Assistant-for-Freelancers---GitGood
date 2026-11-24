@@ -1,0 +1,205 @@
+{
+  "$defs": {
+    "FindFreeSlots": {
+      "additionalProperties": false,
+      "description": "Server runs scheduling.free_slots over the merchant's own calendar.",
+      "properties": {
+        "duration_minutes": {
+          "maximum": 720,
+          "minimum": 15,
+          "title": "Duration Minutes",
+          "type": "integer"
+        },
+        "from_date": {
+          "format": "date",
+          "title": "From Date",
+          "type": "string"
+        },
+        "to_date": {
+          "format": "date",
+          "title": "To Date",
+          "type": "string"
+        },
+        "tool": {
+          "const": "find_free_slots",
+          "title": "Tool",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "duration_minutes",
+        "from_date",
+        "to_date"
+      ],
+      "title": "FindFreeSlots",
+      "type": "object"
+    },
+    "GetWorkOrder": {
+      "additionalProperties": false,
+      "description": "The merchant's explicitly selected order only.",
+      "properties": {
+        "target": {
+          "const": "selected",
+          "title": "Target",
+          "type": "string"
+        },
+        "tool": {
+          "const": "get_work_order",
+          "title": "Tool",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "target"
+      ],
+      "title": "GetWorkOrder",
+      "type": "object"
+    },
+    "ListWorkOrders": {
+      "additionalProperties": false,
+      "description": "Account-owned orders, optionally limited to the selected conversation.",
+      "properties": {
+        "scope": {
+          "default": "account",
+          "enum": [
+            "account",
+            "selected_conversation"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "status": {
+          "default": "open",
+          "enum": [
+            "pending_confirmation",
+            "confirmed",
+            "in_progress",
+            "waiting_customer",
+            "open"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "tool": {
+          "const": "list_work_orders",
+          "title": "Tool",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool"
+      ],
+      "title": "ListWorkOrders",
+      "type": "object"
+    },
+    "ReadConversation": {
+      "additionalProperties": false,
+      "description": "Bounded, consent-checked recent context of the selected conversation.",
+      "properties": {
+        "target": {
+          "const": "selected",
+          "title": "Target",
+          "type": "string"
+        },
+        "tool": {
+          "const": "read_conversation",
+          "title": "Tool",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "target"
+      ],
+      "title": "ReadConversation",
+      "type": "object"
+    }
+  },
+  "$id": "https://gigmate.local/contracts/ai/assistant-plan/1.0.0",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Generated bounded assistant plan (ADR 0011): intent and read-only tool requests; server ownership/version checks also required",
+  "properties": {
+    "clarification_question": {
+      "anyOf": [
+        {
+          "maxLength": 300,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Clarification Question"
+    },
+    "intent": {
+      "enum": [
+        "availability",
+        "order_status",
+        "reply_draft",
+        "polish",
+        "clarify",
+        "unsupported"
+      ],
+      "title": "Intent",
+      "type": "string"
+    },
+    "language": {
+      "enum": [
+        "zh-Hans",
+        "zh-Hant",
+        "en"
+      ],
+      "title": "Language",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "tool_calls": {
+      "default": [],
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "find_free_slots": "#/$defs/FindFreeSlots",
+            "get_work_order": "#/$defs/GetWorkOrder",
+            "list_work_orders": "#/$defs/ListWorkOrders",
+            "read_conversation": "#/$defs/ReadConversation"
+          },
+          "propertyName": "tool"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/FindFreeSlots"
+          },
+          {
+            "$ref": "#/$defs/ListWorkOrders"
+          },
+          {
+            "$ref": "#/$defs/GetWorkOrder"
+          },
+          {
+            "$ref": "#/$defs/ReadConversation"
+          }
+        ]
+      },
+      "maxItems": 3,
+      "title": "Tool Calls",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "intent",
+    "language"
+  ],
+  "title": "AssistantPlan",
+  "type": "object",
+  "x-version": "1.0.0"
+}

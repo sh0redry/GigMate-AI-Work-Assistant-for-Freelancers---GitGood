@@ -1,0 +1,16 @@
+{
+  "thread_id": null,
+  "question": "帮我回一下这条消息，说周二下午可以",
+  "context": {
+    "conversation_id": "00000000-0000-4000-8000-0000000a0001",
+    "expected_context_version": 7,
+    "work_order_id": "00000000-0000-4000-8000-0000000a0002",
+    "expected_work_order_version": 3,
+    "selected_sources": [
+      {
+        "message_id": "00000000-0000-4000-8000-0000000a0003",
+        "message_revision": 1
+      }
+    ]
+  }
+}

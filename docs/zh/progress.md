@@ -1,5 +1,15 @@
 # 已完成工作与验证记录
 
+## 有边界的商户 AI 助手第 0 批：ADR、契约与威胁模型 — 2026-11-24
+
+新增 [ADR 0011](../en/adr/0011-bounded-merchant-assistant.md)：面向商户的助手（“下周哪几天有空？”“帮我回一下这条消息”），仍遵守现有规则——模型只规划只读工具调用并撰写草稿，没有任何写入、确认、批准或发送工具，所有输出 `execution_authority: false`。它修订而非取消 `agent_drafts.py` 中“不做开放式问答”的边界。[设计与威胁模型](assistant.md)涵盖意图、带服务端校验的工具白名单、一轮问答的流程、十类威胁及缓解措施，以及第 1–5 批计划。
+
+在 `contracts.py` 新增源模型 `AssistantContext`、`AssistantTurnCommand`、`AssistantCitation`、`AssistantAnswer`、`AssistantTurnView`；在 `assistant_plan.py` 新增独立版本的 AI 数据结构 `AssistantPlan`/`AssistantComposition` 1.0.0，并生成 `contracts/ai/assistant-plan.schema.json` 与 `assistant-composition.schema.json`。工具只能作用于商户所选对象（`target: "selected"`），不接受模型给出的 ID；每个意图有各自的工具子集；回复草稿必须引用客户消息修订。清单新增七个合成样例（四个有效；三个无效：执行权、发送工具、收件人／批准字段）。未新增路由、数据表、迁移、worker 任务、模型调用或界面；OpenAPI 与前端生成类型不变。
+
+业主已于 2026-11-24 确认并记入 ADR：O1 第一版只做查空闲、查工单状态、回复草稿、润色，不做开放式闲聊；O2 只把所选会话的有界已授权上下文、商户问题和工具结果发给供应商，电话号码和聊天 ID 换成不透明标识，启用前向商户明示。
+
+证据：新增 `test_assistant_contracts.py` **23 passed**，包括每个助手样例与源模型的交叉验证，以及确认不存在助手路由。SQLite 后端全量：**1216 passed / 31 skipped / 0 failed**（首次运行在约 10% 处被外部中断，退出码 120，无测试失败；重跑完成）。Ruff check/format、`export_contracts.py --check`、`check_baseline.py`（102 个 Markdown、1047 个链接、6 个 schema、18 个有效／11 个拒绝样例）通过。未运行 PostgreSQL（Docker Desktop 未启动）；本批没有数据库代码。JSON Schema 无法表达意图与工具的对应规则，以源模型校验为准并已测试。
+
 ## PR #39 客户会话：整合 main `80350b7` 并修复 Kyrie 评审问题 — 2026-11-13
 
 将 main `80350b7`（#45–#52）合入 `andy/customer-conversations`。App 导航/状态、新手引导、导航图标、建单、翻译、测试列表与两份进度记录的冲突均保留双方：main 的“今日”首页（现为登录后默认页）、主题切换、新需求建议横幅和次级 WhatsApp 连接入口保留；客户会话留在主导航，会话选中的来源提示与 main 的建议预填都能进入建单页。

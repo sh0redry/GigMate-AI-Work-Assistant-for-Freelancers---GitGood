@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0.0",
+  "intent": "reply_draft",
+  "language": "zh-Hans",
+  "tool_calls": [
+    {
+      "tool": "send_message",
+      "target": "selected",
+      "text": "好的，周二见"
+    }
+  ]
+}
