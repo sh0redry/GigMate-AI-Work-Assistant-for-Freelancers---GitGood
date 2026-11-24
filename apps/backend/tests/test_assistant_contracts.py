@@ -236,4 +236,5 @@ def test_only_the_bounded_assistant_routes_exist():
         ("/api/v1/assistant/drafts/{draft_id}", "get"),
         ("/api/v1/assistant/drafts/{draft_id}/consume", "post"),
         ("/api/v1/assistant/drafts/{draft_id}/revoke", "post"),
+        ("/api/v1/assistant/capabilities", "get"),
     }

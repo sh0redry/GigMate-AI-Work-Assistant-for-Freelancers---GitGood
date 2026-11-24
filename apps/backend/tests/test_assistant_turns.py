@@ -479,3 +479,19 @@ def test_logs_never_contain_question_or_answer_text(signed_in, caplog):
     assistant.run_once(factory, planner=Fixed(error=TimeoutError("机密问题丁戊己")))
     joined = "\n".join(record.getMessage() for record in caplog.records)
     assert "机密问题" not in joined and "合成" not in joined
+
+
+def test_capabilities_disclose_the_offline_engine(signed_in, monkeypatch):
+    client, _factory, _engine, _headers = signed_in
+    caps = client.get("/api/v1/assistant/capabilities").json()["data"]
+    assert caps == {
+        "enabled": True,
+        "engine": "rules",
+        "vendor": None,
+        "sends_customer_text": False,
+        "daily_turns": 200,
+    }
+    monkeypatch.setenv("GIGMATE_ASSISTANT_ENABLED", "false")
+    assert client.get("/api/v1/assistant/capabilities").json()["data"]["enabled"] is False
+    client.cookies.clear()
+    assert client.get("/api/v1/assistant/capabilities").status_code == 401

@@ -506,6 +506,54 @@
       "title": "AssistantAnswer",
       "type": "object"
     },
+    "AssistantCapabilities": {
+      "additionalProperties": false,
+      "description": "What the assistant uses, shown to the merchant before asking (owner decision O2).",
+      "properties": {
+        "daily_turns": {
+          "minimum": 1,
+          "title": "Daily Turns",
+          "type": "integer"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "engine": {
+          "enum": [
+            "rules",
+            "model"
+          ],
+          "title": "Engine",
+          "type": "string"
+        },
+        "sends_customer_text": {
+          "title": "Sends Customer Text",
+          "type": "boolean"
+        },
+        "vendor": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Vendor"
+        }
+      },
+      "required": [
+        "enabled",
+        "engine",
+        "vendor",
+        "sends_customer_text",
+        "daily_turns"
+      ],
+      "title": "AssistantCapabilities",
+      "type": "object"
+    },
     "AssistantCitation": {
       "additionalProperties": false,
       "description": "Where an answer statement comes from: a customer message revision, an order\nversion, or the server's own free-slot computation.",

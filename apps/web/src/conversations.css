@@ -264,3 +264,62 @@
     grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 }
+
+/* Bounded AI assistant panel (ADR 0011): chat side panel and Today page. */
+.assistant-panel {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 1rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--line);
+}
+.home-assistant .assistant-panel {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+.assistant-panel textarea {
+  width: 100%;
+  resize: vertical;
+}
+.assistant-disclosure,
+.assistant-scope,
+.assistant-citation,
+.assistant-status {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0;
+}
+.assistant-turns {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 28rem;
+  overflow-y: auto;
+}
+.assistant-turn {
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  padding: 0.6rem 0.7rem;
+  display: grid;
+  gap: 0.35rem;
+}
+.assistant-question {
+  margin: 0;
+  font-weight: 600;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.assistant-answer {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.assistant-turn.status-failed,
+.assistant-turn.status-unknown,
+.assistant-turn.status-superseded {
+  border-style: dashed;
+}

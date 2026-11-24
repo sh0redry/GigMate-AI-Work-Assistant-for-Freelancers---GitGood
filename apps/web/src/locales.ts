@@ -205,9 +205,146 @@ const conversationCantonese: Record<string, string> = {
   从客户会话选中的原文: "喺客人對話揀嘅原文",
 };
 
+const assistantEnglish: Record<string, string> = {
+  "AI 助手": "AI assistant",
+  "今天的提问次数已用完，请明天再试。":
+    "Today's question limit is used up. Try again tomorrow.",
+  "以下内容未经核实，发送前请确认：":
+    "Not verified. Check these before sending:",
+  "例如：下周哪天有空？哪些工单在等客户回复？帮我回一下，说周二下午可以。":
+    "For example: Which days am I free next week? Which orders are waiting for the customer? Reply saying Tuesday afternoon works.",
+  "依据：{0} 条客户消息": "Based on {0} customer messages",
+  "依据：你的工作时间和已确认预约":
+    "Based on your working hours and confirmed appointments",
+  刷新回答: "Refresh answer",
+  "助手仍在处理，可以稍后点“刷新回答”查看。":
+    "The assistant is still working. Use “Refresh answer” later.",
+  "助手会把所选聊天最近的已授权消息（不含电话号码）发送给 {0} 处理。":
+    "The assistant sends recent authorised messages of the selected chat (without phone numbers) to {0}.",
+  "助手使用 {0}，不会发送客户消息内容。":
+    "The assistant uses {0} and does not send customer message text.",
+  "助手已关闭。": "The assistant is turned off.",
+  "助手已关闭，请联系维护者开启。":
+    "The assistant is turned off. Ask the maintainer to enable it.",
+  "可在客户会话中把草稿放入输入框。":
+    "Open the customer chat to put this draft in the composer.",
+  "处理授权已暂停，草稿已失效":
+    "Processing permission is paused; the draft is no longer valid",
+  "客户消息已修改，草稿已失效":
+    "The customer message changed; the draft is no longer valid",
+  "将基于你的日程和工单回答。": "Answers use your schedule and work orders.",
+  "将基于当前聊天和所选工单回答。":
+    "Answers use this chat and the selected order.",
+  "将基于当前聊天回答。": "Answers use this chat.",
+  "工单有变化，草稿已失效": "The order changed; the draft is no longer valid",
+  已作废: "Superseded",
+  已回答: "Answered",
+  "已放入输入框，请核对后再发送。":
+    "Placed in the composer. Review it before sending.",
+  "已选 {0} 条客户消息作为回复依据。":
+    "{0} selected customer messages will be the basis of a reply.",
+  "当前聊天、工单或记录不可用，请刷新。":
+    "This chat, order or record is unavailable. Refresh.",
+  "所选客户消息已变化，请重新选择。":
+    "A selected customer message changed. Select again.",
+  "所选工单不属于这个聊天，请重新选择。":
+    "The selected order does not belong to this chat. Select again.",
+  "打开相关工单 {0}": "Open related order {0}",
+  提问: "Ask",
+  "放入输入框（不发送）": "Put in composer (does not send)",
+  "暂时无法确认是否已提交。可以点“核对”，不会重复提问。":
+    "Could not confirm the question was received. Use “Check” — it will not ask twice.",
+  未能回答: "Not answered",
+  核对上次提问: "Check last question",
+  核对草稿状态: "Check draft status",
+  "正在提问…": "Asking…",
+  "目前助手只用本地规则回答，不会把聊天内容发给模型供应商。":
+    "The assistant currently answers with local rules only and sends no chat content to a model vendor.",
+  结果不确定: "Outcome unknown",
+  "聊天或工单刚刚有更新，请刷新后再问。":
+    "The chat or order just changed. Refresh and ask again.",
+  "聊天或工单刚有更新，这次回答已作废，请重新提问。":
+    "The chat or order changed, so this answer was discarded. Ask again.",
+  "聊天有新消息，草稿已失效":
+    "The chat has a new message; the draft is no longer valid",
+  "草稿已过期，请重新提问。": "The draft expired. Ask again.",
+  "这份草稿已失效或已采用，不能再放入输入框。":
+    "This draft is no longer valid or was already used.",
+  "这次处理结果不确定，不会自动重试，请重新提问。":
+    "The outcome is unknown and will not be retried automatically. Ask again.",
+  "这次提问的记录与内容不一致，请重新提问。":
+    "The saved question does not match. Ask again.",
+  "这次没能回答（{0}），请换个说法再问。":
+    "Could not answer ({0}). Try asking differently.",
+  "问 AI 助手": "Ask the AI assistant",
+};
+
+const assistantCantonese: Record<string, string> = {
+  "AI 助手": "AI 助手",
+  "今天的提问次数已用完，请明天再试。": "今日嘅提問次數用晒，聽日再試。",
+  "以下内容未经核实，发送前请确认：": "以下內容未經核實，發送前請確認：",
+  "例如：下周哪天有空？哪些工单在等客户回复？帮我回一下，说周二下午可以。":
+    "例如：下星期邊日得閒？邊啲工單等緊客人回覆？幫我回覆佢，話星期二下晝得。",
+  "依据：{0} 条客户消息": "依據：{0} 條客人訊息",
+  "依据：你的工作时间和已确认预约": "依據：你嘅工作時間同已確認預約",
+  刷新回答: "更新回答",
+  "助手仍在处理，可以稍后点“刷新回答”查看。":
+    "助手仲處理緊，稍後撳「更新回答」再睇。",
+  "助手会把所选聊天最近的已授权消息（不含电话号码）发送给 {0} 处理。":
+    "助手會將所選聊天最近嘅已授權訊息（唔包電話號碼）發送畀 {0} 處理。",
+  "助手使用 {0}，不会发送客户消息内容。":
+    "助手使用 {0}，唔會發送客人訊息內容。",
+  "助手已关闭。": "助手已關閉。",
+  "助手已关闭，请联系维护者开启。": "助手已關閉，請聯絡維護者開啟。",
+  "可在客户会话中把草稿放入输入框。": "可以喺客人對話將草稿放入輸入框。",
+  "处理授权已暂停，草稿已失效": "處理授權已暫停，草稿已失效",
+  "客户消息已修改，草稿已失效": "客人訊息已修改，草稿已失效",
+  "将基于你的日程和工单回答。": "會根據你嘅日程同工單回答。",
+  "将基于当前聊天和所选工单回答。": "會根據目前聊天同所選工單回答。",
+  "将基于当前聊天回答。": "會根據目前聊天回答。",
+  "工单有变化，草稿已失效": "工單有變，草稿已失效",
+  已作废: "已作廢",
+  已回答: "已回答",
+  "已放入输入框，请核对后再发送。": "已放入輸入框，請核對後再發送。",
+  "已选 {0} 条客户消息作为回复依据。": "已揀 {0} 條客人訊息作回覆依據。",
+  "当前聊天、工单或记录不可用，请刷新。":
+    "目前聊天、工單或者記錄用唔到，請更新。",
+  "所选客户消息已变化，请重新选择。": "所選客人訊息已變，請重新揀選。",
+  "所选工单不属于这个聊天，请重新选择。":
+    "所選工單唔屬於呢個聊天，請重新揀選。",
+  "打开相关工单 {0}": "打開相關工單 {0}",
+  提问: "提問",
+  "放入输入框（不发送）": "放入輸入框（唔發送）",
+  "暂时无法确认是否已提交。可以点“核对”，不会重复提问。":
+    "暫時確認唔到有冇提交。可以撳「核對」，唔會重複提問。",
+  未能回答: "未能回答",
+  核对上次提问: "核對上次提問",
+  核对草稿状态: "核對草稿狀態",
+  "正在提问…": "提問緊…",
+  "目前助手只用本地规则回答，不会把聊天内容发给模型供应商。":
+    "目前助手只用本地規則回答，唔會將聊天內容發畀模型供應商。",
+  结果不确定: "結果未確定",
+  "聊天或工单刚刚有更新，请刷新后再问。":
+    "聊天或者工單啱啱有更新，請更新後再問。",
+  "聊天或工单刚有更新，这次回答已作废，请重新提问。":
+    "聊天或者工單啱有更新，今次回答已作廢，請重新提問。",
+  "聊天有新消息，草稿已失效": "聊天有新訊息，草稿已失效",
+  "草稿已过期，请重新提问。": "草稿已過期，請重新提問。",
+  "这份草稿已失效或已采用，不能再放入输入框。":
+    "呢份草稿已失效或者已採用，唔可以再放入輸入框。",
+  "这次处理结果不确定，不会自动重试，请重新提问。":
+    "今次處理結果未確定，唔會自動重試，請重新提問。",
+  "这次提问的记录与内容不一致，请重新提问。":
+    "今次提問嘅記錄同內容唔一致，請重新提問。",
+  "这次没能回答（{0}），请换个说法再问。":
+    "今次答唔到（{0}），請換個講法再問。",
+  "问 AI 助手": "問 AI 助手",
+};
+
 // UI copy only. Customer content and approved payloads are never translated.
 export const english: Record<string, string> = {
   ...conversationEnglish,
+  ...assistantEnglish,
 
   "WhatsApp 连接尚未就绪，请到连接页刷新状态。":
     "WhatsApp is not ready. Refresh its status on the connection page.",
@@ -2142,6 +2279,7 @@ export const english: Record<string, string> = {
 };
 export const cantonese: Record<string, string> = {
   ...conversationCantonese,
+  ...assistantCantonese,
 
   "WhatsApp 连接尚未就绪，请到连接页刷新状态。":
     "WhatsApp 連線未準備好，請去連線頁刷新狀態。",

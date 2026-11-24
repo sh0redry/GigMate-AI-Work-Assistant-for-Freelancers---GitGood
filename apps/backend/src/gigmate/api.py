@@ -28,6 +28,7 @@ from gigmate.contracts import (
     ApproveActionCommand,
     ArchiveCommand,
     AssignMessageCommand,
+    AssistantCapabilities,
     AssistantDraftView,
     AssistantTurnCommand,
     AssistantTurnView,
@@ -719,6 +720,14 @@ def list_agent_drafts(
 
     rows = agent_drafts.list_for_order(db, account, str(order_id))
     return page(request, rows, cursor, limit, lambda row: agent_drafts.view(db, row))
+
+
+@app.get("/api/v1/assistant/capabilities", response_model=Detail[AssistantCapabilities])
+def assistant_capabilities(request: Request, account=Depends(actor)):
+    """What the assistant uses and whether customer text would leave the server."""
+    from gigmate import assistant
+
+    return detail(request, assistant.capabilities())
 
 
 @app.post("/api/v1/assistant/turns", status_code=202, response_model=Detail[AssistantTurnView])

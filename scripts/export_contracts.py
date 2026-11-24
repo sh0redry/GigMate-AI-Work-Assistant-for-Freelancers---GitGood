@@ -98,6 +98,7 @@ def domain_schema():
         c.AssistantAnswer,
         c.AssistantTurnView,
         c.AssistantDraftView,
+        c.AssistantCapabilities,
     ]
     for model in models:
         schema = model.model_json_schema()

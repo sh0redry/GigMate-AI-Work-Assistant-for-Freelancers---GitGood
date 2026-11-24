@@ -16,6 +16,7 @@ import { triggerDescription } from "./approval-view";
 import { fieldValue, friendlyInstant, onDay } from "./work-order-view";
 import { loopReady, unavailableFeatures, type Features } from "./features";
 import { ReplyPanel } from "./ReplyPanel";
+import { AssistantPanel } from "./AssistantPanel";
 
 type Connector = Loop["ConnectorStatus"];
 type Summary = Loop["DailySummary"];
@@ -400,6 +401,15 @@ export function HomeWorkspace({
           <button className="w-link" onClick={() => onNavigate("business")}>
             {t("查看全部工单 ›")}
           </button>
+        </article>
+
+        {/* Bounded AI assistant (ADR 0011): read-only answers, never sends */}
+        <article className="home-widget size-wide home-assistant">
+          <AssistantPanel
+            csrf={csrf}
+            onOpenOrder={onOpenOrder}
+            onSessionExpired={onSessionExpired}
+          />
         </article>
 
         {/* ② Small: open orders */}

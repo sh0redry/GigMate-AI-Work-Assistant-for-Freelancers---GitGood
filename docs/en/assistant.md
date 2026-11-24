@@ -12,7 +12,9 @@
 
 **Implemented (batch 3):** reply drafts and polishing. After the read-only tools run, a second phase (outside any database transaction) asks a composer for an `AssistantComposition`; the server rejects compositions whose kind differs or that cite revisions other than the merchant's selection or the bounded context, then re-checks the lease and selection and stores an assistant draft (migration `0026_assistant_drafts`). The offline `RuleComposer` only wraps text the merchant dictated (quoted, after a colon, or after 说/話/say/tell them) with a greeting and closing in the question's language; without dictation it asks what to say, and without a consented customer message it declines. Routes: `GET /api/v1/assistant/drafts/{id}`, `POST …/consume` (once; returns the text for the composer, sends nothing) and `POST …/revoke`. Draft status is computed on read: a new/edited/revoked message, changed order, revoked consent or a no-longer-current cited revision gives `revoked` with `revoke_reason`; drafts expire after 24 hours (`GIGMATE_ASSISTANT_DRAFT_TTL_MINUTES`) and their text is scrubbed after 30 days.
 
-**Not implemented yet:** the UI (batch 4) and the reviewed model planner and composer (batch 5).
+**Implemented (batch 4):** the assistant panel (`AssistantPanel.tsx`, `assistant-api.ts`). On the **Today** page it sits below "Needs you" and answers from the schedule and orders. In **Customer chats** it sits at the bottom of the order side panel and uses the selected chat (its context version is read fresh when asking), the selected order and any customer messages ticked as sources; a draft answer offers **Put in composer (does not send)**, which consumes the draft once and fills the existing composer as `agent_assisted`, after which the normal permission, review and approval apply. `GET /api/v1/assistant/capabilities` drives a disclosure line shown before asking: currently "local rules only, no chat content is sent to a model vendor". A question keeps one `Idempotency-Key`; when its outcome is unknown the panel offers **Check last question**, which resends the identical body and key, so the server returns the original turn rather than asking twice. An unknown draft consumption is never repeated; **Check draft status** only reads. Answers and questions are shown as text and never translated; panel labels exist in Simplified Chinese, English and Cantonese. The conversation in the panel is kept while the page is open; leaving the page starts a new thread.
+
+**Not implemented yet:** the reviewed model planner and composer (batch 5).
 
 ### Batch 1 behaviour
 
@@ -77,7 +79,7 @@ Assets: customer messages and identities, merchant orders and calendar, the What
 | 1 | Tables and migration, turn routes, worker job, tool registry, offline rule planner | Normal/failure paths on SQLite and PostgreSQL; idempotency; unknown outcomes; ownership (done) |
 | 2 | Availability and order-status answers, date-range free slots, rule-based fallback | Deterministic answers; clarify on ambiguity; no model needed for tests (done) |
 | 3 | Reply draft and polish as assistant drafts, invalidation, adoption | Draft bindings, supersession races, adoption without sending (done) |
-| 4 | Assistant panel in customer chats and on Today; three UI languages | Frontend tests, build, browser QA with synthetic data |
+| 4 | Assistant panel in customer chats and on Today; three UI languages | Frontend tests, build, browser QA with synthetic data (done) |
 | 5 | Live model behind existing gates, evaluation and injection sets, cost checks | Synthetic evaluation, then real-phone acceptance by the owner |
 
 Owner decisions O1 (scope above, no open chat) and O2 (bounded context with opaque handles and disclosure) were accepted on 2026-11-24. Customer text reaches a vendor only through the live-model gates of batch 5 and after the batch 4 disclosure. Batch 4 builds on the customer-chat workspace from PR #39, now on main.

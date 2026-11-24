@@ -30,6 +30,7 @@ from gigmate import assistant_tools, scheduling
 from gigmate.assistant_plan import AssistantComposition, AssistantPlan
 from gigmate.contracts import (
     AssistantAnswer,
+    AssistantCapabilities,
     AssistantContext,
     AssistantTurnCommand,
     AssistantTurnView,
@@ -72,6 +73,17 @@ def _utc(value):
 def _stamp(value):
     value = _utc(value)
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z") if value else None
+
+
+def capabilities() -> dict:
+    """Batches 1–4 run only the offline rule engine: nothing leaves the server."""
+    return AssistantCapabilities(
+        enabled=enabled(),
+        engine="rules",
+        vendor=None,
+        sends_customer_text=False,
+        daily_turns=daily_limit(),
+    ).model_dump(mode="json")
 
 
 # --- submission -----------------------------------------------------------

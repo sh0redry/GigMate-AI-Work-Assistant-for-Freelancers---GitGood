@@ -140,6 +140,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/assistant/capabilities": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Assistant Capabilities
+     * @description What the assistant uses and whether customer text would leave the server.
+     */
+    get: operations["assistant_capabilities_api_v1_assistant_capabilities_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/assistant/drafts/{draft_id}": {
     parameters: {
       query?: never;
@@ -1974,6 +1994,25 @@ export interface components {
       work_order_ids: string[];
     };
     /**
+     * AssistantCapabilities
+     * @description What the assistant uses, shown to the merchant before asking (owner decision O2).
+     */
+    AssistantCapabilities: {
+      /** Daily Turns */
+      daily_turns: number;
+      /** Enabled */
+      enabled: boolean;
+      /**
+       * Engine
+       * @enum {string}
+       */
+      engine: "rules" | "model";
+      /** Sends Customer Text */
+      sends_customer_text: boolean;
+      /** Vendor */
+      vendor: string | null;
+    };
+    /**
      * AssistantCitation
      * @description Where an answer statement comes from: a customer message revision, an order
      *     version, or the server's own free-slot computation.
@@ -2619,6 +2658,15 @@ export interface components {
     /** Detail[AgentDraftView] */
     Detail_AgentDraftView_: {
       data: components["schemas"]["AgentDraftView"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[AssistantCapabilities] */
+    Detail_AssistantCapabilities_: {
+      data: components["schemas"]["AssistantCapabilities"];
       /**
        * Request Id
        * Format: uuid
@@ -5324,6 +5372,26 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  assistant_capabilities_api_v1_assistant_capabilities_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_AssistantCapabilities_"];
         };
       };
     };

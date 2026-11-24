@@ -1670,3 +1670,15 @@ class AssistantDraftView(Model):
     revoked_at: UtcTimestamp | None
     scrubbed_at: UtcTimestamp | None
     execution_authority: Literal[False] = False
+
+
+class AssistantCapabilities(Model):
+    """What the assistant uses, shown to the merchant before asking (owner decision O2)."""
+
+    enabled: bool
+    engine: Literal["rules", "model"]
+    # Vendor name only when a model engine is enabled; never credentials or endpoints.
+    vendor: Text | None
+    # Whether bounded consented customer text may be sent to that vendor.
+    sends_customer_text: bool
+    daily_turns: Positive
