@@ -8,7 +8,9 @@
 
 **Implemented (batch 1):** migration `0025_assistant` (tables `assistant_threads`, `assistant_turns`; additive); routes `POST /api/v1/assistant/turns` (session, CSRF, `Idempotency-Key`; 202), `GET /api/v1/assistant/turns/{id}` and `GET /api/v1/assistant/threads/{id}/turns`; worker execution with a 60-second lease (`assistant.run_once`); the read-only tool registry `assistant_tools.py`; the offline keyword planner (`engine: "rules"`, no model or network); server-side rendering of availability and order answers; 30-day text scrubbing in worker maintenance. Configuration: `GIGMATE_ASSISTANT_ENABLED` (default `true`) and `GIGMATE_ASSISTANT_DAILY_TURNS` (default 200 per account per 24 hours).
 
-**Not implemented yet:** reply drafts and polishing (batch 3 — until then such turns answer `unsupported` instead of inventing text), the date-range free-slot variant and richer rule answers (batch 2), the UI (batch 4) and the reviewed model planner (batch 5).
+**Implemented (batch 2):** `scheduling.free_windows` computes free windows per local day over a date range (working days and hours, minus breaks, minus confirmed appointments padded by the buffer, from now plus the preparation lead), optionally limited to morning/afternoon/evening; `find_free_slots` now returns these windows (each long enough for the duration) and `AssistantPlan` gained optional `part_of_day`. The rule planner reads this week/next week, weekends, a specific weekday (周二 / 下周二 / next Tuesday), today/tomorrow/the day after, durations such as 一个半小时, 两小时, 45 分钟, 半個鐘 or 2 hours, and parts of the day. Without a stated duration it uses the selected order's appointment length, otherwise the merchant's default duration. Order questions filter by waiting for customer, pending confirmation, in progress or confirmed; "this order" uses only the selected order and reports its status, version and which key items (time, address) or pending details are still open. Without a selection the answer says how many open orders the chosen chat has and asks the merchant to pick one. Availability questions that mention the customer add that these are the merchant's own free times and the customer must confirm.
+
+**Not implemented yet:** reply drafts and polishing (batch 3 — until then such turns answer `unsupported` instead of inventing text), the UI (batch 4) and the reviewed model planner (batch 5).
 
 ### Batch 1 behaviour
 
@@ -71,7 +73,7 @@ Assets: customer messages and identities, merchant orders and calendar, the What
 | --- | --- | --- |
 | 0 | ADR, contracts, schemas, fixtures, threat model | Contract tests, export check, baseline (done) |
 | 1 | Tables and migration, turn routes, worker job, tool registry, offline rule planner | Normal/failure paths on SQLite and PostgreSQL; idempotency; unknown outcomes; ownership (done) |
-| 2 | Availability and order-status answers, date-range free slots, rule-based fallback | Deterministic answers; clarify on ambiguity; no model needed for tests |
+| 2 | Availability and order-status answers, date-range free slots, rule-based fallback | Deterministic answers; clarify on ambiguity; no model needed for tests (done) |
 | 3 | Reply draft and polish as a new agent draft kind, invalidation, adoption | Draft bindings, supersession races, adoption without sending |
 | 4 | Assistant panel in customer chats and on Today; three UI languages | Frontend tests, build, browser QA with synthetic data |
 | 5 | Live model behind existing gates, evaluation and injection sets, cost checks | Synthetic evaluation, then real-phone acceptance by the owner |

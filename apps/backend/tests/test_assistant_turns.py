@@ -122,8 +122,8 @@ def test_availability_turn_answers_from_server_slots(signed_in):
     for slot in answer["slots"]:
         start = datetime.fromisoformat(slot["start_at"].replace("Z", "+00:00"))
         end = datetime.fromisoformat(slot["end_at"].replace("Z", "+00:00"))
-        assert end - start == timedelta(hours=2)
-        assert slot["label"].split("（")[0] in answer["text"]
+        assert end - start >= timedelta(hours=2)
+        assert slot["label"] in answer["text"]
     assert turn_row(factory, queued["id"]).trace == {
         "tools": ["find_free_slots"],
         "language": "zh-Hans",

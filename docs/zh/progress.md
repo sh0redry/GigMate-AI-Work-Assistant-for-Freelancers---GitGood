@@ -1,5 +1,13 @@
 # 已完成工作与验证记录
 
+## 有边界的商户 AI 助手第 2 批：按日期范围的空闲与工单回答 — 2026-11-24
+
+新增 `scheduling.free_windows`：按日期范围逐日确定性计算空闲时段（工作日和工作时间，扣除休息、扣除加上缓冲的已确认预约，从“现在加准备时间”开始），可只看上午、下午或晚上。`find_free_slots` 工具改为返回这些时段；`AssistantPlan` 1.0.0 新增可选 `part_of_day`（尚未发布，已重新生成 schema）。离线规则规划器现在能识别本周、下周、周末、具体星期几（含下周二、next Tuesday）、今天、明天、后天，时长如一个半小时、两小时、45 分钟、半個鐘、2 hours，以及上午、下午、晚上；未说明时长时用所选工单的预约时长或商户默认时长。工单问题可按状态筛选；问“这张工单”只回答所选工单的状态、版本及仍未确认的关键项或待处理细节；未选择时说明所选聊天有几张未完成工单。查空闲时提到客户，会说明这是商户自己的空闲时间。详见[设计文档](assistant.md#已实现与目标)。
+
+新测试发现三个缺陷，提交前已修复：“一个半小时”被读成 30 分钟；“等客户回复的订单”中单独的“回复”被当成回复请求（现在需要“帮我回”“回复这条”等明确说法）；工单详情把未填写的可选字段列为“仍待确认”（现在只列关键项或有待处理提议的字段）。
+
+证据：新增 `test_assistant_answers.py`（22 项，固定时钟）连同第 0–1 批助手测试：SQLite 上 **71 passed**。临时 PostgreSQL 17.9 容器上后端全量：**1281 passed / 14 skipped / 0 failed**。Ruff、契约导出、前端 API 类型检查和基线通过。本批不调用模型、WhatsApp 或网络；OpenAPI 与迁移不变。
+
 ## 有边界的商户 AI 助手第 1 批：持久化问答、只读工具、离线规划器 — 2026-11-24
 
 按 [ADR 0011](../en/adr/0011-bounded-merchant-assistant.md) 实现助手后端骨架，行为与限制见[设计文档](assistant.md#第-1-批行为)。新增迁移 `0025_assistant`（`assistant_threads`、`assistant_turns` 两张表）。新增接口：`POST /api/v1/assistant/turns`（会话、CSRF、`Idempotency-Key`，返回 202）、`GET /api/v1/assistant/turns/{id}`、`GET /api/v1/assistant/threads/{id}/turns`。提交时重新核对归属、授权、上下文和工单版本、工单与聊天的关联，以及所选消息是否为当前已授权修订；每账号每 24 小时有上限（`GIGMATE_ASSISTANT_DAILY_TURNS`，默认 200），并可关闭（`GIGMATE_ASSISTANT_ENABLED`，默认开启）。worker 以 60 秒租约领取（PostgreSQL 上 `SKIP LOCKED`），在事务外规划，重新核对所选对象，只执行白名单只读工具（`assistant_tools.py`），仅在仍持有租约时写入答案。所选对象变化则作废；租约过期或规划调用中断记为 `unknown`，不重试。worker 维护任务在 30 天后清除问答文字。`message_context.bounded_incoming` 最多读取 5 分钟、8 条、8000 字节的已授权入站文字，只带内部 ID。

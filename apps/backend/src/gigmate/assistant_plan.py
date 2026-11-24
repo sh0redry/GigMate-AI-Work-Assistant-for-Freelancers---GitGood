@@ -49,6 +49,7 @@ class FindFreeSlots(_Strict):
     duration_minutes: Annotated[int, Field(ge=15, le=720)]
     from_date: date
     to_date: date
+    part_of_day: Literal["morning", "afternoon", "evening"] | None = None
 
     @model_validator(mode="after")
     def _window(self):

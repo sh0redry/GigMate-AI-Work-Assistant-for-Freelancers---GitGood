@@ -231,7 +231,25 @@ class Planner(Protocol):
 
 
 _POLISH = ("润色", "潤色", "改得", "改一下", "礼貌", "禮貌", "polish", "rewrite", "politer")
-_REPLY = ("回复", "回覆", "回一下", "帮我回", "幫我回", "回佢", "reply", "respond")
+# Explicit requests to write a reply; a bare "回复" also appears in status questions
+# such as "等客户回复的订单".
+_REPLY = (
+    "帮我回",
+    "幫我回",
+    "替我回",
+    "代我回",
+    "回一下",
+    "回复一下",
+    "回覆一下",
+    "回复这条",
+    "回覆這條",
+    "回覆呢條",
+    "回佢",
+    "reply to",
+    "respond to",
+    "draft a reply",
+    "write a reply",
+)
 _AVAILABILITY = (
     "有空",
     "空闲",
@@ -241,16 +259,71 @@ _AVAILABILITY = (
     "档期",
     "檔期",
     "排得",
+    "能排",
+    "可以排",
     "free",
     "available",
     "availability",
     "slot",
 )
-_ORDERS = ("工单", "工單", "订单", "訂單", "进度", "進度", "order", "status", "等客")
-_WAITING = ("等客户", "等客戶", "等客人", "waiting")
-_THIS_CUSTOMER = ("这个客户", "這個客戶", "呢個客", "this customer", "this client")
-_HOURS = re.compile(r"(\d+(?:\.\d+)?)\s*(?:个?小时|個?小時|个钟|個鐘|hours?|hrs?|h\b)", re.I)
+_ORDERS = (
+    "工单",
+    "工單",
+    "订单",
+    "訂單",
+    "进度",
+    "進度",
+    "order",
+    "status",
+    "等客",
+    "这单",
+    "呢單",
+)
+_THIS_ORDER = (
+    "这张",
+    "這張",
+    "这单",
+    "這單",
+    "呢張",
+    "呢單",
+    "这个工单",
+    "這個工單",
+    "this order",
+    "this job",
+)
+_THIS_CUSTOMER = ("这个客户", "這個客戶", "呢個客", "这位客", "this customer", "this client")
+_CUSTOMER = ("客户", "客戶", "客人", "customer", "client")
+_STATUS_WORDS = (
+    (("等客户", "等客戶", "等客人", "waiting"), "waiting_customer"),
+    (("待确认", "待確認", "未确认", "未確認", "pending"), "pending_confirmation"),
+    (("进行中", "進行中", "in progress"), "in_progress"),
+    (("已确认", "已確認", "confirmed"), "confirmed"),
+)
+_PARTS = (
+    (("上午", "早上", "朝早", "morning"), "morning"),
+    (("下午", "afternoon"), "afternoon"),
+    (("晚上", "夜晚", "evening", "tonight"), "evening"),
+)
+_DIGITS = {"一": 1, "两": 2, "兩": 2, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8}
+_WEEKDAY_NAMES = {
+    "一": 0,
+    "二": 1,
+    "三": 2,
+    "四": 3,
+    "五": 4,
+    "六": 5,
+    "日": 6,
+    "天": 6,
+}
+_WEEKDAY_EN = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+_WEEKDAY_ZH = re.compile(r"(下)?(?:周|週|星期|礼拜|禮拜)([一二三四五六日天])")
+_NUMBER = r"(\d+(?:\.\d+)?|[一两兩二三四五六七八])"
+_HOURS = re.compile(
+    _NUMBER + r"\s*(?:个半|個半)?\s*(?:个?小时|個?小時|个钟|個鐘|hours?|hrs?|h\b)", re.I
+)
+_HALF_EXTRA = re.compile(r"(?:个半|個半)")
 _MINUTES = re.compile(r"(\d+)\s*(?:分钟|分鐘|mins?|minutes?)", re.I)
+_HALF_HOUR = ("半小时", "半小時", "半个钟", "半個鐘", "half an hour", "half hour")
 
 
 def _has(text: str, words) -> bool:
@@ -269,9 +342,31 @@ def _clarify(language: str, zh: str, hant: str, en: str) -> dict:
 
 
 def _window(text: str, today: date) -> tuple[date, date]:
-    if _has(text, ("下周", "下週", "下星期", "下禮拜", "next week")):
-        start = today + timedelta(days=7 - today.weekday())
-        return start, start + timedelta(days=6)
+    """Dates the merchant asked about; defaults to the next seven days."""
+    next_monday = today + timedelta(days=7 - today.weekday())
+    if match := _WEEKDAY_ZH.search(text):
+        weekday = _WEEKDAY_NAMES[match.group(2)]
+        if match.group(1):
+            day = next_monday + timedelta(days=weekday)
+        else:
+            day = today + timedelta(days=(weekday - today.weekday()) % 7)
+        return day, day
+    for index, name in enumerate(_WEEKDAY_EN):
+        if name in text:
+            base = next_monday if "next" in text else today
+            day = base + timedelta(days=(index - base.weekday()) % 7)
+            return day, day
+    if _has(text, ("下周末", "下週末", "next weekend")):
+        saturday = next_monday + timedelta(days=5)
+        return saturday, saturday + timedelta(days=1)
+    if _has(text, ("周末", "週末", "weekend")):
+        saturday = today + timedelta(days=(5 - today.weekday()) % 7)
+        return saturday, saturday + timedelta(days=1)
+    if _has(text, ("下周", "下週", "下星期", "下禮拜", "下礼拜", "next week")):
+        return next_monday, next_monday + timedelta(days=6)
+    if _has(text, ("后天", "後天", "後日")):
+        day = today + timedelta(days=2)
+        return day, day
     if _has(text, ("明天", "聽日", "tomorrow")):
         day = today + timedelta(days=1)
         return day, day
@@ -282,12 +377,24 @@ def _window(text: str, today: date) -> tuple[date, date]:
     return today, today + timedelta(days=6)
 
 
-def _duration(text: str) -> int:
+def _number(value: str) -> float:
+    return float(_DIGITS.get(value, value))
+
+
+def _duration(text: str, default: int) -> int:
+    # "一个半小时" contains "半小时": read an explicit number of hours first.
     if match := _HOURS.search(text):
-        return max(15, min(720, round(float(match.group(1)) * 60)))
+        hours = _number(match.group(1)) + (0.5 if _HALF_EXTRA.search(match.group(0)) else 0)
+        return max(15, min(720, round(hours * 60)))
     if match := _MINUTES.search(text):
         return max(15, min(720, int(match.group(1))))
-    return 60
+    if _has(text, _HALF_HOUR):
+        return 30
+    return max(15, min(720, default))
+
+
+def _first(text: str, table) -> str | None:
+    return next((value for words, value in table if _has(text, words)), None)
 
 
 class RulePlanner:
@@ -325,31 +432,45 @@ class RulePlanner:
                 "tool_calls": [
                     {
                         "tool": "find_free_slots",
-                        "duration_minutes": _duration(text),
+                        "duration_minutes": _duration(text, request["default_duration_minutes"]),
                         "from_date": start.isoformat(),
                         "to_date": end.isoformat(),
+                        "part_of_day": _first(text, _PARTS),
                     }
                 ],
             }
         elif _has(text, _ORDERS):
-            scope = (
-                "selected_conversation"
-                if selection["conversation"] and _has(text, _THIS_CUSTOMER)
-                else "account"
-            )
-            status = "waiting_customer" if _has(text, _WAITING) else "open"
-            plan = {
-                **base,
-                "intent": "order_status",
-                "tool_calls": [{"tool": "list_work_orders", "status": status, "scope": scope}],
-            }
+            if _has(text, _THIS_ORDER):
+                # A single order: only the merchant's selection, never a guess.
+                plan = {
+                    **base,
+                    "intent": "order_status",
+                    "tool_calls": [{"tool": "get_work_order", "target": "selected"}],
+                }
+            else:
+                scope = (
+                    "selected_conversation"
+                    if selection["conversation"] and _has(text, _THIS_CUSTOMER)
+                    else "account"
+                )
+                plan = {
+                    **base,
+                    "intent": "order_status",
+                    "tool_calls": [
+                        {
+                            "tool": "list_work_orders",
+                            "status": _first(text, _STATUS_WORDS) or "open",
+                            "scope": scope,
+                        }
+                    ],
+                }
         else:
             plan = {**base, "intent": "unsupported", "tool_calls": []}
         return json.dumps(plan, ensure_ascii=False)
 
 
 def planner_for() -> Planner:
-    """Batch 1 ships only the offline planner; the reviewed model arrives in batch 5."""
+    """Batches 1–2 ship only the offline planner; the reviewed model arrives in batch 5."""
     return RulePlanner()
 
 
@@ -363,6 +484,7 @@ _STATUS = {
         "waiting_customer": "等客户回复",
         "completed": "已完成",
         "cancelled": "已取消",
+        "open": "未结束",
     },
     "zh-Hant": {
         "pending_confirmation": "待確認",
@@ -371,6 +493,7 @@ _STATUS = {
         "waiting_customer": "等客人回覆",
         "completed": "已完成",
         "cancelled": "已取消",
+        "open": "未完成",
     },
     "en": {
         "pending_confirmation": "pending confirmation",
@@ -379,23 +502,52 @@ _STATUS = {
         "waiting_customer": "waiting for customer",
         "completed": "completed",
         "cancelled": "cancelled",
+        "open": "open",
     },
 }
-_WEEKDAY_EN = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+_FIELDS = {
+    "zh-Hans": {
+        "schedule": "时间",
+        "address": "地址",
+        "specification": "规格",
+        "quantity": "数量",
+        "deadline": "截止时间",
+    },
+    "zh-Hant": {
+        "schedule": "時間",
+        "address": "地址",
+        "specification": "規格",
+        "quantity": "數量",
+        "deadline": "截止時間",
+    },
+    "en": {
+        "schedule": "time",
+        "address": "address",
+        "specification": "specification",
+        "quantity": "quantity",
+        "deadline": "deadline",
+    },
+}
+_PART_LABEL = {
+    "zh-Hans": {"morning": "上午", "afternoon": "下午", "evening": "晚上"},
+    "zh-Hant": {"morning": "上午", "afternoon": "下晝", "evening": "夜晚"},
+    "en": {"morning": "morning", "afternoon": "afternoon", "evening": "evening"},
+}
+_WEEKDAY_SHORT = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
 
 def _say(language: str, zh: str, hant: str, en: str) -> str:
     return {"zh-Hans": zh, "zh-Hant": hant}.get(language, en)
 
 
-def _slot_line(slot: dict, timezone: str, language: str) -> str:
+def _window_line(slot: dict, timezone: str, language: str) -> str:
     from zoneinfo import ZoneInfo
 
     start = scheduling.parse(slot["start_at"]).astimezone(ZoneInfo(timezone))
     end = scheduling.parse(slot["end_at"]).astimezone(ZoneInfo(timezone))
     if language == "en":
-        return f"{_WEEKDAY_EN[start.weekday()]} {start:%m/%d} {start:%H:%M}–{end:%H:%M}"
-    return f"{slot['label']}–{end:%H:%M}"
+        return f"{_WEEKDAY_SHORT[start.weekday()]} {start:%m/%d} {start:%H:%M}–{end:%H:%M}"
+    return slot["label"]
 
 
 def _citations(results: list[dict]) -> list[dict]:
@@ -409,55 +561,115 @@ def _citations(results: list[dict]) -> list[dict]:
     return out
 
 
-def render(plan: AssistantPlan, results: list[dict]) -> dict:
+def _hours(minutes: int) -> str:
+    return f"{minutes / 60:g}"
+
+
+def _render_availability(language: str, found: dict, customer_note: bool) -> dict:
+    hours = _hours(found["duration_minutes"])
+    days = (
+        found["from_date"]
+        if found["from_date"] == found["to_date"]
+        else f"{found['from_date']} – {found['to_date']}"
+    )
+    part = _PART_LABEL[language].get(found["part_of_day"] or "", "")
+    if found["slots"]:
+        head = _say(
+            language,
+            f"{days}{part}你有空、可安排 {hours} 小时的时段（{found['timezone']}）：",
+            f"{days}{part}你有空、可安排 {hours} 小時嘅時段（{found['timezone']}）：",
+            f"Your free windows {days}{' ' + part if part else ''} that fit {hours} hours "
+            f"({found['timezone']}):",
+        )
+        lines = "\n".join(
+            "- " + _window_line(s, found["timezone"], language) for s in found["slots"]
+        )
+        text = head + "\n" + lines
+    else:
+        text = _say(
+            language,
+            f"{days}{part}没有能安排 {hours} 小时的空闲时段。",
+            f"{days}{part}冇可以安排 {hours} 小時嘅空檔。",
+            f"No free window of {hours} hours {days}{' ' + part if part else ''}.",
+        )
+    if customer_note:
+        text += "\n" + _say(
+            language,
+            "以上是你自己的空闲时间；客户那天是否方便，需要向客户确认。",
+            "以上係你自己嘅空檔；客人當日方唔方便，要同客人確認。",
+            "These are your own free times; confirm with the customer whether they suit them.",
+        )
+    return {"kind": "slots", "text": text, "slots": found["slots"]}
+
+
+def _render_orders(language: str, results: list[dict]) -> dict:
+    labels, names = _STATUS[language], _FIELDS[language]
+    single = next((r for r in results if "order" in r), None)
+    if single:
+        order = single["order"]
+        # Key items decide confirmation; other details matter only when something is pending.
+        gaps = [
+            names.get(name, name)
+            for name, status in order["field_status"].items()
+            if (name in {"schedule", "address"} and status != "confirmed")
+            or status in {"needs_review", "proposed"}
+        ]
+        status = labels.get(order["status"], order["status"])
+        text = _say(
+            language,
+            f"工单「{order['summary']}」：{status}（版本 {order['version']}）。",
+            f"工單「{order['summary']}」：{status}（版本 {order['version']}）。",
+            f"Work order “{order['summary']}”: {status} (version {order['version']}).",
+        )
+        text += " " + (
+            _say(
+                language,
+                "仍待确认：" + "、".join(gaps) + "。",
+                "仲要確認：" + "、".join(gaps) + "。",
+                "Still to confirm: " + ", ".join(gaps) + ".",
+            )
+            if gaps
+            else _say(
+                language, "关键信息都已确认。", "重要資料都已確認。", "Key details are confirmed."
+            )
+        )
+        return {"kind": "orders", "text": text, "work_order_ids": [order["id"]]}
+    listed = next(r for r in results if "orders" in r)
+    orders, wanted = listed["orders"], labels.get(listed["status"], listed["status"])
+    if orders:
+        head = _say(
+            language,
+            f"{wanted}的工单共 {len(orders)} 张：",
+            f"{wanted}嘅工單共 {len(orders)} 張：",
+            f"{len(orders)} {wanted} work orders:",
+        )
+        lines = "\n".join(
+            f"- {o['summary']}（{labels.get(o['status'], o['status'])}）"
+            if language != "en"
+            else f"- {o['summary']} ({labels.get(o['status'], o['status'])})"
+            for o in orders
+        )
+        text = head + "\n" + lines
+    else:
+        text = _say(
+            language,
+            f"没有{wanted}的工单。",
+            f"冇{wanted}嘅工單。",
+            f"No {wanted} work orders.",
+        )
+    return {"kind": "orders", "text": text, "work_order_ids": [o["id"] for o in orders]}
+
+
+def render(plan: AssistantPlan, results: list[dict], *, customer_note: bool = False) -> dict:
     language = plan.language
     citations = _citations(results)
     if plan.intent == "clarify":
         answer = {"kind": "clarification", "text": plan.clarification_question}
     elif plan.intent == "availability":
         found = next(r for r in results if "slots" in r)
-        hours = f"{found['duration_minutes'] / 60:g}"
-        if found["slots"]:
-            lines = "\n".join(
-                "- " + _slot_line(s, found["timezone"], language) for s in found["slots"]
-            )
-            head = _say(
-                language,
-                f"可安排 {hours} 小时的时段（{found['timezone']}）：",
-                f"可安排 {hours} 小時嘅時段（{found['timezone']}）：",
-                f"Free {hours}-hour slots ({found['timezone']}):",
-            )
-            text = head + "\n" + lines
-        else:
-            text = _say(
-                language,
-                f"这段时间内没有可安排 {hours} 小时的空闲时段。",
-                f"呢段時間冇可安排 {hours} 小時嘅空檔。",
-                f"No free {hours}-hour slot in that period.",
-            )
-        answer = {"kind": "slots", "text": text, "slots": found["slots"]}
+        answer = _render_availability(language, found, customer_note)
     elif plan.intent == "order_status":
-        orders = next(r for r in results if "orders" in r)["orders"]
-        labels = _STATUS[language]
-        if orders:
-            head = _say(
-                language,
-                f"共 {len(orders)} 张工单：",
-                f"共 {len(orders)} 張工單：",
-                f"{len(orders)} work orders:",
-            )
-            lines = "\n".join(
-                f"- {o['summary']}（{labels.get(o['status'], o['status'])}）"
-                if language != "en"
-                else f"- {o['summary']} ({labels.get(o['status'], o['status'])})"
-                for o in orders
-            )
-            text = head + "\n" + lines
-        else:
-            text = _say(
-                language, "没有符合条件的工单。", "冇符合條件嘅工單。", "No matching work orders."
-            )
-        answer = {"kind": "orders", "text": text, "work_order_ids": [o["id"] for o in orders]}
+        answer = _render_orders(language, results)
     elif plan.intent in {"reply_draft", "polish"}:
         # Drafting arrives in batch 3; until then say so instead of inventing text.
         answer = {
@@ -526,8 +738,18 @@ def _claim(factory, now):
         from zoneinfo import ZoneInfo
 
         context = AssistantContext.model_validate(turn.context)
+        default = config.default_duration_minutes
+        if context.work_order_id:
+            order = db.get(WorkOrderRow, context.work_order_id)
+            schedule = (
+                ((order.data if order else {}).get("fields") or {}).get("schedule") or {}
+            ).get("value")
+            if isinstance(schedule, dict) and schedule.get("kind") == "timed":
+                span = scheduling.parse(schedule["end_at"]) - scheduling.parse(schedule["start_at"])
+                default = max(15, min(720, int(span.total_seconds() // 60)))
         request = {
             "question": turn.question,
+            "default_duration_minutes": default,
             "today": now.astimezone(ZoneInfo(config.timezone)).date().isoformat(),
             "timezone": config.timezone,
             "selection": {
@@ -537,6 +759,42 @@ def _claim(factory, now):
             },
         }
         return turn.id, token, request
+
+
+def _selection_question(db, scope, language: str) -> dict:
+    """Ask the merchant to choose; say how many open orders the chosen chat has."""
+    if scope.conversation is None:
+        return _clarify(
+            language,
+            "请先在客户会话中选择聊天或工单，再问一次。",
+            "請先喺客人對話揀選聊天或者工單，再問一次。",
+            "Select a customer chat or work order first, then ask again.",
+        )
+    count = sum(
+        1
+        for order in db.scalars(
+            select(WorkOrderRow)
+            .join(ConversationOrder, ConversationOrder.work_order_id == WorkOrderRow.id)
+            .where(
+                ConversationOrder.conversation_id == scope.conversation.id,
+                WorkOrderRow.account_id == scope.account_id,
+            )
+        )
+        if order.data.get("status") in assistant_tools.OPEN
+    )
+    if count == 0:
+        return _clarify(
+            language,
+            "这个聊天还没有未完成的工单；如需建单，请在会话中选择客户消息后新建。",
+            "呢個聊天未有未完成嘅工單；如要開單，請喺對話揀選客人訊息再新建。",
+            "This chat has no open work order yet; select customer messages to create one.",
+        )
+    return _clarify(
+        language,
+        f"这个聊天有 {count} 张未完成的工单，请先选择要问的那一张。",
+        f"呢個聊天有 {count} 張未完成嘅工單，請先揀選要問嗰張。",
+        f"This chat has {count} open work orders; select the one you mean first.",
+    )
 
 
 def run_once(factory=Session, *, planner: Planner | None = None, now=None) -> bool:
@@ -582,21 +840,18 @@ def run_once(factory=Session, *, planner: Planner | None = None, now=None) -> bo
             state = "superseded" if error.code == "ASSISTANT_CONTEXT_STALE" else "failed"
             _finish(turn, state, finished_at, code=error.code)
             return True
+        scope.now = now if injected else None
+        customer_note = plan.intent == "availability" and _has(
+            (turn.question or "").lower(), _CUSTOMER
+        )
         results, used = [], []
         try:
             for call in plan.tool_calls:
                 results.append(assistant_tools.run(db, scope, call))
                 used.append(call.tool)
-            answer = render(plan, results)
+            answer = render(plan, results, customer_note=customer_note)
         except assistant_tools.ToolUnavailable as error:
-            plan = AssistantPlan.model_validate(
-                _clarify(
-                    plan.language,
-                    "请先选择相关的聊天或工单，再问一次。",
-                    "請先揀選相關嘅聊天或者工單，再問一次。",
-                    "Select the related chat or work order first, then ask again.",
-                )
-            )
+            plan = AssistantPlan.model_validate(_selection_question(db, scope, plan.language))
             turn.intent, results, used = "clarify", [], used + [f"refused:{error.code}"]
             answer = render(plan, results)
         turn.trace = {"tools": used, "language": plan.language}

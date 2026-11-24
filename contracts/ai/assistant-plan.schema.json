@@ -15,6 +15,23 @@
           "title": "From Date",
           "type": "string"
         },
+        "part_of_day": {
+          "anyOf": [
+            {
+              "enum": [
+                "morning",
+                "afternoon",
+                "evening"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Part Of Day"
+        },
         "to_date": {
           "format": "date",
           "title": "To Date",

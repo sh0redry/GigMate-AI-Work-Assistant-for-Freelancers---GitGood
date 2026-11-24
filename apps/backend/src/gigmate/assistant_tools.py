@@ -9,8 +9,7 @@ citations that justify it.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, time, timedelta
-from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
@@ -26,7 +25,7 @@ from gigmate.message_context import bounded_incoming
 
 OPEN = {"pending_confirmation", "confirmed", "in_progress", "waiting_customer"}
 MAX_ORDERS = 20
-MAX_SLOTS = 10
+MAX_WINDOWS = 40
 
 
 class ToolUnavailable(Exception):
@@ -43,26 +42,29 @@ class Scope:
     conversation: ConversationRow | None = None
     order: WorkOrderRow | None = None
     selected_sources: list[dict] = field(default_factory=list)
+    now: datetime | None = None
 
 
 def find_free_slots(db, scope: Scope, call: FindFreeSlots) -> dict:
+    """Free windows per day, each long enough for the requested duration."""
     config = scheduling.settings(db, scope.account_id)
-    tz = ZoneInfo(config.timezone)
-    start = datetime.combine(call.from_date, time.min, tz)
-    end = datetime.combine(call.to_date + timedelta(days=1), time.min, tz)
-    slots = scheduling.free_slots(
+    windows = scheduling.free_windows(
         db,
         scope.account_id,
+        call.from_date,
+        call.to_date,
         timedelta(minutes=call.duration_minutes),
-        start,
-        count=MAX_SLOTS,
-        days=(end - start).days,
+        now=scope.now,
+        part=call.part_of_day,
+        limit=MAX_WINDOWS,
     )
-    inside = [s for s in slots if scheduling.parse(s["end_at"]) <= end]
     return {
         "timezone": config.timezone,
         "duration_minutes": call.duration_minutes,
-        "slots": inside,
+        "from_date": call.from_date.isoformat(),
+        "to_date": call.to_date.isoformat(),
+        "part_of_day": call.part_of_day,
+        "slots": windows,
         "citations": [{"kind": "free_slots"}],
     }
 
@@ -93,6 +95,8 @@ def list_work_orders(db, scope: Scope, call: ListWorkOrders) -> dict:
     ][:MAX_ORDERS]
     return {
         "orders": orders,
+        "status": call.status,
+        "scope": call.scope,
         "citations": [
             {"kind": "work_order", "work_order_id": o["id"], "work_order_version": o["version"]}
             for o in orders

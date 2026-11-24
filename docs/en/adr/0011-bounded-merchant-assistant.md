@@ -1,7 +1,7 @@
 # ADR 0011 Bounded merchant assistant
 
 - Date: 2026-11-24
-- Status: Accepted 2026-11-24 (owner decisions O1/O2 below). Batch 0 (this ADR, contracts, threat model) and batch 1 (durable turns, read-only tools, offline rule planner) are implemented; batches 2–5 are targets.
+- Status: Accepted 2026-11-24 (owner decisions O1/O2 below). Batch 0 (this ADR, contracts, threat model) batch 1 (durable turns, read-only tools, offline rule planner) and batch 2 (date-range availability and order answers) are implemented; batches 3–5 are targets.
 - Related: [ADR 0003](0003-approval-and-execution.md) (approval and execution), [ADR 0007](0007-owned-waha-sending.md) (owned sending), [ADR 0008](0008-vendor-selection-and-private-configuration.md) (vendor and credentials), [design and threat model](../assistant.md).
 
 ## Context
@@ -16,7 +16,7 @@ Merchants want to ask GigMate directly, for example "Which days next week can I 
 4. **Facts come from tools, not from the model.** Slot times, counts and order facts in `availability`/`order_status` answers are rendered by the server from tool results. In a reply draft (`AssistantComposition` 1.0.0, [schema](../../../contracts/ai/assistant-composition.schema.json)) the model must list facts the tools did not establish (`unverified_claims`) for highlighted review.
 5. **Context is explicit and versioned.** A turn carries the merchant's selection (`AssistantContext`: conversation + expected context version, order + expected order version, selected message revisions). Ambiguity, for example several open orders and none selected, produces a `clarify` turn, never a guess. New, edited or revoked customer messages invalidate an unconsumed generated draft, as for every other proposal.
 6. **Durable turns.** A turn is persisted with an idempotency key and runs as a worker job with a lease (queued → running → completed / failed / unknown / superseded). An interrupted model call becomes `unknown` and is not retried automatically. Logs carry IDs, stage, latency and stable codes, never question text, customer content or model output.
-7. **Fallback without a model.** When the reviewed model gates are closed, the assistant answers with the existing rule-based workspace query and the deterministic free-slot computation (`engine: "rules"`), and says that reply drafts need the model.
+7. **Fallback without a model.** When the reviewed model gates are closed, the offline rule planner (keyword intents, deterministic date/duration parsing) and the deterministic free-window computation answer (`engine: "rules"`); reply drafts say they need the model. The older `POST /workspace-query` keyword endpoint is unchanged.
 8. **Spend and abuse bounds.** The existing ADR 0008 gates and per-call cost/token caps apply. Batch 1 adds a per-account daily turn ceiling and a per-turn cap of two model calls (plan, then compose for reply/polish only).
 
 ## Owner decisions (accepted 2026-11-24)
