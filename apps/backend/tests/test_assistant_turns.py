@@ -330,7 +330,7 @@ def test_a_second_worker_does_not_pick_up_a_turn_in_progress(signed_in):
     assert second.calls == 0 and slow.calls == 1
 
 
-def test_reply_needs_a_selected_chat_and_drafting_is_not_faked(signed_in):
+def test_reply_needs_a_selected_chat_and_never_invents_content(signed_in):
     client, factory, _engine, headers = signed_in
     unselected = ask(client, headers, "帮我回一下客户").json()["data"]
     assistant.run_once(factory)
@@ -340,7 +340,8 @@ def test_reply_needs_a_selected_chat_and_drafting_is_not_faked(signed_in):
     assistant.run_once(factory)
     done = client.get(f"/api/v1/assistant/turns/{chosen['id']}").json()["data"]
     assert done["intent"] == "reply_draft"
-    assert done["answer"]["kind"] == "unsupported" and done["answer"]["draft_id"] is None
+    # Without dictated content the offline composer asks what to say instead of inventing it.
+    assert done["answer"]["kind"] == "clarification" and done["answer"]["draft_id"] is None
     assert turn_row(factory, chosen["id"]).trace["tools"] == ["read_conversation"]
 
 

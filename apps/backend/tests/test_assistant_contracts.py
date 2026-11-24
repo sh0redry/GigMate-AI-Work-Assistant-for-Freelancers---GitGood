@@ -226,11 +226,14 @@ def test_assistant_fixtures_cross_validate_with_the_source_models():
                 model.model_validate_json(raw)
 
 
-def test_only_the_three_bounded_assistant_routes_exist():
+def test_only_the_bounded_assistant_routes_exist():
     paths = app.openapi()["paths"]
     routes = {(path, method) for path in paths if "assistant" in path for method in paths[path]}
     assert routes == {
         ("/api/v1/assistant/turns", "post"),
         ("/api/v1/assistant/turns/{turn_id}", "get"),
         ("/api/v1/assistant/threads/{thread_id}/turns", "get"),
+        ("/api/v1/assistant/drafts/{draft_id}", "get"),
+        ("/api/v1/assistant/drafts/{draft_id}/consume", "post"),
+        ("/api/v1/assistant/drafts/{draft_id}/revoke", "post"),
     }

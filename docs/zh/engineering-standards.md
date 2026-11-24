@@ -4,7 +4,7 @@
 
 采用单仓库、模块化单体后端、独立 worker。React/TypeScript/Vite、FastAPI/Pydantic、PostgreSQL、SQLAlchemy/Alembic 和 Compose 已落地。Python 3.12.10、Node 24.15.0、PostgreSQL 17.9 及依赖锁固定，实际命令见开发入口。
 
-后续应用放 apps/web、apps/backend，基础部署放 infra，校验与工具放 scripts。当前阶段不创建无实现的应用空目录。模块职责见[英文架构](../en/architecture.md)：identity、messaging、understanding、workorders、planning、actions、audit。目标模块 assistant（商户 AI 助手）见 [ADR 0011](../en/adr/0011-bounded-merchant-assistant.md) 与[中文设计](assistant.md)，第 0–2 批已实现契约、持久化问答、只读工具、离线规则规划器以及按日期范围的空闲与工单回答。
+后续应用放 apps/web、apps/backend，基础部署放 infra，校验与工具放 scripts。当前阶段不创建无实现的应用空目录。模块职责见[英文架构](../en/architecture.md)：identity、messaging、understanding、workorders、planning、actions、audit。目标模块 assistant（商户 AI 助手）见 [ADR 0011](../en/adr/0011-bounded-merchant-assistant.md) 与[中文设计](assistant.md)，第 0–2 批已实现契约、持久化问答、只读工具、离线规则规划器、按日期范围的空闲与工单回答，以及回复/润色草稿。
 
 跨模块通过应用服务调用；路由层和 adapter 不直接实现另一套状态机。AI 模块不拥有正式业务写入和发送权限。
 

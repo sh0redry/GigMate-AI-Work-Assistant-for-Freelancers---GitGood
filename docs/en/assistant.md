@@ -10,7 +10,9 @@
 
 **Implemented (batch 2):** `scheduling.free_windows` computes free windows per local day over a date range (working days and hours, minus breaks, minus confirmed appointments padded by the buffer, from now plus the preparation lead), optionally limited to morning/afternoon/evening; `find_free_slots` now returns these windows (each long enough for the duration) and `AssistantPlan` gained optional `part_of_day`. The rule planner reads this week/next week, weekends, a specific weekday (周二 / 下周二 / next Tuesday), today/tomorrow/the day after, durations such as 一个半小时, 两小时, 45 分钟, 半個鐘 or 2 hours, and parts of the day. Without a stated duration it uses the selected order's appointment length, otherwise the merchant's default duration. Order questions filter by waiting for customer, pending confirmation, in progress or confirmed; "this order" uses only the selected order and reports its status, version and which key items (time, address) or pending details are still open. Without a selection the answer says how many open orders the chosen chat has and asks the merchant to pick one. Availability questions that mention the customer add that these are the merchant's own free times and the customer must confirm.
 
-**Not implemented yet:** reply drafts and polishing (batch 3 — until then such turns answer `unsupported` instead of inventing text), the UI (batch 4) and the reviewed model planner (batch 5).
+**Implemented (batch 3):** reply drafts and polishing. After the read-only tools run, a second phase (outside any database transaction) asks a composer for an `AssistantComposition`; the server rejects compositions whose kind differs or that cite revisions other than the merchant's selection or the bounded context, then re-checks the lease and selection and stores an assistant draft (migration `0026_assistant_drafts`). The offline `RuleComposer` only wraps text the merchant dictated (quoted, after a colon, or after 说/話/say/tell them) with a greeting and closing in the question's language; without dictation it asks what to say, and without a consented customer message it declines. Routes: `GET /api/v1/assistant/drafts/{id}`, `POST …/consume` (once; returns the text for the composer, sends nothing) and `POST …/revoke`. Draft status is computed on read: a new/edited/revoked message, changed order, revoked consent or a no-longer-current cited revision gives `revoked` with `revoke_reason`; drafts expire after 24 hours (`GIGMATE_ASSISTANT_DRAFT_TTL_MINUTES`) and their text is scrubbed after 30 days.
+
+**Not implemented yet:** the UI (batch 4) and the reviewed model planner and composer (batch 5).
 
 ### Batch 1 behaviour
 
@@ -25,8 +27,8 @@
 | --- | --- | --- | --- |
 | `availability` | "Which days next week can I do a two-hour shoot?" | `find_free_slots`, `get_work_order` | Server-rendered slots from the merchant's own calendar and working hours |
 | `order_status` | "Which orders are waiting for the customer?" | `list_work_orders`, `get_work_order` | Server-rendered list linking to each order |
-| `reply_draft` | "Reply to this message: Tuesday afternoon works." | `read_conversation`, `get_work_order`, `find_free_slots`, `list_work_orders` | An agent draft (not sent) bound to the selected chat, order and message revisions |
-| `polish` | "Make my reply more polite." | `read_conversation` | An agent draft of the merchant's own text |
+| `reply_draft` | "Reply to this message: Tuesday afternoon works." | `read_conversation`, `get_work_order`, `find_free_slots`, `list_work_orders` | An assistant draft (not sent) bound to the selected chat, order and message revisions |
+| `polish` | "Polish: arriving 10 am tomorrow." | `read_conversation` | An assistant draft of the merchant's own text |
 | `clarify` | Several open orders and none selected | none | A question back to the merchant, never to the customer |
 | `unsupported` | "Cancel all my orders", "Message every customer" | none | Declined, with a pointer to the normal page |
 
@@ -35,7 +37,7 @@
 1. The merchant asks from the customer-chat side panel (with the selected chat, order and messages) or from the Today page (no chat selected). The browser sends `AssistantTurnCommand` with an `Idempotency-Key`.
 2. The server authenticates, resolves ownership, checks the selection's versions and consent, stores the turn as `queued`, and commits a job in the same transaction.
 3. The worker leases the job. Phase 1: the model returns an `AssistantPlan`. The server rejects anything outside the intent's tool subset and runs the tools itself.
-4. For `availability`/`order_status`, the server renders the answer from tool results. For `reply_draft`/`polish`, phase 2 returns an `AssistantComposition`; the server checks its sources against the selection and stores an agent draft.
+4. For `availability`/`order_status`, the server renders the answer from tool results. For `reply_draft`/`polish`, phase 2 returns an `AssistantComposition`; the server checks its sources against the selection and stores an assistant draft.
 5. Before completing, the server rechecks context and order versions. If a relevant message arrived meanwhile, the turn becomes `superseded` and any draft is not offered.
 6. The merchant reads the answer. A draft can be placed in the composer as `agent_assisted`; sending then follows the existing permission, approval and gateway steps.
 
@@ -74,7 +76,7 @@ Assets: customer messages and identities, merchant orders and calendar, the What
 | 0 | ADR, contracts, schemas, fixtures, threat model | Contract tests, export check, baseline (done) |
 | 1 | Tables and migration, turn routes, worker job, tool registry, offline rule planner | Normal/failure paths on SQLite and PostgreSQL; idempotency; unknown outcomes; ownership (done) |
 | 2 | Availability and order-status answers, date-range free slots, rule-based fallback | Deterministic answers; clarify on ambiguity; no model needed for tests (done) |
-| 3 | Reply draft and polish as a new agent draft kind, invalidation, adoption | Draft bindings, supersession races, adoption without sending |
+| 3 | Reply draft and polish as assistant drafts, invalidation, adoption | Draft bindings, supersession races, adoption without sending (done) |
 | 4 | Assistant panel in customer chats and on Today; three UI languages | Frontend tests, build, browser QA with synthetic data |
 | 5 | Live model behind existing gates, evaluation and injection sets, cost checks | Synthetic evaluation, then real-phone acceptance by the owner |
 

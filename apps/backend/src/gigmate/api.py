@@ -28,6 +28,7 @@ from gigmate.contracts import (
     ApproveActionCommand,
     ArchiveCommand,
     AssignMessageCommand,
+    AssistantDraftView,
     AssistantTurnCommand,
     AssistantTurnView,
     CalendarEvent,
@@ -760,6 +761,34 @@ def list_assistant_turns(
 
     rows = assistant.list_for_thread(db, account, str(thread_id))
     return page(request, rows, cursor, limit, assistant.view)
+
+
+@app.get("/api/v1/assistant/drafts/{draft_id}", response_model=Detail[AssistantDraftView])
+def read_assistant_draft(
+    draft_id: UUID, request: Request, account=Depends(actor), db=Depends(database)
+):
+    from gigmate import assistant_drafts
+
+    return detail(request, assistant_drafts.get(db, account, str(draft_id)))
+
+
+@app.post("/api/v1/assistant/drafts/{draft_id}/consume", response_model=Detail[AssistantDraftView])
+def consume_assistant_draft(
+    draft_id: UUID, request: Request, account=Depends(actor), db=Depends(database)
+):
+    """Take the draft text into the merchant's composer, once. Nothing is sent or approved."""
+    from gigmate import assistant_drafts
+
+    return detail(request, assistant_drafts.consume(db, account, str(draft_id)))
+
+
+@app.post("/api/v1/assistant/drafts/{draft_id}/revoke", response_model=Detail[AssistantDraftView])
+def revoke_assistant_draft(
+    draft_id: UUID, request: Request, account=Depends(actor), db=Depends(database)
+):
+    from gigmate import assistant_drafts
+
+    return detail(request, assistant_drafts.revoke(db, account, str(draft_id)))
 
 
 @app.post("/api/v1/drafts/{draft_id}/revoke", response_model=Detail[AgentDraftView])

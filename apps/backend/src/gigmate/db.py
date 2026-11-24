@@ -448,6 +448,35 @@ class AssistantTurn(Base):
     __table_args__ = (UniqueConstraint("account_id", "request_key", name="uq_assistant_turn_key"),)
 
 
+class AssistantDraft(Base):
+    """Reply or polish text the assistant prepared for the merchant (ADR 0011, batch 3).
+
+    Mirrors agent-draft rules: a proposal surface only, valid while its bindings
+    (conversation context version, optional order version, consent, cited message
+    revisions) hold, expiring, revocable and consumable once. Validity is computed
+    on read, so any new, edited or revoked message makes an unconsumed draft unusable.
+    """
+
+    __tablename__ = "assistant_drafts"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"), index=True)
+    turn_id: Mapped[str] = mapped_column(ForeignKey("assistant_turns.id"), unique=True)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"), index=True)
+    work_order_id: Mapped[str | None] = mapped_column(ForeignKey("work_orders.id"))
+    base_work_order_version: Mapped[int | None] = mapped_column(Integer)
+    context_version: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(16))
+    text: Mapped[str | None] = mapped_column(Text)
+    sources: Mapped[list] = mapped_column(JSON)
+    unverified_claims: Mapped[list] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(16), default="proposed")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    scrubbed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class MessageRow(Base):
     __tablename__ = "message_revisions"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)

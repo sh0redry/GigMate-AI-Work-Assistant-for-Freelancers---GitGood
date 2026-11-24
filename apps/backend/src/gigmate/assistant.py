@@ -27,7 +27,7 @@ from pydantic import ValidationError
 from sqlalchemy import func, select, update
 
 from gigmate import assistant_tools, scheduling
-from gigmate.assistant_plan import AssistantPlan
+from gigmate.assistant_plan import AssistantComposition, AssistantPlan
 from gigmate.contracts import (
     AssistantAnswer,
     AssistantContext,
@@ -410,7 +410,15 @@ class RulePlanner:
         today = date.fromisoformat(request["today"])
         base = {"schema_version": "1.0.0", "language": language}
         if _has(text, _POLISH):
-            plan = {**base, "intent": "polish", "tool_calls": []}
+            if not selection["conversation"]:
+                plan = _clarify(
+                    language,
+                    "请先在客户会话中选择要发送的聊天，再让我润色。",
+                    "請先喺客人對話揀選要發送嘅聊天，再叫我潤色。",
+                    "Select the customer chat this text is for, then ask me to polish it.",
+                )
+            else:
+                plan = {**base, "intent": "polish", "tool_calls": []}
         elif _has(text, _REPLY):
             if not selection["conversation"]:
                 plan = _clarify(
@@ -670,25 +678,14 @@ def render(plan: AssistantPlan, results: list[dict], *, customer_note: bool = Fa
         answer = _render_availability(language, found, customer_note)
     elif plan.intent == "order_status":
         answer = _render_orders(language, results)
-    elif plan.intent in {"reply_draft", "polish"}:
-        # Drafting arrives in batch 3; until then say so instead of inventing text.
-        answer = {
-            "kind": "unsupported",
-            "text": _say(
-                language,
-                "生成回复草稿与润色尚未开放；目前请在客户会话中手动回复。",
-                "生成回覆草稿同潤色仲未開放；暫時請喺客人對話手動回覆。",
-                "Reply drafts and polishing are not available yet; reply manually in the chat.",
-            ),
-        }
     else:
         answer = {
             "kind": "unsupported",
             "text": _say(
                 language,
-                "我只能帮你查空闲时段、查工单状态，以及（即将开放）准备回复草稿。其他操作请使用对应页面。",
-                "我只可以幫你查空檔、查工單狀態，同埋（即將開放）準備回覆草稿。其他操作請用對應頁面。",
-                "I can check free slots and work-order status, and soon prepare reply drafts. "
+                "我只能帮你查空闲时段、查工单状态、准备回复草稿和润色文字。其他操作请使用对应页面。",
+                "我只可以幫你查空檔、查工單狀態、準備回覆草稿同潤色文字。其他操作請用對應頁面。",
+                "I can check free slots and work-order status, prepare reply drafts and polish text. "
                 "Use the normal pages for anything else.",
             ),
         }
@@ -797,7 +794,7 @@ def _selection_question(db, scope, language: str) -> dict:
     )
 
 
-def run_once(factory=Session, *, planner: Planner | None = None, now=None) -> bool:
+def run_once(factory=Session, *, planner: Planner | None = None, composer=None, now=None) -> bool:
     if not enabled():
         return False
     injected = now is not None
@@ -819,26 +816,16 @@ def run_once(factory=Session, *, planner: Planner | None = None, now=None) -> bo
         outcome = ("unknown", "ASSISTANT_RESULT_UNKNOWN")
     finished_at = now if injected else datetime.now(UTC)
     with factory.begin() as db:
-        turn = db.scalar(
-            select(AssistantTurn)
-            .where(AssistantTurn.id == turn_id)
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        )
-        if turn is None or turn.state != "running" or turn.lease_token != token:
+        turn = _leased(db, turn_id, token)
+        if turn is None:
             return True
         turn.engine = getattr(planner, "engine", None)
         if outcome:
             _finish(turn, outcome[0], finished_at, code=outcome[1])
             return True
         turn.intent = plan.intent
-        try:
-            scope = resolve_scope(
-                db, turn.account_id, AssistantContext.model_validate(turn.context)
-            )
-        except BusinessError as error:
-            state = "superseded" if error.code == "ASSISTANT_CONTEXT_STALE" else "failed"
-            _finish(turn, state, finished_at, code=error.code)
+        scope = _scope_or_finish(db, turn, finished_at)
+        if scope is None:
             return True
         scope.now = now if injected else None
         customer_note = plan.intent == "availability" and _has(
@@ -849,15 +836,266 @@ def run_once(factory=Session, *, planner: Planner | None = None, now=None) -> bo
             for call in plan.tool_calls:
                 results.append(assistant_tools.run(db, scope, call))
                 used.append(call.tool)
-            answer = render(plan, results, customer_note=customer_note)
         except assistant_tools.ToolUnavailable as error:
             plan = AssistantPlan.model_validate(_selection_question(db, scope, plan.language))
             turn.intent, results, used = "clarify", [], used + [f"refused:{error.code}"]
-            answer = render(plan, results)
         turn.trace = {"tools": used, "language": plan.language}
+        if plan.intent not in DRAFTING:
+            _finish(
+                turn,
+                "completed",
+                finished_at,
+                answer=render(plan, results, customer_note=customer_note),
+            )
+            log.info("assistant_turn_completed turn=%s intent=%s", turn.id, turn.intent)
+            return True
+        compose_request = _compose_request(turn, plan, scope, results)
+    # Phase 2 (reply/polish) runs outside any transaction: a model call may be slow.
+    return _compose(factory, turn_id, token, plan, compose_request, composer, injected, now)
+
+
+DRAFTING = {"reply_draft", "polish"}
+
+
+def _leased(db, turn_id, token):
+    turn = db.scalar(
+        select(AssistantTurn)
+        .where(AssistantTurn.id == turn_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if turn is None or turn.state != "running" or turn.lease_token != token:
+        return None
+    return turn
+
+
+def _scope_or_finish(db, turn, finished_at):
+    try:
+        return resolve_scope(db, turn.account_id, AssistantContext.model_validate(turn.context))
+    except BusinessError as error:
+        state = "superseded" if error.code == "ASSISTANT_CONTEXT_STALE" else "failed"
+        _finish(turn, state, finished_at, code=error.code)
+        return None
+
+
+def _compose_request(turn, plan, scope, results) -> dict:
+    messages = next((r["messages"] for r in results if "messages" in r), [])
+    order = next((r["order"] for r in results if "order" in r), None)
+    windows = next((r for r in results if "slots" in r), None)
+    return {
+        "kind": plan.intent,
+        "language": plan.language,
+        "question": turn.question,
+        "dictated": dictated_text(turn.question or ""),
+        "selected_sources": scope.selected_sources,
+        "messages": messages,
+        "order": order,
+        "free_windows": windows["slots"] if windows else [],
+    }
+
+
+def _allowed_sources(request: dict) -> set[tuple[str, int]]:
+    cited = request["selected_sources"] or [
+        {"message_id": m["message_id"], "message_revision": m["message_revision"]}
+        for m in request["messages"]
+    ]
+    return {(s["message_id"], s["message_revision"]) for s in cited}
+
+
+def _compose(factory, turn_id, token, plan, request, composer, injected, now) -> bool:
+    from gigmate import assistant_drafts
+
+    composer = composer or composer_for()
+    failure, composition = None, None
+    try:
+        composition = AssistantComposition.model_validate_json(composer.compose(request))
+    except ComposerUnavailable as error:
+        failure = ("completed", error.code)
+    except ValidationError:
+        failure = ("failed", "ASSISTANT_COMPOSITION_INVALID")
+    except Exception as error:
+        log.warning("assistant_compose_interrupted turn=%s class=%s", turn_id, type(error).__name__)
+        failure = ("unknown", "ASSISTANT_RESULT_UNKNOWN")
+    if composition is not None and (
+        composition.kind != plan.intent
+        or not {(s.message_id, s.message_revision) for s in composition.sources}
+        <= _allowed_sources(request)
+    ):
+        # The text may only answer revisions the merchant selected or the bounded context held.
+        composition, failure = None, ("failed", "ASSISTANT_COMPOSITION_INVALID")
+    finished_at = now if injected else datetime.now(UTC)
+    with factory.begin() as db:
+        turn = _leased(db, turn_id, token)
+        if turn is None:
+            return True
+        turn.engine = getattr(composer, "engine", turn.engine)
+        if failure and failure[0] != "completed":
+            _finish(turn, failure[0], finished_at, code=failure[1])
+            return True
+        scope = _scope_or_finish(db, turn, finished_at)
+        if scope is None:
+            return True
+        if failure:
+            _finish(
+                turn,
+                "completed",
+                finished_at,
+                answer=_drafting_unavailable(plan.language, failure[1]),
+            )
+            return True
+        draft = assistant_drafts.create(
+            db, scope=scope, turn=turn, composition=composition, now=finished_at
+        )
+        citations = [
+            {
+                "kind": "message",
+                "message": s.model_dump(),
+                "work_order_id": None,
+                "work_order_version": None,
+            }
+            for s in composition.sources
+        ]
+        if scope.order is not None:
+            citations.append(
+                {
+                    "kind": "work_order",
+                    "message": None,
+                    "work_order_id": scope.order.id,
+                    "work_order_version": scope.order.data.get("version"),
+                }
+            )
+        heading = _say(
+            plan.language,
+            "已准备好草稿（尚未发送，可放入输入框核对后再发）：",
+            "已準備好草稿（未發送，可放入輸入框核對後再發）：",
+            "Draft ready (not sent; put it in the composer and review before sending):",
+        )
+        answer = AssistantAnswer.model_validate(
+            {
+                "kind": "draft",
+                "text": heading + "\n" + composition.text,
+                "draft_id": draft.id,
+                "unverified_claims": composition.unverified_claims,
+                "citations": citations,
+            }
+        ).model_dump(mode="json")
         _finish(turn, "completed", finished_at, answer=answer)
-        log.info("assistant_turn_completed turn=%s intent=%s", turn.id, turn.intent)
+        log.info(
+            "assistant_turn_completed turn=%s intent=%s draft=%s", turn.id, plan.intent, draft.id
+        )
     return True
+
+
+_UNAVAILABLE = {
+    "ASSISTANT_DICTATION_REQUIRED": (
+        "clarification",
+        "请告诉我要回复的内容，例如：帮我回一下，说周二下午可以。（自动起草需要接入模型后才开放。）",
+        "請講低要回覆嘅內容，例如：幫我回一下，話星期二下晝得。（自動起草要接入模型先開放。）",
+        "Tell me what to say, for example: reply saying Tuesday afternoon works. "
+        "(Automatic drafting needs the model, which is not enabled.)",
+    ),
+    "ASSISTANT_NO_SOURCE": (
+        "unsupported",
+        "这个聊天里没有可以引用的已授权客户消息，无法起草回复。",
+        "呢個聊天冇可以引用嘅已授權客人訊息，未能起草回覆。",
+        "This chat has no consented customer message to reply to.",
+    ),
+}
+
+
+def _drafting_unavailable(language: str, code: str) -> dict:
+    kind, zh, hant, en = _UNAVAILABLE.get(code, _UNAVAILABLE["ASSISTANT_DICTATION_REQUIRED"])
+    return AssistantAnswer.model_validate(
+        {"kind": kind, "text": _say(language, zh, hant, en), "citations": []}
+    ).model_dump(mode="json")
+
+
+# --- composing (phase 2) -----------------------------------------------------
+
+
+class ComposerUnavailable(Exception):
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
+class Composer(Protocol):
+    engine: str
+
+    def compose(self, request: dict) -> str:
+        """Return AssistantComposition JSON. May raise ComposerUnavailable or time out."""
+
+
+# "说 / say" introduces dictated content only after punctuation, a space, the start or
+# 回/回复: "客户说的那条" (what the customer said) is not dictation.
+_DICTATION = re.compile(
+    r"(?:(?:^|[，,。；;\s]|回复|回覆|回)(?:说|說|讲|講|話)"
+    r"|告诉他|告诉她|告訴佢|跟他说|跟她说|同佢講"
+    r"|\bsaying\b|\bsay\b|\btell (?:them|him|her)\b)\s*[:：,，]?\s*(.+)$",
+    re.I | re.S,
+)
+_QUOTED = re.compile(r"[“「\"](.+?)[”」\"]", re.S)
+_AFTER_COLON = re.compile(r"[:：]\s*(.+)$", re.S)
+
+
+def dictated_text(question: str) -> str | None:
+    """Text the merchant explicitly gave: quoted, after a colon, or after "说 / say"."""
+    for pattern in (_QUOTED, _AFTER_COLON, _DICTATION):
+        if match := pattern.search(question):
+            value = match.group(1).strip().strip("。.!！ ")
+            if value:
+                return value[:800]
+    return None
+
+
+_GREETINGS = ("您好", "你好", "hi", "hello", "dear", "嗨", "早晨", "早上好", "下午好")
+
+
+def _polite(text: str, language: str) -> str:
+    body = text.strip()
+    if not body.lower().startswith(_GREETINGS):
+        body = _say(language, "您好，", "你好，", "Hi, ") + body
+    if body[-1] not in "。.!！?？~～":
+        body += "." if language == "en" else "。"
+    closing = _say(language, "谢谢！", "多謝！", "Thanks!")
+    if body.endswith(closing):
+        return body
+    return body + (" " if language == "en" else "") + closing
+
+
+class RuleComposer:
+    """Offline composer: wraps only what the merchant dictated; never invents content."""
+
+    engine = "rules"
+
+    def compose(self, request: dict) -> str:
+        dictated = request["dictated"]
+        if not dictated:
+            raise ComposerUnavailable("ASSISTANT_DICTATION_REQUIRED")
+        sources = []
+        if request["kind"] == "reply_draft":
+            sources = request["selected_sources"] or [
+                {"message_id": m["message_id"], "message_revision": m["message_revision"]}
+                for m in request["messages"][-1:]
+            ]
+            if not sources:
+                raise ComposerUnavailable("ASSISTANT_NO_SOURCE")
+        return json.dumps(
+            {
+                "schema_version": "1.0.0",
+                "kind": request["kind"],
+                "language": request["language"],
+                "text": _polite(dictated, request["language"])[:1000],
+                "sources": sources,
+                "unverified_claims": [],
+            },
+            ensure_ascii=False,
+        )
+
+
+def composer_for() -> Composer:
+    """Batch 3 ships only the offline composer; the reviewed model arrives in batch 5."""
+    return RuleComposer()
 
 
 def scrub(factory=Session, now=None) -> int:

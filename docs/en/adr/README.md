@@ -9,6 +9,6 @@
 | [0005](0005-bounded-waha-observations.md) | Bounded history snapshots, context-only provenance and deferred media reading | Local batch implemented; independent live acceptance pending |
 | [0006](0006-owned-media-handoff.md) | Explicit owned media storage and A/B processing boundary | A implementation; B real model and physical acceptance pending |
 | [0007](0007-owned-waha-sending.md) | Owned multi-type sending and exact merchant preauthorization | Authorized development batch; physical/B/PostgreSQL/independent acceptance pending |
-| [0011](0011-bounded-merchant-assistant.md) | Bounded merchant assistant: planned read-only tools, proposals only | Accepted (owner decisions O1/O2 2026-11-24); batches 0–2 implemented, batches 3–5 pending |
+| [0011](0011-bounded-merchant-assistant.md) | Bounded merchant assistant: planned read-only tools, proposals only | Accepted (owner decisions O1/O2 2026-11-24); batches 0–3 implemented, batches 4–5 pending |
 
 Accepted means agreed; each ADR separately records implementation status. v0.2 implements replay, generated contracts and internal confirmation; the current opt-in WAHA sending branch implements a separate sending gateway, while generic business action execution and live acceptance remain pending. Changes require a superseding ADR or amendment with impact and migration notes. Module contacts coordinate review without exclusive approval rights.

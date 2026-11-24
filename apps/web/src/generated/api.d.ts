@@ -140,6 +140,60 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/assistant/drafts/{draft_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read Assistant Draft */
+    get: operations["read_assistant_draft_api_v1_assistant_drafts__draft_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/assistant/drafts/{draft_id}/consume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Consume Assistant Draft
+     * @description Take the draft text into the merchant's composer, once. Nothing is sent or approved.
+     */
+    post: operations["consume_assistant_draft_api_v1_assistant_drafts__draft_id__consume_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/assistant/drafts/{draft_id}/revoke": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Revoke Assistant Draft */
+    post: operations["revoke_assistant_draft_api_v1_assistant_drafts__draft_id__revoke_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/assistant/threads/{thread_id}/turns": {
     parameters: {
       query?: never;
@@ -1958,6 +2012,85 @@ export interface components {
       work_order_id?: string | null;
     };
     /**
+     * AssistantDraftView
+     * @description Reply or polish text the assistant prepared; never a send, approval or confirmation.
+     *
+     *     ``status`` is computed on read: a new, edited or revoked message in the chat,
+     *     a changed order, revoked consent or a no-longer-current cited revision makes an
+     *     unconsumed draft ``revoked`` (with ``revoke_reason``); ``consumed`` happens once.
+     */
+    AssistantDraftView: {
+      /** Base Work Order Version */
+      base_work_order_version: number | null;
+      /** Consumed At */
+      consumed_at: string | null;
+      /** Context Version */
+      context_version: number;
+      /**
+       * Conversation Id
+       * Format: uuid
+       */
+      conversation_id: string;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /**
+       * Execution Authority
+       * @default false
+       * @constant
+       */
+      execution_authority: false;
+      /**
+       * Expires At
+       * Format: date-time
+       */
+      expires_at: string;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "reply_draft" | "polish";
+      /** Revoke Reason */
+      revoke_reason:
+        | (
+            | "merchant"
+            | "context_changed"
+            | "order_changed"
+            | "consent_revoked"
+            | "source_changed"
+          )
+        | null;
+      /** Revoked At */
+      revoked_at: string | null;
+      /** Scrubbed At */
+      scrubbed_at: string | null;
+      /** Sources */
+      sources: components["schemas"]["SourceRef"][];
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "proposed" | "consumed" | "revoked" | "expired";
+      /** Text */
+      text: string | null;
+      /**
+       * Turn Id
+       * Format: uuid
+       */
+      turn_id: string;
+      /** Unverified Claims */
+      unverified_claims: string[];
+      /** Work Order Id */
+      work_order_id: string | null;
+    };
+    /**
      * AssistantTurnCommand
      * @description One merchant question. Sent with an Idempotency-Key; the turn runs as a durable job.
      */
@@ -2486,6 +2619,15 @@ export interface components {
     /** Detail[AgentDraftView] */
     Detail_AgentDraftView_: {
       data: components["schemas"]["AgentDraftView"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[AssistantDraftView] */
+    Detail_AssistantDraftView_: {
+      data: components["schemas"]["AssistantDraftView"];
       /**
        * Request Id
        * Format: uuid
@@ -5173,6 +5315,99 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Detail_ActionView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  read_assistant_draft_api_v1_assistant_drafts__draft_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        draft_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_AssistantDraftView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  consume_assistant_draft_api_v1_assistant_drafts__draft_id__consume_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        draft_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_AssistantDraftView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  revoke_assistant_draft_api_v1_assistant_drafts__draft_id__revoke_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        draft_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_AssistantDraftView_"];
         };
       };
       /** @description Validation Error */

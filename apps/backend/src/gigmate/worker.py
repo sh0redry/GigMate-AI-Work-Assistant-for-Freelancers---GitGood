@@ -842,6 +842,9 @@ def maintain(factory=Session):
         from gigmate.assistant import scrub as scrub_assistant
 
         scrub_assistant(factory)
+        from gigmate.assistant_drafts import scrub as scrub_drafts
+
+        scrub_drafts(factory)
         from gigmate.waha_media import purge as purge_media
 
         purge_media(factory)

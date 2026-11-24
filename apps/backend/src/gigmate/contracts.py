@@ -1638,3 +1638,35 @@ class AssistantTurnView(Model):
     created_at: UtcTimestamp
     completed_at: UtcTimestamp | None
     scrubbed_at: UtcTimestamp | None = None
+
+
+class AssistantDraftView(Model):
+    """Reply or polish text the assistant prepared; never a send, approval or confirmation.
+
+    ``status`` is computed on read: a new, edited or revoked message in the chat,
+    a changed order, revoked consent or a no-longer-current cited revision makes an
+    unconsumed draft ``revoked`` (with ``revoke_reason``); ``consumed`` happens once.
+    """
+
+    id: Id
+    turn_id: Id
+    conversation_id: Id
+    work_order_id: Id | None
+    base_work_order_version: Positive | None
+    context_version: NonNegative
+    kind: Literal["reply_draft", "polish"]
+    # Cleared after the retention window (scrubbed_at set).
+    text: Annotated[str, Field(min_length=1, max_length=1000)] | None
+    sources: list[SourceRef]
+    unverified_claims: list[Annotated[str, Field(min_length=1, max_length=200)]]
+    status: Literal["proposed", "consumed", "revoked", "expired"]
+    revoke_reason: (
+        Literal["merchant", "context_changed", "order_changed", "consent_revoked", "source_changed"]
+        | None
+    )
+    expires_at: UtcTimestamp
+    created_at: UtcTimestamp
+    consumed_at: UtcTimestamp | None
+    revoked_at: UtcTimestamp | None
+    scrubbed_at: UtcTimestamp | None
+    execution_authority: Literal[False] = False
