@@ -10,6 +10,8 @@ The transition in [ADR 0002](../docs/en/adr/0002-contract-authority.md) is compl
 | [Event envelope](events/message-event.schema.json) | Adapter-normalized inbound events |
 | [AI clarification](ai/clarification-assessment.schema.json) | Independently versioned 1.0.0 source-bound semantic assessment; not a calendar value or execution authority |
 | [AI proposal](ai/change-proposal.schema.json) | Suggestions only, without permission or execution fields |
+| [AI assistant plan](ai/assistant-plan.schema.json) | Generated 1.0.0 intent and read-only tool requests, including optional `part_of_day` for free windows ([ADR 0011](../docs/en/adr/0011-bounded-merchant-assistant.md)); intent-to-tool rules are enforced by the source model |
+| [AI assistant composition](ai/assistant-composition.schema.json) | Generated 1.0.0 reply/polish text citing customer revisions; no recipient, approval or sending field |
 | [Example manifest](examples/manifest.json) | Every positive and intentionally invalid fixture |
 | [Acceptance scenarios](examples/scenarios.json) | Synthetic inputs and expected business behavior |
 

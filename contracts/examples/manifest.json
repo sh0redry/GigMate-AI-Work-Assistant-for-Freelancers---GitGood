@@ -133,6 +133,48 @@
       "schema": "../ai/change-proposal.schema.json",
       "valid": false,
       "reason": "A new-order suggestion cannot grant approval or execution authority"
+    },
+    {
+      "file": "assistant-turn-reply.json",
+      "schema": "../domain/models.schema.json#/$defs/AssistantTurnCommand",
+      "valid": true,
+      "reason": "Synthetic assistant question bound to an explicit chat, order and message revision; a target shape, not an implemented route"
+    },
+    {
+      "file": "assistant-turn-view-slots.json",
+      "schema": "../domain/models.schema.json#/$defs/AssistantTurnView",
+      "valid": true,
+      "reason": "Synthetic availability answer rendered from server-computed slots; no execution authority"
+    },
+    {
+      "file": "invalid-assistant-answer-execution.json",
+      "schema": "../domain/models.schema.json#/$defs/AssistantAnswer",
+      "valid": false,
+      "reason": "An assistant answer can never claim execution authority"
+    },
+    {
+      "file": "assistant-plan-availability.json",
+      "schema": "../ai/assistant-plan.schema.json",
+      "valid": true,
+      "reason": "Synthetic model plan requesting only the read-only free-slot tool"
+    },
+    {
+      "file": "invalid-assistant-plan-send-tool.json",
+      "schema": "../ai/assistant-plan.schema.json",
+      "valid": false,
+      "reason": "The model cannot request a sending tool; only read-only tools exist"
+    },
+    {
+      "file": "assistant-composition-reply.json",
+      "schema": "../ai/assistant-composition.schema.json",
+      "valid": true,
+      "reason": "Synthetic reply draft text citing the customer message revision it answers"
+    },
+    {
+      "file": "invalid-assistant-composition-recipient.json",
+      "schema": "../ai/assistant-composition.schema.json",
+      "valid": false,
+      "reason": "Model output cannot carry a recipient or approval"
     }
   ]
 }

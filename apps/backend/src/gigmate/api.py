@@ -28,6 +28,10 @@ from gigmate.contracts import (
     ApproveActionCommand,
     ArchiveCommand,
     AssignMessageCommand,
+    AssistantCapabilities,
+    AssistantDraftView,
+    AssistantTurnCommand,
+    AssistantTurnView,
     CalendarEvent,
     ConfirmChangeCommand,
     ConnectorReceipt,
@@ -716,6 +720,84 @@ def list_agent_drafts(
 
     rows = agent_drafts.list_for_order(db, account, str(order_id))
     return page(request, rows, cursor, limit, lambda row: agent_drafts.view(db, row))
+
+
+@app.get("/api/v1/assistant/capabilities", response_model=Detail[AssistantCapabilities])
+def assistant_capabilities(request: Request, account=Depends(actor)):
+    """What the assistant uses and whether customer text would leave the server."""
+    from gigmate import assistant
+
+    return detail(request, assistant.capabilities())
+
+
+@app.post("/api/v1/assistant/turns", status_code=202, response_model=Detail[AssistantTurnView])
+def submit_assistant_turn(
+    command: AssistantTurnCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    """Queue one merchant question for the bounded assistant (ADR 0011).
+
+    The answer is produced later by the worker from read-only tools. A turn
+    never confirms fields, changes orders, approves or sends anything.
+    """
+    from gigmate import assistant
+
+    return detail(request, assistant.submit(db, account, command, idempotency_key))
+
+
+@app.get("/api/v1/assistant/turns/{turn_id}", response_model=Detail[AssistantTurnView])
+def read_assistant_turn(
+    turn_id: UUID, request: Request, account=Depends(actor), db=Depends(database)
+):
+    from gigmate import assistant
+
+    return detail(request, assistant.get(db, account, str(turn_id)))
+
+
+@app.get("/api/v1/assistant/threads/{thread_id}/turns", response_model=Page[AssistantTurnView])
+def list_assistant_turns(
+    thread_id: UUID,
+    request: Request,
+    cursor: str | None = None,
+    limit: int = Query(20, ge=1, le=100),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    from gigmate import assistant
+
+    rows = assistant.list_for_thread(db, account, str(thread_id))
+    return page(request, rows, cursor, limit, assistant.view)
+
+
+@app.get("/api/v1/assistant/drafts/{draft_id}", response_model=Detail[AssistantDraftView])
+def read_assistant_draft(
+    draft_id: UUID, request: Request, account=Depends(actor), db=Depends(database)
+):
+    from gigmate import assistant_drafts
+
+    return detail(request, assistant_drafts.get(db, account, str(draft_id)))
+
+
+@app.post("/api/v1/assistant/drafts/{draft_id}/consume", response_model=Detail[AssistantDraftView])
+def consume_assistant_draft(
+    draft_id: UUID, request: Request, account=Depends(actor), db=Depends(database)
+):
+    """Take the draft text into the merchant's composer, once. Nothing is sent or approved."""
+    from gigmate import assistant_drafts
+
+    return detail(request, assistant_drafts.consume(db, account, str(draft_id)))
+
+
+@app.post("/api/v1/assistant/drafts/{draft_id}/revoke", response_model=Detail[AssistantDraftView])
+def revoke_assistant_draft(
+    draft_id: UUID, request: Request, account=Depends(actor), db=Depends(database)
+):
+    from gigmate import assistant_drafts
+
+    return detail(request, assistant_drafts.revoke(db, account, str(draft_id)))
 
 
 @app.post("/api/v1/drafts/{draft_id}/revoke", response_model=Detail[AgentDraftView])

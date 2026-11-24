@@ -424,6 +424,640 @@
       "title": "AssignmentResult",
       "type": "string"
     },
+    "AssistantAnswer": {
+      "additionalProperties": false,
+      "properties": {
+        "citations": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AssistantCitation"
+          },
+          "title": "Citations",
+          "type": "array"
+        },
+        "draft_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Draft Id"
+        },
+        "execution_authority": {
+          "const": false,
+          "default": false,
+          "title": "Execution Authority",
+          "type": "boolean"
+        },
+        "kind": {
+          "enum": [
+            "slots",
+            "orders",
+            "draft",
+            "clarification",
+            "unsupported"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "slots": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Slot"
+          },
+          "title": "Slots",
+          "type": "array"
+        },
+        "text": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "unverified_claims": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Unverified Claims",
+          "type": "array"
+        },
+        "work_order_ids": {
+          "default": [],
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Work Order Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "text"
+      ],
+      "title": "AssistantAnswer",
+      "type": "object"
+    },
+    "AssistantCapabilities": {
+      "additionalProperties": false,
+      "description": "What the assistant uses, shown to the merchant before asking (owner decision O2).",
+      "properties": {
+        "daily_turns": {
+          "minimum": 1,
+          "title": "Daily Turns",
+          "type": "integer"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "engine": {
+          "enum": [
+            "rules",
+            "model"
+          ],
+          "title": "Engine",
+          "type": "string"
+        },
+        "sends_customer_text": {
+          "title": "Sends Customer Text",
+          "type": "boolean"
+        },
+        "vendor": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Vendor"
+        }
+      },
+      "required": [
+        "enabled",
+        "engine",
+        "vendor",
+        "sends_customer_text",
+        "daily_turns"
+      ],
+      "title": "AssistantCapabilities",
+      "type": "object"
+    },
+    "AssistantCitation": {
+      "additionalProperties": false,
+      "description": "Where an answer statement comes from: a customer message revision, an order\nversion, or the server's own free-slot computation.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "message",
+            "work_order",
+            "free_slots"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "work_order_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Work Order Id"
+        },
+        "work_order_version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Work Order Version"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "AssistantCitation",
+      "type": "object"
+    },
+    "AssistantContext": {
+      "additionalProperties": false,
+      "description": "What the merchant explicitly selected. The server re-resolves ownership and\nversions; a missing selection is never filled by guessing (for example the\nfirst of several open orders).",
+      "properties": {
+        "conversation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Conversation Id"
+        },
+        "expected_context_version": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Context Version"
+        },
+        "expected_work_order_version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Work Order Version"
+        },
+        "selected_sources": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "maxItems": 8,
+          "title": "Selected Sources",
+          "type": "array"
+        },
+        "work_order_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Work Order Id"
+        }
+      },
+      "title": "AssistantContext",
+      "type": "object"
+    },
+    "AssistantDraftView": {
+      "additionalProperties": false,
+      "description": "Reply or polish text the assistant prepared; never a send, approval or confirmation.\n\n``status`` is computed on read: a new, edited or revoked message in the chat,\na changed order, revoked consent or a no-longer-current cited revision makes an\nunconsumed draft ``revoked`` (with ``revoke_reason``); ``consumed`` happens once.",
+      "properties": {
+        "base_work_order_version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Base Work Order Version"
+        },
+        "consumed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Consumed At"
+        },
+        "context_version": {
+          "minimum": 0,
+          "title": "Context Version",
+          "type": "integer"
+        },
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Created At",
+          "type": "string"
+        },
+        "execution_authority": {
+          "const": false,
+          "default": false,
+          "title": "Execution Authority",
+          "type": "boolean"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "reply_draft",
+            "polish"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "revoke_reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "merchant",
+                "context_changed",
+                "order_changed",
+                "consent_revoked",
+                "source_changed"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Revoke Reason"
+        },
+        "revoked_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Revoked At"
+        },
+        "scrubbed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Scrubbed At"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Sources",
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "proposed",
+            "consumed",
+            "revoked",
+            "expired"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Text"
+        },
+        "turn_id": {
+          "format": "uuid",
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "unverified_claims": {
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Unverified Claims",
+          "type": "array"
+        },
+        "work_order_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Work Order Id"
+        }
+      },
+      "required": [
+        "id",
+        "turn_id",
+        "conversation_id",
+        "work_order_id",
+        "base_work_order_version",
+        "context_version",
+        "kind",
+        "text",
+        "sources",
+        "unverified_claims",
+        "status",
+        "revoke_reason",
+        "expires_at",
+        "created_at",
+        "consumed_at",
+        "revoked_at",
+        "scrubbed_at"
+      ],
+      "title": "AssistantDraftView",
+      "type": "object"
+    },
+    "AssistantTurnCommand": {
+      "additionalProperties": false,
+      "description": "One merchant question. Sent with an Idempotency-Key; the turn runs as a durable job.",
+      "properties": {
+        "context": {
+          "$ref": "#/$defs/AssistantContext",
+          "default": {
+            "conversation_id": null,
+            "expected_context_version": null,
+            "expected_work_order_version": null,
+            "selected_sources": [],
+            "work_order_id": null
+          }
+        },
+        "question": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "thread_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Thread Id"
+        }
+      },
+      "required": [
+        "question"
+      ],
+      "title": "AssistantTurnCommand",
+      "type": "object"
+    },
+    "AssistantTurnView": {
+      "additionalProperties": false,
+      "properties": {
+        "answer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AssistantAnswer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "completed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Completed At"
+        },
+        "context": {
+          "$ref": "#/$defs/AssistantContext"
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Created At",
+          "type": "string"
+        },
+        "engine": {
+          "anyOf": [
+            {
+              "enum": [
+                "rules",
+                "model"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Engine"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Code"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "intent": {
+          "anyOf": [
+            {
+              "enum": [
+                "availability",
+                "order_status",
+                "reply_draft",
+                "polish",
+                "clarify",
+                "unsupported"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Intent"
+        },
+        "question": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Question"
+        },
+        "scrubbed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scrubbed At"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "completed",
+            "failed",
+            "unknown",
+            "superseded"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "thread_id": {
+          "format": "uuid",
+          "title": "Thread Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "thread_id",
+        "status",
+        "question",
+        "intent",
+        "context",
+        "answer",
+        "error_code",
+        "engine",
+        "created_at",
+        "completed_at"
+      ],
+      "title": "AssistantTurnView",
+      "type": "object"
+    },
     "AuditLog": {
       "additionalProperties": false,
       "properties": {
@@ -2982,6 +3616,35 @@
         "expected_version"
       ],
       "title": "SetWorkOrderStatusCommand",
+      "type": "object"
+    },
+    "Slot": {
+      "additionalProperties": false,
+      "properties": {
+        "end_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "End At",
+          "type": "string"
+        },
+        "label": {
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "start_at": {
+          "format": "date-time",
+          "pattern": "Z$",
+          "title": "Start At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "start_at",
+        "end_at",
+        "label"
+      ],
+      "title": "Slot",
       "type": "object"
     },
     "SourceRef": {

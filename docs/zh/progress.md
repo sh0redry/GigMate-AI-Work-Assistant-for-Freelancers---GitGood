@@ -1,5 +1,47 @@
 # 已完成工作与验证记录
 
+## 有边界的商户 AI 助手第 4 批：助手面板与使用说明 — 2026-11-25
+
+新增助手面板（`AssistantPanel.tsx`、`assistant-api.ts`），位于“今日”页（“需要你处理”下方）以及客户会话工单侧栏底部。在聊天中提问时，会带上当前聊天（提问时重新读取其上下文版本）、所选工单（`ConversationBusiness` 通过 `onOrderChange` 提供）以及已勾选作为来源的客户消息。草稿回答提供“放入输入框（不发送）”：只采用一次，文字以 `agent_assisted` 填入现有输入框，之后仍走原有的发送授权、核对和批准。新增后端接口 `GET /api/v1/assistant/capabilities`（`AssistantCapabilities`），用于提问前显示的说明；目前显示使用离线规则、不会把聊天内容发给模型供应商。每次提问使用固定的 `Idempotency-Key`；提交结果未知时提供“核对上次提问”，以完全相同的内容和键重发，服务端返回原来那一轮。草稿采用结果未知时绝不重复采用，“核对草稿状态”只读取。问题和回答按原文显示、不翻译；新增 45 条界面文字的英文和粤语翻译。离开页面后会开始新的对话。
+
+浏览器验收使用真实后端（本地 SQLite 回放模式和合成种子数据、运行助手 worker 的循环、通过本机代理提供构建后的界面；不连接 WhatsApp、模型，也不发送）：“今日”面板显示仅用本地规则的说明；“下周二下午有空吗？要两小时”回答 12/01 13:30–18:00；“我现在有哪些订单？”列出两张种子工单，“打开相关工单 1”能打开工单；未选择聊天时请求回复会请商户先选择；英文界面和英文提问回答“Thu 12/03 09:00–12:00”；375 px 宽度无横向溢出；控制台无错误。验收中把面板移到“需要你处理”下方，避免挤占主卡片。客户会话中的面板需要 WhatsApp 连接，仅通过组件测试验证。
+
+证据：新增 `assistant-panel.test.mjs`（12 项：规则／模型／关闭三种说明、带键提交与同一对话延续、聊天上下文含最新版本／工单／来源、提交结果未知时用相同键和内容核对、只采用一次并填入输入框、已采用／已失效／已过期草稿不可采用、采用结果未知时只读核对、作废／未知／失败提示、工单链接与不翻译原文、登录过期、卸载后停止轮询）；前端全量 **250 passed**；格式、API 类型检查与构建通过。`app.test.mjs` 已登记两个新模块。后端新增能力接口测试。临时 PostgreSQL 17.9 容器上后端全量：**1311 passed / 14 skipped / 0 failed**；Ruff、契约导出和基线通过。
+
+## 有边界的商户 AI 助手第 3 批：回复与润色草稿 — 2026-11-25
+
+回复和润色问题现在会生成助手草稿。只读工具执行后，第二阶段在任何数据库事务之外请撰写器返回 `AssistantComposition` 1.0.0；类型不符或引用了商户所选内容和有界上下文以外的修订时，服务端拒绝；之后再次核对租约和所选对象，再保存草稿。草稿存放在单独的表（新增迁移 `0026_assistant_drafts`），因为回复可能针对还没有工单的聊天；规则与 agent 草稿一致：读取时计算是否有效（有新消息、编辑、撤回、工单变化、授权撤销或所引用的修订不再是最新 → `revoked` 并给出 `revoke_reason`），24 小时过期（`GIGMATE_ASSISTANT_DRAFT_TTL_MINUTES`），只能采用一次，商户可撤销，30 天后清除文字。新增接口：`GET /api/v1/assistant/drafts/{id}`、`POST …/consume`、`POST …/revoke`。`agent_drafts` 不变。ADR 0011 第 3 条已改为写明使用单独的表。
+
+离线的 `RuleComposer` 从不编造内容：只把商户口述的文字（引号内、冒号后，或“说／話／say／tell them”之后，但不包括“客户说的”）按提问语言加上问候和结尾；没有口述内容时反问要回复什么，没有已授权的客户消息时拒绝起草。润色需要先选择聊天。模型撰写器将在第 5 批通过同一接口接入。
+
+证据：新增 `test_assistant_drafts.py`（29 项）连同此前的助手测试：SQLite 上 **100 passed**。覆盖口述解析、绑定且未发送的草稿、引用最新消息、无授权消息时不生成草稿、润色、英文与繁体输出、四种读取时失效原因及拒绝采用、只能采用一次与撤销规则、过期、按账号隔离与 CSRF、撰写器超时／无效／类型不符／多余字段时不保存任何草稿、未经证实内容的传递、撰写期间失效与丢失租约、文字清除和日志脱敏。Alembic upgrade/check/downgrade/re-upgrade 在 SQLite 和 PostgreSQL 上通过，唯一 head 为 `0026_assistant_drafts`。临时 PostgreSQL 17.9 容器上后端全量：**1310 passed / 14 skipped / 0 failed**。前端 **238 passed**，格式、重新生成的 API 类型检查和构建通过；Ruff、契约导出和基线通过。提交前测试还发现英文草稿缺少空格（“works.Thanks!”），已修复。
+
+## 有边界的商户 AI 助手第 2 批：按日期范围的空闲与工单回答 — 2026-11-24
+
+新增 `scheduling.free_windows`：按日期范围逐日确定性计算空闲时段（工作日和工作时间，扣除休息、扣除加上缓冲的已确认预约，从“现在加准备时间”开始），可只看上午、下午或晚上。`find_free_slots` 工具改为返回这些时段；`AssistantPlan` 1.0.0 新增可选 `part_of_day`（尚未发布，已重新生成 schema）。离线规则规划器现在能识别本周、下周、周末、具体星期几（含下周二、next Tuesday）、今天、明天、后天，时长如一个半小时、两小时、45 分钟、半個鐘、2 hours，以及上午、下午、晚上；未说明时长时用所选工单的预约时长或商户默认时长。工单问题可按状态筛选；问“这张工单”只回答所选工单的状态、版本及仍未确认的关键项或待处理细节；未选择时说明所选聊天有几张未完成工单。查空闲时提到客户，会说明这是商户自己的空闲时间。详见[设计文档](assistant.md#已实现与目标)。
+
+新测试发现三个缺陷，提交前已修复：“一个半小时”被读成 30 分钟；“等客户回复的订单”中单独的“回复”被当成回复请求（现在需要“帮我回”“回复这条”等明确说法）；工单详情把未填写的可选字段列为“仍待确认”（现在只列关键项或有待处理提议的字段）。
+
+证据：新增 `test_assistant_answers.py`（22 项，固定时钟）连同第 0–1 批助手测试：SQLite 上 **71 passed**。临时 PostgreSQL 17.9 容器上后端全量：**1281 passed / 14 skipped / 0 failed**。Ruff、契约导出、前端 API 类型检查和基线通过。本批不调用模型、WhatsApp 或网络；OpenAPI 与迁移不变。
+
+## 有边界的商户 AI 助手第 1 批：持久化问答、只读工具、离线规划器 — 2026-11-24
+
+按 [ADR 0011](../en/adr/0011-bounded-merchant-assistant.md) 实现助手后端骨架，行为与限制见[设计文档](assistant.md#第-1-批行为)。新增迁移 `0025_assistant`（`assistant_threads`、`assistant_turns` 两张表）。新增接口：`POST /api/v1/assistant/turns`（会话、CSRF、`Idempotency-Key`，返回 202）、`GET /api/v1/assistant/turns/{id}`、`GET /api/v1/assistant/threads/{id}/turns`。提交时重新核对归属、授权、上下文和工单版本、工单与聊天的关联，以及所选消息是否为当前已授权修订；每账号每 24 小时有上限（`GIGMATE_ASSISTANT_DAILY_TURNS`，默认 200），并可关闭（`GIGMATE_ASSISTANT_ENABLED`，默认开启）。worker 以 60 秒租约领取（PostgreSQL 上 `SKIP LOCKED`），在事务外规划，重新核对所选对象，只执行白名单只读工具（`assistant_tools.py`），仅在仍持有租约时写入答案。所选对象变化则作废；租约过期或规划调用中断记为 `unknown`，不重试。worker 维护任务在 30 天后清除问答文字。`message_context.bounded_incoming` 最多读取 5 分钟、8 条、8000 字节的已授权入站文字，只带内部 ID。
+
+第 1 批规划器离线、基于关键词（`engine: "rules"`）：查空闲（简单识别本周、下周、明天和时长）、查工单状态、回复/润色（第 3 批前回答 `unsupported`，不编造文字）、缺少所需聊天或工单时反问，其余拒绝。答案由服务端按提问语言生成。为支持清除，`AssistantTurnView.question` 改为可空并新增 `scrubbed_at`。已重新生成 OpenAPI 与前端类型；尚无界面。
+
+证据：新增 `test_assistant_turns.py`（26 项）并更新 `test_assistant_contracts.py`：SQLite 上 **49 passed**；连同迁移测试在临时 PostgreSQL 17.9 容器上 **70 passed**。覆盖幂等、跨账号 404、过期／未关联／未授权的所选对象、作废、租约过期记为未知且不重试、规划器失败码、丢失租约、第二个 worker 不会接手运行中的问答、需选择时反问、有界上下文、不写业务数据、上限与开关、按账号隔离的会话、CSRF 与键的要求、文字清除和日志脱敏。Alembic upgrade/check/downgrade/re-upgrade 在 SQLite 和 PostgreSQL 上通过，唯一 head 为 `0025_assistant`。在该 PostgreSQL 容器上后端全量：**1259 passed / 14 skipped / 0 failed**（跳过项为 Linux 专用 PDF 隔离等平台用例）。前端 **238 passed**，格式、API 类型检查与构建通过。Ruff、契约导出和基线通过。
+
+## 有边界的商户 AI 助手第 0 批：ADR、契约与威胁模型 — 2026-11-24
+
+新增 [ADR 0011](../en/adr/0011-bounded-merchant-assistant.md)：面向商户的助手（“下周哪几天有空？”“帮我回一下这条消息”），仍遵守现有规则——模型只规划只读工具调用并撰写草稿，没有任何写入、确认、批准或发送工具，所有输出 `execution_authority: false`。它修订而非取消 `agent_drafts.py` 中“不做开放式问答”的边界。[设计与威胁模型](assistant.md)涵盖意图、带服务端校验的工具白名单、一轮问答的流程、十类威胁及缓解措施，以及第 1–5 批计划。
+
+在 `contracts.py` 新增源模型 `AssistantContext`、`AssistantTurnCommand`、`AssistantCitation`、`AssistantAnswer`、`AssistantTurnView`；在 `assistant_plan.py` 新增独立版本的 AI 数据结构 `AssistantPlan`/`AssistantComposition` 1.0.0，并生成 `contracts/ai/assistant-plan.schema.json` 与 `assistant-composition.schema.json`。工具只能作用于商户所选对象（`target: "selected"`），不接受模型给出的 ID；每个意图有各自的工具子集；回复草稿必须引用客户消息修订。清单新增七个合成样例（四个有效；三个无效：执行权、发送工具、收件人／批准字段）。未新增路由、数据表、迁移、worker 任务、模型调用或界面；OpenAPI 与前端生成类型不变。
+
+业主已于 2026-11-24 确认并记入 ADR：O1 第一版只做查空闲、查工单状态、回复草稿、润色，不做开放式闲聊；O2 只把所选会话的有界已授权上下文、商户问题和工具结果发给供应商，电话号码和聊天 ID 换成不透明标识，启用前向商户明示。
+
+证据：新增 `test_assistant_contracts.py` **23 passed**，包括每个助手样例与源模型的交叉验证，以及确认不存在助手路由。SQLite 后端全量：**1216 passed / 31 skipped / 0 failed**（首次运行在约 10% 处被外部中断，退出码 120，无测试失败；重跑完成）。Ruff check/format、`export_contracts.py --check`、`check_baseline.py`（102 个 Markdown、1047 个链接、6 个 schema、18 个有效／11 个拒绝样例）通过。未运行 PostgreSQL（Docker Desktop 未启动）；本批没有数据库代码。JSON Schema 无法表达意图与工具的对应规则，以源模型校验为准并已测试。
+
 ## PR #39 客户会话：整合 main `80350b7` 并修复 Kyrie 评审问题 — 2026-11-13
 
 将 main `80350b7`（#45–#52）合入 `andy/customer-conversations`。App 导航/状态、新手引导、导航图标、建单、翻译、测试列表与两份进度记录的冲突均保留双方：main 的“今日”首页（现为登录后默认页）、主题切换、新需求建议横幅和次级 WhatsApp 连接入口保留；客户会话留在主导航，会话选中的来源提示与 main 的建议预填都能进入建单页。

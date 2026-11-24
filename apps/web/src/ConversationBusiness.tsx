@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { t } from "./i18n.ts";
 import { conversationApi, type AgentDraft } from "./conversation-api";
 import type { TimelineMessage } from "./waha-sync-api";
@@ -17,6 +17,8 @@ export function ConversationBusiness({
   onLocate,
   onAdopt,
   onSessionExpired,
+  onOrderChange,
+  children,
 }: {
   csrf: string;
   conversation: string;
@@ -28,6 +30,8 @@ export function ConversationBusiness({
   onLocate: (id: string, revision: number) => void;
   onAdopt: (text: string) => void;
   onSessionExpired: () => void;
+  onOrderChange?: (order: { id: string; version: number } | null) => void;
+  children?: ReactNode;
 }) {
   const api = useMemo(() => conversationApi(csrf), [csrf]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -61,6 +65,13 @@ export function ConversationBusiness({
     };
   }, [api, conversation]);
   const order = orders.find((value) => value.id === selected);
+  const orderId = order?.id,
+    orderVersion = order?.version;
+  useEffect(() => {
+    onOrderChange?.(
+      orderId && orderVersion ? { id: orderId, version: orderVersion } : null,
+    );
+  }, [orderId, orderVersion, onOrderChange]);
   useEffect(() => {
     const abort = new AbortController();
     setLoading(true);
@@ -287,6 +298,7 @@ export function ConversationBusiness({
           )}
         </section>
       )}
+      {children}
     </aside>
   );
 }

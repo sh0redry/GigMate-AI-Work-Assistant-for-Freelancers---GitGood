@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "reply_draft",
+  "language": "zh-Hans",
+  "text": "您好，周二下午 14:00–16:00 可以安排，地点按示例工作室。如需调整请告诉我。",
+  "sources": [
+    {
+      "message_id": "00000000-0000-4000-8000-0000000a0003",
+      "message_revision": 1
+    }
+  ],
+  "unverified_claims": []
+}

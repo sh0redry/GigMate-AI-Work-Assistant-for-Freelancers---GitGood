@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "reply_draft",
+  "language": "zh-Hans",
+  "text": "好的，已确认。",
+  "sources": [
+    {
+      "message_id": "00000000-0000-4000-8000-0000000a0003",
+      "message_revision": 1
+    }
+  ],
+  "recipient": "synthetic:85200000000@c.us",
+  "approved": true
+}

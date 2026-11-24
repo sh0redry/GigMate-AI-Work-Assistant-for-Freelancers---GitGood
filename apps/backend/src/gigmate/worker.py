@@ -803,7 +803,14 @@ def work_loop():
                 log.error("media_poll_failed code=%s", error.code)
             except SQLAlchemyError:
                 log.error("control_poll_failed code=DATABASE_UNAVAILABLE")
-        if not poll():
+        assisted = False
+        try:
+            from gigmate.assistant import run_once as assistant_once
+
+            assisted = assistant_once()
+        except SQLAlchemyError:
+            log.error("assistant_poll_failed code=DATABASE_UNAVAILABLE")
+        if not poll() and not assisted:
             time.sleep(0.5)
 
 
@@ -832,6 +839,12 @@ def maintain(factory=Session):
 
         with factory.begin() as db:
             follow_up_unanswered(db)
+        from gigmate.assistant import scrub as scrub_assistant
+
+        scrub_assistant(factory)
+        from gigmate.assistant_drafts import scrub as scrub_drafts
+
+        scrub_drafts(factory)
         from gigmate.waha_media import purge as purge_media
 
         purge_media(factory)

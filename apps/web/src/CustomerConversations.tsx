@@ -16,6 +16,7 @@ import { WahaSend } from "./WahaSend";
 import { WahaMedia } from "./WahaMedia";
 import { usePolling } from "./usePolling";
 import { ConversationBusiness } from "./ConversationBusiness";
+import { AssistantPanel } from "./AssistantPanel";
 import type { Features } from "./features";
 
 const delivery = localized({
@@ -104,6 +105,10 @@ export function CustomerConversations({
   const [selectedSources, setSelectedSources] = useState<string[]>([]);
   const [openedMedia, setOpenedMedia] = useState("");
   const [showBusiness, setShowBusiness] = useState(true);
+  const [assistantOrder, setAssistantOrder] = useState<{
+    id: string;
+    version: number;
+  } | null>(null);
   const [composerInput, setComposerInput] = useState<
     | {
         token: string;
@@ -1006,7 +1011,29 @@ export function CustomerConversations({
                   })
                 }
                 onSessionExpired={onSessionExpired}
-              />
+                onOrderChange={setAssistantOrder}
+              >
+                <AssistantPanel
+                  key={scope}
+                  csrf={csrf}
+                  conversation={conversation}
+                  order={assistantOrder}
+                  sources={chosen.map((m) => ({
+                    message_id: m.source_message_id!,
+                    message_revision: m.revision!,
+                  }))}
+                  adoptEnabled={ready && !composerBlocked && !busy}
+                  onAdopt={(text) =>
+                    setComposerInput({
+                      token: crypto.randomUUID(),
+                      text,
+                      mode: "agent_assisted",
+                    })
+                  }
+                  onOpenOrder={onOpenOrder}
+                  onSessionExpired={onSessionExpired}
+                />
+              </ConversationBusiness>
             )}
             {chat && showBusiness && !conversation && (
               <aside className="conversation-business">

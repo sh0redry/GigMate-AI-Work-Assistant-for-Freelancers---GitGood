@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT / "apps/backend/src"))
 
 from gigmate import contracts as c  # noqa: E402
 from gigmate.api import app  # noqa: E402
+from gigmate.assistant_plan import AssistantComposition, AssistantPlan  # noqa: E402
 from gigmate.clarification import Assessment  # noqa: E402
 from pydantic import TypeAdapter  # noqa: E402
 
@@ -91,6 +92,13 @@ def domain_schema():
         c.UpdateRequirementCommand,
         c.ScheduleSettings,
         c.UpdateScheduleSettingsCommand,
+        c.AssistantContext,
+        c.AssistantTurnCommand,
+        c.AssistantCitation,
+        c.AssistantAnswer,
+        c.AssistantTurnView,
+        c.AssistantDraftView,
+        c.AssistantCapabilities,
     ]
     for model in models:
         schema = model.model_json_schema()
@@ -131,6 +139,28 @@ def main():
                 "x-version": "1.0.0",
                 "description": "Generated source-bound AI clarification DTO; semantic/source checks also required",
                 **Assessment.model_json_schema(),
+            },
+        ),
+        (
+            "contracts/ai/assistant-plan.schema.json",
+            {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "$id": "https://gigmate.local/contracts/ai/assistant-plan/1.0.0",
+                "x-version": "1.0.0",
+                "description": "Generated bounded assistant plan (ADR 0011): intent and read-only "
+                "tool requests; server ownership/version checks also required",
+                **AssistantPlan.model_json_schema(),
+            },
+        ),
+        (
+            "contracts/ai/assistant-composition.schema.json",
+            {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "$id": "https://gigmate.local/contracts/ai/assistant-composition/1.0.0",
+                "x-version": "1.0.0",
+                "description": "Generated bounded assistant reply/polish text (ADR 0011); a "
+                "proposal surface only, never recipient, approval or sending authority",
+                **AssistantComposition.model_json_schema(),
             },
         ),
     ]:

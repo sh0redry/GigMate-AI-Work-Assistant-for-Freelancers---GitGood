@@ -1540,3 +1540,145 @@ class WorkspaceQueryResult(Model):
     intent: Literal["today", "tomorrow", "waiting", "open_items", "unsupported"]
     day: date
     items: list[SummaryEntry]
+
+
+# --- Bounded merchant assistant (ADR 0011). Target wire shapes: batch 0 defines them,
+# no route serves them yet, so they appear in the domain schema but not in OpenAPI.
+
+AssistantIntent = Literal[
+    "availability", "order_status", "reply_draft", "polish", "clarify", "unsupported"
+]
+
+
+class AssistantContext(Model):
+    """What the merchant explicitly selected. The server re-resolves ownership and
+    versions; a missing selection is never filled by guessing (for example the
+    first of several open orders)."""
+
+    conversation_id: Id | None = None
+    expected_context_version: NonNegative | None = None
+    work_order_id: Id | None = None
+    expected_work_order_version: Positive | None = None
+    # Customer message revisions the merchant pointed at ("reply to this message").
+    selected_sources: Annotated[list[SourceRef], Field(max_length=8)] = []
+
+    @model_validator(mode="after")
+    def _bound(self):
+        if (self.conversation_id is None) != (self.expected_context_version is None):
+            raise ValueError("conversation_id and expected_context_version go together")
+        if (self.work_order_id is None) != (self.expected_work_order_version is None):
+            raise ValueError("work_order_id and expected_work_order_version go together")
+        if self.selected_sources and self.conversation_id is None:
+            raise ValueError("selected_sources require a selected conversation")
+        return self
+
+
+class AssistantTurnCommand(Model):
+    """One merchant question. Sent with an Idempotency-Key; the turn runs as a durable job."""
+
+    thread_id: Id | None = None
+    question: Annotated[str, Field(min_length=1, max_length=1000)]
+    context: AssistantContext = AssistantContext()
+
+
+class AssistantCitation(Model):
+    """Where an answer statement comes from: a customer message revision, an order
+    version, or the server's own free-slot computation."""
+
+    kind: Literal["message", "work_order", "free_slots"]
+    message: SourceRef | None = None
+    work_order_id: Id | None = None
+    work_order_version: Positive | None = None
+
+    @model_validator(mode="after")
+    def _shape(self):
+        if (self.kind == "message") != (self.message is not None):
+            raise ValueError("message citations carry exactly a message source")
+        if (self.kind == "work_order") != (self.work_order_id is not None):
+            raise ValueError("work_order citations carry exactly an order id")
+        if (self.work_order_id is None) != (self.work_order_version is None):
+            raise ValueError("work_order_id and work_order_version go together")
+        return self
+
+
+class AssistantAnswer(Model):
+    kind: Literal["slots", "orders", "draft", "clarification", "unsupported"]
+    # Server-rendered text; slot times, counts and order facts come from tool results.
+    text: Annotated[str, Field(min_length=1, max_length=2000)]
+    slots: list[Slot] = []
+    work_order_ids: list[Id] = []
+    # A generated reply or polish is stored as an agent draft and only referenced here.
+    draft_id: Id | None = None
+    unverified_claims: list[Annotated[str, Field(min_length=1, max_length=200)]] = []
+    citations: list[AssistantCitation] = []
+    # Stated in the payload so no client can mistake an answer for an approval or receipt.
+    execution_authority: Literal[False] = False
+
+    @model_validator(mode="after")
+    def _draft(self):
+        if (self.kind == "draft") != (self.draft_id is not None):
+            raise ValueError("draft answers reference exactly one draft")
+        return self
+
+
+class AssistantTurnView(Model):
+    id: Id
+    thread_id: Id
+    status: Literal["queued", "running", "completed", "failed", "unknown", "superseded"]
+    # Question and answer text are cleared after the retention window (scrubbed_at set).
+    question: Text | None
+    intent: AssistantIntent | None
+    context: AssistantContext
+    answer: AssistantAnswer | None
+    # Stable code only (for example ASSISTANT_DISABLED, ASSISTANT_BUDGET_EXCEEDED,
+    # ASSISTANT_CONTEXT_STALE); never provider text or customer content.
+    error_code: str | None
+    # Which path produced the answer: rule-based fallback or the reviewed model.
+    engine: Literal["rules", "model"] | None
+    created_at: UtcTimestamp
+    completed_at: UtcTimestamp | None
+    scrubbed_at: UtcTimestamp | None = None
+
+
+class AssistantDraftView(Model):
+    """Reply or polish text the assistant prepared; never a send, approval or confirmation.
+
+    ``status`` is computed on read: a new, edited or revoked message in the chat,
+    a changed order, revoked consent or a no-longer-current cited revision makes an
+    unconsumed draft ``revoked`` (with ``revoke_reason``); ``consumed`` happens once.
+    """
+
+    id: Id
+    turn_id: Id
+    conversation_id: Id
+    work_order_id: Id | None
+    base_work_order_version: Positive | None
+    context_version: NonNegative
+    kind: Literal["reply_draft", "polish"]
+    # Cleared after the retention window (scrubbed_at set).
+    text: Annotated[str, Field(min_length=1, max_length=1000)] | None
+    sources: list[SourceRef]
+    unverified_claims: list[Annotated[str, Field(min_length=1, max_length=200)]]
+    status: Literal["proposed", "consumed", "revoked", "expired"]
+    revoke_reason: (
+        Literal["merchant", "context_changed", "order_changed", "consent_revoked", "source_changed"]
+        | None
+    )
+    expires_at: UtcTimestamp
+    created_at: UtcTimestamp
+    consumed_at: UtcTimestamp | None
+    revoked_at: UtcTimestamp | None
+    scrubbed_at: UtcTimestamp | None
+    execution_authority: Literal[False] = False
+
+
+class AssistantCapabilities(Model):
+    """What the assistant uses, shown to the merchant before asking (owner decision O2)."""
+
+    enabled: bool
+    engine: Literal["rules", "model"]
+    # Vendor name only when a model engine is enabled; never credentials or endpoints.
+    vendor: Text | None
+    # Whether bounded consented customer text may be sent to that vendor.
+    sends_customer_text: bool
+    daily_turns: Positive

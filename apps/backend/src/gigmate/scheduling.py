@@ -218,3 +218,71 @@ def check(db, account_id, order):
         free_slots(db, account_id, duration, after, exclude_order_id=order.id) if wanted else []
     )
     return {"work_order_id": order.id, "risks": found, "suggestions": suggestions}
+
+
+PARTS_OF_DAY = {
+    "morning": (0, 12 * 60),
+    "afternoon": (12 * 60, 18 * 60),
+    "evening": (18 * 60, 24 * 60),
+}
+
+
+def _subtract(intervals, start, end):
+    out = []
+    for a, b in intervals:
+        if end <= a or b <= start:
+            out.append((a, b))
+            continue
+        if a < start:
+            out.append((a, start))
+        if end < b:
+            out.append((end, b))
+    return out
+
+
+def free_windows(db, account_id, first_day, last_day, minimum, *, now=None, part=None, limit=40):
+    """Free working-time windows per local day in [first_day, last_day], each at least ``minimum``.
+
+    Deterministic: working days/hours minus breaks, minus confirmed appointments
+    padded by the merchant's buffer, starting no earlier than now plus the
+    preparation lead. ``part`` optionally keeps only morning/afternoon/evening.
+    """
+    from datetime import time
+
+    config = settings(db, account_id)
+    tz = ZoneInfo(config.timezone)
+    now = now or datetime.now(UTC)
+    earliest = now + timedelta(minutes=config.preparation_minutes)
+    buffer = timedelta(minutes=config.buffer_minutes)
+    taken = [(s - buffer, e + buffer) for s, e, _ in busy(db, account_id)]
+    windows = []
+    day = first_day
+    while day <= last_day and len(windows) < limit:
+        if day.isoweekday() in config.work_days:
+            midnight = datetime.combine(day, time.min, tz)
+
+            def at(minutes, midnight=midnight):
+                return midnight + timedelta(minutes=minutes)
+
+            low, high = hhmm(config.work_hours.start), hhmm(config.work_hours.end)
+            if part:
+                low, high = max(low, PARTS_OF_DAY[part][0]), min(high, PARTS_OF_DAY[part][1])
+            intervals = [(at(low), at(high))] if low < high else []
+            for item in config.breaks:
+                intervals = _subtract(intervals, at(hhmm(item.start)), at(hhmm(item.end)))
+            for start, end in taken:
+                intervals = _subtract(intervals, start, end)
+            for start, end in intervals:
+                start = max(start, earliest)
+                if end - start >= minimum:
+                    local_start, local_end = start.astimezone(tz), end.astimezone(tz)
+                    windows.append(
+                        {
+                            "start_at": text(start),
+                            "end_at": text(end),
+                            "label": f"{local_start:%m/%d}（周{WEEKDAYS[local_start.weekday()]}）"
+                            f"{local_start:%H:%M}–{local_end:%H:%M}",
+                        }
+                    )
+        day += timedelta(days=1)
+    return windows[:limit]

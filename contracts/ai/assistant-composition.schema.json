@@ -1,0 +1,88 @@
+{
+  "$defs": {
+    "SourceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "message_id": {
+          "format": "uuid",
+          "title": "Message Id",
+          "type": "string"
+        },
+        "message_revision": {
+          "minimum": 1,
+          "title": "Message Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "message_id",
+        "message_revision"
+      ],
+      "title": "SourceRef",
+      "type": "object"
+    }
+  },
+  "$id": "https://gigmate.local/contracts/ai/assistant-composition/1.0.0",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Phase-2 reply or polish text. A proposal surface only.",
+  "properties": {
+    "kind": {
+      "enum": [
+        "reply_draft",
+        "polish"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "language": {
+      "enum": [
+        "zh-Hans",
+        "zh-Hant",
+        "en"
+      ],
+      "title": "Language",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "sources": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SourceRef"
+      },
+      "maxItems": 8,
+      "title": "Sources",
+      "type": "array"
+    },
+    "text": {
+      "maxLength": 1000,
+      "minLength": 1,
+      "title": "Text",
+      "type": "string"
+    },
+    "unverified_claims": {
+      "default": [],
+      "items": {
+        "maxLength": 200,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 5,
+      "title": "Unverified Claims",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "kind",
+    "language",
+    "text"
+  ],
+  "title": "AssistantComposition",
+  "type": "object",
+  "x-version": "1.0.0"
+}
