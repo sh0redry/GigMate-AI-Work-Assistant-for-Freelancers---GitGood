@@ -404,6 +404,50 @@ class AgentDraftRow(Base):
     )
 
 
+class AssistantThread(Base):
+    """A merchant's conversation with the bounded assistant (ADR 0011)."""
+
+    __tablename__ = "assistant_threads"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class AssistantTurn(Base):
+    """One merchant question and its durable execution state.
+
+    The row is also the job: ``queued`` → ``running`` (leased) → ``completed`` /
+    ``failed`` / ``unknown`` / ``superseded``. An expired lease becomes ``unknown``
+    and is never retried automatically. ``question`` and ``answer`` text are
+    scrubbed after the retention window; identifiers and codes remain.
+    """
+
+    __tablename__ = "assistant_turns"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"), index=True)
+    thread_id: Mapped[str] = mapped_column(ForeignKey("assistant_threads.id"), index=True)
+    request_key: Mapped[str] = mapped_column(String(128))
+    digest: Mapped[str] = mapped_column(String(64))
+    question: Mapped[str | None] = mapped_column(Text)
+    context: Mapped[dict] = mapped_column(JSON)
+    state: Mapped[str] = mapped_column(String(16), index=True)
+    intent: Mapped[str | None] = mapped_column(String(16))
+    engine: Mapped[str | None] = mapped_column(String(8))
+    # Tool names and citations only; customer text read by tools is not stored.
+    trace: Mapped[dict | None] = mapped_column(JSON)
+    answer: Mapped[dict | None] = mapped_column(JSON)
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_token: Mapped[str | None] = mapped_column(String(36))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    scrubbed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (UniqueConstraint("account_id", "request_key", name="uq_assistant_turn_key"),)
+
+
 class MessageRow(Base):
     __tablename__ = "message_revisions"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)

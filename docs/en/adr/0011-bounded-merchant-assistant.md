@@ -1,7 +1,7 @@
 # ADR 0011 Bounded merchant assistant
 
 - Date: 2026-11-24
-- Status: Accepted 2026-11-24 (owner decisions O1/O2 below). Batch 0 (this ADR, contracts, threat model) is implemented; batches 1–5 are targets.
+- Status: Accepted 2026-11-24 (owner decisions O1/O2 below). Batch 0 (this ADR, contracts, threat model) and batch 1 (durable turns, read-only tools, offline rule planner) are implemented; batches 2–5 are targets.
 - Related: [ADR 0003](0003-approval-and-execution.md) (approval and execution), [ADR 0007](0007-owned-waha-sending.md) (owned sending), [ADR 0008](0008-vendor-selection-and-private-configuration.md) (vendor and credentials), [design and threat model](../assistant.md).
 
 ## Context

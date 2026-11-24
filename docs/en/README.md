@@ -23,7 +23,7 @@ The replay skeleton and optional local WAHA durable ingress/monitoring are imple
 | [Role A recovery acceptance](role-a-recovery-acceptance.md) | Component health, fault recovery, manual gap review and reproducible tests for E |
 | [Equal collaboration](team-governance.md) | Equal permission target, peer review and independent onboarding gate |
 | [Decisions](adr/README.md) | Accepted choices and change conditions |
-| [Bounded merchant assistant](assistant.md) | ADR 0011 design, tool allowlist, threat model and delivery batches (batch 0 contracts only) |
+| [Bounded merchant assistant](assistant.md) | ADR 0011 design, tool allowlist, threat model and delivery batches (batches 0–1 implemented) |
 | [Contracts](../../contracts/README.md) | Canonical schemas, API agreement and synthetic fixtures |
 | [D final web delivery](role-d-final-acceptance.md) | Current product pages, calendar export, blocked dependencies and actual evidence |
 | [Role D module roadmap](role-d-development-roadmap.md) | D-01 through D-05, API dependencies and scope |

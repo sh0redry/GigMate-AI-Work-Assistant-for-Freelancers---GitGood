@@ -4,7 +4,18 @@
 
 ## Implemented versus target
 
-**Implemented (batch 0):** source models `AssistantContext`, `AssistantTurnCommand`, `AssistantCitation`, `AssistantAnswer`, `AssistantTurnView` in `contracts.py`; independently versioned AI DTOs `AssistantPlan` and `AssistantComposition` 1.0.0 in `assistant_plan.py`; generated [plan](../../contracts/ai/assistant-plan.schema.json) and [composition](../../contracts/ai/assistant-composition.schema.json) schemas; seven synthetic fixtures (four valid, three intentionally invalid); contract tests. **Not implemented:** routes, tables, worker jobs, tool execution, model calls and UI. OpenAPI is unchanged.
+**Implemented (batch 0):** source models `AssistantContext`, `AssistantTurnCommand`, `AssistantCitation`, `AssistantAnswer`, `AssistantTurnView` in `contracts.py`; independently versioned AI DTOs `AssistantPlan` and `AssistantComposition` 1.0.0 in `assistant_plan.py`; generated [plan](../../contracts/ai/assistant-plan.schema.json) and [composition](../../contracts/ai/assistant-composition.schema.json) schemas; seven synthetic fixtures; contract tests.
+
+**Implemented (batch 1):** migration `0025_assistant` (tables `assistant_threads`, `assistant_turns`; additive); routes `POST /api/v1/assistant/turns` (session, CSRF, `Idempotency-Key`; 202), `GET /api/v1/assistant/turns/{id}` and `GET /api/v1/assistant/threads/{id}/turns`; worker execution with a 60-second lease (`assistant.run_once`); the read-only tool registry `assistant_tools.py`; the offline keyword planner (`engine: "rules"`, no model or network); server-side rendering of availability and order answers; 30-day text scrubbing in worker maintenance. Configuration: `GIGMATE_ASSISTANT_ENABLED` (default `true`) and `GIGMATE_ASSISTANT_DAILY_TURNS` (default 200 per account per 24 hours).
+
+**Not implemented yet:** reply drafts and polishing (batch 3 — until then such turns answer `unsupported` instead of inventing text), the date-range free-slot variant and richer rule answers (batch 2), the UI (batch 4) and the reviewed model planner (batch 5).
+
+### Batch 1 behaviour
+
+- Submission checks the session, CSRF and the merchant's selection: owned conversation (404 otherwise), allowlisted (403 `CONSENT_REVOKED`), matching context version and order version (409 `ASSISTANT_CONTEXT_STALE`), order linked to the chat (409 `ASSISTANT_SELECTION_MISMATCH`), and each selected message being the current, consented revision (409 `ASSISTANT_SOURCE_STALE`). Reusing a key with different content returns 409 `IDEMPOTENCY_CONFLICT`; the same content returns the original turn. Over the daily cap returns 429 `ASSISTANT_BUDGET_EXCEEDED`; a disabled assistant returns 503 `ASSISTANT_DISABLED`.
+- The worker claims the oldest queued turn (`FOR UPDATE SKIP LOCKED` on PostgreSQL), plans outside the database transaction, then re-resolves the selection, runs the tools and stores the answer only if it still holds the lease. A changed selection makes the turn `superseded`. An expired lease becomes `unknown` (`ASSISTANT_RESULT_UNKNOWN`) and is never retried. An invalid plan is `failed` (`ASSISTANT_PLAN_INVALID`); an unavailable planner is `failed` (`ASSISTANT_DISABLED`); an interrupted planner call is `unknown`.
+- A tool that needs a selection the merchant did not make turns the answer into a clarification instead of guessing.
+- `trace` stores tool names and the answer language only; customer text read by `read_conversation` is not stored. Logs carry turn IDs, intents and codes only.
 
 ## What the merchant can ask (version 1)
 
@@ -59,7 +70,7 @@ Assets: customer messages and identities, merchant orders and calendar, the What
 | Batch | Delivers | Acceptance |
 | --- | --- | --- |
 | 0 | ADR, contracts, schemas, fixtures, threat model | Contract tests, export check, baseline (done) |
-| 1 | Tables and migration, turn routes, worker job, tool registry, offline fake planner | Normal/failure paths on SQLite and PostgreSQL; idempotency; unknown outcomes; ownership |
+| 1 | Tables and migration, turn routes, worker job, tool registry, offline rule planner | Normal/failure paths on SQLite and PostgreSQL; idempotency; unknown outcomes; ownership (done) |
 | 2 | Availability and order-status answers, date-range free slots, rule-based fallback | Deterministic answers; clarify on ambiguity; no model needed for tests |
 | 3 | Reply draft and polish as a new agent draft kind, invalidation, adoption | Draft bindings, supersession races, adoption without sending |
 | 4 | Assistant panel in customer chats and on Today; three UI languages | Frontend tests, build, browser QA with synthetic data |

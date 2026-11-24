@@ -1,5 +1,13 @@
 # 已完成工作与验证记录
 
+## 有边界的商户 AI 助手第 1 批：持久化问答、只读工具、离线规划器 — 2026-11-24
+
+按 [ADR 0011](../en/adr/0011-bounded-merchant-assistant.md) 实现助手后端骨架，行为与限制见[设计文档](assistant.md#第-1-批行为)。新增迁移 `0025_assistant`（`assistant_threads`、`assistant_turns` 两张表）。新增接口：`POST /api/v1/assistant/turns`（会话、CSRF、`Idempotency-Key`，返回 202）、`GET /api/v1/assistant/turns/{id}`、`GET /api/v1/assistant/threads/{id}/turns`。提交时重新核对归属、授权、上下文和工单版本、工单与聊天的关联，以及所选消息是否为当前已授权修订；每账号每 24 小时有上限（`GIGMATE_ASSISTANT_DAILY_TURNS`，默认 200），并可关闭（`GIGMATE_ASSISTANT_ENABLED`，默认开启）。worker 以 60 秒租约领取（PostgreSQL 上 `SKIP LOCKED`），在事务外规划，重新核对所选对象，只执行白名单只读工具（`assistant_tools.py`），仅在仍持有租约时写入答案。所选对象变化则作废；租约过期或规划调用中断记为 `unknown`，不重试。worker 维护任务在 30 天后清除问答文字。`message_context.bounded_incoming` 最多读取 5 分钟、8 条、8000 字节的已授权入站文字，只带内部 ID。
+
+第 1 批规划器离线、基于关键词（`engine: "rules"`）：查空闲（简单识别本周、下周、明天和时长）、查工单状态、回复/润色（第 3 批前回答 `unsupported`，不编造文字）、缺少所需聊天或工单时反问，其余拒绝。答案由服务端按提问语言生成。为支持清除，`AssistantTurnView.question` 改为可空并新增 `scrubbed_at`。已重新生成 OpenAPI 与前端类型；尚无界面。
+
+证据：新增 `test_assistant_turns.py`（26 项）并更新 `test_assistant_contracts.py`：SQLite 上 **49 passed**；连同迁移测试在临时 PostgreSQL 17.9 容器上 **70 passed**。覆盖幂等、跨账号 404、过期／未关联／未授权的所选对象、作废、租约过期记为未知且不重试、规划器失败码、丢失租约、第二个 worker 不会接手运行中的问答、需选择时反问、有界上下文、不写业务数据、上限与开关、按账号隔离的会话、CSRF 与键的要求、文字清除和日志脱敏。Alembic upgrade/check/downgrade/re-upgrade 在 SQLite 和 PostgreSQL 上通过，唯一 head 为 `0025_assistant`。在该 PostgreSQL 容器上后端全量：**1259 passed / 14 skipped / 0 failed**（跳过项为 Linux 专用 PDF 隔离等平台用例）。前端 **238 passed**，格式、API 类型检查与构建通过。Ruff、契约导出和基线通过。
+
 ## 有边界的商户 AI 助手第 0 批：ADR、契约与威胁模型 — 2026-11-24
 
 新增 [ADR 0011](../en/adr/0011-bounded-merchant-assistant.md)：面向商户的助手（“下周哪几天有空？”“帮我回一下这条消息”），仍遵守现有规则——模型只规划只读工具调用并撰写草稿，没有任何写入、确认、批准或发送工具，所有输出 `execution_authority: false`。它修订而非取消 `agent_drafts.py` 中“不做开放式问答”的边界。[设计与威胁模型](assistant.md)涵盖意图、带服务端校验的工具白名单、一轮问答的流程、十类威胁及缓解措施，以及第 1–5 批计划。

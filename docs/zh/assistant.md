@@ -4,7 +4,18 @@
 
 ## 已实现与目标
 
-**已实现（第 0 批）：** `contracts.py` 中的源模型 `AssistantContext`、`AssistantTurnCommand`、`AssistantCitation`、`AssistantAnswer`、`AssistantTurnView`；`assistant_plan.py` 中独立版本的 AI 数据结构 `AssistantPlan` 与 `AssistantComposition` 1.0.0；生成的[规划](../../contracts/ai/assistant-plan.schema.json)与[撰写](../../contracts/ai/assistant-composition.schema.json) schema；七个合成样例（四个有效、三个故意无效）；契约测试。**未实现：** 路由、数据表、worker 任务、工具执行、模型调用和界面。OpenAPI 不变。
+**已实现（第 0 批）：** `contracts.py` 中的源模型 `AssistantContext`、`AssistantTurnCommand`、`AssistantCitation`、`AssistantAnswer`、`AssistantTurnView`；`assistant_plan.py` 中独立版本的 AI 数据结构 `AssistantPlan` 与 `AssistantComposition` 1.0.0；生成的[规划](../../contracts/ai/assistant-plan.schema.json)与[撰写](../../contracts/ai/assistant-composition.schema.json) schema；七个合成样例；契约测试。
+
+**已实现（第 1 批）：** 迁移 `0025_assistant`（新增 `assistant_threads`、`assistant_turns` 两张表，不改旧数据）；接口 `POST /api/v1/assistant/turns`（需会话、CSRF 和 `Idempotency-Key`，返回 202）、`GET /api/v1/assistant/turns/{id}`、`GET /api/v1/assistant/threads/{id}/turns`；由 worker 在 60 秒租约下执行（`assistant.run_once`）；只读工具注册表 `assistant_tools.py`；离线关键词规划器（`engine: "rules"`，不调用模型、不联网）；空闲时段和工单答案由服务端生成；worker 维护任务在 30 天后清除问答文字。配置：`GIGMATE_ASSISTANT_ENABLED`（默认 `true`）、`GIGMATE_ASSISTANT_DAILY_TURNS`（每账号每 24 小时默认 200 次）。
+
+**尚未实现：** 回复草稿与润色（第 3 批；在此之前这类问题回答 `unsupported`，不编造文字）、按日期范围计算空闲和更完整的规则回答（第 2 批）、界面（第 4 批）以及经评审的模型规划器（第 5 批）。
+
+### 第 1 批行为
+
+- 提交时检查会话、CSRF 和商户所选对象：会话须属于本账号（否则 404）、已授权（否则 403 `CONSENT_REVOKED`）、上下文版本和工单版本一致（否则 409 `ASSISTANT_CONTEXT_STALE`）、工单与该聊天关联（否则 409 `ASSISTANT_SELECTION_MISMATCH`）、所选消息是当前且已授权的修订（否则 409 `ASSISTANT_SOURCE_STALE`）。同一个键配不同内容返回 409 `IDEMPOTENCY_CONFLICT`，内容相同则返回原来那一轮。超过每日上限返回 429 `ASSISTANT_BUDGET_EXCEEDED`；助手关闭时返回 503 `ASSISTANT_DISABLED`。
+- worker 领取最早排队的一轮（PostgreSQL 上用 `FOR UPDATE SKIP LOCKED`），在数据库事务之外规划，然后重新核对所选对象、执行工具，只有仍持有租约时才写入答案。所选对象有变化则标为 `superseded`；租约过期标为 `unknown`（`ASSISTANT_RESULT_UNKNOWN`），绝不重试；规划结果无效标为 `failed`（`ASSISTANT_PLAN_INVALID`）；规划器不可用标为 `failed`（`ASSISTANT_DISABLED`）；规划调用中断标为 `unknown`。
+- 工具需要商户未选择的对象时，答案改为反问，不去猜。
+- `trace` 只记录工具名称和回答语言，不保存 `read_conversation` 读到的客户原文。日志只含这一轮的 ID、意图和错误码。
 
 ## 商户可以问什么（第一版）
 
@@ -59,7 +70,7 @@
 | 批次 | 内容 | 验收 |
 | --- | --- | --- |
 | 0 | ADR、契约、schema、样例、威胁模型 | 契约测试、导出检查、基线（已完成） |
-| 1 | 数据表与迁移、问答路由、worker 任务、工具注册表、离线假规划器 | SQLite 与 PostgreSQL 上的正常和失败路径；幂等；未知结果；归属 |
+| 1 | 数据表与迁移、问答路由、worker 任务、工具注册表、离线规则规划器 | SQLite 与 PostgreSQL 上的正常和失败路径；幂等；未知结果；归属（已完成） |
 | 2 | 空闲时段和工单状态回答、按日期范围计算空闲、规则兜底 | 确定性回答；有歧义时反问；测试不依赖模型 |
 | 3 | 回复草稿与润色（新的草稿类型）、失效规则、采用 | 草稿绑定、失效竞态、采用但不发送 |
 | 4 | 客户会话侧栏与“今日”页的助手面板；三种界面语言 | 前端测试、构建、合成数据浏览器验收 |

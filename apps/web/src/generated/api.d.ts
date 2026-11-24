@@ -140,6 +140,63 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/assistant/threads/{thread_id}/turns": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Assistant Turns */
+    get: operations["list_assistant_turns_api_v1_assistant_threads__thread_id__turns_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/assistant/turns": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Submit Assistant Turn
+     * @description Queue one merchant question for the bounded assistant (ADR 0011).
+     *
+     *     The answer is produced later by the worker from read-only tools. A turn
+     *     never confirms fields, changes orders, approves or sends anything.
+     */
+    post: operations["submit_assistant_turn_api_v1_assistant_turns_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/assistant/turns/{turn_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read Assistant Turn */
+    get: operations["read_assistant_turn_api_v1_assistant_turns__turn_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/auth/login": {
     parameters: {
       query?: never;
@@ -1824,6 +1881,150 @@ export interface components {
       /** Work Order Id */
       work_order_id?: string | null;
     };
+    /** AssistantAnswer */
+    AssistantAnswer: {
+      /**
+       * Citations
+       * @default []
+       */
+      citations: components["schemas"]["AssistantCitation"][];
+      /** Draft Id */
+      draft_id?: string | null;
+      /**
+       * Execution Authority
+       * @default false
+       * @constant
+       */
+      execution_authority: false;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "slots" | "orders" | "draft" | "clarification" | "unsupported";
+      /**
+       * Slots
+       * @default []
+       */
+      slots: components["schemas"]["Slot"][];
+      /** Text */
+      text: string;
+      /**
+       * Unverified Claims
+       * @default []
+       */
+      unverified_claims: string[];
+      /**
+       * Work Order Ids
+       * @default []
+       */
+      work_order_ids: string[];
+    };
+    /**
+     * AssistantCitation
+     * @description Where an answer statement comes from: a customer message revision, an order
+     *     version, or the server's own free-slot computation.
+     */
+    AssistantCitation: {
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "message" | "work_order" | "free_slots";
+      message?: components["schemas"]["SourceRef"] | null;
+      /** Work Order Id */
+      work_order_id?: string | null;
+      /** Work Order Version */
+      work_order_version?: number | null;
+    };
+    /**
+     * AssistantContext
+     * @description What the merchant explicitly selected. The server re-resolves ownership and
+     *     versions; a missing selection is never filled by guessing (for example the
+     *     first of several open orders).
+     */
+    AssistantContext: {
+      /** Conversation Id */
+      conversation_id?: string | null;
+      /** Expected Context Version */
+      expected_context_version?: number | null;
+      /** Expected Work Order Version */
+      expected_work_order_version?: number | null;
+      /**
+       * Selected Sources
+       * @default []
+       */
+      selected_sources: components["schemas"]["SourceRef"][];
+      /** Work Order Id */
+      work_order_id?: string | null;
+    };
+    /**
+     * AssistantTurnCommand
+     * @description One merchant question. Sent with an Idempotency-Key; the turn runs as a durable job.
+     */
+    AssistantTurnCommand: {
+      /**
+       * @default {
+       *       "selected_sources": []
+       *     }
+       */
+      context: components["schemas"]["AssistantContext"];
+      /** Question */
+      question: string;
+      /** Thread Id */
+      thread_id?: string | null;
+    };
+    /** AssistantTurnView */
+    AssistantTurnView: {
+      answer: components["schemas"]["AssistantAnswer"] | null;
+      /** Completed At */
+      completed_at: string | null;
+      context: components["schemas"]["AssistantContext"];
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /** Engine */
+      engine: ("rules" | "model") | null;
+      /** Error Code */
+      error_code: string | null;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Intent */
+      intent:
+        | (
+            | "availability"
+            | "order_status"
+            | "reply_draft"
+            | "polish"
+            | "clarify"
+            | "unsupported"
+          )
+        | null;
+      /** Question */
+      question: string | null;
+      /** Scrubbed At */
+      scrubbed_at?: string | null;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status:
+        | "queued"
+        | "running"
+        | "completed"
+        | "failed"
+        | "unknown"
+        | "superseded";
+      /**
+       * Thread Id
+       * Format: uuid
+       */
+      thread_id: string;
+    };
     /** CalendarEvent */
     CalendarEvent: {
       /**
@@ -2285,6 +2486,15 @@ export interface components {
     /** Detail[AgentDraftView] */
     Detail_AgentDraftView_: {
       data: components["schemas"]["AgentDraftView"];
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Detail[AssistantTurnView] */
+    Detail_AssistantTurnView_: {
+      data: components["schemas"]["AssistantTurnView"];
       /**
        * Request Id
        * Format: uuid
@@ -2834,6 +3044,18 @@ export interface components {
     Page_AgentDraftView_: {
       /** Items */
       items: components["schemas"]["AgentDraftView"][];
+      /** Next Cursor */
+      next_cursor: string | null;
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+    };
+    /** Page[AssistantTurnView] */
+    Page_AssistantTurnView_: {
+      /** Items */
+      items: components["schemas"]["AssistantTurnView"][];
       /** Next Cursor */
       next_cursor: string | null;
       /**
@@ -4951,6 +5173,106 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Detail_ActionView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  list_assistant_turns_api_v1_assistant_threads__thread_id__turns_get: {
+    parameters: {
+      query?: {
+        cursor?: string | null;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        thread_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Page_AssistantTurnView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  submit_assistant_turn_api_v1_assistant_turns_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AssistantTurnCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_AssistantTurnView_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  read_assistant_turn_api_v1_assistant_turns__turn_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        turn_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Detail_AssistantTurnView_"];
         };
       };
       /** @description Validation Error */

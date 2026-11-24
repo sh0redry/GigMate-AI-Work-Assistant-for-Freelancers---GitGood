@@ -1625,7 +1625,8 @@ class AssistantTurnView(Model):
     id: Id
     thread_id: Id
     status: Literal["queued", "running", "completed", "failed", "unknown", "superseded"]
-    question: Text
+    # Question and answer text are cleared after the retention window (scrubbed_at set).
+    question: Text | None
     intent: AssistantIntent | None
     context: AssistantContext
     answer: AssistantAnswer | None
@@ -1636,3 +1637,4 @@ class AssistantTurnView(Model):
     engine: Literal["rules", "model"] | None
     created_at: UtcTimestamp
     completed_at: UtcTimestamp | None
+    scrubbed_at: UtcTimestamp | None = None

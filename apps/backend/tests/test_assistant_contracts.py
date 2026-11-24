@@ -1,4 +1,4 @@
-"""Batch 0 of the bounded assistant (ADR 0011): contracts only, no route or provider."""
+"""Bounded assistant contracts (ADR 0011): source models, AI DTOs, fixtures and routes."""
 
 import json
 from pathlib import Path
@@ -226,6 +226,11 @@ def test_assistant_fixtures_cross_validate_with_the_source_models():
                 model.model_validate_json(raw)
 
 
-def test_batch_zero_adds_no_route():
+def test_only_the_three_bounded_assistant_routes_exist():
     paths = app.openapi()["paths"]
-    assert not [path for path in paths if "assistant" in path]
+    routes = {(path, method) for path in paths if "assistant" in path for method in paths[path]}
+    assert routes == {
+        ("/api/v1/assistant/turns", "post"),
+        ("/api/v1/assistant/turns/{turn_id}", "get"),
+        ("/api/v1/assistant/threads/{thread_id}/turns", "get"),
+    }

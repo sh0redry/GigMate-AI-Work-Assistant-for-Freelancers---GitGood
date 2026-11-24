@@ -758,9 +758,30 @@
           "title": "Intent"
         },
         "question": {
-          "minLength": 1,
-          "title": "Question",
-          "type": "string"
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Question"
+        },
+        "scrubbed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scrubbed At"
         },
         "status": {
           "enum": [

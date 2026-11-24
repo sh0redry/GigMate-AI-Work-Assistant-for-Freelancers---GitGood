@@ -165,11 +165,11 @@ Connector webhook ingestion is an adapter endpoint with separate key/signature a
 
 There is no browser `send arbitrary text` endpoint. An approved action is queued and revalidated by the worker before connector dispatch. Provider acceptance, delivery acknowledgment and customer confirmation are separate. A timeout after possible submission becomes result_unknown. Reconciliation and definitely-not-submitted retries are internal services, not a permission shortcut.
 
-## Bounded merchant assistant (target, not implemented)
+## Bounded merchant assistant (batch 1 implemented)
 
-[ADR 0011](../docs/en/adr/0011-bounded-merchant-assistant.md), accepted 2026-11-24 (owner decisions O1/O2); [design and threat model](../docs/en/assistant.md). Batch 0 defines source models only (`AssistantContext`, `AssistantTurnCommand`, `AssistantCitation`, `AssistantAnswer`, `AssistantTurnView`) and the independently versioned AI schemas `assistant-plan` and `assistant-composition` 1.0.0. They appear in the domain schema; no route serves them and OpenAPI is unchanged.
+[ADR 0011](../docs/en/adr/0011-bounded-merchant-assistant.md), accepted 2026-11-24 (owner decisions O1/O2); [design, behaviour and threat model](../docs/en/assistant.md). Source models `AssistantContext`, `AssistantTurnCommand`, `AssistantCitation`, `AssistantAnswer`, `AssistantTurnView` generate the routes; the independently versioned AI schemas `assistant-plan` and `assistant-composition` 1.0.0 describe planner output.
 
-Target routes for batch 1, to be confirmed by that batch: `POST /assistant/turns` (session, CSRF, `Idempotency-Key`; 202 with a queued `AssistantTurnView`), `GET /assistant/turns/{id}` and `GET /assistant/threads/{id}/turns` (owner-scoped pages). Expected errors: 403 when the selected chat is not owned/allowlisted, 409 `ASSISTANT_CONTEXT_STALE` for version mismatch, 429 `ASSISTANT_BUDGET_EXCEEDED`, 503 `ASSISTANT_DISABLED` only for model-only intents. A turn never confirms fields, creates or changes orders, approves or sends; reply/polish output is an agent draft with `execution_authority: false`.
+Implemented: `POST /assistant/turns` (session, CSRF, `Idempotency-Key`; 202 with a queued `AssistantTurnView`), `GET /assistant/turns/{id}` and `GET /assistant/threads/{id}/turns` (owner-scoped pages). Additive migration `0025_assistant`. Errors: 404 for a chat, order or thread not owned; 403 `CONSENT_REVOKED`; 409 `ASSISTANT_CONTEXT_STALE`, `ASSISTANT_SELECTION_MISMATCH`, `ASSISTANT_SOURCE_STALE` or `IDEMPOTENCY_CONFLICT`; 429 `ASSISTANT_BUDGET_EXCEEDED`; 503 `ASSISTANT_DISABLED`. Turn `error_code` values: `ASSISTANT_CONTEXT_STALE` (superseded), `ASSISTANT_RESULT_UNKNOWN`, `ASSISTANT_PLAN_INVALID`, `ASSISTANT_DISABLED`. The batch 1 planner is offline and rule-based; reply/polish turns answer `unsupported` until batch 3. A turn never confirms fields, creates or changes orders, approves or sends; answers carry `execution_authority: false`.
 
 ## Skeleton transition
 

@@ -648,6 +648,385 @@
         "title": "AssignMessageCommand",
         "type": "object"
       },
+      "AssistantAnswer": {
+        "additionalProperties": false,
+        "properties": {
+          "citations": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AssistantCitation"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "draft_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draft Id"
+          },
+          "execution_authority": {
+            "const": false,
+            "default": false,
+            "title": "Execution Authority",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "slots",
+              "orders",
+              "draft",
+              "clarification",
+              "unsupported"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "slots": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Slot"
+            },
+            "title": "Slots",
+            "type": "array"
+          },
+          "text": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          },
+          "unverified_claims": {
+            "default": [],
+            "items": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Unverified Claims",
+            "type": "array"
+          },
+          "work_order_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Work Order Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "text"
+        ],
+        "title": "AssistantAnswer",
+        "type": "object"
+      },
+      "AssistantCitation": {
+        "additionalProperties": false,
+        "description": "Where an answer statement comes from: a customer message revision, an order\nversion, or the server's own free-slot computation.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "message",
+              "work_order",
+              "free_slots"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "work_order_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Order Id"
+          },
+          "work_order_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Order Version"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "AssistantCitation",
+        "type": "object"
+      },
+      "AssistantContext": {
+        "additionalProperties": false,
+        "description": "What the merchant explicitly selected. The server re-resolves ownership and\nversions; a missing selection is never filled by guessing (for example the\nfirst of several open orders).",
+        "properties": {
+          "conversation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "expected_context_version": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Context Version"
+          },
+          "expected_work_order_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Work Order Version"
+          },
+          "selected_sources": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            },
+            "maxItems": 8,
+            "title": "Selected Sources",
+            "type": "array"
+          },
+          "work_order_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Order Id"
+          }
+        },
+        "title": "AssistantContext",
+        "type": "object"
+      },
+      "AssistantTurnCommand": {
+        "additionalProperties": false,
+        "description": "One merchant question. Sent with an Idempotency-Key; the turn runs as a durable job.",
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/AssistantContext",
+            "default": {
+              "selected_sources": []
+            }
+          },
+          "question": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "thread_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thread Id"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "AssistantTurnCommand",
+        "type": "object"
+      },
+      "AssistantTurnView": {
+        "additionalProperties": false,
+        "properties": {
+          "answer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AssistantAnswer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "pattern": "Z$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "context": {
+            "$ref": "#/components/schemas/AssistantContext"
+          },
+          "created_at": {
+            "format": "date-time",
+            "pattern": "Z$",
+            "title": "Created At",
+            "type": "string"
+          },
+          "engine": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rules",
+                  "model"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engine"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "intent": {
+            "anyOf": [
+              {
+                "enum": [
+                  "availability",
+                  "order_status",
+                  "reply_draft",
+                  "polish",
+                  "clarify",
+                  "unsupported"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intent"
+          },
+          "question": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question"
+          },
+          "scrubbed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "pattern": "Z$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scrubbed At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed",
+              "unknown",
+              "superseded"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "thread_id": {
+            "format": "uuid",
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "thread_id",
+          "status",
+          "question",
+          "intent",
+          "context",
+          "answer",
+          "error_code",
+          "engine",
+          "created_at",
+          "completed_at"
+        ],
+        "title": "AssistantTurnView",
+        "type": "object"
+      },
       "CalendarEvent": {
         "additionalProperties": false,
         "properties": {
@@ -1808,6 +2187,25 @@
           "request_id"
         ],
         "title": "Detail[AgentDraftView]",
+        "type": "object"
+      },
+      "Detail_AssistantTurnView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AssistantTurnView"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "Detail[AssistantTurnView]",
         "type": "object"
       },
       "Detail_ConnectionInfo_": {
@@ -2997,6 +3395,41 @@
           "request_id"
         ],
         "title": "Page[AgentDraftView]",
+        "type": "object"
+      },
+      "Page_AssistantTurnView_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AssistantTurnView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor",
+          "request_id"
+        ],
+        "title": "Page[AssistantTurnView]",
         "type": "object"
       },
       "Page_CalendarEvent_": {
@@ -8159,6 +8592,164 @@
           }
         },
         "summary": "Send Action"
+      }
+    },
+    "/api/v1/assistant/threads/{thread_id}/turns": {
+      "get": {
+        "operationId": "list_assistant_turns_api_v1_assistant_threads__thread_id__turns_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Thread Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_AssistantTurnView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Assistant Turns"
+      }
+    },
+    "/api/v1/assistant/turns": {
+      "post": {
+        "description": "Queue one merchant question for the bounded assistant (ADR 0011).\n\nThe answer is produced later by the worker from read-only tools. A turn\nnever confirms fields, changes orders, approves or sends anything.",
+        "operationId": "submit_assistant_turn_api_v1_assistant_turns_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistantTurnCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_AssistantTurnView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Assistant Turn"
+      }
+    },
+    "/api/v1/assistant/turns/{turn_id}": {
+      "get": {
+        "operationId": "read_assistant_turn_api_v1_assistant_turns__turn_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "turn_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Turn Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_AssistantTurnView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Assistant Turn"
       }
     },
     "/api/v1/auth/login": {

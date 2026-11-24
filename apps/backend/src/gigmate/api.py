@@ -28,6 +28,8 @@ from gigmate.contracts import (
     ApproveActionCommand,
     ArchiveCommand,
     AssignMessageCommand,
+    AssistantTurnCommand,
+    AssistantTurnView,
     CalendarEvent,
     ConfirmChangeCommand,
     ConnectorReceipt,
@@ -716,6 +718,48 @@ def list_agent_drafts(
 
     rows = agent_drafts.list_for_order(db, account, str(order_id))
     return page(request, rows, cursor, limit, lambda row: agent_drafts.view(db, row))
+
+
+@app.post("/api/v1/assistant/turns", status_code=202, response_model=Detail[AssistantTurnView])
+def submit_assistant_turn(
+    command: AssistantTurnCommand,
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    """Queue one merchant question for the bounded assistant (ADR 0011).
+
+    The answer is produced later by the worker from read-only tools. A turn
+    never confirms fields, changes orders, approves or sends anything.
+    """
+    from gigmate import assistant
+
+    return detail(request, assistant.submit(db, account, command, idempotency_key))
+
+
+@app.get("/api/v1/assistant/turns/{turn_id}", response_model=Detail[AssistantTurnView])
+def read_assistant_turn(
+    turn_id: UUID, request: Request, account=Depends(actor), db=Depends(database)
+):
+    from gigmate import assistant
+
+    return detail(request, assistant.get(db, account, str(turn_id)))
+
+
+@app.get("/api/v1/assistant/threads/{thread_id}/turns", response_model=Page[AssistantTurnView])
+def list_assistant_turns(
+    thread_id: UUID,
+    request: Request,
+    cursor: str | None = None,
+    limit: int = Query(20, ge=1, le=100),
+    account=Depends(actor),
+    db=Depends(database),
+):
+    from gigmate import assistant
+
+    rows = assistant.list_for_thread(db, account, str(thread_id))
+    return page(request, rows, cursor, limit, assistant.view)
 
 
 @app.post("/api/v1/drafts/{draft_id}/revoke", response_model=Detail[AgentDraftView])
